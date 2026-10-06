@@ -1,0 +1,59 @@
+[
+  {
+    "id": "unmanaged",
+    "name": "무관리",
+    "summary": "전부 한꺼번에 착수하고, 자재는 일괄 발주하고, 속성 공법과 잔업으로 밀어붙인다.",
+    "config": {
+      "ships": {
+        "S1": {"priority": 1, "start_day": 1, "order_days": {"paper": 1, "paint": 10, "flag": 20}},
+        "S2": {"priority": 3, "start_day": 1, "order_days": {"paper": 1, "paint": 10, "flag": 20}},
+        "S3": {"priority": 2, "start_day": 1, "order_days": {"paper": 1, "paint": 10, "flag": 20}}
+      },
+      "stations": {
+        "cutting": {"workers": 2, "method": "fast", "overtime": true, "maintenance": false},
+        "gluing": {"workers": 2, "method": "fast", "overtime": true, "maintenance": false},
+        "painting": {"workers": 2, "method": "fast", "overtime": true, "maintenance": false},
+        "outfitting": {"workers": 2, "method": "fast", "overtime": true, "maintenance": false}
+      },
+      "skilled_station": null
+    }
+  },
+  {
+    "id": "managed",
+    "name": "관리",
+    "summary": "납기순으로 착수를 나누고, 자재는 필요일에서 역산해 발주하고, 표준 공법에 정비를 한다.",
+    "config": {
+      "ships": {
+        "S1": {"priority": 1, "start_day": 3, "order_days": {"paper": 1, "paint": 13, "flag": 16}},
+        "S2": {"priority": 2, "start_day": 11, "order_days": {"paper": 8, "paint": 21, "flag": 22}},
+        "S3": {"priority": 3, "start_day": 17, "order_days": {"paper": 14, "paint": 27, "flag": 30}}
+      },
+      "stations": {
+        "cutting": {"workers": 1, "method": "standard", "overtime": false, "maintenance": true},
+        "gluing": {"workers": 2, "method": "standard", "overtime": false, "maintenance": true},
+        "painting": {"workers": 1, "method": "standard", "overtime": false, "maintenance": true},
+        "outfitting": {"workers": 2, "method": "standard", "overtime": false, "maintenance": true}
+      },
+      "skilled_station": "outfitting"
+    }
+  },
+  {
+    "id": "all_in",
+    "name": "전부 최대 투입",
+    "summary": "사람, 속도, 잔업, 정비를 전부 넣고 자재는 첫날 모두 발주한다.",
+    "config": {
+      "ships": {
+        "S1": {"priority": 1, "start_day": 1, "order_days": {"paper": 1, "paint": 1, "flag": 1}},
+        "S2": {"priority": 2, "start_day": 1, "order_days": {"paper": 1, "paint": 1, "flag": 1}},
+        "S3": {"priority": 3, "start_day": 1, "order_days": {"paper": 1, "paint": 1, "flag": 1}}
+      },
+      "stations": {
+        "cutting": {"workers": 2, "method": "fast", "overtime": true, "maintenance": true},
+        "gluing": {"workers": 2, "method": "fast", "overtime": true, "maintenance": true},
+        "painting": {"workers": 2, "method": "fast", "overtime": true, "maintenance": true},
+        "outfitting": {"workers": 2, "method": "fast", "overtime": true, "maintenance": true}
+      },
+      "skilled_station": "gluing"
+    }
+  }
+]
