@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>시안 2.5D · 걸리버의 조선소</title>
+    <link rel="icon" href="data:," />
+    <style>
+      :root {
+        --accent: #1d5c45;
+        --ink: #1f2a24;
+        font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+        color: var(--ink);
+      }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #e9e1d1; }
+      #stage { position: fixed; inset: 0; }
+      #stage svg.iso { position: absolute; inset: 0; width: 100%; height: 100%; }
+      .pill text, .labels-svg text { font-family: inherit; }
+      .labels { position: absolute; inset: 0; pointer-events: none; }
+
+      .hud {
+        position: fixed; top: 18px; left: 18px; max-width: 380px; padding: 16px 18px;
+        background: rgba(251, 253, 251, 0.92); border-radius: 14px; backdrop-filter: blur(6px);
+        box-shadow: 0 6px 24px rgba(31, 42, 36, 0.14);
+      }
+      .hud .tag { font-size: 12px; font-weight: 700; color: #fff; background: var(--accent); border-radius: 6px; padding: 2px 8px; }
+      .hud h1 { font-size: 20px; margin: 10px 0 4px; letter-spacing: -0.01em; }
+      .hud p { margin: 0; font-size: 13px; line-height: 1.5; color: #4b5a51; }
+      .toggles { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+      .toggles button {
+        font: inherit; font-size: 13px; font-weight: 600; padding: 6px 11px; border-radius: 9px; cursor: pointer;
+        border: 1px solid #d5ded7; background: #fff; color: #4b5a51;
+      }
+      .toggles button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+      .hint { margin-top: 10px !important; font-size: 12px !important; color: #78867d !important; }
+
+      .legend {
+        position: fixed; right: 18px; top: 18px; padding: 12px 14px; font-size: 12.5px; line-height: 1.8;
+        background: rgba(251, 253, 251, 0.92); border-radius: 12px; box-shadow: 0 6px 24px rgba(31, 42, 36, 0.14);
+      }
+      .legend b { display: block; font-size: 13px; margin-bottom: 2px; }
+
+      #caption {
+        position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); padding: 11px 20px;
+        background: rgba(29, 92, 69, 0.94); color: #fff; border-radius: 999px; font-size: 16px; font-weight: 600;
+        box-shadow: 0 6px 24px rgba(31, 42, 36, 0.2); white-space: nowrap;
+      }
+
+      .station-label {
+        display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px;
+        background: rgba(255, 255, 255, 0.92); font-size: 13px; font-weight: 700; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+      }
+      .station-label i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+      .giant-label {
+        text-align: center; padding: 6px 12px; border-radius: 10px; background: rgba(255, 255, 255, 0.88);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+      }
+      .giant-label b { display: block; font-size: 14px; }
+      .giant-label span { font-size: 12px; color: #4b5a51; }
+      .badge {
+        padding: 4px 10px; border-radius: 8px; background: #ec835a; color: #2b1408; font-weight: 800; font-size: 13px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      }
+      .skilled-tag { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: #2b2b3a; color: #f3d27a; }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <div class="hud">
+      <span class="tag">시안 · 2.5D</span>
+      <h1>걸리버의 책상 위 조선소</h1>
+      <p>릴리펏의 소인들이 걸리버가 접은 견본 크기로 종이배를 만듭니다. 아직 시뮬레이션 결과와 연결하지 않은 장면 시안입니다.</p>
+      <div class="toggles">
+        <button type="button" data-toggle="overtime">잔업 (밤)</button>
+        <button type="button" data-toggle="defect">불량 발생</button>
+        <button type="button" data-toggle="fast">속성 공법</button>
+      </div>
+      <p class="hint">고정 시점 · SVG로 그려 어느 노트북에서도 가볍게 돕니다.</p>
+    </div>
+    <div class="legend">
+      <b>장면에서 읽는 법</b>
+      작업복 색 = 작업장<br />
+      작업대의 소인 수 = 작업자 (관리 프리셋 1·2·1·2명)<br />
+      모자 = 숙련공 (의장)<br />
+      촛불과 밤 = 잔업<br />
+      주황 경고 = 불량 → 재작업
+    </div>
+    <div id="caption"></div>
+    <script type="module" src="iso.js"></script>
+  </body>
+</html>
