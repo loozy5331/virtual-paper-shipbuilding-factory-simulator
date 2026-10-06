@@ -10,7 +10,11 @@
     "dev": "node build.mjs --watch"
   },
   "devDependencies": {
+    "@types/three": "^0.186.0",
     "esbuild": "0.28.2",
     "typescript": "6.0.3"
+  },
+  "dependencies": {
+    "three": "^0.186.1"
   }
 }
