@@ -1,4 +1,5 @@
 // 화면 빌드: src/main.ts와 src/styles.css를 dist로 묶고 index.html을 복사한다.
+// src/proto/main.ts는 3D 시안(proto.html)이다.
 //   node build.mjs           한 번 빌드
 //   node build.mjs --watch   파일이 바뀔 때마다 다시 빌드
 import { build, context } from "esbuild";
@@ -6,7 +7,7 @@ import { copyFile, mkdir } from "node:fs/promises";
 
 const watch = process.argv.includes("--watch");
 const options = {
-  entryPoints: { app: "src/main.ts", styles: "src/styles.css" },
+  entryPoints: { app: "src/main.ts", styles: "src/styles.css", proto: "src/proto/main.ts" },
   outdir: "dist",
   bundle: true,
   format: "esm",
@@ -18,6 +19,7 @@ const options = {
 
 await mkdir("dist", { recursive: true });
 await copyFile("index.html", "dist/index.html");
+await copyFile("proto.html", "dist/proto.html");
 
 if (watch) {
   const ctx = await context(options);
