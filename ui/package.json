@@ -1,0 +1,16 @@
+{
+  "name": "paper-shipyard-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "종이배 조선소 시뮬레이터 화면. 엔진이 준 결과를 그리기만 한다.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && node build.mjs",
+    "dev": "node build.mjs --watch"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "typescript": "6.0.3"
+  }
+}

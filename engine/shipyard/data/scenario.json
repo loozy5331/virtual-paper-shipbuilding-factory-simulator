@@ -1,0 +1,73 @@
+{
+  "days": 60,
+  "stations": [
+    {"id": "cutting", "name": "재단", "real": "강재 절단", "material": "paper"},
+    {"id": "gluing", "name": "풀칠", "real": "조립", "material": null},
+    {"id": "painting", "name": "물감칠", "real": "도장", "material": "paint"},
+    {"id": "outfitting", "name": "의장", "real": "의장, 진수", "material": "flag"}
+  ],
+  "materials": [
+    {"id": "paper", "name": "종이", "price": 20, "lead_days": 2},
+    {"id": "paint", "name": "물감", "price": 40, "lead_days": 5},
+    {"id": "flag", "name": "깃발", "price": 100, "lead_days": 10}
+  ],
+  "ship_types": {
+    "VLCC": {
+      "name": "VLCC",
+      "work": {"cutting": 8, "gluing": 16, "painting": 8, "outfitting": 8},
+      "bom": {"paper": 8, "paint": 4, "flag": 2}
+    },
+    "CONT": {
+      "name": "컨테이너선",
+      "work": {"cutting": 6, "gluing": 12, "painting": 4, "outfitting": 10},
+      "bom": {"paper": 6, "paint": 2, "flag": 3}
+    }
+  },
+  "orders": [
+    {"id": "S1", "type": "VLCC", "due_day": 30, "price": 3000},
+    {"id": "S2", "type": "CONT", "due_day": 38, "price": 2600},
+    {"id": "S3", "type": "VLCC", "due_day": 46, "price": 3000}
+  ],
+  "initial_stock": {"paper": 0, "paint": 0, "flag": 0},
+  "rules": {
+    "max_workers_per_station": 2,
+    "methods": {
+      "standard": {"name": "표준", "speed": 1.0, "defect_rate": 0.10},
+      "fast": {"name": "속성", "speed": 1.5, "defect_rate": 0.30}
+    },
+    "overtime": {
+      "speed": 1.25,
+      "pay_rate": 0.5,
+      "defect_add": 0.05,
+      "accident_every_days": 10,
+      "accident_threshold": 0.5,
+      "accident_stop_days": 3
+    },
+    "no_maintenance_defect_add": 0.15,
+    "skilled_defect_reduction": 0.05,
+    "rework_ratio": 0.5,
+    "costs": {
+      "wage_per_day": 10,
+      "skilled_bonus_per_day": 5,
+      "maintenance_per_station": 100,
+      "rework_per_defect": 200,
+      "accident": 300,
+      "holding_rate_per_day": 0.01,
+      "wip_per_ship_day": 10,
+      "late_penalty_rate_per_day": 0.03
+    }
+  },
+  "random": {
+    "quality": {
+      "S1": {"cutting": 0.62, "gluing": 0.21, "painting": 0.48, "outfitting": 0.08},
+      "S2": {"cutting": 0.35, "gluing": 0.74, "painting": 0.03, "outfitting": 0.41},
+      "S3": {"cutting": 0.17, "gluing": 0.28, "painting": 0.90, "outfitting": 0.33}
+    },
+    "accident": {
+      "cutting": [0.71, 0.30, 0.55],
+      "gluing": [0.42, 0.64, 0.18],
+      "painting": [0.83, 0.27, 0.60],
+      "outfitting": [0.36, 0.92, 0.45]
+    }
+  }
+}
