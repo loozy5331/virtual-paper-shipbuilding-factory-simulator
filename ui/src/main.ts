@@ -1,19 +1,21 @@
 // 화면의 상태와 연결. 서버에서 시나리오를 받고, 설정을 고치고, 실행 결과를 회차로 쌓는다.
 // 시연 흐름: 분기 목표와 수주 → 계획 → 자원 배치 → 60일 진행(관제실) → 레포트(등급) → 현장 재현 → 재시도.
-// 오른쪽은 [관제실 | 현장 | 레포트] 탭이고, 관제실 안은 [대시보드 3D | 간트]가 재생 커서를 함께 쓴다.
+// 오른쪽은 [관제실 | 현장 | 레포트] 탭이다. 관제실은 간트([전체 | 배별]), 현장은 3D이고 재생 커서를 함께 쓴다.
 
 import { api, ApiError, type Config, type Finding, type Preview, type Result, type ScenarioPayload } from "./api";
 import { h, mount } from "./dom";
 import { renderForm, updatePreview } from "./form";
-import { renderGantt } from "./gantt";
-import { GRADE_COLOR, LOSS_STATES, STATION_COLOR, TRANSPORT_STATE } from "./labels";
-import { eventText, renderReport } from "./report";
+import { renderGantt, renderShipGantt } from "./gantt";
+import { EVENT_NAME, GRADE_COLOR, LOSS_STATES, STATION_COLOR, TRANSPORT_STATE } from "./labels";
+import { breakdownBar, breakdownLegend, eventText, renderReport } from "./report";
 import type { Yard } from "./scene/yard";
 
 const SPEEDS = [1, 2, 4, 8];
 const BASE_MS_PER_DAY = 500;   // 1배속은 하루에 0.5초, 60일이 30초다.
 // 재생 중 사건 줄에 띄우는 사건. 투입, 완료, 출고, 운반은 너무 잦아서 뺀다.
 const TICKER_EVENTS = new Set(["arrival", "defect", "accident", "breakdown", "delivery", "research_done"]);
+// 배 탭 아래 사건 기록: 투입, 완료, 입고, 불량, 사고, 운반, 인도
+const SHIP_EVENTS = new Set(["arrival", "enter", "complete", "defect", "accident", "transport_start", "delivery"]);
 
 interface Run {
   n: number;
@@ -36,7 +38,8 @@ interface State {
   runs: Run[];
   current: number | null;        // 보고 있는 회차의 인덱스
   view: View;
-  controlView: "scene" | "gantt";
+  /** 간트에서 보는 배. null이면 4척 전체. */
+  ganttShip: string | null;
   day: number;
   playing: boolean;
   speed: number;
@@ -57,7 +60,6 @@ const els = {
   field: h("section", { class: "panel field-panel" }),
   report: h("section", { class: "panel report-panel" }),
   playbar: h("div", { class: "panel playbar" }),
-  sceneControl: h("div", { class: "scene-host" }),
   sceneField: h("div", { class: "scene-host field" }),
 };
 
@@ -230,7 +232,21 @@ function tick(jump: boolean): void {
   const { scenario } = state.data;
 
   const chart = els.control.querySelector(".gantt-chart");
-  if (chart) mount(chart, renderGantt(result, scenario, state.day));
+  const ship = result.ships.find((sh) => sh.id === state.ganttShip);
+  if (chart) mount(chart, ship ? renderShipGantt(result, scenario, ship.id, state.day) : renderGantt(result, scenario, state.day));
+  const detail = els.control.querySelector(".ship-detail");
+  if (detail && ship) {
+    // 그 배의 사건(오늘까지)과, 60일이 끝났으면 리드타임 분해. 합계는 끝난 뒤에만 보여 준다.
+    const mine = result.events.filter((ev) => ev.day <= state.day && "ship" in ev && ev.ship === ship.id && SHIP_EVENTS.has(ev.type));
+    const ended = state.day >= result.days;
+    mount(detail,
+      ended ? h("div", { class: "lead-row" }, h("span", { class: "lead-name" }, h("b", null, ship.id)),
+        breakdownBar(ship, Math.max(1, ship.lead_time)), h("span", { class: "lead-total" }, `${ship.lead_time}일`)) : null,
+      ended ? breakdownLegend() : null,
+      h("ol", { class: "events ship-events" }, mine.length
+        ? mine.map((ev) => h("li", null, h("span", { class: "ev-day" }, `${ev.day}일`), h("span", { class: `ev-type ${ev.type}` }, EVENT_NAME[ev.type]), h("span", null, eventText(ev, scenario))))
+        : h("li", { class: "quiet" }, "아직 이 배의 사건이 없습니다.")));
+  }
 
   const slider = els.playbar.querySelector<HTMLInputElement>("input.scrub");
   if (slider) slider.value = String(state.day);
@@ -257,7 +273,6 @@ function tick(jump: boolean): void {
 
 function sceneHost(): HTMLElement | null {
   if (state.view === "field") return els.sceneField;
-  if (state.view === "control" && state.controlView === "scene") return els.sceneControl;
   return null;
 }
 
@@ -402,10 +417,10 @@ function drawControl(): void {
     return;
   }
 
-  const sub = (view: "scene" | "gantt", label: string) =>
+  const shipTab = (id: string | null, label: string) =>
     h("button", {
-      type: "button", class: `tab${state.controlView === view ? " active" : ""}`,
-      onclick: () => { state.controlView = view; drawControl(); tick(true); },
+      type: "button", class: `tab${state.ganttShip === id ? " active" : ""}`,
+      onclick: () => { state.ganttShip = id; drawControl(); tick(true); },
     }, label);
 
   const sameColor = LOSS_STATES.filter((l) => l.state !== "rework");
@@ -413,21 +428,21 @@ function drawControl(): void {
     scenario.stations.map((st) => h("span", null, h("i", { style: { background: STATION_COLOR[st.id] } }), st.name)),
     h("span", null, h("i", { class: "hatch" }), "재작업(빗금)"),
     h("span", null, h("i", { class: "transport-mark" }), TRANSPORT_STATE.name),
+    state.ganttShip ? h("span", null, h("i", { class: "other-mark" }), "다른 배가 쓰는 중") : null,
     h("span", { class: "sep" }),
     sameColor.map((l) => h("span", null, h("i", { class: `thin${l.hatch ? " hatch-over" : ""}`, style: { background: l.color } }), l.name)),
     h("span", { class: "sep" }),
     h("span", null, h("i", { class: "due-mark" }), "납기"),
-    h("span", null, h("i", { class: "deliver-mark" }), "인도"));
-
-  const body = state.controlView === "gantt"
-    ? [h("div", { class: "gantt-chart" }), legend]
-    : [els.sceneControl, h("p", { class: "hint" }, "끌어서 돌리고, 휠로 확대합니다. 칩의 색과 글자가 그날의 손실을 말해 줍니다.")];
+    h("span", null, h("i", { class: "deliver-mark" }), "인도"),
+    state.ganttShip ? h("span", null, h("i", { class: "arrival-mark" }), "자재 입고") : null);
 
   mount(els.control,
     h("div", { class: "panel-head" },
       h("h2", null, "관제실"),
-      h("div", { class: "tabs" }, sub("scene", "대시보드 3D"), sub("gantt", "간트"))),
-    body);
+      h("div", { class: "tabs" }, shipTab(null, "전체"), r.result.ships.map((sh) => shipTab(sh.id, sh.id)))),
+    h("div", { class: "gantt-chart" }),
+    legend,
+    state.ganttShip ? h("div", { class: "ship-detail" }) : null);
 }
 
 /** 현장으로 나간다. 회차마다 처음 한 번은 안전모를 쓰고 뛰어나가는 전환을 보여 준다(누르면 건너뜀). */
@@ -450,7 +465,7 @@ function openField(focus: State["focus"]): void {
 }
 
 function yardCamera(): void {
-  const apply = () => yard?.setCamera(state.view === "field" ? "field" : "control", state.focus?.station ?? null);
+  const apply = () => yard?.setCamera("field", state.focus?.station ?? null);
   if (yard) apply();
   else void yardLoading?.then(apply);
 }
@@ -482,7 +497,7 @@ function openFinding(f: Finding, where: "field" | "gantt"): void {
     openField({ station, text: `${f.ship} · ${scenario.stations[station]?.name ?? ""} · ${f.start}~${f.end}일` });
   } else {
     state.view = "control";
-    state.controlView = "gantt";
+    state.ganttShip = f.ship;
     drawAll();
   }
   seek(f.start);
@@ -553,7 +568,7 @@ async function start(): Promise<void> {
     runs: [],
     current: null,
     view: "control",
-    controlView: "scene",
+    ganttShip: null,
     day: 0,
     playing: false,
     speed: 2,

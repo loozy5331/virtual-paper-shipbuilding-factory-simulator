@@ -421,3 +421,12 @@ select.priority { max-width: 84px; }
 .intro-door { position: absolute; right: 0; top: 4px; }
 @keyframes intro-run { from { left: 0; } to { left: 250px; opacity: 0.2; } }
 @keyframes intro-fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ----- 배별 간트 ----- */
+.gantt .arrival { fill: #de9644; stroke: #8a5d00; stroke-width: 1; }
+.gantt .arrival-label { font-size: 10px; fill: var(--ink-2); text-anchor: middle; font-weight: 600; }
+.legend i.other-mark { background: #d3dbd6; }
+.legend i.arrival-mark { width: 0; height: 0; border-radius: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 9px solid #de9644; }
+.ship-detail { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.ship-events { max-height: 220px; }
+.ship-events li.quiet { display: block; color: var(--ink-3); }
