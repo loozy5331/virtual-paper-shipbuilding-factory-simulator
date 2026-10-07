@@ -305,6 +305,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     workforce_daily: list[dict[str, int]] = []
     spans: list[dict[str, dict[str, int]]] = [{} for _ in range(n_ships)]
     inventory_daily: list[dict[str, int]] = []
+    inventory_value_daily: list[float] = []            # 그날 작업이 끝난 뒤 창고 재고 금액 (재고비의 기준)
     events: list[dict[str, Any]] = []
 
     busy = [0] * n_st
@@ -534,10 +535,12 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             station_daily[p].append(station_today[p])
 
         # 7. 비용을 더한다: 재고비, 재공비. (잔업수당, 사고, 고장, 재작업은 위에서 더했다.)
-        cost["holding"] += sum(stock[mid] * materials[mid]["price"] for mid in stock) * costs["holding_rate_per_day"]
+        value = sum(stock[mid] * materials[mid]["price"] for mid in stock)
+        cost["holding"] += value * costs["holding_rate_per_day"]
         cost["wip"] += sum(costs["wip_per_ship_day"] for i in range(n_ships)
                            if started[i] is not None and delivered[i] is None)
         inventory_daily.append(dict(stock))
+        inventory_value_daily.append(value)
 
     # ----- 기간이 끝난 뒤 한 번에 계산하는 원가 (7장) -----
     cost.update(fixed_costs(config, scenario))
@@ -644,6 +647,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         "transporters": transporters_out,
         "research": schedule,
         "inventory_daily": inventory_daily,
+        "inventory_value_daily": inventory_value_daily,
         "events": events,
         "findings": _findings(ships_out),
         "end_state": {

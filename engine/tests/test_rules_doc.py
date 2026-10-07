@@ -297,6 +297,11 @@ class Contract(unittest.TestCase):
         self.assertEqual(len(r["inventory_daily"]), r["days"])
         self.assertEqual(len(r["workforce"]["daily"]), r["days"])
 
+    def test_inventory_value_is_the_base_of_holding_cost(self):
+        r = simulate(PRESETS["all_in"])
+        self.assertEqual(len(r["inventory_value_daily"]), r["days"])
+        self.assertAlmostEqual(sum(r["inventory_value_daily"]) * 0.01, r["costs"]["holding"], places=2)
+
     def test_assigned_workers_never_exceed_pool(self):
         for cfg in PRESETS.values():
             r = simulate(cfg)

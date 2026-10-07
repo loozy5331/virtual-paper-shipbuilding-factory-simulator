@@ -2,7 +2,6 @@
 // 화면은 이 값을 그리기만 하고 직접 계산하지 않는다.
 
 export interface StationConfig {
-  workers: number;
   method: string;
   overtime: boolean;
   maintenance: boolean;
@@ -17,6 +16,9 @@ export interface ShipConfig {
 export interface Config {
   ships: Record<string, ShipConfig>;
   stations: Record<string, StationConfig>;
+  pool: number;
+  transporters: { count: number; maintenance: boolean };
+  research: string[];
   skilled_station: string | null;
 }
 
@@ -50,6 +52,7 @@ export interface ShipType {
 export interface Order {
   id: string;
   type: string;
+  order_day: number;
   due_day: number;
   price: number;
 }
@@ -60,17 +63,28 @@ export interface Method {
   defect_rate: number;
 }
 
+export interface ResearchInfo {
+  name: string;
+  cost: number;
+  days: number;
+}
+
 export interface Scenario {
   days: number;
   stations: StationInfo[];
   materials: MaterialInfo[];
   ship_types: Record<string, ShipType>;
   orders: Order[];
+  blocks: Record<string, number>;
   rules: {
     max_workers_per_station: number;
+    max_pool: number;
     methods: Record<string, Method>;
     overtime: { speed: number };
   };
+  transporter: { max_count: number; capacity: number; lot_weight: number };
+  research: Record<string, ResearchInfo>;
+  kpi: { revenue: number; profit: number; on_time_rate: number; first_pass_yield: number };
 }
 
 export interface ScenarioPayload {
@@ -79,13 +93,26 @@ export interface ScenarioPayload {
   max_rate: number;
 }
 
+export interface ResearchSlot {
+  id: string;
+  name: string;
+  cost: number;
+  start: number;
+  end: number;
+  effective_from: number;
+  done: boolean;
+}
+
 export interface Preview {
-  stations: Record<string, { rate: number; defect_rate: number }>;
-  fixed_costs: { labor: number; maintenance: number };
+  stations: Record<string, { rate: number; defect_rate: number; defect_rate_final: number }>;
+  fixed_costs: { labor: number; maintenance: number; transporter: number; research: number };
+  research: ResearchSlot[];
 }
 
 export type ShipState =
-  | "work" | "rework" | "material_wait" | "station_wait" | "accident_stop" | "not_started" | "done";
+  | "work" | "rework" | "material_wait" | "station_wait" | "labor_wait"
+  | "transport" | "transport_wait" | "accident_stop" | "breakdown_stop"
+  | "not_started" | "done";
 
 export interface Segment {
   state: ShipState;
@@ -98,27 +125,38 @@ export interface ShipResult {
   id: string;
   type: string;
   type_name: string;
+  order_day: number;
   due_day: number;
   price: number;
+  priority: number;
   start_day: number;
   started_day: number | null;
   delivered_day: number | null;
   late_days: number;
   on_time: boolean;
   lead_time: number;
-  breakdown: Record<string, number>;
+  lead_time_parts: Record<string, number>;
   segments: Segment[];
   daily: { state: ShipState; station: string | null }[];
+}
+
+export interface StationDay {
+  state: string;
+  ship: string | null;
+  workers: number;
 }
 
 export interface StationResult {
   id: string;
   name: string;
-  rate: number;
+  max_rate: number;
   defect_rate: number;
   busy_days: number;
   accident_stop_days: number;
+  breakdown_stop_days: number;
   material_wait_days: number;
+  labor_wait_days: number;
+  breakdowns: number;
   inspections: number;
   passes: number;
   oee: {
@@ -127,12 +165,50 @@ export interface StationResult {
     quality: number | null;
     oee: number | null;
   };
+  daily: StationDay[];
+}
+
+export interface TransporterResult {
+  id: string;
+  moves: number;
+  breakdowns: number;
+  daily: { state: "move" | "idle" | "breakdown_stop"; ships: string[] }[];
+}
+
+export interface Finding {
+  kind: ShipState;
+  ship: string;
+  station: string;
+  start: number;
+  end: number;
+  days: number;
+}
+
+export interface GradePart {
+  key: string;
+  name: string;
+  value: number;
+  target: number;
+  max: number;
+  points: number;
+}
+
+export interface Grade {
+  score: number;
+  grade: string;
+  parts: GradePart[];
+  baseline: { preset: string; name: string; score: number; grade: string; profit: number; pool: number; on_time: number } | null;
+  vs_baseline: { profit: number; pool: number; score: number } | null;
 }
 
 export type SimEvent =
   | { day: number; type: "arrival"; material: string; quantity: number; ship: string }
+  | { day: number; type: "issue"; material: string; quantity: number; ship: string; station: string }
   | { day: number; type: "enter" | "complete" | "defect"; ship: string; station: string }
   | { day: number; type: "accident"; station: string; ship: string }
+  | { day: number; type: "breakdown"; station?: string; transporter?: string; ship?: string }
+  | { day: number; type: "transport_start" | "transport_end"; ship: string; from: string; to: string }
+  | { day: number; type: "research_done"; research: string }
   | { day: number; type: "delivery"; ship: string; late_days: number };
 
 export interface Result {
@@ -142,14 +218,23 @@ export interface Result {
     cost: { total: number };
     delivery: { on_time: number; ships: number; on_time_rate: number; total_late_days: number };
   };
-  status: { delivered: number; in_progress: number; not_started: number; defects: number; accidents: number };
+  status: {
+    delivered: number; in_progress: number; not_started: number;
+    defects: number; accidents: number; breakdowns: number;
+  };
   costs: Record<string, number>;
   total_cost: number;
   revenue: number;
   profit: number;
+  workforce: { pool: number; man_days: number; idle_man_days: number; utilization: number; daily: { assigned: number; idle: number }[] };
   ships: ShipResult[];
   stations: StationResult[];
+  transporters: TransporterResult[];
+  research: ResearchSlot[];
+  inventory_value_daily: number[];
   events: SimEvent[];
+  findings: Finding[];
+  grade: Grade;
 }
 
 export class ApiError extends Error {
