@@ -1,10 +1,10 @@
 {
   "days": 60,
   "stations": [
-    {"id": "cutting", "name": "재단", "real": "강재 절단", "material": "paper"},
-    {"id": "gluing", "name": "풀칠", "real": "조립", "material": null},
-    {"id": "painting", "name": "물감칠", "real": "도장", "material": "paint"},
-    {"id": "outfitting", "name": "의장", "real": "의장, 진수", "material": "flag"}
+    {"id": "sub_assembly", "name": "소조립", "real": "소조립 정반: 부재를 붙여 작은 블록 12개", "material": "paper"},
+    {"id": "block_assembly", "name": "중조립", "real": "중조립 정반: 블록 12개 → 6개", "material": null},
+    {"id": "grand_assembly", "name": "대조립", "real": "대조립 정반: 블록 6개 → 3개, 도장", "material": "paint"},
+    {"id": "erection", "name": "탑재", "real": "골리앗 크레인: 블록 3개 → 배 1척, 의장", "material": "flag"}
   ],
   "materials": [
     {"id": "paper", "name": "종이", "price": 20, "lead_days": 2},
@@ -14,12 +14,12 @@
   "ship_types": {
     "VLCC": {
       "name": "VLCC",
-      "work": {"cutting": 8, "gluing": 16, "painting": 8, "outfitting": 8},
+      "work": {"sub_assembly": 8, "block_assembly": 16, "grand_assembly": 8, "erection": 8},
       "bom": {"paper": 8, "paint": 4, "flag": 2}
     },
     "CONT": {
       "name": "컨테이너선",
-      "work": {"cutting": 6, "gluing": 12, "painting": 4, "outfitting": 10},
+      "work": {"sub_assembly": 6, "block_assembly": 12, "grand_assembly": 4, "erection": 10},
       "bom": {"paper": 6, "paint": 2, "flag": 3}
     }
   },
@@ -59,15 +59,15 @@
   },
   "random": {
     "quality": {
-      "S1": {"cutting": 0.62, "gluing": 0.21, "painting": 0.48, "outfitting": 0.08},
-      "S2": {"cutting": 0.35, "gluing": 0.74, "painting": 0.03, "outfitting": 0.41},
-      "S3": {"cutting": 0.17, "gluing": 0.28, "painting": 0.90, "outfitting": 0.33}
+      "S1": {"sub_assembly": 0.62, "block_assembly": 0.21, "grand_assembly": 0.48, "erection": 0.08},
+      "S2": {"sub_assembly": 0.35, "block_assembly": 0.74, "grand_assembly": 0.03, "erection": 0.41},
+      "S3": {"sub_assembly": 0.17, "block_assembly": 0.28, "grand_assembly": 0.90, "erection": 0.33}
     },
     "accident": {
-      "cutting": [0.71, 0.30, 0.55],
-      "gluing": [0.42, 0.64, 0.18],
-      "painting": [0.83, 0.27, 0.60],
-      "outfitting": [0.36, 0.92, 0.45]
+      "sub_assembly": [0.71, 0.30, 0.55],
+      "block_assembly": [0.42, 0.64, 0.18],
+      "grand_assembly": [0.83, 0.27, 0.60],
+      "erection": [0.36, 0.92, 0.45]
     }
   }
 }

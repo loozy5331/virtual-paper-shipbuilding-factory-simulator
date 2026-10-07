@@ -10,10 +10,10 @@
         "S3": {"priority": 2, "start_day": 1, "order_days": {"paper": 1, "paint": 10, "flag": 20}}
       },
       "stations": {
-        "cutting": {"workers": 2, "method": "fast", "overtime": true, "maintenance": false},
-        "gluing": {"workers": 2, "method": "fast", "overtime": true, "maintenance": false},
-        "painting": {"workers": 2, "method": "fast", "overtime": true, "maintenance": false},
-        "outfitting": {"workers": 2, "method": "fast", "overtime": true, "maintenance": false}
+        "sub_assembly": {"workers": 2, "method": "fast", "overtime": true, "maintenance": false},
+        "block_assembly": {"workers": 2, "method": "fast", "overtime": true, "maintenance": false},
+        "grand_assembly": {"workers": 2, "method": "fast", "overtime": true, "maintenance": false},
+        "erection": {"workers": 2, "method": "fast", "overtime": true, "maintenance": false}
       },
       "skilled_station": null
     }
@@ -29,12 +29,12 @@
         "S3": {"priority": 3, "start_day": 17, "order_days": {"paper": 14, "paint": 27, "flag": 30}}
       },
       "stations": {
-        "cutting": {"workers": 1, "method": "standard", "overtime": false, "maintenance": true},
-        "gluing": {"workers": 2, "method": "standard", "overtime": false, "maintenance": true},
-        "painting": {"workers": 1, "method": "standard", "overtime": false, "maintenance": true},
-        "outfitting": {"workers": 2, "method": "standard", "overtime": false, "maintenance": true}
+        "sub_assembly": {"workers": 1, "method": "standard", "overtime": false, "maintenance": true},
+        "block_assembly": {"workers": 2, "method": "standard", "overtime": false, "maintenance": true},
+        "grand_assembly": {"workers": 1, "method": "standard", "overtime": false, "maintenance": true},
+        "erection": {"workers": 2, "method": "standard", "overtime": false, "maintenance": true}
       },
-      "skilled_station": "outfitting"
+      "skilled_station": "erection"
     }
   },
   {
@@ -48,12 +48,12 @@
         "S3": {"priority": 3, "start_day": 1, "order_days": {"paper": 1, "paint": 1, "flag": 1}}
       },
       "stations": {
-        "cutting": {"workers": 2, "method": "fast", "overtime": true, "maintenance": true},
-        "gluing": {"workers": 2, "method": "fast", "overtime": true, "maintenance": true},
-        "painting": {"workers": 2, "method": "fast", "overtime": true, "maintenance": true},
-        "outfitting": {"workers": 2, "method": "fast", "overtime": true, "maintenance": true}
+        "sub_assembly": {"workers": 2, "method": "fast", "overtime": true, "maintenance": true},
+        "block_assembly": {"workers": 2, "method": "fast", "overtime": true, "maintenance": true},
+        "grand_assembly": {"workers": 2, "method": "fast", "overtime": true, "maintenance": true},
+        "erection": {"workers": 2, "method": "fast", "overtime": true, "maintenance": true}
       },
-      "skilled_station": "gluing"
+      "skilled_station": "block_assembly"
     }
   }
 ]

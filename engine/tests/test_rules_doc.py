@@ -27,7 +27,7 @@ def one_ship_config(order_days=None):
         return {"workers": workers, "method": "standard", "overtime": False, "maintenance": True}
     return {
         "ships": {"S1": {"priority": 1, "start_day": 1, "order_days": order_days or {}}},
-        "stations": {"cutting": station(1), "gluing": station(2), "painting": station(1), "outfitting": station(2)},
+        "stations": {"sub_assembly": station(1), "block_assembly": station(2), "grand_assembly": station(1), "erection": station(2)},
         "skilled_station": None,
     }
 
@@ -43,21 +43,21 @@ FULL = {"paper": 8, "paint": 4, "flag": 2}
 class HandExamples(unittest.TestCase):
     def test_example_1_schedule(self):
         r = simulate(one_ship_config(), one_ship_scenario(FULL))
-        self.assertEqual(spans(r, "S1"), {"cutting": (1, 8), "gluing": (9, 16), "painting": (17, 24), "outfitting": (25, 28)})
+        self.assertEqual(spans(r, "S1"), {"sub_assembly": (1, 8), "block_assembly": (9, 16), "grand_assembly": (17, 24), "erection": (25, 28)})
         self.assertEqual(r["ships"][0]["delivered_day"], 28)
         self.assertEqual(r["costs"]["wip"], 270)
 
     def test_example_2_defect_and_rework(self):
         cfg = one_ship_config()
-        cfg["stations"]["gluing"] = {"workers": 2, "method": "fast", "overtime": True, "maintenance": False}
+        cfg["stations"]["block_assembly"] = {"workers": 2, "method": "fast", "overtime": True, "maintenance": False}
         sc = one_ship_scenario(FULL)
-        sc["random"]["quality"]["S1"]["gluing"] = 0.21
+        sc["random"]["quality"]["S1"]["block_assembly"] = 0.21
         base = simulate(one_ship_config(), one_ship_scenario(FULL))
         r = simulate(cfg, sc)
-        gluing = next(s for s in r["stations"] if s["id"] == "gluing")
-        self.assertEqual(gluing["defect_rate"], 0.5)
-        self.assertEqual(gluing["rate"], 3.75)
-        segs = [(s["state"], s["start"], s["end"]) for s in r["ships"][0]["segments"] if s["station"] == "gluing"]
+        block = next(s for s in r["stations"] if s["id"] == "block_assembly")
+        self.assertEqual(block["defect_rate"], 0.5)
+        self.assertEqual(block["rate"], 3.75)
+        segs = [(s["state"], s["start"], s["end"]) for s in r["ships"][0]["segments"] if s["station"] == "block_assembly"]
         self.assertEqual(segs, [("work", 9, 13), ("rework", 14, 16)])
         self.assertEqual(r["ships"][0]["delivered_day"], 28)
         self.assertEqual(r["costs"]["rework"], 200)
@@ -68,7 +68,7 @@ class HandExamples(unittest.TestCase):
     def test_example_3_late_order(self):
         r = simulate(one_ship_config({"flag": 18}), one_ship_scenario({"paper": 8, "paint": 4, "flag": 0}))
         ship = r["ships"][0]
-        self.assertEqual(spans(r, "S1")["outfitting"], (28, 31))
+        self.assertEqual(spans(r, "S1")["erection"], (28, 31))
         self.assertEqual(ship["breakdown"]["material_wait"], 3)
         self.assertEqual((ship["delivered_day"], ship["late_days"]), (31, 1))
         self.assertEqual(r["costs"]["late_penalty"], 90)
@@ -96,8 +96,8 @@ class Presets(unittest.TestCase):
                       "S2": [(11, 13), (25, 28), (29, 31), (43, 47)],
                       "S3": [(6, 10), (14, 24), (25, 27), (35, 39)]},
             "breakdown": {"S1": [14, 7, 13, 0, 0], "S2": [11, 4, 2, 24, 6], "S3": [14, 7, 4, 11, 3]},
-            "oee": {"cutting": (84.6, 70.3, 33.3, 19.8), "gluing": (87.0, 80.0, 33.3, 23.2),
-                    "painting": (91.7, 63.0, 33.3, 19.3), "outfitting": (53.6, 69.3, 0.0, 0.0)},
+            "oee": {"sub_assembly": (84.6, 70.3, 33.3, 19.8), "block_assembly": (87.0, 80.0, 33.3, 23.2),
+                    "grand_assembly": (91.7, 63.0, 33.3, 19.3), "erection": (53.6, 69.3, 0.0, 0.0)},
         },
         "managed": {
             "delivered": [30, 37, 44], "late": [0, 0, 0], "fpy": (11, 12), "on_time": 3, "accidents": 0,
@@ -108,8 +108,8 @@ class Presets(unittest.TestCase):
                       "S2": [(11, 16), (19, 24), (27, 32), (33, 37)],
                       "S3": [(17, 24), (25, 32), (33, 40), (41, 44)]},
             "breakdown": {"S1": [28, 0, 0, 0, 0], "S2": [21, 2, 0, 4, 0], "S3": [28, 0, 0, 0, 0]},
-            "oee": {"cutting": (100.0, 26.7, 100.0, 26.7), "gluing": (100.0, 53.3, 100.0, 53.3),
-                    "painting": (100.0, 26.7, 66.7, 17.8), "outfitting": (100.0, 53.3, 100.0, 53.3)},
+            "oee": {"sub_assembly": (100.0, 26.7, 100.0, 26.7), "block_assembly": (100.0, 53.3, 100.0, 53.3),
+                    "grand_assembly": (100.0, 26.7, 66.7, 17.8), "erection": (100.0, 53.3, 100.0, 53.3)},
         },
         "all_in": {
             "delivered": [21, 26, 39], "late": [0, 0, 0], "fpy": (6, 12), "on_time": 3, "accidents": 2,
@@ -120,11 +120,11 @@ class Presets(unittest.TestCase):
                       "S2": [(6, 7), (14, 20), (21, 23), (24, 26)],
                       "S3": [(8, 12), (21, 28), (29, 31), (32, 39)]},
             "breakdown": {"S1": [14, 5, 2, 0, 0], "S2": [11, 1, 2, 9, 3], "S3": [14, 7, 2, 10, 6]},
-            "oee": {"cutting": (83.3, 69.3, 66.7, 38.5), "gluing": (87.0, 80.0, 33.3, 23.2),
-                    "painting": (100.0, 65.2, 66.7, 43.5), "outfitting": (81.2, 69.7, 33.3, 18.9)},
+            "oee": {"sub_assembly": (83.3, 69.3, 66.7, 38.5), "block_assembly": (87.0, 80.0, 33.3, 23.2),
+                    "grand_assembly": (100.0, 65.2, 66.7, 43.5), "erection": (81.2, 69.7, 33.3, 18.9)},
         },
     }
-    STATIONS = ["cutting", "gluing", "painting", "outfitting"]
+    STATIONS = ["sub_assembly", "block_assembly", "grand_assembly", "erection"]
     STATES = ["work", "rework", "material_wait", "station_wait", "accident_stop"]
 
     def check(self, preset_id):
@@ -161,8 +161,8 @@ class Presets(unittest.TestCase):
 
     def test_accident_days(self):
         accidents = lambda pid: [(e["station"], e["day"]) for e in simulate(PRESETS[pid])["events"] if e["type"] == "accident"]
-        self.assertEqual(accidents("unmanaged"), [("gluing", 15), ("outfitting", 39)])
-        self.assertEqual(accidents("all_in"), [("gluing", 15), ("outfitting", 33)])
+        self.assertEqual(accidents("unmanaged"), [("block_assembly", 15), ("erection", 39)])
+        self.assertEqual(accidents("all_in"), [("block_assembly", 15), ("erection", 33)])
 
 
 class Contract(unittest.TestCase):
@@ -189,12 +189,12 @@ class Contract(unittest.TestCase):
 
     def test_preview(self):
         p = preview(PRESETS["managed"])
-        self.assertEqual(p["stations"]["outfitting"], {"rate": 2.0, "defect_rate": 0.05})
+        self.assertEqual(p["stations"]["erection"], {"rate": 2.0, "defect_rate": 0.05})
         self.assertEqual(p["fixed_costs"], {"labor": 3900, "maintenance": 400})
 
     def test_invalid_config_is_rejected(self):
         cfg = copy.deepcopy(PRESETS["managed"])
-        cfg["stations"]["cutting"]["workers"] = 3
+        cfg["stations"]["sub_assembly"]["workers"] = 3
         cfg["ships"]["S2"]["priority"] = 1
         with self.assertRaises(ConfigError) as ctx:
             simulate(cfg)
