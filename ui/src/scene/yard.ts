@@ -123,6 +123,8 @@ class Lot {
   private readonly units: THREE.Mesh[] = [];
   private readonly unitMat = paperMaterial();
   private readonly sheet: THREE.Mesh;
+  /** 절단 자투리: 소조립 정반에서 종이를 자를 때 튀어 나가는 종잇조각. */
+  private readonly scraps: THREE.Mesh[] = [];
   private readonly boat = new THREE.Group();
   private readonly hullMat = paperMaterial();
   private readonly hull = new FoldMesh(hullTris(), this.hullMat);
@@ -145,6 +147,15 @@ class Lot {
     }
     this.sheet = mesh(new THREE.BoxGeometry(1.5, 0.06, 1.1), "#f7f3ea");
     this.sheet.position.y = 0.03;
+    const scrapGeo = new THREE.CircleGeometry(0.15, 3);
+    const scrapMat = paperMaterial(new THREE.Color("#e3d9c3"));
+    for (let k = 0; k < 10; k++) {
+      const scrap = new THREE.Mesh(scrapGeo, scrapMat);
+      scrap.castShadow = true;
+      scrap.visible = false;
+      this.scraps.push(scrap);
+      this.group.add(scrap);
+    }
     const stick = mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.55, 6), "#6b4a2b");
     stick.position.y = 0.27;
     const shape = new THREE.Shape([new THREE.Vector2(0, 0), new THREE.Vector2(0.32, -0.09), new THREE.Vector2(0, -0.18)]);
@@ -157,6 +168,18 @@ class Lot {
     this.tag = label("", "lot-tag");
     this.tag.position.y = 1.0;
     this.group.add(this.sheet, this.boat, this.tag);
+  }
+
+  /** 소조립(절단) 중이면 자투리가 종이 둘레에서 튀어 나갔다가 떨어진다. time은 초. */
+  animateCut(cutting: boolean, time: number): void {
+    this.scraps.forEach((scrap, k) => {
+      scrap.visible = cutting;
+      if (!cutting) return;
+      const a = (k / this.scraps.length) * Math.PI * 2 + 0.4;
+      const u = (time * 0.9 + k * 0.37) % 1;            // 조각마다 엇갈려 끝없이 반복
+      scrap.position.set(Math.cos(a) * (0.6 + u * 1.0), 0.06 + Math.sin(Math.PI * u) * 0.7, Math.sin(a) * (0.5 + u * 0.8));
+      scrap.rotation.set(-Math.PI / 2 + u * 4, u * 5 + k, 0);
+    });
   }
 
   /** form: 0 부재(종이 묶음) … 4 배. bench면 소조립 중에 블록이 하나씩 생긴다. */
@@ -661,6 +684,7 @@ export class Yard {
       lot.target.copy(pos);
       if (jump || view.place === "carried" || view.place === "sea") lot.group.position.copy(pos);
       lot.setForm(view.form, view.place === "bench");
+      lot.animateCut(view.place === "bench" && view.station === 0 && (view.state === "work" || view.state === "rework"), performance.now() / 1000);
       if (view.place === "sea") {
         lot.group.rotation.set(Math.sin(lot.floatPhase * 1.1) * 0.04, 0.6 + lot.floatPhase, Math.sin(lot.floatPhase * 1.3) * 0.05);
       } else {
@@ -688,11 +712,14 @@ export class Yard {
       for (let k = 0; k < st.workers; k++) {
         const side = k % 2 === 0 ? 1 : -1;
         const at = new THREE.Vector3(x - 0.9 * side, MAT_TOP, side * 1.0);
-        this.people[person++]?.place(at, side > 0 ? Math.PI : 0, working ? "work" : "stand", jump);
+        const p = this.people[person++];
+        p?.place(at, side > 0 ? Math.PI : 0, working ? "work" : "stand", jump);
+        p?.holdKnife(i === 0 && working);
       }
       if (st.senior) {
         this.senior.root.visible = true;
         this.senior.place(new THREE.Vector3(x + 1.3, MAT_TOP, -0.2), -Math.PI / 2, working ? "work" : "stand", jump);
+        this.senior.holdKnife(i === 0 && working);
       }
       props.smoke.visible = st.stop === "breakdown";
       props.tape.visible = st.stop === "accident";
@@ -701,13 +728,15 @@ export class Yard {
       const chip = st.stop === "accident" ? chipHtml("accident_stop", "사고 · 통제")
         : st.stop === "breakdown" ? chipHtml("breakdown_stop", "고장 · 수리 중")
         : st.state === "labor_wait" ? chipHtml("labor_wait", "인력 대기")
-        : st.state === "material_wait" ? chipHtml("material_wait", "자재 대기") : "";
+        : st.state === "material_wait" ? chipHtml("material_wait", "자재 대기")
+        : i === 0 && working ? `<span class="chip cut">절단 중</span>` : "";
       setLabel(props.tag, `<i style="background:${STATION_COLOR[st.id]}"></i>${st.name}${st.overtime ? " · 잔업" : ""}${chip}`);
     });
     if (!f.stations.some((st) => st.senior)) this.senior.root.visible = false;
 
     // 작업대기소: 오늘 배정되지 않은 사람은 앉아서 기다린다(인원 과다가 보인다).
     for (let k = 0; k < f.idleWorkers && person < this.people.length; k++) {
+      this.people[person].holdKnife(false);
       this.people[person++].place(this.loungeSeat(k), 0, "sit", jump);
     }
     const used = person;

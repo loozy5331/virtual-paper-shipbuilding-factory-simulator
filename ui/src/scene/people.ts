@@ -28,6 +28,8 @@ export class Person {
   private facing = 0;
   private pose: Pose = "stand";
   private phase = Math.random() * 10;
+  /** 오른손의 칼. 소조립(절단)에서 일할 때만 든다. */
+  private readonly knife = new THREE.Group();
 
   constructor(role: Role) {
     const skin = "#f0c8a0";
@@ -81,8 +83,21 @@ export class Person {
       arm.position.set(x, 0.46, 0);
       this.torso.add(arm);
     }
+    const handle = mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.08, 6), "#7a5532");
+    handle.position.y = -0.04;
+    const blade = mesh(new THREE.BoxGeometry(0.025, 0.2, 0.07), "#dfe4ea", { metalness: 0.6, roughness: 0.25, emissive: "#2a2f36" });
+    blade.position.y = -0.18;
+    this.knife.add(handle, blade);
+    this.knife.position.y = -0.22;
+    this.knife.rotation.x = Math.PI / 2;
+    this.knife.visible = false;
+    this.armR.add(this.knife);
     this.root.add(this.torso);
     this.root.scale.setScalar(1.8);
+  }
+
+  holdKnife(on: boolean): void {
+    this.knife.visible = on;
   }
 
   /** 가야 할 자리와 자세. snap이면 걷지 않고 바로 옮긴다(배속이 빠르거나 날짜를 건너뛸 때). */

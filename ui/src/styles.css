@@ -430,3 +430,4 @@ select.priority { max-width: 84px; }
 .ship-detail { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .ship-events { max-height: 220px; }
 .ship-events li.quiet { display: block; color: var(--ink-3); }
+.chip.cut { background: #2a78d6; color: #fff; }
