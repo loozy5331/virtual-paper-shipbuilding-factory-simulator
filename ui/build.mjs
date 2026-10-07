@@ -10,6 +10,7 @@ const options = {
   entryPoints: { app: "src/main.ts", styles: "src/styles.css", proto: "src/proto/main.ts", iso: "src/proto/iso.ts" },
   outdir: "dist",
   bundle: true,
+  splitting: true,          // 3D(Three.js)는 처음 열 때만 불러오도록 따로 묶는다.
   format: "esm",
   target: "es2022",
   minify: !watch,

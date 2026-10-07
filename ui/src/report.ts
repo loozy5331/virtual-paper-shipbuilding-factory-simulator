@@ -122,7 +122,7 @@ function inventoryChart(values: number[]): SVGElement {
 }
 
 export function renderReport(result: Result, scenario: Scenario, maxRate: number,
-  onFinding: (f: Finding) => void): HTMLElement {
+  onFinding: (f: Finding, where: "field" | "gantt") => void): HTMLElement {
   const { qcd, status } = result;
   const profitTone = result.profit >= 0 ? "good" : "bad";
 
@@ -133,7 +133,9 @@ export function renderReport(result: Result, scenario: Scenario, maxRate: number
       ? findings.map((f) => h("div", { class: "finding", style: { borderLeftColor: STATE_INFO[f.kind]?.color } },
         h("b", null, findingText(f, scenario)),
         h("p", { class: "hint" }, FINDING_HINT[f.kind] ?? ""),
-        h("button", { type: "button", class: "btn ghost small", onclick: () => onFinding(f) }, `간트에서 ${f.start}일 보기`)))
+        h("div", { class: "finding-btns" },
+          h("button", { type: "button", class: "btn primary small", onclick: () => onFinding(f, "field") }, `현장에서 ${f.start}일 보기`),
+          h("button", { type: "button", class: "btn ghost small", onclick: () => onFinding(f, "gantt") }, "간트"))))
       : h("p", { class: "hint" }, "손실 구간이 없습니다."));
 
   const qcdRow = h("div", { class: "qcd" },

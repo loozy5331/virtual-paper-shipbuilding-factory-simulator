@@ -384,3 +384,40 @@ select.priority { max-width: 84px; }
 .inv-chart .inv-line { fill: none; stroke: var(--accent); stroke-width: 2; }
 .inv-chart .hit { fill: transparent; }
 .inv-chart .hit:hover { fill: rgba(31, 42, 36, 0.06); }
+
+/* ----- v3: 재생 막대 (관제실과 현장이 함께 쓴다) ----- */
+.playbar { padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+.playbar-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.playbar .ticker { margin-top: 0; }
+
+/* ----- v3: 3D 장면 ----- */
+.scene-host { position: relative; height: clamp(420px, 62vh, 760px); border-radius: 12px; overflow: hidden; background: #e9e1d1; }
+.scene-host canvas { display: block; }
+.scene-labels { position: absolute; inset: 0; pointer-events: none; }
+.scene-labels > div { font-family: inherit; }
+.station-tag, .place-tag, .shelf-tag, .lot-tag {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+  background: rgba(255, 255, 255, 0.93); font-size: 12px; font-weight: 700; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.14);
+}
+.station-tag i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.place-tag { display: inline-block; font-weight: 600; color: var(--ink-2); border-radius: 10px; text-align: center; }
+.place-tag.small { padding: 1px 7px; font-size: 11px; border-radius: 999px; }
+.lot-tag b { font-size: 12px; }
+.chip { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.chip.late { background: var(--bad); color: #fff; }
+.field-panel { position: relative; }
+.focus-note { font-weight: 700; color: var(--accent); }
+.finding-btns { display: flex; gap: 6px; }
+
+/* 현장 전환: 안전모를 쓴 관리자가 문으로 뛰어나간다 */
+.field-intro {
+  position: absolute; inset: 0; z-index: 5; border-radius: var(--radius); cursor: pointer;
+  background: rgba(27, 34, 49, 0.88); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  animation: intro-fade 1.8s ease forwards;
+}
+.field-intro .hint { color: rgba(255, 255, 255, 0.7); }
+.intro-run { position: relative; width: 320px; height: 70px; font-size: 44px; }
+.intro-man { position: absolute; left: 0; top: 6px; animation: intro-run 1.3s ease-in forwards; }
+.intro-door { position: absolute; right: 0; top: 4px; }
+@keyframes intro-run { from { left: 0; } to { left: 250px; opacity: 0.2; } }
+@keyframes intro-fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }

@@ -8,6 +8,7 @@ import { renderForm, updatePreview } from "./form";
 import { renderGantt } from "./gantt";
 import { GRADE_COLOR, LOSS_STATES, STATION_COLOR, TRANSPORT_STATE } from "./labels";
 import { eventText, renderReport } from "./report";
+import type { Yard } from "./scene/yard";
 
 const SPEEDS = [1, 2, 4, 8];
 const BASE_MS_PER_DAY = 500;   // 1배속은 하루에 0.5초, 60일이 30초다.
@@ -39,6 +40,8 @@ interface State {
   day: number;
   playing: boolean;
   speed: number;
+  /** 현장 카메라가 비출 공정과 안내 문구(의문점 카드에서 왔을 때). */
+  focus: { station: number; text: string } | null;
 }
 
 let state: State;
@@ -53,7 +56,17 @@ const els = {
   control: h("section", { class: "panel control-panel" }),
   field: h("section", { class: "panel field-panel" }),
   report: h("section", { class: "panel report-panel" }),
+  playbar: h("div", { class: "panel playbar" }),
+  sceneControl: h("div", { class: "scene-host" }),
+  sceneField: h("div", { class: "scene-host field" }),
 };
+
+// 3D(Three.js)는 처음 볼 때 불러온다. 간트만 쓰면 받지 않는다.
+let yard: Yard | null = null;
+let yardLoading: Promise<void> | null = null;
+let yardRun: Run | null = null;
+let buildFrame: typeof import("./scene/frame").buildFrame | null = null;
+const introSeen = new Set<number>();
 
 // ---------------------------------------------------------------------------
 // 설정
@@ -140,6 +153,7 @@ async function run(): Promise<void> {
     state.runs.push({ n: state.runs.length + 1, label: runLabel(), config, result, finished: false });
     state.current = state.runs.length - 1;
     state.view = "control";
+    state.focus = null;
     state.day = 0;
     drawAll();
     play();
@@ -165,13 +179,13 @@ function play(): void {
   if (state.day >= r.result.days) state.day = 0;
   state.playing = true;
   restartTimer();
-  tick();
+  tick(true);
 }
 
 function pause(): void {
   state.playing = false;
   window.clearInterval(timer);
-  tick();
+  tick(true);
 }
 
 function restartTimer(): void {
@@ -181,8 +195,10 @@ function restartTimer(): void {
     const r = currentRun();
     if (!r) return pause();
     state.day = Math.min(r.result.days, state.day + 1);
-    if (state.day >= r.result.days) finish();
-    else tick();
+    // 현장에서 재현 중이면 60일에 닿아도 레포트로 넘기지 않는다(이미 본 회차다).
+    if (state.day >= r.result.days && !(state.view === "field" && r.finished)) finish();
+    else if (state.day >= r.result.days) pause();
+    else tick(false);
   }, BASE_MS_PER_DAY / state.speed);
 }
 
@@ -190,8 +206,8 @@ function seek(day: number): void {
   const r = currentRun();
   if (!r) return;
   state.day = Math.max(0, Math.min(r.result.days, day));
-  if (state.day >= r.result.days) pause();
-  else tick();
+  if (state.day >= r.result.days && state.playing) pause();
+  else tick(true);
 }
 
 /** 60일에 닿았다: 재생을 멈추고 레포트를 연다. 현장 탭도 이때 열린다. */
@@ -206,8 +222,8 @@ function finish(): void {
   drawAll();
 }
 
-/** 날짜가 바뀔 때마다 간트와 오늘의 사건, 컨트롤을 갱신한다. */
-function tick(): void {
+/** 날짜가 바뀔 때마다 간트, 3D, 오늘의 사건, 컨트롤을 갱신한다. jump면 3D 소인이 걷지 않고 바로 옮긴다. */
+function tick(jump: boolean): void {
   const r = currentRun();
   if (!r) return;
   const { result } = r;
@@ -216,14 +232,14 @@ function tick(): void {
   const chart = els.control.querySelector(".gantt-chart");
   if (chart) mount(chart, renderGantt(result, scenario, state.day));
 
-  const slider = els.control.querySelector<HTMLInputElement>("input.scrub");
+  const slider = els.playbar.querySelector<HTMLInputElement>("input.scrub");
   if (slider) slider.value = String(state.day);
-  const dayLabel = els.control.querySelector(".day-now");
+  const dayLabel = els.playbar.querySelector(".day-now");
   if (dayLabel) dayLabel.textContent = `${state.day} / ${result.days}일`;
-  const playBtn = els.control.querySelector(".play");
+  const playBtn = els.playbar.querySelector(".play");
   if (playBtn) playBtn.textContent = state.playing ? "❚❚ 멈춤" : "▶ 재생";
 
-  const ticker = els.control.querySelector(".ticker");
+  const ticker = els.playbar.querySelector(".ticker");
   if (ticker) {
     const today = result.events.filter((ev) => ev.day === state.day && TICKER_EVENTS.has(ev.type));
     mount(ticker,
@@ -232,6 +248,51 @@ function tick(): void {
         ? today.map((ev) => h("span", { class: `ticker-item ${ev.type}` }, eventText(ev, scenario)))
         : h("span", { class: "ticker-quiet" }, state.day ? "특별한 사건 없음" : "재생을 누르면 1일부터 진행합니다"));
   }
+  syncScene(jump);
+}
+
+// ---------------------------------------------------------------------------
+// 3D 장면
+// ---------------------------------------------------------------------------
+
+function sceneHost(): HTMLElement | null {
+  if (state.view === "field") return els.sceneField;
+  if (state.view === "control" && state.controlView === "scene") return els.sceneControl;
+  return null;
+}
+
+/** 지금 3D를 보는 탭이면 장면을 오늘 날짜로 맞추고, 아니면 그리기를 멈춘다. */
+function syncScene(jump: boolean): void {
+  const host = sceneHost();
+  const r = currentRun();
+  if (!host || !r) {
+    yard?.stop();
+    return;
+  }
+  if (!yard) {
+    yardLoading ??= Promise.all([import("./scene/yard"), import("./scene/frame")]).then(([y, f]) => {
+      yard = new y.Yard();
+      buildFrame = f.buildFrame;
+    });
+    void yardLoading.then(() => syncScene(true));
+    return;
+  }
+  yard.attach(host);
+  if (yardRun !== r) {
+    yard.load(r.result.ships.map((s) => s.id));
+    yardRun = r;
+    jump = true;
+  }
+  const { scenario } = state.data;
+  const day = state.day;
+  yard.setSource({
+    frameAt: (frac) => buildFrame!(r.result, scenario, r.config, day, frac),
+    playing: state.playing,
+    msPerDay: BASE_MS_PER_DAY / state.speed,
+    // 1배속 이하에서만 걷는 모습을 보여 준다. 빠르면 바로 옮긴다.
+    snap: jump || state.speed > 1,
+  });
+  yard.start();
 }
 
 // ---------------------------------------------------------------------------
@@ -241,9 +302,11 @@ function tick(): void {
 function drawAll(): void {
   drawBest();
   drawTabs();
+  drawPlaybar();
   drawControl();
   drawField();
   drawReport();
+  tick(true);
 }
 
 /** 이번 세션 최고 등급. 화면 상태로만 보관한다. */
@@ -267,7 +330,7 @@ function drawTabs(): void {
   const tab = (view: View, label: string, disabled = false, title = "") =>
     h("button", {
       type: "button", class: `tab${state.view === view ? " active" : ""}`, disabled, title,
-      onclick: () => { state.view = view; drawAll(); },
+      onclick: () => (view === "field" ? openField(null) : (state.view = view, drawAll())),
     }, label);
 
   mount(els.tabs,
@@ -283,6 +346,8 @@ function drawTabs(): void {
           pause();
           state.current = i;
           state.day = run.finished ? run.result.days : 0;
+          if (!run.finished && state.view !== "control") state.view = "control";
+          state.focus = null;
           drawAll();
         },
       }, h("b", null, `${run.n}회차`), ` ${run.label}`,
@@ -291,6 +356,38 @@ function drawTabs(): void {
   els.control.hidden = state.view !== "control";
   els.field.hidden = state.view !== "field";
   els.report.hidden = state.view !== "report";
+  els.playbar.hidden = state.view === "report" || !r;
+}
+
+function drawPlaybar(): void {
+  const r = currentRun();
+  if (!r) return;
+  mount(els.playbar,
+    h("div", { class: "playbar-row" },
+      h("span", { class: "run-name" }, `${r.n}회차 · ${r.label}`),
+      h("button", { class: "btn ghost", type: "button", title: "처음부터", onclick: () => { pause(); seek(0); } }, "⟲"),
+      h("button", { class: "btn play", type: "button", onclick: () => (state.playing ? pause() : play()) }, "▶ 재생"),
+      h("div", { class: "seg small" }, SPEEDS.map((sp) =>
+        h("label", { class: "seg-item" },
+          h("input", {
+            type: "radio", name: "speed", checked: state.speed === sp,
+            onchange: () => { state.speed = sp; restartTimer(); tick(true); },
+          }),
+          h("span", null, `${sp}×`)))),
+      h("input", {
+        class: "scrub", type: "range", min: 0, max: r.result.days, step: 1, value: String(state.day),
+        oninput: (e: Event) => {
+          // 값을 먼저 읽는다. pause()가 tick()으로 슬라이더를 지금 날짜로 되돌려 놓기 때문이다.
+          const day = Number((e.target as HTMLInputElement).value);
+          pause();
+          seek(day);
+        },
+      }),
+      h("span", { class: "day-now" }, ""),
+      r.finished
+        ? null
+        : h("button", { class: "btn ghost", type: "button", title: "끝으로 건너뛰기 (End)", onclick: finish }, "끝으로 ⏭")),
+    h("div", { class: "ticker" }));
 }
 
 function drawControl(): void {
@@ -308,7 +405,7 @@ function drawControl(): void {
   const sub = (view: "scene" | "gantt", label: string) =>
     h("button", {
       type: "button", class: `tab${state.controlView === view ? " active" : ""}`,
-      onclick: () => { state.controlView = view; drawControl(); },
+      onclick: () => { state.controlView = view; drawControl(); tick(true); },
     }, label);
 
   const sameColor = LOSS_STATES.filter((l) => l.state !== "rework");
@@ -324,55 +421,70 @@ function drawControl(): void {
 
   const body = state.controlView === "gantt"
     ? [h("div", { class: "gantt-chart" }), legend]
-    : [h("div", { class: "empty scene-placeholder" },
-      h("p", null, h("b", null, "대시보드 3D는 다음 단계에서 붙습니다.")),
-      h("p", null, "같은 재생 커서로 조선소 전경이 움직입니다. 지금은 간트를 보세요."))];
+    : [els.sceneControl, h("p", { class: "hint" }, "끌어서 돌리고, 휠로 확대합니다. 칩의 색과 글자가 그날의 손실을 말해 줍니다.")];
 
   mount(els.control,
     h("div", { class: "panel-head" },
       h("h2", null, "관제실"),
-      h("div", { class: "tabs" }, sub("scene", "대시보드 3D"), sub("gantt", "간트")),
-      h("div", { class: "controls" },
-        h("button", { class: "btn ghost", type: "button", title: "처음부터", onclick: () => { pause(); seek(0); } }, "⟲"),
-        h("button", { class: "btn play", type: "button", onclick: () => (state.playing ? pause() : play()) }, "▶ 재생"),
-        h("div", { class: "seg small" }, SPEEDS.map((sp) =>
-          h("label", { class: "seg-item" },
-            h("input", {
-              type: "radio", name: "speed", checked: state.speed === sp,
-              onchange: () => { state.speed = sp; restartTimer(); },
-            }),
-            h("span", null, `${sp}×`)))),
-        h("button", { class: "btn ghost", type: "button", title: "끝으로 건너뛰기 (End)", onclick: finish }, "끝으로 ⏭"))),
-    h("div", { class: "scrub-row" },
-      h("span", { class: "run-name" }, `${r.n}회차 · ${r.label}`),
-      h("input", {
-        class: "scrub", type: "range", min: 0, max: r.result.days, step: 1, value: String(state.day),
-        oninput: (e: Event) => {
-          // 값을 먼저 읽는다. pause()가 tick()으로 슬라이더를 지금 날짜로 되돌려 놓기 때문이다.
-          const day = Number((e.target as HTMLInputElement).value);
-          pause();
-          seek(day);
-        },
-      }),
-      h("span", { class: "day-now" }, "")),
-    body,
-    h("div", { class: "ticker" }));
-  tick();
+      h("div", { class: "tabs" }, sub("scene", "대시보드 3D"), sub("gantt", "간트"))),
+    body);
+}
+
+/** 현장으로 나간다. 회차마다 처음 한 번은 안전모를 쓰고 뛰어나가는 전환을 보여 준다(누르면 건너뜀). */
+function openField(focus: State["focus"]): void {
+  const r = currentRun();
+  if (!r?.finished) return;
+  state.view = "field";
+  state.focus = focus;
+  drawAll();
+  yardCamera();
+  if (!introSeen.has(r.n)) {
+    introSeen.add(r.n);
+    const overlay = h("div", { class: "field-intro", onclick: () => overlay.remove() },
+      h("div", { class: "intro-run" }, h("span", { class: "intro-man" }, "⛑️🏃"), h("span", { class: "intro-door" }, "🚪")),
+      h("p", null, h("b", null, "관리자가 안전모를 쓰고 현장으로 나갑니다")),
+      h("p", { class: "hint" }, "누르면 건너뜁니다"));
+    els.field.append(overlay);
+    window.setTimeout(() => overlay.remove(), 1800);
+  }
+}
+
+function yardCamera(): void {
+  const apply = () => yard?.setCamera(state.view === "field" ? "field" : "control", state.focus?.station ?? null);
+  if (yard) apply();
+  else void yardLoading?.then(apply);
 }
 
 function drawField(): void {
+  const r = currentRun();
   mount(els.field,
-    h("div", { class: "panel-head" }, h("h2", null, "현장 재현")),
-    h("div", { class: "empty" },
-      h("p", null, h("b", null, "현장 재현(3D)은 다음 단계에서 붙습니다.")),
-      h("p", null, "레포트의 의문점 카드에서 고른 날짜로 가서, 같은 결과를 현장 눈높이로 다시 봅니다.")));
+    h("div", { class: "panel-head" },
+      h("h2", null, "현장 재현"),
+      state.focus ? h("span", { class: "focus-note" }, state.focus.text) : h("span", { class: "hint" }, "같은 결과를 현장 눈높이로 다시 봅니다."),
+      h("div", { class: "controls" },
+        r ? h("select", {
+          class: "select",
+          onchange: (e: Event) => {
+            const i = Number((e.target as HTMLSelectElement).value);
+            state.focus = i < 0 ? null : { station: i, text: "" };
+            yardCamera();
+          },
+        }, h("option", { value: -1 }, "전체 보기"),
+        state.data.scenario.stations.map((st, i) => h("option", { value: i, selected: state.focus?.station === i }, `${st.name} 가까이`))) : null)),
+    els.sceneField);
 }
 
-function openFinding(f: Finding): void {
+function openFinding(f: Finding, where: "field" | "gantt"): void {
   pause();
-  state.view = "control";
-  state.controlView = "gantt";
-  drawAll();
+  const { scenario } = state.data;
+  const station = scenario.stations.findIndex((st) => st.id === f.station);
+  if (where === "field") {
+    openField({ station, text: `${f.ship} · ${scenario.stations[station]?.name ?? ""} · ${f.start}~${f.end}일` });
+  } else {
+    state.view = "control";
+    state.controlView = "gantt";
+    drawAll();
+  }
   seek(f.start);
 }
 
@@ -409,7 +521,7 @@ function onKey(e: KeyboardEvent): void {
     if (state.playing) pause(); else play();
   } else if (e.key === "End") {
     e.preventDefault();
-    finish();
+    if (r.finished) seek(r.result.days); else finish();
   } else if (e.key === "ArrowRight") {
     pause(); seek(state.day + 1);
   } else if (e.key === "ArrowLeft") {
@@ -441,10 +553,11 @@ async function start(): Promise<void> {
     runs: [],
     current: null,
     view: "control",
-    controlView: "gantt",
+    controlView: "scene",
     day: 0,
     playing: false,
     speed: 2,
+    focus: null,
   };
 
   mount(root,
@@ -456,7 +569,7 @@ async function start(): Promise<void> {
           h("p", null, "생산관리 시뮬레이터 · 7요소 · QCD · 4M"))),
       els.best),
     h("div", { class: "layout" }, els.form,
-      h("main", { class: "main" }, els.tabs, els.control, els.field, els.report)));
+      h("main", { class: "main" }, els.tabs, els.playbar, els.control, els.field, els.report)));
 
   document.addEventListener("keydown", onKey);
   drawForm();

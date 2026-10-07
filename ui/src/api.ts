@@ -136,6 +136,7 @@ export interface ShipResult {
   on_time: boolean;
   lead_time: number;
   lead_time_parts: Record<string, number>;
+  spans: Record<string, { start: number; end: number }>;
   segments: Segment[];
   daily: { state: ShipState; station: string | null }[];
 }
@@ -231,6 +232,7 @@ export interface Result {
   stations: StationResult[];
   transporters: TransporterResult[];
   research: ResearchSlot[];
+  inventory_daily: Record<string, number>[];
   inventory_value_daily: number[];
   events: SimEvent[];
   findings: Finding[];
