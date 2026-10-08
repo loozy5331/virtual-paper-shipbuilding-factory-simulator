@@ -74,6 +74,11 @@ export const EVENT_NAME: Record<string, string> = {
   delivery: "인도",
 };
 
+// 등급 5색: 금 S, 초록 A, 파랑 B, 회청 C, 빨강 F. 흰 글자 대비 4.5 이상,
+// 색각 이상(적록·청황) 시뮬레이션에서 등급끼리 최소 ΔE 12.3. S와 F는 이중 테두리와 글(GRADE_NOTE)로도 강조한다.
 export const GRADE_COLOR: Record<string, string> = {
-  S: "#1d5c45", A: "#2f7a5d", B: "#4b5a51", C: "#8a5d00", F: "#c13434",
+  S: "#9a6a00", A: "#1f6b4f", B: "#3b5ba5", C: "#5f6670", F: "#c0262d",
 };
+
+/** 강조하는 등급의 한마디. 색만으로 알리지 않으려고 쓴다. */
+export const GRADE_NOTE: Record<string, string> = { S: "목표 초과", F: "목표 미달" };

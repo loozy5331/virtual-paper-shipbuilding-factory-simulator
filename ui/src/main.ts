@@ -326,7 +326,7 @@ function drawSheetHead(): void {
       fields: r
         ? [["회차", `${r.n}회차`], ["설정", r.label], ["판정", r.finished && g ? `${g.grade} (${g.score.toFixed(1)}점)` : "진행 중"]]
         : [["회차", "—"]],
-      stamp: r?.finished && g ? { text: g.grade, sub: `${g.score.toFixed(1)}점`, color: GRADE_COLOR[g.grade] ?? "#4b5a51" } : null,
+      stamp: r?.finished && g ? { text: g.grade, sub: `${g.score.toFixed(1)}점`, color: GRADE_COLOR[g.grade] ?? "#4b5a51", strong: g.grade === "S" || g.grade === "F" } : null,
     }));
   } else if (state.view === "control") {
     mount(els.sheetHead, docHead({
@@ -347,7 +347,7 @@ function drawBest(): void {
   const g = best.result.grade;
   mount(els.best,
     h("span", null, "이번 세션 최고"),
-    h("b", { class: "best-grade", style: { background: GRADE_COLOR[g.grade] } }, g.grade),
+    h("b", { class: `best-grade grade-${g.grade}`, style: { background: GRADE_COLOR[g.grade] } }, g.grade),
     h("span", null, `${g.score.toFixed(1)}점 · ${best.n}회차 ${best.label}`));
 }
 
@@ -378,7 +378,7 @@ function drawTabs(): void {
           drawAll();
         },
       }, h("b", null, `${run.n}회차`), ` ${run.label}`,
-      run.finished ? h("span", { class: "chip-grade", style: { background: GRADE_COLOR[run.result.grade.grade] } }, run.result.grade.grade) : null))));
+      run.finished ? h("span", { class: `chip-grade grade-${run.result.grade.grade}`, style: { background: GRADE_COLOR[run.result.grade.grade] } }, run.result.grade.grade) : null))));
 
   els.control.hidden = state.view !== "control";
   els.field.hidden = state.view !== "field";
