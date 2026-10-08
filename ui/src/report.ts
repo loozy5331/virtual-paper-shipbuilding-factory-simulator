@@ -63,7 +63,7 @@ const FINDING_HINT: Record<string, string> = {
   rework: "검사 불량. 공법, 잔업, 정비, 시니어 배치를 확인하세요.",
   material_wait: "자재가 아직 안 들어왔습니다. 발주일 + 리드타임을 확인하세요.",
   labor_wait: "대기소에 보낼 사람이 없었습니다. 인원이나 우선순위를 확인하세요.",
-  station_wait: "앞 배가 작업장을 쓰고 있었습니다. 착수일 간격을 확인하세요.",
+  station_wait: "앞 배가 작업장을 쓰고 있었습니다. 착수 예정일 간격을 확인하세요.",
   transport_wait: "트랜스포터가 다른 로트를 나르거나 고장이었습니다.",
   accident_stop: "잔업 사고로 작업장이 멈췄습니다.",
   breakdown_stop: "설비 고장으로 멈췄습니다. 정비 여부를 확인하세요.",

@@ -4,7 +4,7 @@
 플레이어가 4M을 정하면 종이배 4척을 60일 동안 만들고 QCD와 등급으로 채점한다.
 같은 수주·난수로 설정만 바꿔 다시 실행하며 등급을 올린다. 결과는 간트와 3D 현장으로 다시 본다.
 
-버전 1.2.0. 변경 기록은 `CHANGELOG.md`, 이후 방향은 `docs/roadmap.md`.
+버전 1.2.1. 변경 기록은 `CHANGELOG.md`, 이후 방향은 `docs/roadmap.md`.
 
 규칙의 기준 문서: https://claude.ai/code/artifact/63f9424c-6a92-461b-8fb0-06a2820778d0
 

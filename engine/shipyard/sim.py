@@ -88,7 +88,7 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
             continue
         start = ship.get("start_day")
         if not _is_int(start) or not 1 <= start <= days:
-            errors.append(f"{sid}: 착수일은 1~{days} 사이의 정수여야 합니다")
+            errors.append(f"{sid}: 착수 예정일은 1~{days} 사이의 정수여야 합니다")
         for mid in material_ids:
             day = (ship.get("order_days") or {}).get(mid)
             if day is not None and (not _is_int(day) or not 1 <= day <= days):
