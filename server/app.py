@@ -7,7 +7,7 @@
     python server/app.py --port 9000 --no-open
 
 API
-    GET  /api/scenario          수주, BOM, 규칙, 프리셋
+    GET  /api/scenario          버전, 수주, BOM, 규칙, 프리셋
     POST /api/simulate          {"config": {...}}  ->  시뮬레이션 결과, 등급과 기준선 비교
     POST /api/preview           {"config": {...}}  ->  공정별 최대 처리량, 불량률, 고정비, 연구 일정
     POST /api/suggest-orders    {"config": {...}}  ->  역산한 발주일
@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "engine"))
 
 from shipyard import (  # noqa: E402
+    __version__,
     ConfigError,
     load_presets,
     load_scenario,
@@ -44,7 +45,7 @@ MAX_BODY = 1_000_000
 
 def scenario_payload() -> dict:
     scenario = load_scenario()
-    return {"scenario": scenario, "presets": load_presets(), "max_rate": max_rate(scenario["rules"])}
+    return {"version": __version__, "scenario": scenario, "presets": load_presets(), "max_rate": max_rate(scenario["rules"])}
 
 
 POST_ROUTES = {
@@ -55,7 +56,7 @@ POST_ROUTES = {
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "PaperShipyard/1.0"
+    server_version = f"PaperShipyard/{__version__}"
 
     # ----- 응답 도우미 -----
     def send_json(self, payload, status: HTTPStatus = HTTPStatus.OK) -> None:

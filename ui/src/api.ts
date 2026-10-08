@@ -88,6 +88,7 @@ export interface Scenario {
 }
 
 export interface ScenarioPayload {
+  version: string;
   scenario: Scenario;
   presets: Preset[];
   max_rate: number;
