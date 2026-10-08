@@ -4,6 +4,7 @@
 //   plan  생산계획서 클립보드가 가운데. 왼쪽 인덱스 탭 A안·B안·C안, 맨 아래 "승인하고 60일 실행".
 //   room  관제실(생산관리자 1인칭). 정면 벽 모니터 두 대: 왼쪽 = 재생 막대 + 간트, 오른쪽 = 기호도(또는 CCTV) + 사건 기록.
 //         책상 위에 생산계획서 클립보드(누르면 계획 고치기)와 작업모. 60일이 끝나면 생산실적 평가서 클립보드를 받는다.
+//   field 현장. 작업모를 쓰고 직접 나간 생산관리자의 눈(3D 화면 전체). 전경·공정 가까이, 재생 막대, "관제실로".
 // 현장을 보는 길: 기호도 작업장, 간트 막대, 평가서의 "현장에서 보기" → 오른쪽 모니터의 CCTV(재생 중에도 오늘을 본다).
 
 import { api, ApiError, type Config, type Finding, type Preview, type Result, type ScenarioPayload } from "./api";
@@ -35,7 +36,7 @@ interface Run {
   finished: boolean;           // 60일 끝까지 본 적이 있다 → 평가서가 나온다.
 }
 
-type Screen = "desk" | "plan" | "room";
+type Screen = "desk" | "plan" | "room" | "field";
 /** 평가서 클립보드: 없음, 앞으로 올라옴, 아래로 내려 둠(모니터를 보려고). */
 type BoardState = "none" | "up" | "down";
 
@@ -60,6 +61,8 @@ interface State {
   cctv: number | null;
   /** 크게 보고 있는 모니터 */
   zoomed: "left" | "right" | null;
+  /** 현장에서 가까이 보는 공정. null이면 전경. */
+  fieldFocus: number | null;
 }
 
 let state: State;
@@ -72,6 +75,10 @@ const els = {
   desk: h("section", { class: "desk", "aria-label": "분기 고르기" }),
   plan: h("section", { class: "plan-screen", "aria-label": "생산계획서" }),
   room: h("section", { class: "room", "aria-label": "관제실" }),
+  field: h("section", { class: "field-screen", "aria-label": "현장" }),
+  fieldHead: h("div", { class: "field-head" }),
+  fieldOsd: h("div", { class: "osd field-osd" }),
+  sceneField: h("div", { class: "scene-host field-host" }),
   form: h("aside", { class: "form" }),
   planBar: h("div", { class: "plan-bar" }),
   planTabs: h("nav", { class: "plan-tabs", "aria-label": "계획안" }),
@@ -177,9 +184,10 @@ function setScreen(screen: Screen): void {
   els.desk.hidden = screen !== "desk";
   els.plan.hidden = screen !== "plan";
   els.room.hidden = screen !== "room";
-  // 관제실은 벽이 화면 전체다. 상단 바는 책상과 생산계획서에서만.
-  els.topbar.hidden = screen === "room";
-  if (screen !== "room") {
+  els.field.hidden = screen !== "field";
+  // 관제실과 현장은 화면 전체를 쓴다. 상단 바는 책상과 생산계획서에서만.
+  els.topbar.hidden = screen === "room" || screen === "field";
+  if (screen !== "room" && screen !== "field") {
     yard?.stop();
     unzoom();
   }
@@ -412,7 +420,7 @@ function finish(): void {
 /** 날짜가 바뀔 때마다 모니터(간트, 기호도·CCTV, 사건 기록)와 재생 막대를 갱신한다. jump면 3D 소인이 걷지 않고 바로 옮긴다. */
 function tick(jump: boolean): void {
   const r = currentRun();
-  if (!state || !r || state.screen !== "room") {
+  if (!state || !r || (state.screen !== "room" && state.screen !== "field")) {
     yard?.stop();
     return;
   }
@@ -438,13 +446,15 @@ function tick(jump: boolean): void {
     ] : null);
   }
 
-  // 재생 막대(왼쪽 모니터 위)
-  const slider = els.osd.querySelector<HTMLInputElement>("input.scrub");
-  if (slider) slider.value = String(state.day);
-  const dayLabel = els.osd.querySelector(".day-now");
-  if (dayLabel) dayLabel.textContent = `${state.day} / ${result.days}일`;
-  const playBtn = els.osd.querySelector(".play");
-  if (playBtn) playBtn.textContent = state.playing ? "❚❚ 멈춤" : "▶ 재생";
+  // 재생 막대(왼쪽 모니터 위, 현장 아래)
+  for (const osd of [els.osd, els.fieldOsd]) {
+    const slider = osd.querySelector<HTMLInputElement>("input.scrub");
+    if (slider) slider.value = String(state.day);
+    const dayLabel = osd.querySelector(".day-now");
+    if (dayLabel) dayLabel.textContent = `${state.day} / ${result.days}일`;
+    const playBtn = osd.querySelector(".play");
+    if (playBtn) playBtn.textContent = state.playing ? "❚❚ 멈춤" : "▶ 재생";
+  }
 
   // 오른쪽 모니터 위: 기호도 또는 CCTV
   if (state.cctv === null) {
@@ -486,7 +496,12 @@ function openCctv(station: number, day?: number): void {
   drawRightTop();
   if (day !== undefined) seek(day);
   else tick(true);
-  const apply = () => yard?.setCamera("field", station);
+  aimCamera();
+}
+
+/** 카메라: 현장이면 전경 또는 고른 공정, CCTV면 그 공정. */
+function aimCamera(): void {
+  const apply = () => yard?.setCamera("field", state.screen === "field" ? state.fieldFocus : state.cctv);
   if (yard) apply();
   else void yardLoading?.then(apply);
 }
@@ -498,10 +513,18 @@ function closeCctv(): void {
   tick(true);
 }
 
-/** 지금 CCTV를 보고 있으면 장면을 오늘 날짜로 맞추고, 아니면 그리기를 멈춘다. */
+/** 3D를 그릴 자리: 현장이면 화면 전체, 관제실에서 CCTV를 보고 있으면 오른쪽 모니터. 아니면 없음. */
+function sceneHost(): HTMLElement | null {
+  if (state.screen === "field") return els.sceneField;
+  if (state.screen === "room" && state.cctv !== null) return els.cctvHost;
+  return null;
+}
+
+/** 3D를 보는 중이면 장면을 오늘 날짜로 맞추고, 아니면 그리기를 멈춘다. */
 function syncScene(jump: boolean): void {
   const r = currentRun();
-  if (state.cctv === null || state.screen !== "room" || !r) {
+  const host = sceneHost();
+  if (!host || !r) {
     yard?.stop();
     return;
   }
@@ -510,12 +533,12 @@ function syncScene(jump: boolean): void {
       yard = new y.Yard();
     });
     void yardLoading.then(() => {
-      yard!.setCamera("field", state.cctv);
+      aimCamera();
       syncScene(true);
     });
     return;
   }
-  yard.attach(els.cctvHost);
+  yard.attach(host);
   if (yardRun !== r) {
     yard.load(r.result.ships.map((s) => s.id));
     yardRun = r;
@@ -596,16 +619,17 @@ function drawPlates(): void {
       }, `${run.n}`, run.finished ? gradeChip(run.result.grade.grade, "chip-grade") : null))) : null);
 }
 
-/** 왼쪽 모니터 맨 위의 재생 막대(화면 속 조작부). */
-function drawOsd(): void {
+/** 왼쪽 모니터 맨 위의 재생 막대(화면 속 조작부). 현장 아래에도 같은 막대를 둔다. */
+function drawOsd(target: HTMLElement = els.osd): void {
   const r = currentRun();
-  if (!r) return mount(els.osd);
-  mount(els.osd,
+  if (!r) return mount(target);
+  const group = target === els.osd ? "speed" : "speed-field";
+  mount(target,
     h("button", { class: "osd-btn", type: "button", title: "처음부터", onclick: () => { pause(); seek(0); } }, "⟲"),
     h("button", { class: "osd-btn play", type: "button", onclick: () => (state.playing ? pause() : play()) }, "▶ 재생"),
     h("div", { class: "osd-speed", role: "radiogroup", "aria-label": "배속" }, SPEEDS.map((sp) =>
       h("label", null,
-        h("input", { type: "radio", name: "speed", checked: state.speed === sp, onchange: () => { state.speed = sp; restartTimer(); tick(true); } }),
+        h("input", { type: "radio", name: group, checked: state.speed === sp, onchange: () => { state.speed = sp; restartTimer(); drawOsd(els.osd); drawOsd(els.fieldOsd); tick(true); } }),
         h("span", null, `${sp}×`)))),
     h("input", {
       class: "scrub", type: "range", min: 0, max: r.result.days, step: 1, value: String(state.day), "aria-label": "날짜",
@@ -731,6 +755,51 @@ function monitor(el: HTMLElement, which: "left" | "right", label: string, ...scr
 }
 
 // ---------------------------------------------------------------------------
+// 현장: 작업모를 쓰고 직접 나간다
+// ---------------------------------------------------------------------------
+
+const introSeen = new Set<number>();
+
+/** 작업모를 누르면 생산관리자가 안전모를 쓰고 현장으로 나간다. 회차마다 처음 한 번은 뛰어나가는 전환(누르면 건너뜀). */
+function goField(): void {
+  const r = currentRun();
+  if (!r) return;
+  state.fieldFocus = state.cctv;   // CCTV로 보던 공정이 있으면 그 앞으로 나간다.
+  setScreen("field");
+  drawField();
+  aimCamera();
+  tick(true);
+  if (!introSeen.has(r.n) && !reduceMotion()) {
+    introSeen.add(r.n);
+    const overlay = h("div", { class: "field-intro", onclick: () => overlay.remove() },
+      h("div", { class: "intro-run" }, h("span", { class: "intro-man" }, "⛑️🏃"), h("span", { class: "intro-door" }, "🚪")),
+      h("p", null, h("b", null, "관리자가 안전모를 쓰고 현장으로 나갑니다")),
+      h("p", { class: "hint" }, "누르면 건너뜁니다"));
+    els.field.append(overlay);
+    window.setTimeout(() => overlay.remove(), 1800);
+  }
+}
+
+function backToRoom(): void {
+  setScreen("room");
+  drawRoom();
+}
+
+function drawField(): void {
+  const r = currentRun();
+  const { scenario } = state.data;
+  mount(els.fieldHead,
+    h("button", { class: "field-back", type: "button", onclick: backToRoom }, "← 관제실로"),
+    h("b", null, "현장"),
+    h("span", { class: "hint" }, r ? `${r.n}회차 ${r.label} · 생산관리자의 눈으로 봅니다` : ""),
+    h("div", { class: "field-cams", role: "group", "aria-label": "볼 곳" },
+      h("button", { type: "button", class: state.fieldFocus === null ? "active" : "", onclick: () => { state.fieldFocus = null; drawField(); aimCamera(); } }, "전경"),
+      scenario.stations.map((st, i) =>
+        h("button", { type: "button", class: state.fieldFocus === i ? "active" : "", onclick: () => { state.fieldFocus = i; drawField(); aimCamera(); } }, `${st.name} 가까이`))));
+  drawOsd(els.fieldOsd);
+}
+
+// ---------------------------------------------------------------------------
 // 공통
 // ---------------------------------------------------------------------------
 
@@ -760,11 +829,15 @@ function onKey(e: KeyboardEvent): void {
     unzoom();
     return;
   }
+  if (e.key === "Escape" && state.screen === "field") {
+    backToRoom();
+    return;
+  }
   const target = e.target as HTMLElement;
   // 계획 간트처럼 화살표 키를 스스로 쓰는 요소에 포커스가 있으면 재생 단축키를 쓰지 않는다.
   if (target.closest("input, select, textarea, [data-own-keys]")) return;
   const r = currentRun();
-  if (!r || state.screen !== "room") return;
+  if (!r || (state.screen !== "room" && state.screen !== "field")) return;
   if (e.key === " ") {
     e.preventDefault();
     if (state.playing) pause(); else play();
@@ -814,6 +887,7 @@ async function start(): Promise<void> {
     board: "none",
     cctv: null,
     zoomed: null,
+    fieldFocus: null,
   };
 
   mount(els.topbar,
@@ -832,7 +906,7 @@ async function start(): Promise<void> {
   monitor(els.monitorRight, "right", "기호도", els.rightTop, els.log);
   els.hands.innerHTML = HANDS_SVG;
   els.hat.innerHTML = `${HAT_SVG}<span class="desk-label">작업모 · 현장으로</span>`;
-  els.hat.addEventListener("click", () => notify("현장으로 직접 나가는 길은 다음 단계에서 붙입니다. 지금은 기호도의 CCTV로 보세요."));
+  els.hat.addEventListener("click", goField);
   els.deskClip.addEventListener("click", () => void backToPlan());
   els.reportBoard.addEventListener("click", (e) => {
     // 내려 둔 평가서는 아무 데나 누르면 다시 올라온다.
@@ -847,7 +921,8 @@ async function start(): Promise<void> {
     h("div", { class: "room-desk" }, h("div", { class: "desk-top" }), els.deskClip, els.hands, els.hat),
     els.reportBoard);
 
-  mount(root, els.topbar, els.desk, els.plan, els.room);
+  mount(els.field, els.fieldHead, els.sceneField, els.fieldOsd);
+  mount(root, els.topbar, els.desk, els.plan, els.room, els.field);
 
   document.addEventListener("keydown", onKey);
   drawForm();
