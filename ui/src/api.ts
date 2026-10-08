@@ -71,6 +71,8 @@ export interface ResearchInfo {
   name: string;
   cost: number;
   days: number;
+  /** 연구가 끝난 다음 날부터 나는 효과(scenario.json의 문구). */
+  effect: string;
 }
 
 export interface Scenario {

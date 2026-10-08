@@ -20,7 +20,10 @@ export function eventText(ev: SimEvent, scenario: Scenario): string {
       : `${station(ev.station ?? "")} 설비 고장 → 2일 중지`;
     case "transport_start": return `${ev.ship} ${station(ev.from)} → ${station(ev.to)} 운반 시작`;
     case "transport_end": return `${ev.ship} ${station(ev.to)}에 도착`;
-    case "research_done": return `${scenario.research[ev.research]?.name ?? ev.research} 완료, 내일부터 효과`;
+    case "research_done": {
+      const info = scenario.research[ev.research];
+      return `${info?.name ?? ev.research} 완료, 내일부터: ${info?.effect ?? "효과"}`;
+    }
     case "delivery": return ev.late_days > 0 ? `${ev.ship} 인도, ${ev.late_days}일 지연` : `${ev.ship} 인도, 납기 준수`;
   }
 }
@@ -127,12 +130,13 @@ export function renderReport(result: Result, scenario: Scenario, maxRate: number
   const { qcd, status } = result;
   const profitTone = result.profit >= 0 ? "good" : "bad";
 
+  // 엔진이 손실 기간이 긴 순서로 준다(같으면 이른 것부터). 핵심 3개만 보여 준다.
   const findings = result.findings.slice(0, 3);
   const findingRow = h("div", { class: "findings" },
-    h("h3", null, "의문점"),
+    h("h3", null, "의문점 Top 3 ", h("small", null, `손실 기간이 긴 순 · 전체 ${result.findings.length}건`)),
     findings.length
-      ? findings.map((f) => h("div", { class: "finding", style: { borderLeftColor: STATE_INFO[f.kind]?.color } },
-        h("b", null, findingText(f, scenario)),
+      ? findings.map((f, i) => h("div", { class: "finding", style: { borderLeftColor: STATE_INFO[f.kind]?.color } },
+        h("b", null, h("span", { class: "rank" }, `${i + 1}`), findingText(f, scenario)),
         h("p", { class: "hint" }, FINDING_HINT[f.kind] ?? ""),
         h("div", { class: "finding-btns" },
           h("button", { type: "button", class: "btn primary small", onclick: () => onFinding(f, "field") }, `현장에서 ${f.start}일 보기`),

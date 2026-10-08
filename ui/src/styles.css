@@ -582,3 +582,14 @@ body { background: var(--desk); }
 .best-grade.grade-S, .chip-grade.grade-S { box-shadow: 0 0 0 2px #f3d27a; }
 .best-grade.grade-F, .chip-grade.grade-F { box-shadow: 0 0 0 2px #f2a3a6; }
 .stamp.strong { border-width: 3.5px; outline: 1.5px solid currentColor; outline-offset: 2px; }
+
+/* ----- 연구 효과, 의문점 순위 ----- */
+.research-effect { flex-basis: 100%; margin: 2px 0 0; font-size: 0.78rem; color: var(--ink-2); }
+.queue li .research-effect { padding-left: 0; }
+.queue-add { flex-direction: column; align-items: stretch; }
+.queue-option { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.queue-option .research-effect { padding-left: 10px; }
+.finding .rank {
+  display: inline-grid; place-items: center; width: 18px; height: 18px; margin-right: 6px; border-radius: 50%;
+  background: var(--ink); color: var(--paper); font-size: 0.72rem; font-weight: 800; vertical-align: 1px;
+}
