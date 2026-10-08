@@ -348,7 +348,7 @@ class Contract(unittest.TestCase):
         for cfg in PRESETS.values():
             r = simulate(cfg)
             for day in range(r["days"]):
-                on_stations = sum(st["daily"][day]["workers"] for st in r["stations"])
+                on_stations = sum(u["daily"][day]["workers"] for st in r["stations"] for u in st["units"])
                 self.assertEqual(on_stations, r["workforce"]["daily"][day]["assigned"])
                 self.assertLessEqual(on_stations, cfg["pool"])
 
@@ -361,7 +361,8 @@ class Contract(unittest.TestCase):
     def test_preview(self):
         p = preview(variant("managed", 6, research=["auto_inspect"]))
         self.assertEqual(p["stations"]["erection"], {"rate": 2.0, "defect_rate": 0.05, "defect_rate_final": 0.0})
-        self.assertEqual(p["fixed_costs"], {"labor": 3900, "maintenance": 400, "transporter": 350, "research": 300})
+        self.assertEqual(p["fixed_costs"],
+                         {"labor": 3900, "maintenance": 400, "transporter": 350, "expansion": 0, "research": 300})
         self.assertEqual([(x["id"], x["end"]) for x in p["research"]], [("auto_inspect", 8)])
         self.assertEqual(p["materials"]["S1"]["flag"], {"order_day": 12, "arrival_day": 22})
 
@@ -381,6 +382,60 @@ class Contract(unittest.TestCase):
         with self.assertRaises(ConfigError) as ctx:
             simulate(cfg)
         self.assertEqual(len(ctx.exception.messages), 3)
+
+
+
+def expanded(preset, **units):
+    """프리셋에 공정별 작업장 수를 더한 설정. expanded("all_in", block_assembly=2)"""
+    cfg = copy.deepcopy(PRESETS[preset])
+    for pid, n in units.items():
+        cfg["stations"][pid]["units"] = n
+    return cfg
+
+
+class Expansion(unittest.TestCase):
+    """2.0 작업장 증설: 같은 공정에 작업장을 2개까지 두어 서로 다른 배를 동시에 처리한다."""
+
+    def test_one_unit_is_the_same_as_no_setting(self):
+        # 1.x 설정(units 없음)과 모든 공정 1개는 결과가 같다.
+        for pid in PRESETS:
+            self.assertEqual(simulate(expanded(pid, **{s: 1 for s in STATIONS})), simulate(PRESETS[pid]))
+
+    def test_two_units_work_on_two_ships_at_once(self):
+        r = simulate(expanded("all_in", block_assembly=2), baseline=False)
+        block = next(st for st in r["stations"] if st["id"] == "block_assembly")
+        self.assertEqual([u["unit"] for u in block["units"]], [1, 2])
+        both = [d for d in range(r["days"]) if all(u["daily"][d]["ship"] for u in block["units"])]
+        self.assertTrue(both)
+        ships = {u["daily"][both[0]]["ship"] for u in block["units"]}
+        self.assertEqual(len(ships), 2)
+
+    def test_expansion_cuts_station_wait_at_that_station(self):
+        def waits(cfg):
+            r = simulate(cfg, baseline=False)
+            return sum(1 for s in r["ships"] for d in s["daily"]
+                       if d["state"] == "station_wait" and d["station"] == "block_assembly")
+        self.assertLess(waits(expanded("all_in", block_assembly=2)), waits(PRESETS["all_in"]))
+
+    def test_expansion_cost_and_maintenance_per_unit(self):
+        p = preview(expanded("all_in", block_assembly=2, erection=2))
+        self.assertEqual(p["fixed_costs"]["expansion"], 300 + 800)
+        self.assertEqual(p["fixed_costs"]["maintenance"], 6 * 100)
+
+    def test_plan_overlap_only_when_more_ships_than_units(self):
+        plan = preview(expanded("managed", block_assembly=2))["plan"]
+        self.assertFalse([c for c in plan["conflicts"] if c["station"] == "block_assembly"])
+
+    def test_unit_is_recorded_on_ships_and_events(self):
+        r = simulate(expanded("all_in", block_assembly=2), baseline=False)
+        enters = [e for e in r["events"] if e["type"] == "enter" and e["station"] == "block_assembly"]
+        self.assertEqual({e["unit"] for e in enters}, {1, 2})
+        on_unit_2 = [d for s in r["ships"] for d in s["daily"] if d.get("unit") == 2]
+        self.assertTrue(on_unit_2)
+
+    def test_too_many_units_is_rejected(self):
+        with self.assertRaises(ConfigError):
+            simulate(expanded("managed", block_assembly=3))
 
 
 if __name__ == "__main__":

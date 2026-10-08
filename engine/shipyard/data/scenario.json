@@ -69,6 +69,11 @@
   "breakdown": {
     "every_busy_days": 8, "threshold": 0.4, "threshold_maintained": 0.1, "stop_days": 2, "cost": 150
   },
+  "expansion": {
+    "name": "작업장 증설", "max_units": 2,
+    "summary": "같은 공정에 작업장을 하나 더 두어 서로 다른 배를 동시에 처리한다. 작업장마다 사람을 따로 보내야 한다.",
+    "cost": {"sub_assembly": 300, "block_assembly": 300, "grand_assembly": 300, "erection": 800}
+  },
   "transporter": {
     "max_count": 2, "capacity": 6, "lot_weight": 12, "cost_per_day": 5, "maintenance_cost": 50,
     "every_moves": 6, "threshold": 0.4, "threshold_maintained": 0.1, "stop_days": 2, "repair_cost": 150
