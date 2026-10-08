@@ -895,13 +895,13 @@ body { background: var(--desk); }
 
 /* 결재란: 작성자 이름, 서명(펜으로 그린 획) */
 .sign-name { font-family: "Brush Script MT", "Segoe Script", "Snell Roundhand", cursive; font-size: 1.05rem; color: #1f2a6b; }
-.sign-box[data-sign="승인"] { position: relative; }
-.form .sign-box[data-sign="승인"] { cursor: pointer; }
-.form .sign-box[data-sign="승인"]:not(:has(.signature)):hover { background: rgba(29, 92, 69, 0.08); }
+.sign-box[data-sign="평가"] { position: relative; }
+.form .sign-box[data-sign="평가"] { cursor: pointer; }
+.form .sign-box[data-sign="평가"]:not(:has(.signature)):hover { background: rgba(29, 92, 69, 0.08); }
 .signature { width: 46px; height: 32px; overflow: visible; }
 .signature path { fill: none; stroke: #1f2a6b; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 
-/* 펜: 생산계획서 밖 화면 오른쪽 아래. 누르면 결재란 "승인" 칸으로 가서 서명한다. */
+/* 펜: 생산계획서 밖 화면 오른쪽 아래. 누르면 결재란 "평가" 칸으로 가서 서명한다. */
 .desk-pen { position: fixed; right: 36px; bottom: 26px; z-index: 30; width: 210px; border: 0; background: transparent; cursor: pointer; font: inherit;
   display: flex; flex-direction: column; align-items: center; transition: transform 0.15s ease; }
 .desk-pen svg { width: 120px; height: 120px; display: block; filter: drop-shadow(0 4px 4px rgba(20, 24, 20, 0.25)); }

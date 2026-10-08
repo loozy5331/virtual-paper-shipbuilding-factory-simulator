@@ -1,7 +1,7 @@
 // 화면의 상태와 연결. 서버에서 시나리오를 받고, 설정을 고치고, 실행 결과를 회차로 쌓는다.
 // 화면은 셋이다(2.0):
 //   desk  첫 화면. 책상 위 분기별 클립보드에서 분기를 고른다.
-//   plan  생산계획서 클립보드가 가운데. 왼쪽 인덱스 탭 A안·B안·C안, 맨 아래 "승인하고 60일 실행".
+//   plan  생산계획서 클립보드가 가운데. 왼쪽 인덱스 탭 A안·B안·C안, 맨 아래 펜으로 결재란 "평가" 칸에 서명하고 실행.
 //   room  관제실(생산관리자 1인칭). 정면 벽 모니터 두 대: 왼쪽 = 재생 막대 + 간트, 오른쪽 = 기호도(또는 CCTV) + 사건 기록.
 //         책상 위에 생산계획서 클립보드(누르면 계획 고치기)와 작업모. 60일이 끝나면 생산실적 평가서 클립보드를 받는다.
 //   field 현장. 작업모를 쓰고 직접 나간 생산관리자의 눈(3D 화면 전체). 전경·공정 가까이, 재생 막대, "관제실로".
@@ -84,7 +84,7 @@ const els = {
   // 생산계획서 오른쪽 포스트잇: 안·분기 설명(form.ts), 목표와 이번 세션 최고(goalNote)
   planNotes: h("div", { class: "plan-notes-main" }),
   goalNote: h("div", { class: "postit green" }),
-  // 펜: 생산계획서 밖, 화면 오른쪽 아래. 누르면 결재란 "승인" 칸에 서명하고 실행한다.
+  // 펜: 생산계획서 밖, 화면 오른쪽 아래. 누르면 결재란 "평가" 칸에 서명하고 실행한다.
   pen: h("button", { class: "desk-pen", type: "button" }),
   // 관제실
   plate: h("div", { class: "plate" }),
@@ -149,7 +149,7 @@ function updateForm(): void {
   const blocked = state.busy || state.errors.length > 0;
   els.pen.classList.toggle("blocked", blocked);
   els.pen.setAttribute("aria-disabled", String(blocked));
-  els.pen.title = state.errors.length ? "생산계획서에서 고칠 곳이 있어 서명할 수 없습니다" : `결재란 "승인" 칸에 서명하고 ${state.data.scenario.days}일을 실행합니다`;
+  els.pen.title = state.errors.length ? "생산계획서에서 고칠 곳이 있어 서명할 수 없습니다" : `결재란 "평가" 칸에 서명하고 ${state.data.scenario.days}일을 실행합니다`;
 }
 
 function loadPreset(id: string): void {
@@ -333,7 +333,7 @@ async function backToPlan(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// 서명: 펜으로 결재란 "승인" 칸에 서명한다
+// 서명: 펜으로 결재란 "평가" 칸에 서명한다
 // ---------------------------------------------------------------------------
 
 // 손으로 쓴 듯한 서명 한 획(가로 120, 세로 40). 그려지는 모습은 stroke-dashoffset으로 낸다.
@@ -347,7 +347,7 @@ function clearSignature(): void {
   els.form.querySelectorAll(".signature").forEach((el) => el.remove());
 }
 
-/** 펜을 결재란으로 옮겨 "승인" 칸에 서명하고, 서명이 끝나면 실행한다. */
+/** 펜을 결재란으로 옮겨 "평가" 칸에 서명하고, 서명이 끝나면 실행한다. */
 async function signAndRun(): Promise<void> {
   if (signing || state.busy) return;
   if (state.errors.length) {
@@ -355,7 +355,7 @@ async function signAndRun(): Promise<void> {
     els.form.querySelector(".errors")?.scrollIntoView({ behavior: "smooth", block: "center" });
     return;
   }
-  const box = els.form.querySelector<HTMLElement>('[data-sign="승인"]');
+  const box = els.form.querySelector<HTMLElement>('[data-sign="평가"]');
   if (!box) return void run();
   signing = true;
   clearSignature();
@@ -996,9 +996,9 @@ async function start(): Promise<void> {
   els.pen.innerHTML = PEN_SVG;
   els.pen.append(h("span", { class: "pen-label" }, "펜 · 결재란에 서명하고 실행"));
   els.pen.addEventListener("click", () => void signAndRun());
-  // 결재란 "승인" 칸을 직접 눌러도 서명한다.
+  // 결재란 "평가" 칸을 직접 눌러도 서명한다.
   els.form.addEventListener("click", (e) => {
-    if ((e.target as HTMLElement).closest('[data-sign="승인"]')) void signAndRun();
+    if ((e.target as HTMLElement).closest('[data-sign="평가"]')) void signAndRun();
   });
   mount(els.plan,
     els.pen,
