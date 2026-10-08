@@ -5,6 +5,7 @@
 
 import { api, ApiError, type Config, type Finding, type Preview, type Result, type ScenarioPayload } from "./api";
 import { h, mount, num, pct } from "./dom";
+import { renderDesk } from "./desk";
 import { renderForm, renderPlanBar, updatePreview, type FormContext } from "./form";
 import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
 import { docHead } from "./paper";
@@ -34,6 +35,8 @@ interface Run {
 type View = "control" | "field" | "report";
 
 interface State {
+  /** desk = 첫 화면(분기별 클립보드), work = 생산계획서와 관제실 */
+  screen: "desk" | "work";
   data: ScenarioPayload;
   config: Config;
   presetId: string | null;
@@ -59,6 +62,8 @@ let previewSeq = 0;
 let previewTimer: number | undefined;
 
 const els = {
+  desk: h("section", { class: "desk", "aria-label": "분기 고르기" }),
+  work: h("div", { class: "layout" }),
   form: h("aside", { class: "form" }),
   // 분기와 예시 계획: 생산계획서 밖, 왼쪽 클립보드 위
   planBar: h("div", { class: "plan-bar" }),
@@ -102,7 +107,7 @@ function drawForm(): void {
       schedulePreview();
     },
     onPreset: loadPreset,
-    onScenario: (id) => void switchScenario(id),
+    onDesk: showDesk,
     onRun: run,
   };
   renderForm(els.form, ctx);
@@ -120,9 +125,85 @@ function loadPreset(id: string): void {
   schedulePreview();
 }
 
+// ---------------------------------------------------------------------------
+// 첫 화면: 책상 위 클립보드
+// ---------------------------------------------------------------------------
+
+function sessionBest(scenarioId: string): { grade: string; score: number } | undefined {
+  const done = state.runs.filter((r) => r.finished && r.scenario === scenarioId);
+  if (!done.length) return undefined;
+  const g = done.reduce((a, b) => (b.result.grade.score > a.result.grade.score ? b : a)).result.grade;
+  return { grade: g.grade, score: g.score };
+}
+
+function drawDesk(): void {
+  const scenarios = state.data.scenarios;
+  renderDesk(els.desk, {
+    scenarios,
+    best: Object.fromEntries(scenarios.map((sc) => [sc.id, sessionBest(sc.id)])),
+    onPick: (id, board) => void enterScenario(id, board),
+  });
+}
+
+function setScreen(screen: State["screen"]): void {
+  state.screen = screen;
+  els.desk.hidden = screen !== "desk";
+  els.work.hidden = screen !== "work";
+  els.best.hidden = screen !== "work";
+}
+
+function showDesk(): void {
+  pause();
+  drawDesk();
+  setScreen("desk");
+  window.scrollTo(0, 0);
+}
+
+/**
+ * 클립보드를 집어 든다: 누른 클립보드가 왼쪽 생산계획서 자리로 옮겨 가며 커지고, 나머지는 흐려진다.
+ * 그다음 생산계획서와 관제실이 나타난다. 움직임을 줄이는 설정이면 바로 넘어간다.
+ */
+async function enterScenario(id: string, board: HTMLElement): Promise<void> {
+  const from = board.getBoundingClientRect();
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  els.desk.querySelectorAll<HTMLElement>(".desk-board").forEach((b) => b.classList.toggle("picked", b === board));
+  els.desk.classList.add("leaving");
+  await switchScenario(id);
+
+  // 옮겨 갈 자리를 재려고 작업 화면을 보이지 않게 먼저 그린다.
+  window.scrollTo(0, 0);
+  els.work.style.visibility = "hidden";
+  setScreen("work");
+  if (reduce) {
+    els.work.style.visibility = "";
+    els.desk.classList.remove("leaving");
+    return;
+  }
+  const to = els.work.querySelector(".board-left")!.getBoundingClientRect();
+  const ghost = board.cloneNode(true) as HTMLElement;
+  ghost.classList.add("desk-ghost");
+  Object.assign(ghost.style, { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px` });
+  document.body.append(ghost);
+  const move = ghost.animate([
+    { transform: "translate(0, 0) scale(1, 1)" },
+    { transform: `translate(${to.left - from.left}px, ${to.top - from.top}px) scale(${to.width / from.width}, ${Math.min(to.height, window.innerHeight) / from.height})` },
+  ], { duration: 520, easing: "cubic-bezier(.2,.7,.2,1)", fill: "forwards" });
+  await move.finished;
+  els.work.style.visibility = "";
+  els.work.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: "ease-out" });
+  await ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, fill: "forwards" }).finished;
+  ghost.remove();
+  els.desk.classList.remove("leaving");
+}
+
 /** 시나리오를 바꾼다. 관리 프리셋으로 시작하고, 그 시나리오에서 돌린 회차가 있으면 마지막 회차를 연다. */
 async function switchScenario(id: string): Promise<void> {
   pause();
+  // 같은 분기의 클립보드를 다시 집으면 쓰던 계획을 그대로 둔다.
+  if (id === state.data.scenario.id && state.screen === "desk" && els.form.childElementCount) {
+    drawAll();
+    return;
+  }
   let data: ScenarioPayload;
   try {
     data = await api.scenario(id);
@@ -628,7 +709,7 @@ function onKey(e: KeyboardEvent): void {
   // 계획 간트처럼 화살표 키를 스스로 쓰는 요소에 포커스가 있으면 재생 단축키를 쓰지 않는다.
   if (target.closest("input, select, textarea, [data-own-keys]")) return;
   const r = currentRun();
-  if (!r) return;
+  if (!r || state.screen !== "work") return;
   if (e.key === " ") {
     e.preventDefault();
     if (state.playing) pause(); else play();
@@ -656,6 +737,7 @@ async function start(): Promise<void> {
 
   const first = data.presets.find((p) => p.id === "managed") ?? data.presets[0];
   state = {
+    screen: "desk",
     data,
     config: structuredClone(first.config),
     presetId: first.id,
@@ -682,15 +764,17 @@ async function start(): Promise<void> {
           h("h1", null, "종이배 조선소 관제실"),
           h("p", null, "생산관리 시뮬레이터 · 7요소 · QCD · 4M"))),
       els.best),
-    h("div", { class: "layout" },
-      h("div", { class: "left-col" }, els.planBar, h("div", { class: "clipboard board-left" }, els.form)),
-      h("main", { class: "main" }, els.tabs,
-        els.board)));
+    els.desk,
+    els.work);
+  mount(els.work,
+    h("div", { class: "left-col" }, els.planBar, h("div", { class: "clipboard board-left" }, els.form)),
+    h("main", { class: "main" }, els.tabs, els.board));
 
   document.addEventListener("keydown", onKey);
   drawForm();
   drawAll();
   schedulePreview();
+  showDesk();
 }
 
 void start();
