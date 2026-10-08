@@ -785,10 +785,11 @@ body { background: var(--desk); }
 .plate-runs .run-chip { padding: 1px 8px; font-size: 11px; }
 
 /* transform을 쓰지 않는다: 크게 보기의 position: fixed가 화면 기준이 되도록 */
-.monitors { position: absolute; top: 28px; left: 0; right: 0; margin: 0 auto; display: flex; gap: 22px; width: min(1222px, calc(100vw - 40px)); }
+/* 좌우 여백은 예전(폭 최대 1222px)의 절반: 폭 = (화면 폭 + 예전 폭) ÷ 2 */
+.monitors { position: absolute; top: 28px; left: 0; right: 0; margin: 0 auto; display: flex; gap: 20px; width: calc((100vw + min(1222px, 100vw - 40px)) / 2); }
 .monitor { flex: 1; min-width: 0; }
 .monitor .bezel { position: relative; background: #1d2420; border-radius: 6px; padding: 9px; box-shadow: 0 6px 16px rgba(20, 24, 20, 0.25); }
-.monitor .screen { position: relative; height: clamp(330px, calc(100vh - 290px), 560px); background: var(--paper); border-radius: 2px; overflow: hidden; display: flex; flex-direction: column; }
+.monitor .screen { position: relative; height: clamp(340px, calc(100vh - 262px), 720px); background: var(--paper); border-radius: 2px; overflow: hidden; display: flex; flex-direction: column; }
 .monitor-label { text-align: center; font-size: 0.74rem; color: var(--ink-2); margin-top: 3px; font-weight: 600; }
 .zoom-btn { position: absolute; right: 16px; bottom: 14px; z-index: 3; border: 1px solid #c9cfc9; background: rgba(252, 250, 244, 0.92); color: var(--ink-2); font: inherit; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
 .zoom-btn .zoom-out, .monitor.zoomed .zoom-btn .zoom-in { display: none; }
