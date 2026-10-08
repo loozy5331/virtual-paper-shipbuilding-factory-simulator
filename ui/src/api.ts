@@ -71,9 +71,13 @@ export interface ResearchInfo {
   name: string;
   cost: number;
   days: number;
+  /** 연구가 끝난 다음 날부터 나는 효과(scenario.json의 문구). */
+  effect: string;
 }
 
 export interface Scenario {
+  /** 계획 기간의 이름. 60일은 이 분기의 작업일로 본다. */
+  period: string;
   days: number;
   stations: StationInfo[];
   materials: MaterialInfo[];

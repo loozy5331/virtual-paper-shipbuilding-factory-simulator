@@ -135,10 +135,10 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
   );
 
   const head = docHead({
-    title: "생산계획서", code: "PP-01",
+    title: "생산계획서", period: scenario.period, code: "PP-01",
     fields: [
+      ["계획 기간", `${scenario.period} (작업일 ${scenario.days}일)`],
       ["수주", `${orderIds.length}척 (${orderIds[0]}~${orderIds[orderIds.length - 1]})`],
-      ["기간", `1~${scenario.days}일`],
       ["기준", activePreset ? `${activePreset.name}${ctx.edited ? " 수정" : ""}` : "직접 작성"],
     ],
   });
@@ -244,14 +244,17 @@ function researchQueue(ctx: FormContext): HTMLElement {
           h("span", { class: "queue-btns" },
             h("button", { type: "button", class: "icon-btn", title: "앞으로", disabled: i === 0, onclick: () => move(i, -1) }, "▲"),
             h("button", { type: "button", class: "icon-btn", title: "뒤로", disabled: i === queue.length - 1, onclick: () => move(i, 1) }, "▼"),
-            h("button", { type: "button", class: "icon-btn", title: "빼기", onclick: () => edit(queue.filter((r) => r !== id)) }, "✕")));
+            h("button", { type: "button", class: "icon-btn", title: "빼기", onclick: () => edit(queue.filter((r) => r !== id)) }, "✕")),
+          h("p", { class: "research-effect" }, "효과: ", info.effect));
       }))
       : h("p", { class: "hint" }, "비어 있음. 연구는 운영을 함께 바꿔야 돈이 됩니다."),
     waiting.length
       ? h("div", { class: "queue-add" }, waiting.map((id) => {
         const info = scenario.research[id];
-        return h("button", { type: "button", class: "chip-btn", onclick: () => edit([...queue, id]) },
-          `+ ${info.name}`, h("small", null, ` ${num(info.cost)} · ${info.days}일`));
+        return h("div", { class: "queue-option" },
+          h("button", { type: "button", class: "chip-btn", onclick: () => edit([...queue, id]) },
+            `+ ${info.name}`, h("small", null, ` ${num(info.cost)} · ${info.days}일`)),
+          h("p", { class: "research-effect" }, info.effect));
       }))
       : null);
 }
