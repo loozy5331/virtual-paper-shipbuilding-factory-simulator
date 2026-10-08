@@ -41,7 +41,7 @@ import sys; sys.path.insert(0, "engine")
 from shipyard import simulate, load_presets
 
 result = simulate(load_presets()[1]["config"])   # 관리 프리셋
-print(result["profit"], result["grade"]["grade"])  # 2938.0 A
+print(result["profit"], result["grade"]["grade"])  # 3030.0 A
 ```
 
 ## API
@@ -50,8 +50,8 @@ print(result["profit"], result["grade"]["grade"])  # 2938.0 A
 | --- | --- | --- |
 | `GET /api/scenario` | 없음 | 버전, 수주, BOM, 규칙 숫자, 프리셋 3개, 최대 처리량 |
 | `POST /api/simulate` | `{"config": {...}}` | 60일 기록, 레포트 값, 등급과 기준선 비교 |
-| `POST /api/preview` | `{"config": {...}}` | 작업장별 처리량과 불량률, 고정비, 연구 일정 |
-| `POST /api/suggest-orders` | `{"config": {...}}` | 필요일에서 역산한 발주일 |
+| `POST /api/preview` | `{"config": {...}}` | 작업장별 처리량과 불량률, 고정비, 연구 일정, 배별 발주일·입고일 |
+| `POST /api/suggest-orders` | `{"config": {...}}` | 필요일에서 역산한 발주일 (1.0 하위 호환) |
 
 설정이 규칙에 맞지 않으면 422와 `{"errors": [...]}`를 돌려준다.
 설정의 모양은 `engine/shipyard/data/presets.json`을, 결과의 모양은 `engine/shipyard/sim.py`의 `simulate`를 보면 된다.

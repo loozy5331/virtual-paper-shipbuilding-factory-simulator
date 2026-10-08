@@ -9,8 +9,8 @@
 API
     GET  /api/scenario          버전, 수주, BOM, 규칙, 프리셋
     POST /api/simulate          {"config": {...}}  ->  시뮬레이션 결과, 등급과 기준선 비교
-    POST /api/preview           {"config": {...}}  ->  공정별 최대 처리량, 불량률, 고정비, 연구 일정
-    POST /api/suggest-orders    {"config": {...}}  ->  역산한 발주일
+    POST /api/preview           {"config": {...}}  ->  공정별 최대 처리량, 불량률, 고정비, 연구 일정, 발주일·입고일
+    POST /api/suggest-orders    {"config": {...}}  ->  역산한 발주일 (1.0 하위 호환)
 """
 
 from __future__ import annotations
