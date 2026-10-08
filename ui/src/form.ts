@@ -70,20 +70,42 @@ export function renderPlanBar(root: HTMLElement, ctx: FormContext): void {
       h("button", { class: "bar-back", type: "button", title: "책상으로 돌아가 다른 분기의 클립보드를 고릅니다", onclick: ctx.onDesk },
         "← 분기 고르기"),
       h("span", { class: "bar-quarter" }, scenario.period, h("small", null, ` ${scenario.name}`))),
-    h("div", { class: "bar-row" },
-      h("span", { class: "bar-label" }, "예시 계획"),
-      h("div", { class: "bar-choices" }, ctx.presets.map((preset) =>
-        h("button", {
-          class: `bar-choice${preset.id === ctx.presetId ? " active" : ""}`,
-          type: "button", title: preset.summary, disabled: ctx.busy,
-          onclick: () => ctx.onPreset(preset.id),
-        }, preset.name)))),
     h("p", { class: "bar-note" },
       activePreset
-        ? [h("b", null, `${activePreset.name}: `), activePreset.summary, h("b", { class: "edited", hidden: !ctx.edited }, " (수정함)")]
+        ? [h("b", null, `${planLabel(ctx.presets, activePreset.id)}: `), activePreset.summary, h("b", { class: "edited", hidden: !ctx.edited }, " (수정함)")]
         : "직접 정한 계획입니다."),
     ctx.scenarios.length > 1 ? h("p", { class: "bar-note" }, h("b", null, `${scenario.name}: `), scenario.summary) : null,
   );
+}
+
+/** 예시 계획의 이름: 프리셋 순서대로 A안, B안, C안. 회사 서류에서 대안을 비교할 때 쓰는 말이다. */
+export function planLabel(presets: Preset[], id: string): string {
+  const i = presets.findIndex((p) => p.id === id);
+  return i < 0 ? "" : `${String.fromCharCode(65 + i)}안 ${presets[i].name}`;
+}
+
+/**
+ * 생산계획서 왼쪽 가장자리의 인덱스 탭: A안 · B안 · C안. 서류철의 칸막이 탭처럼 판 밖으로 나와 있다.
+ * 고른 안을 고친 뒤 다른 안을 누르면 고친 내용이 사라지므로 먼저 묻는다.
+ */
+export function renderPlanTabs(root: HTMLElement, ctx: FormContext): void {
+  mount(root, ctx.presets.map((preset, i) => {
+    const active = preset.id === ctx.presetId;
+    return h("button", {
+      class: `plan-tab${active ? " active" : ""}`, type: "button", title: preset.summary, disabled: ctx.busy,
+      "aria-pressed": active ? "true" : "false",
+      onclick: () => {
+        if (active && !ctx.edited) return;
+        const message = active ? `${preset.name} 안을 처음 상태로 되돌릴까요? 고친 내용이 사라집니다.`
+          : ctx.edited ? "고친 내용이 사라집니다. 다른 안을 불러올까요?" : "";
+        if (message && !window.confirm(message)) return;
+        ctx.onPreset(preset.id);
+      },
+    },
+    h("b", null, `${String.fromCharCode(65 + i)}안`),
+    h("small", null, preset.name),
+    active ? h("em", { class: "tab-edited", hidden: !ctx.edited }, "수정") : null);
+  }));
 }
 
 export function renderForm(root: HTMLElement, ctx: FormContext): void {
