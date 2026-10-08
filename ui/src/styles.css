@@ -801,7 +801,7 @@ body { background: var(--desk); }
 .monitor.zoomed { position: fixed; inset: 14px; z-index: 50; display: flex; flex-direction: column; }
 .monitor.zoomed .bezel { flex: 1; display: flex; }
 .monitor.zoomed .screen { flex: 1; height: auto; }
-.room.zooming::after { content: ""; position: fixed; inset: 0; z-index: 40; background: rgba(20, 24, 20, 0.55); }
+.room.zooming::after { content: ""; position: fixed; inset: 0; z-index: 40; background: rgba(20, 24, 20, 0.55); cursor: zoom-out; }
 
 /* 왼쪽 모니터: 위 재생 막대(화면 속 조작부), 아래 간트 */
 .osd { flex: none; height: 36px; background: #26302b; color: #f3f1ea; display: flex; align-items: center; gap: 10px; padding: 0 10px; font-size: 12px; }
@@ -863,7 +863,7 @@ body { background: var(--desk); }
 .report-board { position: absolute; left: 50%; transform: translateX(-50%); width: min(900px, calc(100vw - 32px)); height: calc(100vh - 40px); top: 20px; z-index: 20;
   padding: 20px 9px 9px; box-shadow: 0 10px 30px rgba(20, 24, 20, 0.35); transition: top 0.4s ease; }
 .room.board-down .report-board { top: calc(100vh - 46px); cursor: pointer; }
-.room.board-up::before { content: ""; position: absolute; inset: 0; z-index: 15; background: rgba(30, 34, 30, 0.35); }
+.room.board-up::before { content: ""; position: absolute; inset: 0; z-index: 15; background: rgba(30, 34, 30, 0.35); cursor: pointer; }
 .report-sheet { height: 100%; overflow-y: auto; background: var(--paper); border-radius: 3px; padding: 14px 20px 20px; }
 .room.board-down .report-sheet { overflow: hidden; }
 .report-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }

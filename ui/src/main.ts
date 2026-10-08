@@ -924,6 +924,16 @@ async function start(): Promise<void> {
   els.hat.innerHTML = `${HAT_SVG}<span class="desk-label">작업모 · 현장으로</span>`;
   els.hat.addEventListener("click", goField);
   els.deskClip.addEventListener("click", () => void backToPlan());
+  // 어두운 막(평가서를 올렸을 때, 모니터를 크게 볼 때)은 관제실 자체의 ::before/::after라 눌린 대상이 관제실이 된다.
+  // 막을 누르면 크게 보던 모니터는 줄이고, 올라온 평가서는 내려 둔다.
+  els.room.addEventListener("click", (e) => {
+    if (e.target !== els.room) return;
+    if (state.zoomed) unzoom();
+    else if (state.board === "up") {
+      state.board = "down";
+      drawReportBoard();
+    }
+  });
   els.reportBoard.addEventListener("click", (e) => {
     // 내려 둔 평가서는 아무 데나 누르면 다시 올라온다.
     if (state.board === "down" && !(e.target as HTMLElement).closest("button")) {
