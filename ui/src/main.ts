@@ -76,7 +76,7 @@ const els = {
   room: h("section", { class: "room", "aria-label": "관제실" }),
   field: h("section", { class: "field-screen", "aria-label": "현장" }),
   fieldHead: h("div", { class: "field-head" }),
-  fieldOsd: h("div", { class: "osd field-osd" }),
+  fieldOsd: h("div", { class: "osd field-osd", "data-group": "speed-field" }),
   sceneField: h("div", { class: "scene-host field-host" }),
   form: h("aside", { class: "form" }),
   planBar: h("div", { class: "bar-row" }),
@@ -89,7 +89,9 @@ const els = {
   plateRight: h("div", { class: "plate right" }),
   monitorLeft: h("div", { class: "monitor left" }),
   monitorRight: h("div", { class: "monitor right" }),
-  osd: h("div", { class: "osd" }),
+  osd: h("div", { class: "osd", "data-group": "speed" }),
+  // 오른쪽 모니터를 크게 볼 때만 보이는 같은 재생 막대
+  osdRight: h("div", { class: "osd osd-right", "data-group": "speed-right" }),
   ganttScreen: h("div", { class: "gantt-screen" }),
   rightTop: h("div", { class: "right-top" }),
   cctvHost: h("div", { class: "scene-host cctv-host" }),
@@ -445,7 +447,7 @@ function tick(jump: boolean): void {
   }
 
   // 재생 막대(왼쪽 모니터 위, 현장 아래)
-  for (const osd of [els.osd, els.fieldOsd]) {
+  for (const osd of allOsds()) {
     const slider = osd.querySelector<HTMLInputElement>("input.scrub");
     if (slider) slider.value = String(state.day);
     const dayLabel = osd.querySelector(".day-now");
@@ -581,7 +583,8 @@ function openFinding(f: Finding, where: "field" | "gantt"): void {
 
 function drawRoom(): void {
   drawPlates();
-  drawOsd();
+  drawOsd(els.osd);
+  drawOsd(els.osdRight);
   drawGanttScreen();
   drawRightTop();
   drawDeskItems();
@@ -617,17 +620,22 @@ function drawPlates(): void {
       }, `${run.n}`, run.finished ? gradeChip(run.result.grade.grade, "chip-grade") : null))) : null);
 }
 
-/** 왼쪽 모니터 맨 위의 재생 막대(화면 속 조작부). 현장 아래에도 같은 막대를 둔다. */
+/** 재생 막대가 있는 자리: 왼쪽 모니터 위, 오른쪽 모니터 위(크게 볼 때만), 현장 아래. */
+function allOsds(): HTMLElement[] {
+  return [els.osd, els.osdRight, els.fieldOsd];
+}
+
+/** 왼쪽 모니터 맨 위의 재생 막대(화면 속 조작부). 오른쪽 모니터(크게 볼 때)와 현장에도 같은 막대를 둔다. */
 function drawOsd(target: HTMLElement = els.osd): void {
   const r = currentRun();
   if (!r) return mount(target);
-  const group = target === els.osd ? "speed" : "speed-field";
+  const group = target.dataset.group ?? "speed";
   mount(target,
     h("button", { class: "osd-btn", type: "button", title: "처음부터", onclick: () => { pause(); seek(0); } }, "⟲"),
     h("button", { class: "osd-btn play", type: "button", onclick: () => (state.playing ? pause() : play()) }, "▶ 재생"),
     h("div", { class: "osd-speed", role: "radiogroup", "aria-label": "배속" }, SPEEDS.map((sp) =>
       h("label", null,
-        h("input", { type: "radio", name: group, checked: state.speed === sp, onchange: () => { state.speed = sp; restartTimer(); drawOsd(els.osd); drawOsd(els.fieldOsd); tick(true); } }),
+        h("input", { type: "radio", name: group, checked: state.speed === sp, onchange: () => { state.speed = sp; restartTimer(); allOsds().forEach((o) => drawOsd(o)); tick(true); } }),
         h("span", null, `${sp}×`)))),
     h("input", {
       class: "scrub", type: "range", min: 0, max: r.result.days, step: 1, value: String(state.day), "aria-label": "날짜",
@@ -899,7 +907,7 @@ async function start(): Promise<void> {
       h("aside", { class: "plan-notes", "aria-label": "메모" }, els.planNotes, els.goalNote)));
 
   monitor(els.monitorLeft, "left", "공정 간트", els.osd, els.ganttScreen);
-  monitor(els.monitorRight, "right", "기호도", els.rightTop, els.log);
+  monitor(els.monitorRight, "right", "기호도", els.osdRight, els.rightTop, els.log);
   els.hands.innerHTML = HANDS_SVG;
   els.hat.innerHTML = `${HAT_SVG}<span class="desk-label">작업모 · 현장으로</span>`;
   els.hat.addEventListener("click", goField);
