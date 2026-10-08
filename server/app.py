@@ -20,6 +20,7 @@ import json
 import mimetypes
 import sys
 import threading
+import urllib.parse
 import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -31,6 +32,7 @@ sys.path.insert(0, str(ROOT / "engine"))
 from shipyard import (  # noqa: E402
     __version__,
     ConfigError,
+    list_scenarios,
     load_presets,
     load_scenario,
     max_rate,
@@ -43,9 +45,10 @@ UI_DIR = ROOT / "ui" / "dist"
 MAX_BODY = 1_000_000
 
 
-def scenario_payload() -> dict:
-    scenario = load_scenario()
-    return {"version": __version__, "scenario": scenario, "presets": load_presets(), "max_rate": max_rate(scenario["rules"])}
+def scenario_payload(scenario_id: str = "basic") -> dict:
+    scenario = load_scenario(scenario_id)
+    return {"version": __version__, "scenario": scenario, "presets": load_presets(scenario_id),
+            "scenarios": list_scenarios(), "max_rate": max_rate(scenario["rules"])}
 
 
 POST_ROUTES = {
@@ -73,9 +76,14 @@ class Handler(BaseHTTPRequestHandler):
 
     # ----- GET: API 한 개와 정적 파일 -----
     def do_GET(self) -> None:  # noqa: N802
-        path = self.path.split("?", 1)[0]
+        path, _, query = self.path.partition("?")
         if path == "/api/scenario":
-            self.send_json(scenario_payload())
+            # /api/scenario?id=growth. 없으면 기본 분기.
+            params = urllib.parse.parse_qs(query)
+            try:
+                self.send_json(scenario_payload(params.get("id", ["basic"])[0]))
+            except ConfigError as error:
+                self.send_error_json(HTTPStatus.NOT_FOUND, error.messages)
             return
         if path.startswith("/api/"):
             self.send_error_json(HTTPStatus.NOT_FOUND, [f"없는 주소입니다: {path}"])

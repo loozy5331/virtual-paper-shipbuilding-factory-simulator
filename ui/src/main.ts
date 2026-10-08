@@ -4,7 +4,7 @@
 // 현장으로 들어가는 길은 셋이다: 의문점 카드, 기호도 작업장, 간트 막대(D7). 60일을 끝낸 회차만 열린다.
 
 import { api, ApiError, type Config, type Finding, type Preview, type Result, type ScenarioPayload } from "./api";
-import { h, mount } from "./dom";
+import { h, mount, num, pct } from "./dom";
 import { renderForm, updatePreview } from "./form";
 import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
 import { docHead } from "./paper";
@@ -23,6 +23,8 @@ const SHIP_EVENTS = new Set(["arrival", "enter", "complete", "defect", "accident
 
 interface Run {
   n: number;
+  /** 회차를 돌린 시나리오. 화면은 지금 시나리오의 회차만 보여 준다. */
+  scenario: string;
   label: string;
   config: Config;
   result: Result;
@@ -84,6 +86,7 @@ const introSeen = new Set<number>();
 function drawForm(): void {
   renderForm(els.form, {
     scenario: state.data.scenario,
+    scenarios: state.data.scenarios,
     presets: state.data.presets,
     config: state.config,
     presetId: state.presetId,
@@ -97,6 +100,7 @@ function drawForm(): void {
       schedulePreview();
     },
     onPreset: loadPreset,
+    onScenario: (id) => void switchScenario(id),
     onRun: run,
   });
   updatePreview(els.form, state.preview, state.errors, state.busy);
@@ -109,6 +113,28 @@ function loadPreset(id: string): void {
   state.presetId = id;
   state.edited = false;
   drawForm();
+  schedulePreview();
+}
+
+/** 시나리오를 바꾼다. 관리 프리셋으로 시작하고, 그 시나리오에서 돌린 회차가 있으면 마지막 회차를 연다. */
+async function switchScenario(id: string): Promise<void> {
+  pause();
+  let data: ScenarioPayload;
+  try {
+    data = await api.scenario(id);
+  } catch (error) {
+    notify(error instanceof ApiError ? error.messages.join(" ") : String(error));
+    return;
+  }
+  const first = data.presets.find((p) => p.id === "managed") ?? data.presets[0];
+  const last = state.runs.map((r, i) => (r.scenario === id ? i : -1)).filter((i) => i >= 0).pop();
+  Object.assign(state, {
+    data, config: structuredClone(first.config), presetId: first.id, edited: false, preview: null, errors: [],
+    current: last ?? null, view: "control", ganttShip: null, focus: null,
+    day: last !== undefined && state.runs[last].finished ? data.scenario.days : 0,
+  });
+  drawForm();
+  drawAll();
   schedulePreview();
 }
 
@@ -143,7 +169,7 @@ async function run(): Promise<void> {
   try {
     const config = structuredClone(state.config);
     const result = await api.simulate(config);
-    state.runs.push({ n: state.runs.length + 1, label: runLabel(), config, result, finished: false });
+    state.runs.push({ n: state.runs.length + 1, scenario: state.data.scenario.id, label: runLabel(), config, result, finished: false });
     state.current = state.runs.length - 1;
     state.view = "control";
     state.focus = null;
@@ -351,9 +377,11 @@ function drawSheetHead(): void {
 
 /** 이번 세션 최고 등급. 화면 상태로만 보관한다. */
 function drawBest(): void {
-  const done = state.runs.filter((r) => r.finished);
+  const done = state.runs.filter((r) => r.finished && r.scenario === state.data.scenario.id);
   if (!done.length) {
-    mount(els.best, h("span", { class: "best-empty" }, "분기 목표: 매출 11,200 · 이익 4,200 · 납기 100% · 직행률 90%"));
+    const k = state.data.scenario.kpi;
+    mount(els.best, h("span", { class: "best-empty" },
+      `${state.data.scenario.name} 목표: 매출 ${num(k.revenue)} · 이익 ${num(k.profit)} · 납기 ${pct(k.on_time_rate, 0)} · 직행률 ${pct(k.first_pass_yield, 0)}`));
     return;
   }
   const best = done.reduce((a, b) => (b.result.grade.score > a.result.grade.score ? b : a));
@@ -378,7 +406,7 @@ function drawTabs(): void {
       tab("control", "관제실"),
       tab("report", "레포트", !r),
       tab("field", locked ? "현장 🔒" : "현장", locked, locked ? "60일을 끝까지 진행하면 열립니다" : "")),
-    h("div", { class: "runs" }, state.runs.map((run, i) =>
+    h("div", { class: "runs" }, state.runs.map((run, i) => run.scenario !== state.data.scenario.id ? null :
       h("button", {
         type: "button", class: `run-chip${i === state.current ? " active" : ""}`,
         title: `이익 ${run.result.profit}`,

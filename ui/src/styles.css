@@ -611,6 +611,7 @@ body { background: var(--desk); }
 .schematic .unit-name { font-size: 11px; font-weight: 700; fill: var(--ink-3); }
 .schematic .unit-status { font-size: 12px; font-weight: 700; fill: var(--ink-2); }
 .schematic .unit-status.stop { fill: #8e2e42; }
+.schematic .unit-status.small { font-size: 11px; }
 .schematic .worker { fill: #d6a400; stroke: #8a6a00; stroke-width: 1; }
 .schematic .queue-label { font-size: 11px; font-weight: 700; fill: var(--ink-3); }
 .schematic .queue-label.end { text-anchor: end; }

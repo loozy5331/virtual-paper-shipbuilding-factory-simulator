@@ -4,14 +4,14 @@
 //   [자재창고] → [소조립] → [중조립] → [대조립] → [탑재] → [인도]
 //   [작업대기소] [트랜스포터] [연구소] [착수 전]
 //
-// 공정 상자 안의 작업장은 목록으로 그린다(지금은 공정마다 1호 하나, 2.0에서 증설하면 2호가 붙는다).
+// 공정 상자 안의 작업장은 목록으로 그린다. 증설한 공정은 1호·2호 두 줄이다.
 
 import type { Scenario } from "./api";
 import { s } from "./dom";
 import { STATE_INFO, STATION_COLOR, WORK_STATE } from "./labels";
 import type { Frame, LotView } from "./scene/frame";
 
-const W = 820;          // 간트(1000)보다 좁게 잡아 같은 폭에서 글자가 더 크게 보이게 한다.
+const W = 880;          // 간트(1000)보다 좁게 잡아 같은 폭에서 글자가 더 크게 보이게 한다. 2호 줄이 들어갈 만큼은 넓게.
 const STORE_W = 92;
 const DELIVER_W = 82;
 const BOX_Y = 6;
@@ -88,7 +88,7 @@ export function renderSchematic(frame: Frame, scenario: Scenario, opts: Schemati
   scenario.stations.forEach((st, p) => {
     const x = boxX(p);
     const view = frame.stations[p];
-    const status = stationStatus(view.state);
+    const status = stationStatus(view.units.find((u) => u.state !== "idle")?.state ?? view.state);
     const g = s("g", {
       class: "sch-box station pick", tabindex: 0, role: "button",
       "aria-label": `${st.name}: ${status.text}. 눌러서 현장에서 보기`,
@@ -104,18 +104,33 @@ export function renderSchematic(frame: Frame, scenario: Scenario, opts: Schemati
     const tags = [view.overtime ? "잔업" : "", view.senior ? "시니어" : ""].filter(Boolean).join(" · ");
     if (tags) g.append(s("text", { x: x + boxW - 10, y: BOX_Y + 18, class: view.senior ? "box-tag senior" : "box-tag" }, tags));
 
-    // 작업장 1호: 상태 띠 + 상태 글, 배 이름표, 인원 점
+    // 작업장: 상태 띠 + 상태 글, 배 이름표, 인원 점. 1개면 두 줄 높이, 2개면 한 줄씩.
     const uy = BOX_Y + 28;
-    g.append(
-      s("rect", { x: x + 8, y: uy, width: boxW - 16, height: 44, rx: 4, class: "unit" }),
-      s("text", { x: x + 14, y: uy + 14, class: "unit-name" }, "1호"));
-    if (status.color) g.append(s("rect", { x: x + 8, y: uy + 40, width: boxW - 16, height: 4, fill: status.color }));
-    g.append(s("text", { x: x + 40, y: uy + 14, class: view.stop ? "unit-status stop" : "unit-status" }, status.text));
-    const bench = lotsAt("bench", p)[0];
-    if (bench) g.append(tag(x + 14, uy + 19, bench));
-    for (let w = 0; w < view.workers; w++) {
-      g.append(s("circle", { cx: x + 60 + w * 12, cy: uy + 28, r: 4.5, class: "worker" }, s("title", null, `배정 ${view.workers}명`)));
-    }
+    const rowH = view.units.length === 1 ? 44 : 22;
+    view.units.forEach((unit, k) => {
+      const ry = uy + k * (rowH + 2);
+      const st2 = stationStatus(unit.state);
+      const lot = frame.lots.find((l) => l.place === "bench" && l.station === p && l.ship === unit.ship);
+      g.append(s("rect", { x: x + 8, y: ry, width: boxW - 16, height: rowH, rx: 4, class: "unit" }));
+      if (st2.color) g.append(s("rect", { x: x + 8, y: ry + rowH - 3, width: boxW - 16, height: 3, fill: st2.color }));
+      g.append(s("text", { x: x + 14, y: ry + 14, class: "unit-name" }, `${unit.unit}호`));
+      const dots = (cx: number, cy: number) => {
+        for (let w = 0; w < unit.workers; w++) {
+          g.append(s("circle", { cx: cx + w * 12, cy, r: 4.5, class: "worker" }, s("title", null, `배정 ${unit.workers}명`)));
+        }
+      };
+      if (rowH === 44) {
+        g.append(s("text", { x: x + 40, y: ry + 14, class: unit.stop ? "unit-status stop" : "unit-status" }, st2.text));
+        if (lot) g.append(tag(x + 14, ry + 19, lot));
+        dots(x + 60, ry + 28);
+      } else {
+        // 한 줄: "1호 [S3] ●●" (작업 중이면 인원 점, 아니면 상태 글)
+        const after = lot ? x + 72 : x + 36;
+        if (lot) g.append(tag(x + 34, ry + 2, lot));
+        if (unit.state === "work") dots(after + 4, ry + 11);
+        else g.append(s("text", { x: after, y: ry + 15, class: unit.stop ? "unit-status small stop" : "unit-status small" }, st2.text));
+      }
+    });
 
     // 공정 앞 대기 줄
     const queue = lotsAt("queue", p);

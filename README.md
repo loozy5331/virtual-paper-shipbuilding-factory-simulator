@@ -4,7 +4,7 @@
 플레이어가 4M을 정하면 종이배 4척을 60일 동안 만들고 QCD와 등급으로 채점한다.
 같은 수주·난수로 설정만 바꿔 다시 실행하며 등급을 올린다. 결과는 간트와 3D 현장으로 다시 본다.
 
-버전 1.2.1. 변경 기록은 `CHANGELOG.md`, 이후 방향은 `docs/roadmap.md`.
+버전 2.0.0-dev(개발 중, 마지막 릴리스는 1.2.1). 변경 기록은 `CHANGELOG.md`, 이후 방향은 `docs/roadmap.md`.
 
 규칙의 기준 문서: https://claude.ai/code/artifact/63f9424c-6a92-461b-8fb0-06a2820778d0
 
@@ -54,9 +54,9 @@ print(result["profit"], result["grade"]["grade"])  # 3030.0 A
 | `POST /api/suggest-orders` | `{"config": {...}}` | 필요일에서 역산한 발주일 (1.0 하위 호환) |
 
 설정이 규칙에 맞지 않으면 422와 `{"errors": [...]}`를 돌려준다.
-설정의 모양은 `engine/shipyard/data/presets.json`을, 결과의 모양은 `engine/shipyard/sim.py`의 `simulate`를 보면 된다.
+설정의 모양은 `engine/shipyard/data/scenarios/basic.json`의 `presets`를, 결과의 모양은 `engine/shipyard/sim.py`의 `simulate`를 보면 된다.
 
 ## 규칙을 바꿀 때
 
-숫자(단가, 작업량, 납기, 난수표)는 `engine/shipyard/data/scenario.json`에만 있다.
+숫자는 `engine/shipyard/data/`에만 있다. 공통 규칙(단가, 작업량, 난수표)은 `rules.json`, 시나리오별 수주·목표·프리셋은 `scenarios/*.json`이다.
 숫자나 규칙을 바꾸면 10장의 기대값이 달라지므로 테스트와 규칙 문서를 함께 고친다.

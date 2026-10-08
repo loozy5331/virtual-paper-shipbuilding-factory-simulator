@@ -24,15 +24,22 @@ export interface LotView {
   late: boolean;
 }
 
-export interface StationView {
-  id: string;
-  name: string;
+/** 작업장 하나(증설하면 공정마다 2개)의 오늘. */
+export interface UnitView {
+  unit: number;             // 1호, 2호
   ship: string | null;      // 오늘 작업장을 차지한 배 (작업, 재작업, 인력 대기, 중지)
   workers: number;          // 오늘 배정된 인원 (시니어 제외)
-  senior: boolean;
-  overtime: boolean;
   stop: "accident" | "breakdown" | null;
   state: string;
+}
+
+/** 공정의 오늘. ship·workers·stop·state는 1호 값이다(3D가 아직 1호만 그린다, 2.0 ⑥에서 units로 옮긴다). */
+export interface StationView extends Omit<UnitView, "unit"> {
+  id: string;
+  name: string;
+  senior: boolean;
+  overtime: boolean;
+  units: UnitView[];
 }
 
 export interface TransporterView {
@@ -93,7 +100,7 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
         return { ...base, place: "queue", station: p, form: p, state: rec.state };
       default: {
         // 작업, 재작업, 인력 대기, 중지: 정반 위에 있으면 진행률만큼 다음 단계로 바뀌는 중이다.
-        const onBench = result.stations[p].daily[index].ship === ship.id;
+        const onBench = result.stations[p].units.some((u) => u.daily[index].ship === ship.id);
         if (!onBench) return { ...base, place: "queue", station: p, form: p, state: rec.state };
         const span = ship.spans[stationIds[p]];
         const progress = span ? clamp01((day - span.start + frac) / (span.end - span.start + 1)) : 0;
@@ -114,16 +121,24 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
   }
 
   const stations: StationView[] = result.stations.map((st) => {
-    const rec = day > 0 ? st.daily[index] : { state: "idle", ship: null, workers: 0 };
+    const units: UnitView[] = st.units.map((u) => {
+      const rec = day > 0 ? u.daily[index] : { state: "idle", ship: null, workers: 0 };
+      return {
+        unit: u.unit,
+        ship: rec.ship,
+        workers: rec.workers,
+        stop: rec.state === "accident_stop" ? "accident" : rec.state === "breakdown_stop" ? "breakdown" : null,
+        state: rec.state,
+      };
+    });
+    const { unit: _first, ...first } = units[0];
     return {
       id: st.id,
       name: st.name,
-      ship: rec.ship,
-      workers: rec.workers,
+      ...first,
       senior: config.skilled_station === st.id,
       overtime: config.stations[st.id].overtime,
-      stop: rec.state === "accident_stop" ? "accident" : rec.state === "breakdown_stop" ? "breakdown" : null,
-      state: rec.state,
+      units,
     };
   });
 

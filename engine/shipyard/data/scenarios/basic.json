@@ -1,0 +1,103 @@
+{
+  "id": "basic",
+  "name": "기본 분기",
+  "summary": "수주 4척. 공장 능력이 남는다. 착수 분산, 발주 방식, 인원으로 있는 자원을 잘 쓰는 법을 익힌다.",
+  "period": "2026년 4분기",
+  "days": 60,
+  "orders": [
+    {"id": "S1", "type": "VLCC", "order_day": 1, "due_day": 30, "price": 3000},
+    {"id": "S2", "type": "CONT", "order_day": 1, "due_day": 38, "price": 2600},
+    {"id": "S3", "type": "VLCC", "order_day": 1, "due_day": 46, "price": 3000},
+    {"id": "S4", "type": "CONT", "order_day": 1, "due_day": 56, "price": 2600}
+  ],
+  "initial_stock": {"paper": 0, "paint": 0, "flag": 0},
+  "kpi": {"revenue": 11200, "profit": 4200, "on_time_rate": 1.0, "first_pass_yield": 0.9},
+  "grade": {
+    "weights": {"revenue": 30, "profit": 40, "delivery": 20, "quality": 10},
+    "profit_cap": 1.3,
+    "bands": {"S": 105, "A": 85, "B": 70, "C": 50},
+    "baseline_preset": "all_in"
+  },
+  "random": {
+    "quality": {
+      "S1": {"sub_assembly": 0.62, "block_assembly": 0.21, "grand_assembly": 0.48, "erection": 0.08},
+      "S2": {"sub_assembly": 0.35, "block_assembly": 0.74, "grand_assembly": 0.03, "erection": 0.41},
+      "S3": {"sub_assembly": 0.17, "block_assembly": 0.28, "grand_assembly": 0.9, "erection": 0.33},
+      "S4": {"sub_assembly": 0.55, "block_assembly": 0.13, "grand_assembly": 0.69, "erection": 0.26}
+    }
+  },
+  "presets": [
+    {
+      "id": "unmanaged",
+      "name": "무관리",
+      "summary": "전부 한꺼번에 착수하고, 자재는 필요한 날에야 발주하고, 사람을 꽉 채워 속성 공법과 잔업으로 밀어붙인다. 정비는 하지 않는다.",
+      "config": {
+        "ordering": "late",
+        "ships": {
+          "S1": {"priority": 1, "start_day": 1},
+          "S2": {"priority": 3, "start_day": 1},
+          "S3": {"priority": 2, "start_day": 1},
+          "S4": {"priority": 4, "start_day": 1}
+        },
+        "stations": {
+          "sub_assembly": {"method": "fast", "overtime": true, "maintenance": false},
+          "block_assembly": {"method": "fast", "overtime": true, "maintenance": false},
+          "grand_assembly": {"method": "fast", "overtime": true, "maintenance": false},
+          "erection": {"method": "fast", "overtime": true, "maintenance": false}
+        },
+        "pool": 8,
+        "transporters": {"count": 1, "maintenance": false},
+        "research": [],
+        "skilled_station": null
+      }
+    },
+    {
+      "id": "managed",
+      "name": "관리",
+      "summary": "납기순으로 착수를 나누고, 자재는 필요일에서 역산해 발주하고, 6명으로 표준 공법에 정비를 한다.",
+      "config": {
+        "ordering": "jit",
+        "ships": {
+          "S1": {"priority": 1, "start_day": 3},
+          "S2": {"priority": 2, "start_day": 11},
+          "S3": {"priority": 3, "start_day": 17},
+          "S4": {"priority": 4, "start_day": 23}
+        },
+        "stations": {
+          "sub_assembly": {"method": "standard", "overtime": false, "maintenance": true},
+          "block_assembly": {"method": "standard", "overtime": false, "maintenance": true},
+          "grand_assembly": {"method": "standard", "overtime": false, "maintenance": true},
+          "erection": {"method": "standard", "overtime": false, "maintenance": true}
+        },
+        "pool": 6,
+        "transporters": {"count": 1, "maintenance": true},
+        "research": [],
+        "skilled_station": "erection"
+      }
+    },
+    {
+      "id": "all_in",
+      "name": "전부 최대 투입",
+      "summary": "사람 8명, 속도, 잔업, 정비를 전부 넣고 자재는 1일에 모두 발주한다. 등급의 기준선이다.",
+      "config": {
+        "ordering": "bulk",
+        "ships": {
+          "S1": {"priority": 1, "start_day": 1},
+          "S2": {"priority": 2, "start_day": 1},
+          "S3": {"priority": 3, "start_day": 1},
+          "S4": {"priority": 4, "start_day": 1}
+        },
+        "stations": {
+          "sub_assembly": {"method": "fast", "overtime": true, "maintenance": true},
+          "block_assembly": {"method": "fast", "overtime": true, "maintenance": true},
+          "grand_assembly": {"method": "fast", "overtime": true, "maintenance": true},
+          "erection": {"method": "fast", "overtime": true, "maintenance": true}
+        },
+        "pool": 8,
+        "transporters": {"count": 1, "maintenance": true},
+        "research": [],
+        "skilled_station": "block_assembly"
+      }
+    }
+  ]
+}
