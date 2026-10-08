@@ -14,7 +14,7 @@ export interface DocHead {
   /** 기재 항목 [이름, 값]. */
   fields: [string, Child][];
   /** 결재란 승인 칸에 찍을 도장(생산실적 평가서의 등급). 없으면 빈 칸. */
-  stamp?: { text: string; sub: string; color: string; strong?: boolean } | null;
+  stamp?: { text: string; sub: string; color: string; strong?: boolean; fill?: string; ink?: string } | null;
 }
 
 export function docHead(doc: DocHead): HTMLElement {
@@ -31,7 +31,10 @@ export function docHead(doc: DocHead): HTMLElement {
       sign("작성"),
       sign("검토"),
       sign("승인", doc.stamp
-        ? h("span", { class: `stamp${doc.stamp.strong ? " strong" : ""}`, style: { color: doc.stamp.color, borderColor: doc.stamp.color } },
+        ? h("span", {
+          class: `stamp${doc.stamp.strong ? " strong" : ""}`,
+          style: { color: doc.stamp.ink ?? doc.stamp.color, borderColor: doc.stamp.color, ...(doc.stamp.fill ? { background: doc.stamp.fill } : {}) },
+        },
           h("b", null, doc.stamp.text), h("small", null, doc.stamp.sub))
         : null)));
 }

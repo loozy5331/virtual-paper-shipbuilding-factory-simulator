@@ -3,7 +3,7 @@
 
 import type { Finding, Grade, Result, Scenario, ShipResult, SimEvent } from "./api";
 import { h, money, num, pct, s, signed } from "./dom";
-import { COST_ITEMS, EVENT_NAME, GRADE_COLOR, GRADE_NOTE, LEAD_TIME_STATES, STATE_INFO, STATION_COLOR } from "./labels";
+import { COST_ITEMS, EVENT_NAME, GRADE_COLOR, GRADE_NOTE, GRADE_TEXT, LEAD_TIME_STATES, STATE_INFO, STATION_COLOR } from "./labels";
 
 export function eventText(ev: SimEvent, scenario: Scenario): string {
   const station = (id: string) => scenario.stations.find((st) => st.id === id)?.name ?? id;
@@ -80,7 +80,7 @@ function gradeCard(grade: Grade): HTMLElement {
   const base = grade.baseline;
   const vs = grade.vs_baseline;
   return h("div", { class: "grade-card" },
-    h("div", { class: `grade-letter grade-${grade.grade}`, style: { background: GRADE_COLOR[grade.grade] ?? "#4b5a51" } },
+    h("div", { class: `grade-letter grade-${grade.grade}`, style: { background: GRADE_COLOR[grade.grade] ?? "#4b5a51", color: GRADE_TEXT[grade.grade] } },
       h("b", null, grade.grade), h("span", null, `${grade.score.toFixed(1)}점`),
       GRADE_NOTE[grade.grade] ? h("em", null, GRADE_NOTE[grade.grade]) : null),
     h("div", { class: "grade-body" },

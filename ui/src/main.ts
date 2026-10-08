@@ -7,7 +7,7 @@ import { h, mount } from "./dom";
 import { renderForm, updatePreview } from "./form";
 import { renderGantt, renderShipGantt } from "./gantt";
 import { docHead } from "./paper";
-import { EVENT_NAME, GRADE_COLOR, LOSS_STATES, STATION_COLOR, TRANSPORT_STATE } from "./labels";
+import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, STATION_COLOR, TRANSPORT_STATE } from "./labels";
 import { breakdownBar, breakdownLegend, eventText, renderReport } from "./report";
 import type { Yard } from "./scene/yard";
 
@@ -326,7 +326,13 @@ function drawSheetHead(): void {
       fields: r
         ? [["회차", `${r.n}회차`], ["설정", r.label], ["판정", r.finished && g ? `${g.grade} (${g.score.toFixed(1)}점)` : "진행 중"]]
         : [["회차", "—"]],
-      stamp: r?.finished && g ? { text: g.grade, sub: `${g.score.toFixed(1)}점`, color: GRADE_COLOR[g.grade] ?? "#4b5a51", strong: g.grade === "S" || g.grade === "F" } : null,
+      stamp: r?.finished && g ? {
+        text: g.grade, sub: `${g.score.toFixed(1)}점`, strong: g.grade === "S" || g.grade === "F",
+        // 밝은 금(S)은 종이 위에서 윤곽이 약해 진한 금 테두리 + 금 바탕 + 먹색 글자로 찍는다.
+        color: GRADE_EDGE[g.grade] ?? GRADE_COLOR[g.grade] ?? "#4b5a51",
+        fill: GRADE_EDGE[g.grade] ? GRADE_COLOR[g.grade] : undefined,
+        ink: GRADE_TEXT[g.grade],
+      } : null,
     }));
   } else if (state.view === "control") {
     mount(els.sheetHead, docHead({
@@ -347,7 +353,7 @@ function drawBest(): void {
   const g = best.result.grade;
   mount(els.best,
     h("span", null, "이번 세션 최고"),
-    h("b", { class: `best-grade grade-${g.grade}`, style: { background: GRADE_COLOR[g.grade] } }, g.grade),
+    h("b", { class: `best-grade grade-${g.grade}`, style: { background: GRADE_COLOR[g.grade], color: GRADE_TEXT[g.grade] } }, g.grade),
     h("span", null, `${g.score.toFixed(1)}점 · ${best.n}회차 ${best.label}`));
 }
 
@@ -378,7 +384,7 @@ function drawTabs(): void {
           drawAll();
         },
       }, h("b", null, `${run.n}회차`), ` ${run.label}`,
-      run.finished ? h("span", { class: `chip-grade grade-${run.result.grade.grade}`, style: { background: GRADE_COLOR[run.result.grade.grade] } }, run.result.grade.grade) : null))));
+      run.finished ? h("span", { class: `chip-grade grade-${run.result.grade.grade}`, style: { background: GRADE_COLOR[run.result.grade.grade], color: GRADE_TEXT[run.result.grade.grade] } }, run.result.grade.grade) : null))));
 
   els.control.hidden = state.view !== "control";
   els.field.hidden = state.view !== "field";

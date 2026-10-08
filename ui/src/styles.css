@@ -576,10 +576,11 @@ body { background: var(--desk); }
 
 /* ----- 등급 강조: S와 F는 이중 테두리와 한마디(목표 초과 / 목표 미달) ----- */
 .grade-letter em { font-style: normal; font-size: 0.78rem; font-weight: 800; margin-top: 4px; padding: 1px 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.22); }
-.grade-letter.grade-S { color: #fff; box-shadow: 0 0 0 3px var(--paper), 0 0 0 5px #9a6a00; }
+.grade-letter.grade-S { box-shadow: 0 0 0 3px var(--paper), 0 0 0 5px #9a6a00; }
+.grade-letter.grade-S em { background: rgba(255, 255, 255, 0.45); }
 .grade-letter.grade-F { color: #fff; box-shadow: 0 0 0 3px var(--paper), 0 0 0 5px #c0262d; }
 .grade-letter.grade-S b, .grade-letter.grade-F b { font-size: 3.6rem; }
-.best-grade.grade-S, .chip-grade.grade-S { box-shadow: 0 0 0 2px #f3d27a; }
+.best-grade.grade-S, .chip-grade.grade-S { box-shadow: 0 0 0 1.5px #9a6a00; }
 .best-grade.grade-F, .chip-grade.grade-F { box-shadow: 0 0 0 2px #f2a3a6; }
 .stamp.strong { border-width: 3.5px; outline: 1.5px solid currentColor; outline-offset: 2px; }
 
