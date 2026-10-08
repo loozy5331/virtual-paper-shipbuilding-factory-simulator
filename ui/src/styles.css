@@ -452,8 +452,9 @@ select.priority { max-width: 84px; }
 
 /* =====================================================================
    1.1 클립보드 위 종이 (D2)
-   나무 책상 위에 클립보드 두 개: 왼쪽 작업지시서(계획), 오른쪽 공정 실적표(관제실)와 검사 성적서(레포트).
+   책상 위에 클립보드 두 개: 왼쪽 생산계획서(계획), 오른쪽 공정 실적표(관제실)와 생산실적 평가서(레포트).
    현장(3D)을 볼 때는 오른쪽 클립보드를 내려놓는다(board-down).
+   장식은 절제한다: 단색 책상, 얇은 판, 작은 무광 집게. 눈에 띄는 것은 종이 서식(결재란, 도장)이어야 한다.
    ===================================================================== */
 :root {
   --paper: #fcfaf4;
@@ -462,47 +463,42 @@ select.priority { max-width: 84px; }
   --panel-2: var(--paper-2);
   --line: #d9d1bf;
   --line-soft: #e9e3d4;
-  --board: #6b4a2e;
-  --board-edge: #553821;
+  --desk: #d6d1c6;
+  --board: #c4baa6;
+  --board-edge: #ada28b;
+  --sheet-shadow: 0 1px 0 #e2dbca, 0 2px 8px rgba(30, 28, 20, 0.12);
   --serif: "Nanum Myeongjo", "AppleMyungjo", "Batang", "Noto Serif KR", serif;
 }
 
-body {
-  background-color: #b48a5d;
-  background-image:
-    repeating-linear-gradient(90deg, rgba(92, 58, 28, 0.07) 0 2px, transparent 2px 11px),
-    repeating-linear-gradient(90deg, rgba(255, 240, 214, 0.06) 0 1px, transparent 1px 29px),
-    linear-gradient(180deg, #bf9568, #a67a4d);
-}
+body { background: var(--desk); }
 
-.topbar { background: #3f2c1d; color: #f6efe1; box-shadow: 0 2px 8px rgba(40, 24, 10, 0.35); }
-.logo { background: rgba(246, 239, 225, 0.12); }
+.topbar { background: #26302b; color: #f3f1ea; }
+.logo { background: rgba(243, 241, 234, 0.1); }
 
 /* ----- 클립보드 ----- */
 .clipboard {
-  position: relative; background: var(--board); border-radius: 18px; padding: 36px 14px 14px;
-  box-shadow: inset 0 0 0 2px var(--board-edge), inset 0 2px 0 rgba(255, 255, 255, 0.08), 0 10px 26px rgba(40, 24, 10, 0.35);
+  position: relative; background: var(--board); border: 1px solid var(--board-edge); border-radius: 8px; padding: 20px 8px 8px;
+  box-shadow: 0 2px 6px rgba(30, 28, 20, 0.12);
   display: flex; flex-direction: column; gap: 10px; min-width: 0;
 }
 .clipboard::before {          /* 금속 집게 */
-  content: ""; position: absolute; top: -12px; left: 50%; transform: translateX(-50%); z-index: 2;
-  width: 150px; height: 40px; border-radius: 10px 10px 16px 16px;
-  background: linear-gradient(180deg, #e9ecef, #aab1b8 55%, #8a9199);
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  content: ""; position: absolute; top: -7px; left: 50%; transform: translateX(-50%); z-index: 2;
+  width: 84px; height: 20px; border-radius: 4px 4px 7px 7px;
+  background: #8c9195; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
 }
 .clipboard::after {           /* 집게 구멍 */
-  content: ""; position: absolute; top: -4px; left: 50%; transform: translateX(-50%); z-index: 3;
-  width: 38px; height: 10px; border-radius: 6px; background: #5d646b; box-shadow: inset 0 2px 2px rgba(0, 0, 0, 0.5);
+  content: ""; position: absolute; top: -3px; left: 50%; transform: translateX(-50%); z-index: 3;
+  width: 22px; height: 5px; border-radius: 3px; background: #6c7175;
 }
 .board-left { position: sticky; top: 18px; align-self: start; }
-.board-left .form { position: static; max-height: calc(100vh - 36px - 50px); }
+.board-left .form { position: static; max-height: calc(100vh - 36px - 30px); }
 @media (max-width: 1100px) { .board-left { position: static; } .board-left .form { max-height: none; } }
 
 /* 클립보드를 내려놓은 현장: 집게와 판 없이 3D만 */
-.clipboard.board-down { background: transparent; box-shadow: none; padding: 0; }
+.clipboard.board-down { background: transparent; border-color: transparent; box-shadow: none; padding: 0; }
 .clipboard.board-down::before, .clipboard.board-down::after { display: none; }
-.field-panel { background: #2b241e; color: #f6efe1; border: 0; border-radius: 14px; box-shadow: 0 10px 26px rgba(40, 24, 10, 0.4); }
-.field-panel .hint { color: rgba(246, 239, 225, 0.7); }
+.field-panel { background: #26302b; color: #f3f1ea; border: 0; border-radius: 8px; box-shadow: 0 2px 8px rgba(30, 28, 20, 0.2); }
+.field-panel .hint { color: rgba(243, 241, 234, 0.7); }
 .field-panel .focus-note { color: #ffd98a; }
 .field-panel .select { background: #fff; color: var(--ink); }
 .field-panel .scene-host { color: var(--ink); }   /* 3D 라벨은 흰 바탕이라 원래 글자색 */
@@ -510,7 +506,7 @@ body {
 /* ----- 종이 ----- */
 .board-left .form, .board-right > .panel:not(.field-panel) {
   background: var(--paper); border: 0; border-radius: 3px; padding: 22px 22px 18px;
-  box-shadow: 0 1px 0 #e7e0cf, 0 3px 0 -1px #f3eee2, 0 4px 0 -1px #ded6c3, 0 6px 14px rgba(40, 24, 10, 0.25);
+  box-shadow: var(--sheet-shadow);
 }
 .board-left .form { gap: 0; }
 .board-left .form > .panel {
@@ -529,8 +525,7 @@ body {
 .board-right:not(.board-down) > .sheet-head .doc-head { margin-bottom: 0; }
 .board-right:not(.board-down) > .playbar { padding: 12px 22px 4px; }
 .board-right:not(.board-down) > .control-panel, .board-right:not(.board-down) > .report-panel {
-  border-radius: 0 0 3px 3px; padding-bottom: 20px;
-  box-shadow: 0 1px 0 #e7e0cf, 0 3px 0 -1px #f3eee2, 0 4px 0 -1px #ded6c3, 0 8px 14px rgba(40, 24, 10, 0.22);
+  border-radius: 0 0 3px 3px; padding-bottom: 20px; box-shadow: var(--sheet-shadow);
 }
 .report-panel .report-top { margin-top: 6px; }
 
@@ -573,9 +568,8 @@ body {
 .view-tabs { margin-bottom: -6px; padding: 0 18px; }
 .view-tabs .tabs { background: none; border: 0; padding: 0; gap: 4px; align-items: flex-end; }
 .view-tabs .tab {
-  background: #e8dfcb; color: var(--ink-2); border-radius: 8px 8px 0 0; padding: 7px 18px 9px;
-  box-shadow: 0 -1px 3px rgba(40, 24, 10, 0.18);
+  background: #e7e2d6; color: var(--ink-2); border-radius: 6px 6px 0 0; padding: 7px 18px 9px; box-shadow: none;
 }
-.view-tabs .tab.active { background: var(--paper); color: var(--ink); padding-bottom: 12px; box-shadow: 0 -2px 5px rgba(40, 24, 10, 0.22); }
-.view-tabs .tab:disabled { opacity: 1; color: var(--ink-3); background: #ddd2bb; }
-.run-chip { background: var(--paper); border-color: #cdbf9f; }
+.view-tabs .tab.active { background: var(--paper); color: var(--ink); padding-bottom: 12px; box-shadow: 0 -1px 3px rgba(30, 28, 20, 0.1); }
+.view-tabs .tab:disabled { opacity: 1; color: var(--ink-3); background: #ddd8cb; }
+.run-chip { background: var(--paper); border-color: var(--board-edge); }

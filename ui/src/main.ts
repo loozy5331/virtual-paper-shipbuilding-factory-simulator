@@ -63,7 +63,7 @@ const els = {
   playbar: h("div", { class: "panel playbar" }),
   // 오른쪽 클립보드. 현장(3D)을 볼 때는 클립보드를 내려놓는다(board-down).
   board: h("div", { class: "clipboard board-right" }),
-  // 종이 머리글(공정 실적표 / 검사 성적서). 재생 막대보다 위에 와야 해서 패널 밖에 둔다.
+  // 종이 머리글(공정 실적표 / 생산실적 평가서). 재생 막대보다 위에 와야 해서 패널 밖에 둔다.
   sheetHead: h("div", { class: "panel sheet-head" }),
   sceneField: h("div", { class: "scene-host field" }),
 };
@@ -314,7 +314,7 @@ function drawAll(): void {
   tick(true);
 }
 
-/** 오른쪽 종이의 서식 머리글. 관제실은 공정 실적표, 레포트는 검사 성적서, 현장에는 종이가 없다. */
+/** 오른쪽 종이의 서식 머리글. 관제실은 공정 실적표, 레포트는 생산실적 평가서, 현장에는 종이가 없다. */
 function drawSheetHead(): void {
   const r = currentRun();
   const days = state.data.scenario.days;
@@ -322,7 +322,7 @@ function drawSheetHead(): void {
   if (state.view === "report") {
     const g = r?.result.grade;
     mount(els.sheetHead, docHead({
-      title: "검사 성적서", code: r ? `QC-${r.n}` : "QC-—",
+      title: "생산실적 평가서", code: r ? `PE-${r.n}` : "PE-—",
       fields: r
         ? [["회차", `${r.n}회차`], ["설정", r.label], ["판정", r.finished && g ? `${g.grade} (${g.score.toFixed(1)}점)` : "진행 중"]]
         : [["회차", "—"]],

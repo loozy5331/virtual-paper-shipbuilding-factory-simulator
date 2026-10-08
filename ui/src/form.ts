@@ -131,11 +131,11 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
   const runSection = h("section", { class: "run-bar" },
     h("div", { class: "errors", "data-preview": "errors" }),
     h("button", { class: "btn primary run", type: "button", disabled: ctx.busy, onclick: () => ctx.onRun() },
-      h("span", { class: "step light" }, "3"), `${scenario.days}일 실행`),
+      h("span", { class: "step light" }, "3"), `결재하고 ${scenario.days}일 실행`),
   );
 
   const head = docHead({
-    title: "작업지시서", code: "WO-01",
+    title: "생산계획서", code: "PP-01",
     fields: [
       ["수주", `${orderIds.length}척 (${orderIds[0]}~${orderIds[orderIds.length - 1]})`],
       ["기간", `1~${scenario.days}일`],
