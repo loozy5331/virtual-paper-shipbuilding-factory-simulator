@@ -75,13 +75,13 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
         : "직접 정한 설정입니다."),
   );
 
-  // ① 수주와 계획: 4척 요약 줄과 계획 간트. 우선순위는 겹치면 맞바꾸고, 착수일은 간트에서 끌어 정한다.
+  // ① 수주와 계획: 4척 요약 줄과 계획 간트. 우선순위는 겹치면 맞바꾸고, 착수 예정일은 간트에서 끌어 정한다.
   const summary = h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("span", { class: "step" }, "1"), h("h2", null, "수주와 계획")),
     h("table", { class: "plan" },
       h("thead", null, h("tr", null,
         h("th", null, "배"), h("th", null, "선종"), h("th", { class: "r" }, "납기"), h("th", { class: "r" }, "계약금"),
-        h("th", null, "우선순위"), h("th", null, "착수일"))),
+        h("th", null, "우선순위"), h("th", null, "착수 예정일"))),
       h("tbody", null, scenario.orders.map((order) => {
         const ship = config.ships[order.id];
         return h("tr", null,
@@ -104,7 +104,7 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
     h("p", { class: "hint" }, "작업장, 사람, 운반 모두 우선순위 순으로 받습니다."),
     h("div", { class: "plan-head" },
       h("b", null, "계획 간트"),
-      h("small", null, "배 줄을 좌우로 끌거나, 줄을 누르고 ←/→로 착수일을 옮깁니다.")),
+      h("small", null, "배 줄을 좌우로 끌거나, 줄을 누르고 ←/→로 착수 예정일을 옮깁니다.")),
     h("div", { class: "plan-host", "data-plan": "" }),
     h("div", { class: "legend plan-legend" },
       scenario.stations.map((st) => h("span", null, h("i", { style: { background: STATION_COLOR[st.id] } }), st.name)),

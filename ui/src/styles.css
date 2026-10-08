@@ -211,7 +211,7 @@ select.priority { max-width: 84px; }
 .legend i.deliver-mark { width: 10px; height: 10px; background: var(--good); transform: rotate(45deg); border-radius: 1px; }
 .legend .sep { width: 1px; height: 14px; background: var(--line); }
 
-/* ----- 계획 간트 (착수일 끌기) ----- */
+/* ----- 계획 간트 (착수 예정일 끌기) ----- */
 .plan-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
 .plan-host { margin-top: 6px; touch-action: none; }
 .plan-gantt .ship-id.small { font-size: 12px; }
@@ -222,7 +222,8 @@ select.priority { max-width: 84px; }
 .plan-gantt .plan-row.dragging { cursor: grabbing; }
 .plan-gantt .plan-row.dragging .plan-hit { fill: var(--accent-soft); }
 .plan-gantt .plan-conflict { pointer-events: none; stroke: #898781; stroke-width: 1; }
-.plan-gantt .plan-live { font-size: 10px; font-weight: 700; fill: var(--accent); }
+.plan-gantt .plan-start { font-size: 10px; font-weight: 700; fill: var(--ink-2); font-variant-numeric: tabular-nums; pointer-events: none; }
+.plan-gantt .plan-row.dragging .plan-start, .plan-gantt .plan-row:focus-visible .plan-start { fill: var(--accent); }
 .plan-gantt .plan-due { pointer-events: none; }
 .plan-gantt .plan-late { font-size: 13px; font-weight: 800; fill: var(--bad); }
 .legend i.plan-overlap { background: repeating-linear-gradient(45deg, #898781 0 2px, transparent 2px 5px); outline: 1px solid #898781; }
@@ -562,7 +563,7 @@ body { background: var(--desk); }
 .board-left .doc-fields { grid-column: 1 / -1; order: 3; }
 .panel-head h3 { font-size: 0.95rem; }
 
-/* ----- 색인 탭 (관제실 | 현장 | 레포트) ----- */
+/* ----- 색인 탭 (관제실 | 레포트 | 현장) ----- */
 .view-tabs { margin-bottom: -6px; padding: 0 18px; }
 .view-tabs .tabs { background: none; border: 0; padding: 0; gap: 4px; align-items: flex-end; }
 .view-tabs .tab {

@@ -1,6 +1,6 @@
 // 화면의 상태와 연결. 서버에서 시나리오를 받고, 설정을 고치고, 실행 결과를 회차로 쌓는다.
 // 시연 흐름: 분기 목표와 수주 → 계획 → 자원 배치 → 60일 진행(관제실) → 레포트(등급) → 현장 재현 → 재시도.
-// 오른쪽은 [관제실 | 현장 | 레포트] 탭이다. 관제실은 기호도 + 간트([전체 | 배별]), 현장은 3D이고 재생 커서를 함께 쓴다.
+// 오른쪽은 [관제실 | 레포트 | 현장] 탭이다. 관제실은 기호도 + 간트([전체 | 배별]), 현장은 3D이고 재생 커서를 함께 쓴다.
 // 현장으로 들어가는 길은 셋이다: 의문점 카드, 기호도 작업장, 간트 막대(D7). 60일을 끝낸 회차만 열린다.
 
 import { api, ApiError, type Config, type Finding, type Preview, type Result, type ScenarioPayload } from "./api";
@@ -14,7 +14,7 @@ import { renderSchematic } from "./schematic";
 import { buildFrame } from "./scene/frame";
 import type { Yard } from "./scene/yard";
 
-const SPEEDS = [1, 2, 4, 8];
+const SPEEDS = [1, 2, 8];
 const BASE_MS_PER_DAY = 500;   // 1배속은 하루에 0.5초, 60일이 30초다.
 // 재생 중 사건 줄에 띄우는 사건. 투입, 완료, 출고, 운반은 너무 잦아서 뺀다.
 const TICKER_EVENTS = new Set(["arrival", "defect", "accident", "breakdown", "delivery", "research_done"]);
@@ -376,8 +376,8 @@ function drawTabs(): void {
   mount(els.tabs,
     h("div", { class: "tabs" },
       tab("control", "관제실"),
-      tab("field", locked ? "현장 🔒" : "현장", locked, locked ? "60일을 끝까지 진행하면 열립니다" : ""),
-      tab("report", "레포트", !r)),
+      tab("report", "레포트", !r),
+      tab("field", locked ? "현장 🔒" : "현장", locked, locked ? "60일을 끝까지 진행하면 열립니다" : "")),
     h("div", { class: "runs" }, state.runs.map((run, i) =>
       h("button", {
         type: "button", class: `run-chip${i === state.current ? " active" : ""}`,

@@ -1,6 +1,7 @@
-// 계획 간트: 실행 전에 착수일을 정하는 막대. 배마다 한 줄, 공정 막대 4개를 이어 붙인다.
+// 계획 간트: 실행 전에 착수 예정일을 정하는 막대. 배마다 한 줄, 공정 막대 4개를 이어 붙인다.
 // 막대 길이와 겹침은 서버 /api/preview의 plan을 그대로 그린다(화면은 계산하지 않는다).
-// 배 줄을 좌우로 끌거나, 줄에 포커스를 두고 ←/→를 누르면 착수일이 하루씩 바뀐다.
+// 배 줄을 좌우로 끌거나, 줄에 포커스를 두고 ←/→를 누르면 착수 예정일이 하루씩 바뀐다.
+// 막대 앞 위에 착수 예정일을 숫자로 적는다. 끄는 동안에도 그 숫자가 따라 바뀐다.
 // 끄는 동안에는 줄만 옮겨 보이고, 놓을 때 onMove로 알린다. 새 막대는 다음 미리보기에서 다시 그린다.
 
 import type { Plan, Scenario } from "./api";
@@ -11,7 +12,7 @@ const W = 440;
 const LEFT = 30;
 const RIGHT = 8;
 const TOP = 22;
-const ROW_H = 30;
+const ROW_H = 34;
 const BAR_H = 16;
 const WAIT_COLOR = STATE_INFO.station_wait.color;
 
@@ -19,7 +20,7 @@ export interface PlanGanttContext {
   scenario: Scenario;
   plan: Plan;
   startDays: Record<string, number>;
-  /** 착수일을 바꿨다. 범위(1~마지막 날)는 여기서 맞춰서 넘긴다. */
+  /** 착수 예정일을 바꿨다. 범위(1~마지막 날)는 여기서 맞춰서 넘긴다. */
   onMove(shipId: string, startDay: number): void;
 }
 
@@ -37,7 +38,7 @@ export function renderPlanGantt(ctx: PlanGanttContext): SVGElement {
 
   const svg = s("svg", {
     class: "gantt plan-gantt", viewBox: `0 0 ${W} ${height}`, role: "group",
-    "aria-label": "계획 간트. 배 줄을 끌거나 ←/→로 착수일을 바꿉니다.",
+    "aria-label": "계획 간트. 배 줄을 끌거나 ←/→로 착수 예정일을 바꿉니다.",
   });
   svg.append(s("defs", null,
     s("pattern", { id: "plan-hatch", width: 5, height: 5, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" },
@@ -58,13 +59,13 @@ export function renderPlanGantt(ctx: PlanGanttContext): SVGElement {
     const spans = plan.ships[sid];
     const start = ctx.startDays[sid];
     const y = TOP + i * ROW_H;
-    const barY = y + (ROW_H - BAR_H) / 2;
+    const barY = y + ROW_H - BAR_H - 4;
 
     svg.append(s("text", { x: 4, y: barY + BAR_H - 3, class: "ship-id small" }, sid));
 
     const row = s("g", {
       class: "plan-row", tabindex: 0, role: "slider", "data-own-keys": "", "data-ship": sid,
-      "aria-label": `${sid} 착수일`, "aria-valuemin": 1, "aria-valuemax": days, "aria-valuenow": start,
+      "aria-label": `${sid} 착수 예정일`, "aria-valuemin": 1, "aria-valuemax": days, "aria-valuenow": start,
     });
     // 줄 전체를 잡을 수 있게 투명한 바탕을 깐다.
     row.append(s("rect", { x: LEFT, y, width: W - LEFT - RIGHT, height: ROW_H, class: "plan-hit" }));
@@ -81,8 +82,9 @@ export function renderPlanGantt(ctx: PlanGanttContext): SVGElement {
     if (last && last.end > order.due_day) {
       row.append(s("text", { x: Math.min(x(last.end + 1) + 3, W - RIGHT), y: barY + BAR_H - 3, class: "plan-late" }, "!"));
     }
-    const live = s("text", { x: x(start), y: barY - 2, class: "plan-live", hidden: true });
-    row.append(live);
+    // 착수 예정일. 줄과 함께 움직이고, 끄는 동안 숫자가 바뀐다.
+    const label = s("text", { x: x(start), y: barY - 3, class: "plan-start" }, `${start}일`);
+    row.append(label);
     svg.append(row);
 
     // ----- 끌기 -----
@@ -92,7 +94,7 @@ export function renderPlanGantt(ctx: PlanGanttContext): SVGElement {
       const scale = W / svg.getBoundingClientRect().width;
       shift = clamp(start + Math.round(((px - from!) * scale) / dayW)) - start;
       row.setAttribute("transform", `translate(${shift * dayW} 0)`);
-      live.textContent = `${start + shift}일 착수`;
+      label.textContent = `${start + shift}일`;
     };
     row.addEventListener("pointerdown", (e) => {
       const ev = e as PointerEvent;
@@ -100,8 +102,6 @@ export function renderPlanGantt(ctx: PlanGanttContext): SVGElement {
       shift = 0;
       row.setPointerCapture(ev.pointerId);
       row.classList.add("dragging");
-      live.removeAttribute("hidden");
-      live.textContent = `${start}일 착수`;
     });
     row.addEventListener("pointermove", (e) => { if (from !== null) move((e as PointerEvent).clientX); });
     const drop = () => {
@@ -109,7 +109,6 @@ export function renderPlanGantt(ctx: PlanGanttContext): SVGElement {
       from = null;
       row.classList.remove("dragging");
       if (shift !== 0) ctx.onMove(sid, start + shift);
-      else live.setAttribute("hidden", "");
     };
     row.addEventListener("pointerup", drop);
     row.addEventListener("pointercancel", drop);
@@ -132,7 +131,7 @@ export function renderPlanGantt(ctx: PlanGanttContext): SVGElement {
   for (const c of plan.conflicts) {
     for (const sid of c.ships) {
       const i = scenario.orders.findIndex((o) => o.id === sid);
-      const y = TOP + i * ROW_H + (ROW_H - BAR_H) / 2;
+      const y = TOP + i * ROW_H + ROW_H - BAR_H - 4;   // 막대 자리(barY)와 같다
       svg.append(s("rect", {
         x: x(c.start) + 0.5, y: y - 2, width: (c.end - c.start + 1) * dayW - 1, height: BAR_H + 4,
         class: "plan-conflict", fill: "url(#plan-hatch)",
