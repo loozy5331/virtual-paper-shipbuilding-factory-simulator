@@ -27,6 +27,7 @@ export interface LotView {
 export interface StationView {
   id: string;
   name: string;
+  ship: string | null;      // 오늘 작업장을 차지한 배 (작업, 재작업, 인력 대기, 중지)
   workers: number;          // 오늘 배정된 인원 (시니어 제외)
   senior: boolean;
   overtime: boolean;
@@ -117,6 +118,7 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
     return {
       id: st.id,
       name: st.name,
+      ship: rec.ship,
       workers: rec.workers,
       senior: config.skilled_station === st.id,
       overtime: config.stations[st.id].overtime,
