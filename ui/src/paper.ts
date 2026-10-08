@@ -6,6 +6,8 @@ import { h, type Child } from "./dom";
 
 /** 결재란 "작성" 칸에 적는 작성자(사용자 결정). */
 export const AUTHOR = "Bell";
+/** 결재란 "검토" 칸에 적는 검토자(사용자 결정). */
+export const REVIEWER = "Loozy";
 
 export interface DocHead {
   /** 서식 이름. 예: "생산계획서" */
@@ -34,7 +36,7 @@ export function docHead(doc: DocHead): HTMLElement {
       doc.fields.map(([name, value]) => h("div", null, h("dt", null, name), h("dd", null, value)))),
     h("div", { class: "approval", "aria-label": "결재란" },
       sign("작성", h("span", { class: "sign-name" }, doc.author ?? AUTHOR)),
-      sign("검토"),
+      sign("검토", h("span", { class: "sign-name" }, REVIEWER)),
       sign("승인", doc.stamp
         ? h("span", {
           class: `stamp${doc.stamp.strong ? " strong" : ""}`,
