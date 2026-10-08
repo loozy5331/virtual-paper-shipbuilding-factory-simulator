@@ -849,3 +849,14 @@ body { background: var(--desk); }
 .room.board-down .report-sheet { overflow: hidden; }
 .report-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
 @media (prefers-reduced-motion: reduce) { .report-board { transition: none; } }
+
+/* ----- 현장: 작업모를 쓰고 나간 생산관리자의 눈(3D 화면 전체) ----- */
+.field-screen { position: relative; height: 100vh; min-height: 560px; background: #26302b; display: flex; flex-direction: column; color: #f3f1ea; }
+.field-head { flex: none; display: flex; align-items: center; gap: 12px; padding: 8px 16px; font-size: 13px; }
+.field-head .hint { color: rgba(243, 241, 234, 0.7); }
+.field-back { border: 1px solid rgba(243, 241, 234, 0.4); background: transparent; color: inherit; font: inherit; font-weight: 700; border-radius: 6px; padding: 4px 12px; cursor: pointer; }
+.field-cams { margin-left: auto; display: flex; gap: 4px; }
+.field-cams button { border: 1px solid rgba(243, 241, 234, 0.3); background: transparent; color: inherit; font: inherit; font-size: 12px; border-radius: 4px; padding: 3px 9px; cursor: pointer; }
+.field-cams button.active { background: #f3f1ea; color: #26302b; font-weight: 700; }
+.field-host { flex: 1; height: auto; border-radius: 0; color: var(--ink); }
+.field-osd { flex: none; height: 44px; }
