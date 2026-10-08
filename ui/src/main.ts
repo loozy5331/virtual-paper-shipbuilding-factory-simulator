@@ -5,7 +5,7 @@
 
 import { api, ApiError, type Config, type Finding, type Preview, type Result, type ScenarioPayload } from "./api";
 import { h, mount, num, pct } from "./dom";
-import { renderForm, updatePreview } from "./form";
+import { renderForm, renderPlanBar, updatePreview, type FormContext } from "./form";
 import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
 import { docHead } from "./paper";
 import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, STATION_COLOR, TRANSPORT_STATE } from "./labels";
@@ -60,6 +60,8 @@ let previewTimer: number | undefined;
 
 const els = {
   form: h("aside", { class: "form" }),
+  // 분기와 예시 계획: 생산계획서 밖, 왼쪽 클립보드 위
+  planBar: h("div", { class: "plan-bar" }),
   best: h("div", { class: "best" }),
   tabs: h("div", { class: "view-tabs" }),
   control: h("section", { class: "panel control-panel" }),
@@ -84,7 +86,7 @@ const introSeen = new Set<number>();
 // ---------------------------------------------------------------------------
 
 function drawForm(): void {
-  renderForm(els.form, {
+  const ctx: FormContext = {
     scenario: state.data.scenario,
     scenarios: state.data.scenarios,
     presets: state.data.presets,
@@ -96,13 +98,15 @@ function drawForm(): void {
       state.edited = true;
       if (redraw) drawForm();
       // 입력 중에 양식을 다시 그리면 커서가 빠지므로 "(수정함)" 표시만 드러낸다.
-      else els.form.querySelector(".edited")?.removeAttribute("hidden");
+      else els.planBar.querySelector(".edited")?.removeAttribute("hidden");
       schedulePreview();
     },
     onPreset: loadPreset,
     onScenario: (id) => void switchScenario(id),
     onRun: run,
-  });
+  };
+  renderForm(els.form, ctx);
+  renderPlanBar(els.planBar, ctx);
   updatePreview(els.form, state.preview, state.errors, state.busy);
 }
 
@@ -679,7 +683,7 @@ async function start(): Promise<void> {
           h("p", null, "생산관리 시뮬레이터 · 7요소 · QCD · 4M"))),
       els.best),
     h("div", { class: "layout" },
-      h("div", { class: "clipboard board-left" }, els.form),
+      h("div", { class: "left-col" }, els.planBar, h("div", { class: "clipboard board-left" }, els.form)),
       h("main", { class: "main" }, els.tabs,
         els.board)));
 

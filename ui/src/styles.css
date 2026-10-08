@@ -490,9 +490,25 @@ body { background: var(--desk); }
   content: ""; position: absolute; top: -3px; left: 50%; transform: translateX(-50%); z-index: 3;
   width: 22px; height: 5px; border-radius: 3px; background: #6c7175;
 }
-.board-left { position: sticky; top: 18px; align-self: start; }
-.board-left .form { position: static; max-height: calc(100vh - 36px - 30px); }
-@media (max-width: 1100px) { .board-left { position: static; } .board-left .form { max-height: none; } }
+.left-col { position: sticky; top: 18px; align-self: start; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.board-left .form { position: static; max-height: calc(100vh - 36px - 30px - var(--plan-bar-h, 130px)); }
+@media (max-width: 1100px) { .left-col { position: static; } .board-left .form { max-height: none; } }
+
+/* 책상 위 메모: 분기와 예시 계획(생산계획서 밖). 종이가 아니라 책상에 놓인 조작부라 테두리 없이 얇게. */
+.plan-bar { display: flex; flex-direction: column; gap: 6px; padding: 0 4px; }
+.bar-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bar-label { font-size: 0.78rem; font-weight: 700; color: var(--ink-2); width: 56px; }
+.bar-choices { display: flex; gap: 6px; flex-wrap: wrap; }
+.bar-choice {
+  border: 1px solid var(--board-edge); background: transparent; color: var(--ink); border-radius: 6px;
+  padding: 4px 10px; font-size: 0.84rem; font-weight: 600; cursor: pointer;
+}
+.bar-choice small { color: var(--ink-3); font-weight: 500; }
+.bar-choice.active { background: var(--ink); border-color: var(--ink); color: #fff; }
+.bar-choice.active small { color: rgba(255, 255, 255, 0.75); }
+.bar-choice:disabled { opacity: 0.6; cursor: default; }
+.bar-note { margin: 0; font-size: 0.8rem; color: var(--ink-2); line-height: 1.4; }
+.bar-note b { color: var(--ink); }
 
 /* 클립보드를 내려놓은 현장: 집게와 판 없이 3D만 */
 .clipboard.board-down { background: transparent; border-color: transparent; box-shadow: none; padding: 0; }

@@ -145,18 +145,18 @@ export function renderReport(result: Result, scenario: Scenario, maxRate: number
 
   const qcdRow = h("div", { class: "qcd" },
     h("div", { class: "kpi" },
-      h("span", { class: "kpi-tag q" }, "Q 품질"),
+      h("span", { class: "kpi-tag q" }, "Q 직행률"),
       h("b", { class: "kpi-value" }, pct(qcd.quality.first_pass_yield)),
-      h("span", { class: "kpi-sub" }, `직행률 · 첫 검사 합격 ${qcd.quality.passes} / ${qcd.quality.inspections}`)),
+      h("span", { class: "kpi-sub" }, `품질 · 첫 검사 합격 ${qcd.quality.passes} / ${qcd.quality.inspections}`)),
     h("div", { class: "kpi" },
-      h("span", { class: "kpi-tag c" }, "C 원가"),
+      h("span", { class: "kpi-tag c" }, "C 이익"),
       h("b", { class: `kpi-value ${profitTone}` }, money(result.profit)),
-      h("span", { class: "kpi-sub" }, `이익 · 매출 ${money(result.revenue)} − 총원가 ${money(result.total_cost)}`)),
+      h("span", { class: "kpi-sub" }, `원가 · 매출 ${money(result.revenue)} − 총원가 ${money(result.total_cost)}`)),
     h("div", { class: "kpi" },
-      h("span", { class: "kpi-tag d" }, "D 납기"),
+      h("span", { class: "kpi-tag d" }, "D 납기 준수"),
       h("b", { class: `kpi-value ${qcd.delivery.on_time === qcd.delivery.ships ? "good" : "bad"}` },
         `${qcd.delivery.on_time} / ${qcd.delivery.ships}척`),
-      h("span", { class: "kpi-sub" }, `납기 준수 ${pct(qcd.delivery.on_time_rate, 0)} · 총 지연 ${qcd.delivery.total_late_days}일`)),
+      h("span", { class: "kpi-sub" }, `납기 · 준수율 ${pct(qcd.delivery.on_time_rate, 0)} · 총 지연 ${qcd.delivery.total_late_days}일`)),
   );
 
   const wf = result.workforce;
