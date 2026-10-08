@@ -233,6 +233,8 @@ def station_defect_rate(station_cfg: dict[str, Any], crew: str, scenario: dict[s
                         research: frozenset[str] = frozenset(), lots_done: int = 0, grade: str = "standard") -> float:
     """불량률 = 공법(신공법은 끝낸 로트 수만큼 낮아짐) + 잔업 + 미정비 + 인력 + 자재 등급 − 자동 검사.
 
+    예지 정비는 고장만 막는다(2.0). 정비를 안 한 공정의 불량 가산은 그대로다.
+
     research는 효과가 난 연구, lots_done은 이 공정에서 검사를 마친 로트 수(학습 곡선)."""
     rules = scenario["rules"]
     method = rules["methods"][station_cfg["method"]]
@@ -241,7 +243,7 @@ def station_defect_rate(station_cfg: dict[str, Any], crew: str, scenario: dict[s
         rate = max(method["defect_floor"], rate - method["learning_step"] * lots_done)
     if is_overtime({**station_cfg, "crew": crew}):
         rate += rules["overtime"]["defect_add"]
-    if not station_cfg["maintenance"] and "predictive" not in research:
+    if not station_cfg["maintenance"]:
         rate += rules["no_maintenance_defect_add"]
     rate += rules["crews"][crew].get("defect_add", 0)
     rate += scenario["material_grades"][grade]["defect_add"]

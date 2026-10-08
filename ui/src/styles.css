@@ -126,7 +126,7 @@ th { font-weight: 600; color: var(--ink-3); font-size: 0.8rem; text-align: left;
 select.priority { max-width: 84px; }
 
 /* ----- 작업장 카드 ----- */
-.stations { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.stations { display: grid; grid-template-columns: 1fr; gap: 10px; }   /* 4M 칸이 늘어 공정 카드는 한 줄에 하나 */
 .station {
   border: 1px solid var(--line-soft); border-top: 4px solid var(--station); border-radius: 12px;
   padding: 10px 10px 8px; background: var(--panel-2);
@@ -722,3 +722,5 @@ body { background: var(--desk); }
 .bar-quarter { font-size: 0.9rem; font-weight: 700; color: var(--ink); }
 .bar-quarter small { color: var(--ink-3); font-weight: 500; }
 @media (prefers-reduced-motion: reduce) { .desk-board { transition: none; } }
+.station .seg-item span { white-space: nowrap; }
+.field-label.sub { width: auto; min-width: 72px; }

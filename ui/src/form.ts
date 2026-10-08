@@ -4,7 +4,7 @@
 // 탭 전환도 hidden만 바꾼다. 처리량, 불량률, 고정비, 연구 일정, 발주일, 계획 막대는
 // 서버의 /api/preview 결과를 data-preview 자리에 채운다.
 
-import type { Config, Ordering, Preset, Preview, Scenario, ScenarioSummary } from "./api";
+import type { Config, Crew, Ordering, Preset, Preview, Scenario, ScenarioSummary } from "./api";
 import { h, mount, money, num, pct } from "./dom";
 import { STATION_COLOR } from "./labels";
 import { docHead } from "./paper";
@@ -173,20 +173,6 @@ function commonPane(ctx: FormContext): HTMLElement {
       config.pool, (v) => { config.pool = v; ctx.onEdit(false); }),
     h("small", null, "명"));
 
-  const senior = h("div", { class: "field-row" },
-    h("span", { class: "field-label" }, "시니어"),
-    h("select", {
-      class: "select",
-      onchange: (e: Event) => {
-        const v = (e.target as HTMLSelectElement).value;
-        config.skilled_station = v === "" ? null : v;
-        ctx.onEdit(false);
-      },
-    },
-    h("option", { value: "", selected: config.skilled_station === null }, "미배치"),
-    scenario.stations.map((st) => h("option", { value: st.id, selected: config.skilled_station === st.id }, st.name))),
-    h("small", null, "그 공정 불량률 −5%p, 대기소 인원과 별도"));
-
   const transporter = h("div", { class: "field-row" },
     h("span", { class: "field-label" }, "트랜스포터"),
     segmented("transporters",
@@ -194,20 +180,34 @@ function commonPane(ctx: FormContext): HTMLElement {
       config.transporters.count, (v) => { config.transporters.count = v; ctx.onEdit(false); }),
     toggle("정비", config.transporters.maintenance, (on) => { config.transporters.maintenance = on; ctx.onEdit(false); }));
 
+  const crews = Object.entries(scenario.rules.crews) as [Crew, { name: string; summary: string; install_cost?: number }][];
   const stationCards = scenario.stations.map((st) => {
     const cfg = config.stations[st.id];
+    // 1.x 설정의 시니어는 그 공정의 숙련공으로 옮겨 적는다(엔진도 같이 읽는다).
+    if (config.skilled_station) {
+      config.stations[config.skilled_station].crew ??= "skilled";
+      config.skilled_station = null;
+    }
+    const crew = cfg.crew ?? "normal";
+    const robot = crew === "robot";
     return h("div", { class: "station", style: { "--station": STATION_COLOR[st.id] } as Record<string, string> },
       h("div", { class: "station-head" },
         h("span", { class: "swatch" }),
         h("b", null, st.name),
         h("small", null, st.real.split(":")[0])),
       h("div", { class: "station-grid" },
+        h("span", { class: "field-label" }, "인력"),
+        segmented(`crew-${st.id}`, crews.map(([id, c]) => ({
+          value: id, label: c.install_cost ? `${c.name} (+${num(c.install_cost * (cfg.units ?? 1))})` : c.name,
+        })), crew, (v) => { if (v === "normal") delete cfg.crew; else cfg.crew = v; ctx.onEdit(true); }),
         h("span", { class: "field-label" }, "공법"),
         segmented(`method-${st.id}`, methods.map(([id, m]) => ({ value: id, label: m.name })),
           cfg.method, (v) => { cfg.method = v; ctx.onEdit(false); }),
         h("span", { class: "field-label" }, "운영"),
         h("div", { class: "toggles" },
-          toggle("잔업", cfg.overtime, (on) => { cfg.overtime = on; ctx.onEdit(false); }),
+          robot
+            ? h("span", { class: "hint", title: scenario.rules.crews.robot.summary }, "로봇은 잔업 없음")
+            : toggle("잔업", cfg.overtime, (on) => { cfg.overtime = on; ctx.onEdit(false); }),
           toggle("정비", cfg.maintenance, (on) => { cfg.maintenance = on; ctx.onEdit(false); })),
         h("span", { class: "field-label" }, "작업장"),
         segmented(`units-${st.id}`,
@@ -232,15 +232,37 @@ function commonPane(ctx: FormContext): HTMLElement {
     ` 배별 발주일은 ${scenario.orders[0].id}~${scenario.orders[scenario.orders.length - 1].id} 탭에 있습니다.`);
 
   return h("div", { class: "pane", "data-pane": "common" },
-    pool, senior, transporter, ordering, orderingHint,
+    pool, transporter, ordering, orderingHint, materialGrades(ctx),
     researchQueue(ctx),
     h("div", { class: "stations" }, stationCards),
     h("p", { class: "hint fixed" },
       "고정비: 인건비 ", h("b", { "data-preview": "labor" }, "…"),
       " · 정비비 ", h("b", { "data-preview": "maintenance" }, "…"),
       " · 트랜스포터 ", h("b", { "data-preview": "transporter" }, "…"),
-      " · 증설비 ", h("b", { "data-preview": "expansion" }, "…"),
+      " · 설비 투자비 ", h("b", { "data-preview": "investment" }, "…"),
       " · 연구비 ", h("b", { "data-preview": "research" }, "…")));
+}
+
+/** 자재 등급(4M의 Material): 자재마다 표준 또는 저가. 저가는 단가가 반이고 그 자재를 쓰는 공정의 불량이 늘어난다. */
+function materialGrades(ctx: FormContext): HTMLElement {
+  const { scenario, config } = ctx;
+  const cheap = scenario.material_grades.cheap;
+  const used = Object.fromEntries(scenario.stations.filter((st) => st.material).map((st) => [st.material!, st.name]));
+  return h("div", { class: "materials" },
+    h("div", { class: "field-row" }, h("span", { class: "field-label" }, "자재 등급"),
+      h("small", null, `저가: 단가 ${Math.round(cheap.price_factor * 100)}%, 쓰는 공정 불량률 +${Math.round(cheap.defect_add * 100)}%p`)),
+    scenario.materials.map((m) => h("div", { class: "field-row" },
+      h("span", { class: "field-label sub" }, m.name, h("small", null, ` ${used[m.id] ?? ""}`)),
+      segmented(`grade-${m.id}`, [
+        { value: "standard" as const, label: `표준 ${num(m.price)}` },
+        { value: "cheap" as const, label: `${m.cheap_name} ${num(m.price * cheap.price_factor)}` },
+      ], config.materials?.[m.id] ?? "standard", (v) => {
+        const next = { ...(config.materials ?? {}) };
+        if (v === "standard") delete next[m.id]; else next[m.id] = v;
+        config.materials = Object.keys(next).length ? next : undefined;
+        if (!config.materials) delete config.materials;
+        ctx.onEdit(false);
+      }))));
 }
 
 /** 연구 대기열: 넣은 순서대로 1일부터 하나씩 진행한다. 순서를 바꾸면 양식을 다시 그린다(입력란이 없어 커서 걱정이 없다). */
@@ -328,7 +350,7 @@ export function updatePreview(root: HTMLElement, preview: Preview | null, errors
           : `${pct(st.defect_rate, 0)} → ${pct(st.defect_rate_final, 0)}`;
       }
     }
-    for (const key of ["labor", "maintenance", "transporter", "expansion", "research"] as const) {
+    for (const key of ["labor", "maintenance", "transporter", "investment", "research"] as const) {
       const el = slot(key);
       if (el) el.textContent = money(preview.fixed_costs[key]);
     }

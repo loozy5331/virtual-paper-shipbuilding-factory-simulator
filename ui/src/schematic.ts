@@ -101,7 +101,8 @@ export function renderSchematic(frame: Frame, scenario: Scenario, opts: Schemati
       s("rect", { x: x + 10, y: BOX_Y + 9, width: 10, height: 10, rx: 3, fill: STATION_COLOR[st.id] }),
       s("text", { x: x + 26, y: BOX_Y + 18, class: "box-title" }, st.name));
     // 공정에 걸린 운영 표시: 잔업, 시니어(지정 공정)
-    const tags = [view.overtime ? "잔업" : "", view.senior ? "시니어" : ""].filter(Boolean).join(" · ");
+    const crewName = { normal: "", skilled: "숙련공", robot: "로봇" }[view.crew];
+    const tags = [view.overtime && view.crew !== "robot" ? "잔업" : "", crewName].filter(Boolean).join(" · ");
     if (tags) g.append(s("text", { x: x + boxW - 10, y: BOX_Y + 18, class: view.senior ? "box-tag senior" : "box-tag" }, tags));
 
     // 작업장: 상태 띠 + 상태 글, 배 이름표, 인원 점. 1개면 두 줄 높이, 2개면 한 줄씩.
