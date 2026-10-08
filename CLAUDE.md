@@ -11,6 +11,7 @@
 - 규칙의 기준 문서: https://claude.ai/code/artifact/63f9424c-6a92-461b-8fb0-06a2820778d0
   (Claude Docs 문서다. Claude Docs 연결이 있으면 docs 도구로 직접 읽고 고친다. 2026-10-08에 컨셉 v3로 갱신했다.)
 - 컨셉 v3 인수인계: `docs/handoff-v3.md`, 구현 계획은 PR ① 엔진(#4) → ② 2D 화면 → ③ 3D 순서다.
+- 버전: 1.0.0(`v1.0.0` 태그, 발표 예비본). 버전 규칙과 변경 기록은 `CHANGELOG.md`, 1.1 이후 방향은 `docs/roadmap.md`, 1.1 작업은 `docs/handoff-v1.1.md`.
 
 ## 시연 흐름 (컨셉 v3, 사용자가 확정)
 
