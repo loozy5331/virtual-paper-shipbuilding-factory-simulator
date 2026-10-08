@@ -1,9 +1,9 @@
-// 왼쪽 계획 양식: 프리셋 → ① 수주와 계획(4척 요약 + 계획 간트) → ② [공통 | S1~S4] 탭 → 실행.
+// 왼쪽 계획 양식: 시나리오 → 프리셋 → ① 수주와 계획(배 요약 + 계획 간트) → ② [공통 | 배별] 탭 → 실행.
 // 입력 중에는 양식을 다시 그리지 않는다(그러면 커서가 사라진다). 값만 config에 넣고 알린다.
 // 탭 전환도 hidden만 바꾼다. 처리량, 불량률, 고정비, 연구 일정, 발주일, 계획 막대는
 // 서버의 /api/preview 결과를 data-preview 자리에 채운다.
 
-import type { Config, Ordering, Preset, Preview, Scenario } from "./api";
+import type { Config, Ordering, Preset, Preview, Scenario, ScenarioSummary } from "./api";
 import { h, mount, money, num, pct } from "./dom";
 import { STATION_COLOR } from "./labels";
 import { docHead } from "./paper";
@@ -11,6 +11,7 @@ import { conflictText, renderPlanGantt } from "./plan-gantt";
 
 export interface FormContext {
   scenario: Scenario;
+  scenarios: ScenarioSummary[];
   presets: Preset[];
   config: Config;
   presetId: string | null;
@@ -19,6 +20,8 @@ export interface FormContext {
   /** 값이 바뀌었다. redraw가 true면 양식 전체를 다시 그린다. */
   onEdit(redraw: boolean): void;
   onPreset(id: string): void;
+  /** 다른 시나리오를 골랐다. 서버에서 새 시나리오를 받아 양식을 처음부터 그린다. */
+  onScenario(id: string): void;
   onRun(): void;
 }
 
@@ -59,6 +62,19 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
   const { scenario, config } = ctx;
   const orderIds = scenario.orders.map((o) => o.id);
   const activePreset = ctx.presets.find((p) => p.id === ctx.presetId);
+
+  // 시나리오: 기본 분기(4척)에서 자원 활용을, 수주 증가(6척)에서 증설 판단을 익힌다.
+  const scenarioSection = ctx.scenarios.length > 1 ? h("section", { class: "panel" },
+    h("div", { class: "panel-head" }, h("h2", null, "시나리오")),
+    h("div", { class: "preset-row" },
+      ctx.scenarios.map((sc) =>
+        h("button", {
+          class: `preset${sc.id === scenario.id ? " active" : ""}`,
+          type: "button", title: sc.summary, disabled: ctx.busy,
+          onclick: () => { if (sc.id !== scenario.id) ctx.onScenario(sc.id); },
+        }, `${sc.name} (${sc.ships}척)`))),
+    h("p", { class: "hint" }, scenario.summary),
+  ) : null;
 
   const presetSection = h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", null, "프리셋")),
@@ -143,7 +159,7 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
     ],
   });
 
-  mount(root, head, presetSection, summary, settings, runSection);
+  mount(root, head, scenarioSection, presetSection, summary, settings, runSection);
   showTab(root, activeTab);
 }
 
@@ -194,6 +210,12 @@ function commonPane(ctx: FormContext): HTMLElement {
         h("div", { class: "toggles" },
           toggle("잔업", cfg.overtime, (on) => { cfg.overtime = on; ctx.onEdit(false); }),
           toggle("정비", cfg.maintenance, (on) => { cfg.maintenance = on; ctx.onEdit(false); })),
+        h("span", { class: "field-label" }, "작업장"),
+        segmented(`units-${st.id}`,
+          Array.from({ length: scenario.expansion.max_units }, (_, k) => ({
+            value: k + 1, label: k === 0 ? "1개" : `${k + 1}개 (+${num(scenario.expansion.cost[st.id] * k)})`,
+          })),
+          cfg.units ?? 1, (v) => { if (v > 1) cfg.units = v; else delete cfg.units; ctx.onEdit(false); }),
       ),
       h("div", { class: "station-preview" },
         h("span", null, "최대 ", h("b", { "data-preview": `rate:${st.id}` }, "…"), "/일"),
@@ -207,7 +229,8 @@ function commonPane(ctx: FormContext): HTMLElement {
     segmented("ordering", orderings.map(([id, o]) => ({ value: id, label: o.name })),
       config.ordering ?? "jit", (v) => { config.ordering = v; ctx.onEdit(true); }));
   const orderingHint = h("p", { class: "hint field-hint" },
-    scenario.ordering[config.ordering ?? "jit"].summary, " 배별 발주일은 S1~S4 탭에 있습니다.");
+    scenario.ordering[config.ordering ?? "jit"].summary,
+    ` 배별 발주일은 ${scenario.orders[0].id}~${scenario.orders[scenario.orders.length - 1].id} 탭에 있습니다.`);
 
   return h("div", { class: "pane", "data-pane": "common" },
     pool, senior, transporter, ordering, orderingHint,
@@ -217,6 +240,7 @@ function commonPane(ctx: FormContext): HTMLElement {
       "고정비: 인건비 ", h("b", { "data-preview": "labor" }, "…"),
       " · 정비비 ", h("b", { "data-preview": "maintenance" }, "…"),
       " · 트랜스포터 ", h("b", { "data-preview": "transporter" }, "…"),
+      " · 증설비 ", h("b", { "data-preview": "expansion" }, "…"),
       " · 연구비 ", h("b", { "data-preview": "research" }, "…")));
 }
 
@@ -305,7 +329,7 @@ export function updatePreview(root: HTMLElement, preview: Preview | null, errors
           : `${pct(st.defect_rate, 0)} → ${pct(st.defect_rate_final, 0)}`;
       }
     }
-    for (const key of ["labor", "maintenance", "transporter", "research"] as const) {
+    for (const key of ["labor", "maintenance", "transporter", "expansion", "research"] as const) {
       const el = slot(key);
       if (el) el.textContent = money(preview.fixed_costs[key]);
     }

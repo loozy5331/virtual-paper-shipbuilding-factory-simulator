@@ -5,6 +5,8 @@ export interface StationConfig {
   method: string;
   overtime: boolean;
   maintenance: boolean;
+  /** 작업장 수(2.0 증설). 없으면 1. */
+  units?: number;
 }
 
 export interface ShipConfig {
@@ -17,6 +19,8 @@ export interface ShipConfig {
 export type Ordering = "bulk" | "jit" | "late";
 
 export interface Config {
+  /** 시나리오 id(2.0). 없으면 기본 분기. */
+  scenario?: string;
   ordering?: Ordering;
   ships: Record<string, ShipConfig>;
   stations: Record<string, StationConfig>;
@@ -76,6 +80,9 @@ export interface ResearchInfo {
 }
 
 export interface Scenario {
+  id: string;
+  name: string;
+  summary: string;
   /** 계획 기간의 이름. 60일은 이 분기의 작업일로 본다. */
   period: string;
   days: number;
@@ -91,15 +98,25 @@ export interface Scenario {
     overtime: { speed: number };
   };
   transporter: { max_count: number; capacity: number; lot_weight: number };
+  expansion: { name: string; max_units: number; summary: string; cost: Record<string, number> };
   research: Record<string, ResearchInfo>;
   ordering: Record<Ordering, { name: string; summary: string }>;
   kpi: { revenue: number; profit: number; on_time_rate: number; first_pass_yield: number };
+}
+
+export interface ScenarioSummary {
+  id: string;
+  name: string;
+  summary: string;
+  period: string;
+  ships: number;
 }
 
 export interface ScenarioPayload {
   version: string;
   scenario: Scenario;
   presets: Preset[];
+  scenarios: ScenarioSummary[];
   max_rate: number;
 }
 
@@ -115,7 +132,7 @@ export interface ResearchSlot {
 
 export interface Preview {
   stations: Record<string, { rate: number; defect_rate: number; defect_rate_final: number }>;
-  fixed_costs: { labor: number; maintenance: number; transporter: number; research: number };
+  fixed_costs: { labor: number; maintenance: number; transporter: number; expansion: number; research: number };
   research: ResearchSlot[];
   /** 배별 자재의 발주일과 입고일. 엔진이 발주 방식에 따라 정한다. */
   materials: Record<string, Record<string, { order_day: number | null; arrival_day: number | null }>>;
@@ -161,7 +178,7 @@ export interface ShipResult {
   lead_time_parts: Record<string, number>;
   spans: Record<string, { start: number; end: number }>;
   segments: Segment[];
-  daily: { state: ShipState; station: string | null }[];
+  daily: { state: ShipState; station: string | null; unit?: number | null }[];
 }
 
 export interface StationDay {
@@ -189,6 +206,8 @@ export interface StationResult {
     quality: number | null;
     oee: number | null;
   };
+  /** 작업장별 기록(2.0 증설). daily는 1호와 같다. */
+  units: { unit: number; busy_days: number; breakdowns: number; daily: StationDay[] }[];
   daily: StationDay[];
 }
 
@@ -291,7 +310,7 @@ function post<T>(path: string, config: Config): Promise<T> {
 }
 
 export const api = {
-  scenario: () => request<ScenarioPayload>("/api/scenario"),
+  scenario: (id = "basic") => request<ScenarioPayload>(`/api/scenario?id=${encodeURIComponent(id)}`),
   simulate: (config: Config) => post<Result>("/api/simulate", config),
   preview: (config: Config) => post<Preview>("/api/preview", config),
 };

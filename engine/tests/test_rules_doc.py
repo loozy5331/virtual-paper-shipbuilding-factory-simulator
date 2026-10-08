@@ -8,7 +8,7 @@
 import copy
 import unittest
 
-from shipyard import ConfigError, load_presets, load_scenario, preview, simulate, suggest_order_days
+from shipyard import ConfigError, list_scenarios, load_presets, load_scenario, preview, simulate, suggest_order_days
 
 PRESETS = {p["id"]: p["config"] for p in load_presets()}
 STATIONS = ["sub_assembly", "block_assembly", "grand_assembly", "erection"]
@@ -436,6 +436,54 @@ class Expansion(unittest.TestCase):
     def test_too_many_units_is_rejected(self):
         with self.assertRaises(ConfigError):
             simulate(expanded("managed", block_assembly=3))
+
+
+
+GROWTH = {p["id"]: p["config"] for p in load_presets("growth")}
+
+
+class Scenarios(unittest.TestCase):
+    """2.0 시나리오 둘: 기본 분기(4척)와 수주 증가(6척, LNG선 2척). 규칙은 함께 쓴다."""
+
+    def test_list(self):
+        self.assertEqual([(s["id"], s["name"], s["ships"]) for s in list_scenarios()],
+                         [("basic", "기본 분기", 4), ("growth", "수주 증가", 6)])
+
+    def test_config_without_scenario_runs_as_basic(self):
+        # 하위 호환: 1.x 설정(scenario 없음)은 기본 분기로 돈다.
+        cfg = copy.deepcopy(PRESETS["managed"])
+        cfg["scenario"] = "basic"
+        self.assertEqual(simulate(cfg)["profit"], simulate(PRESETS["managed"])["profit"])
+
+    def test_growth_presets(self):
+        cases = {"unmanaged": (-13158.0, 16.3, "F"), "managed": (7400.8, 95.7, "A"), "all_in": (1656.2, 64.5, "C")}
+        for pid, (profit, score, grade) in cases.items():
+            r = simulate(GROWTH[pid])
+            self.assertEqual((r["profit"], r["grade"]["score"], r["grade"]["grade"]), (profit, score, grade), pid)
+            self.assertEqual(r["grade"]["baseline"]["score"], 64.5)
+
+    def test_growth_has_lng(self):
+        sc = load_scenario("growth")
+        self.assertEqual([o["type"] for o in sc["orders"]], ["VLCC", "CONT", "VLCC", "CONT", "LNG", "LNG"])
+        self.assertEqual(sc["ship_types"]["LNG"]["work"]["erection"], 18)
+        self.assertEqual(sc["kpi"]["revenue"], 20200)
+
+    def test_bottleneck_expansion_beats_expanding_everything(self):
+        # 수주 증가의 교육 포인트: 병목만 증설한 관리 프리셋이 전부 증설보다 낫다.
+        managed = simulate(GROWTH["managed"], baseline=False)
+        everything = copy.deepcopy(GROWTH["managed"])
+        for st in everything["stations"].values():
+            st["units"] = 2
+        self.assertGreater(managed["profit"], simulate(everything, baseline=False)["profit"])
+
+    def test_unknown_or_mismatched_scenario_is_rejected(self):
+        cfg = copy.deepcopy(PRESETS["managed"])
+        cfg["scenario"] = "nope"
+        with self.assertRaises(ConfigError):
+            simulate(cfg)
+        cfg["scenario"] = "growth"
+        with self.assertRaises(ConfigError):
+            simulate(cfg, load_scenario("basic"))
 
 
 if __name__ == "__main__":

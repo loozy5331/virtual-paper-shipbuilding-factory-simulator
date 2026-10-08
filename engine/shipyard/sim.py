@@ -57,14 +57,54 @@ class ConfigError(ValueError):
 # 데이터
 # ---------------------------------------------------------------------------
 
-def load_scenario() -> dict[str, Any]:
-    """수주, BOM, 단가, 난수표 등 규칙의 모든 숫자."""
-    return json.loads((DATA_DIR / "scenario.json").read_text(encoding="utf-8"))
+DEFAULT_SCENARIO = "basic"   # 시나리오를 적지 않은 설정(1.x)은 기본 분기로 돈다.
 
 
-def load_presets() -> list[dict[str, Any]]:
-    """규칙 문서 10장의 프리셋 3개 (무관리, 관리, 전부 최대 투입)."""
-    return json.loads((DATA_DIR / "presets.json").read_text(encoding="utf-8"))
+def _read(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def scenario_ids() -> list[str]:
+    """고를 수 있는 시나리오. 기본 분기가 먼저다."""
+    ids = sorted(p.stem for p in (DATA_DIR / "scenarios").glob("*.json"))
+    return sorted(ids, key=lambda sid: sid != DEFAULT_SCENARIO)
+
+
+def list_scenarios() -> list[dict[str, Any]]:
+    """화면의 시나리오 고르기용 요약."""
+    out = []
+    for sid in scenario_ids():
+        sc = _read(DATA_DIR / "scenarios" / f"{sid}.json")
+        out.append({"id": sid, "name": sc["name"], "summary": sc["summary"], "period": sc["period"],
+                    "ships": len(sc["orders"])})
+    return out
+
+
+def load_scenario(scenario_id: str = DEFAULT_SCENARIO) -> dict[str, Any]:
+    """규칙의 모든 숫자: 공통 규칙(rules.json)에 시나리오(수주, 기간, 목표, 품질 난수)를 얹는다."""
+    if scenario_id not in scenario_ids():
+        raise ConfigError([f"시나리오는 {', '.join(scenario_ids())} 중 하나여야 합니다"])
+    rules = _read(DATA_DIR / "rules.json")
+    rules.pop("_comment", None)
+    sc = _read(DATA_DIR / "scenarios" / f"{scenario_id}.json")
+    sc.pop("presets")
+    random = {**rules.pop("random"), **sc.pop("random")}
+    return {**sc, **rules, "random": random}
+
+
+def load_presets(scenario_id: str = DEFAULT_SCENARIO) -> list[dict[str, Any]]:
+    """시나리오의 프리셋 3개 (무관리, 관리, 전부 최대 투입)."""
+    if scenario_id not in scenario_ids():
+        raise ConfigError([f"시나리오는 {', '.join(scenario_ids())} 중 하나여야 합니다"])
+    return _read(DATA_DIR / "scenarios" / f"{scenario_id}.json")["presets"]
+
+
+def scenario_of(config: dict[str, Any]) -> dict[str, Any]:
+    """설정이 고른 시나리오. 적지 않았으면 기본 분기."""
+    sid = config.get("scenario", DEFAULT_SCENARIO) if isinstance(config, dict) else DEFAULT_SCENARIO
+    if not isinstance(sid, str):
+        raise ConfigError([f"시나리오는 {', '.join(scenario_ids())} 중 하나여야 합니다"])
+    return load_scenario(sid)
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +114,8 @@ def load_presets() -> list[dict[str, Any]]:
 def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
     """설정이 4장의 선택지 안에 있는지 확인한다. 틀리면 ConfigError."""
     errors: list[str] = []
+    if config.get("scenario") not in (None, scenario.get("id")):
+        errors.append(f"설정의 시나리오({config.get('scenario')})와 돌리려는 시나리오({scenario.get('id')})가 다릅니다")
     days = scenario["days"]
     rules = scenario["rules"]
     order_ids = [o["id"] for o in scenario["orders"]]
@@ -215,7 +257,7 @@ def fixed_costs(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, f
 
 def preview(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> dict[str, Any]:
     """실행하지 않고 설정만으로 알 수 있는 값: 공정별 최대 처리량과 불량률, 고정비, 연구 일정."""
-    scenario = scenario or load_scenario()
+    scenario = scenario or scenario_of(config)
     validate_config(config, scenario)
     order_days = resolve_order_days(config, scenario)
     rules = scenario["rules"]
@@ -290,7 +332,7 @@ def simulate(config: dict[str, Any], scenario: dict[str, Any] | None = None, bas
     같은 설정이면 항상 같은 결과가 나온다. 난수는 시나리오의 표에서 읽는다.
     baseline이 참이면 기준선 프리셋(전부 최대 투입)도 같은 시나리오로 돌려 등급에 비교를 붙인다.
     """
-    scenario = scenario or load_scenario()
+    scenario = scenario or scenario_of(config)
     result = _run(_with_order_days(config, scenario), scenario)
     base_cfg = _baseline_config(scenario) if baseline else None
     base = _run(_with_order_days(base_cfg, scenario), scenario) if base_cfg is not None else None
@@ -301,7 +343,9 @@ def simulate(config: dict[str, Any], scenario: dict[str, Any] | None = None, bas
 def _baseline_config(scenario: dict[str, Any]) -> dict[str, Any] | None:
     """기준선 프리셋 설정. 시나리오의 배가 프리셋과 다르면(손 계산용 시나리오 등) 없다."""
     pid = scenario["grade"]["baseline_preset"]
-    preset = next(p for p in load_presets() if p["id"] == pid)
+    preset = next((p for p in load_presets(scenario.get("id", DEFAULT_SCENARIO)) if p["id"] == pid), None)
+    if preset is None:
+        return None
     if set(preset["config"]["ships"]) != {o["id"] for o in scenario["orders"]}:
         return None
     return preset["config"]
@@ -810,7 +854,7 @@ def _grade(result: dict[str, Any], config: dict[str, Any], base: dict[str, Any] 
                            "baseline": None, "vs_baseline": None}
     if base is not None and base_cfg is not None:
         base_grade = _grade(base, base_cfg, None, None, scenario)
-        preset = next(p for p in load_presets() if p["id"] == g["baseline_preset"])
+        preset = next(p for p in load_presets(scenario.get("id", DEFAULT_SCENARIO)) if p["id"] == g["baseline_preset"])
         out["baseline"] = {"preset": preset["id"], "name": preset["name"], "score": base_grade["score"],
                            "grade": base_grade["grade"], "profit": base["profit"], "pool": base_cfg["pool"],
                            "on_time": base["qcd"]["delivery"]["on_time"]}
@@ -839,7 +883,7 @@ def suggest_order_days(config: dict[str, Any], scenario: dict[str, Any] | None =
     1.0의 "발주일 역산" 버튼이 쓰던 함수다. 1.1부터 화면은 발주 방식(ordering)을 고르고,
     이 함수는 /api/suggest-orders 하위 호환으로만 남는다.
     """
-    scenario = scenario or load_scenario()
+    scenario = scenario or scenario_of(config)
     validate_config(config, scenario)
     lead = {m["id"]: m["lead_days"] for m in scenario["materials"]}
     return {sid: {mid: _clamp_day(need - lead[mid] - buffer_days, scenario) for mid, need in needs.items()}
@@ -852,7 +896,7 @@ def resolve_order_days(config: dict[str, Any], scenario: dict[str, Any] | None =
     bulk: 모든 자재를 1일에. jit: 필요일 − 리드타임 − 여유일. late: 필요일에 (리드타임만큼 자재 대기).
     필요일은 자재가 항상 충분하다고 보고 한 번 돌려서 구한다. 실제 실행에서는 앞 공정이 늦어지면 필요일도 밀린다.
     """
-    scenario = scenario or load_scenario()
+    scenario = scenario or scenario_of(config)
     ordering = config.get("ordering")
     if ordering is None:
         return {sid: dict(ship.get("order_days") or {}) for sid, ship in config["ships"].items()}

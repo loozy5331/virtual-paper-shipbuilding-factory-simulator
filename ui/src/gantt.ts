@@ -63,7 +63,8 @@ export function renderGantt(result: Result, scenario: Scenario, today: number, o
   const width = (start: number, end: number) => (end - start + 1) * dayW;
   const stationName = Object.fromEntries(scenario.stations.map((st) => [st.id, st.name]));
   const shipsBottom = TOP + result.ships.length * ROW_H;
-  const eqRows = 1 + result.transporters.length + 1;
+  const craneUnits = result.stations.find((st) => st.id === CRANE)?.units.length ?? 1;
+  const eqRows = 1 + result.transporters.length + craneUnits;
   const height = shipsBottom + SECTION_GAP + eqRows * EQ_H + 8;
   const ended = today >= days;   // 합계는 끝난 뒤에만 보여 준다(재생 중에 결과를 미리 알려 주지 않게).
 
@@ -201,15 +202,16 @@ export function renderGantt(result: Result, scenario: Scenario, today: number, o
     });
   }
 
-  // 골리앗 크레인: 탑재 작업장의 하루 기록
+  // 골리앗 크레인: 탑재 작업장의 하루 기록. 증설하면 1호·2호 두 줄.
   const crane = result.stations.find((st) => st.id === CRANE);
-  if (crane) {
-    eqRow("골리앗 크레인", ended ? `${crane.name} · 고장 ${crane.breakdowns}건` : crane.name, (g, y) => {
+  for (const unit of crane?.units ?? []) {
+    const title = crane!.units.length > 1 ? `골리앗 크레인 ${unit.unit}호` : "골리앗 크레인";
+    eqRow(title, ended ? `${crane!.name} · 고장 ${unit.breakdowns}건` : crane!.name, (g, y) => {
       const key = (day: number) => {
-        const rec = crane.daily[day - 1];
+        const rec = unit.daily[day - 1];
         return rec.state === "idle" ? null : `${rec.state}:${rec.ship ?? ""}`;
       };
-      for (const run of runs(crane.daily, key, today)) {
+      for (const run of runs(unit.daily, key, today)) {
         const [state, ship] = run.key.split(":");
         const w = width(run.start, run.end);
         const span = `${run.start}~${run.end}일`;
@@ -288,12 +290,15 @@ export function renderShipGantt(result: Result, scenario: Scenario, shipId: stri
       s("rect", { x: LEFT, y, width: days * dayW, height: BAR_H, class: "lane" }));
 
     // 같은 공정을 쓰던 다른 배와 그 공정의 중지(사고·고장): 이 배가 왜 기다렸는지 보인다.
-    const daily = result.stations[row].daily;
+    // 증설한 공정은 작업장을 합쳐 본다: 다른 배가 하나라도 있으면 그 배들, 모든 작업장이 멈췄으면 중지.
+    const units = result.stations[row].units;
+    const daily = units[0].daily;
     const key = (day: number) => {
-      const rec = daily[day - 1];
-      if (rec.state === "accident_stop" || rec.state === "breakdown_stop") return `${rec.state}:`;
-      if (rec.ship && rec.ship !== ship.id) return `other:${rec.ship}`;
-      return null;
+      const recs = units.map((u) => u.daily[day - 1]);
+      const stopped = recs.filter((rec) => rec.state === "accident_stop" || rec.state === "breakdown_stop");
+      if (stopped.length === recs.length) return `${stopped[0].state}:`;
+      const others = recs.map((rec) => rec.ship).filter((sid) => sid && sid !== ship.id);
+      return others.length ? `other:${others.join("·")}` : null;
     };
     for (const run of runs(daily, key, today)) {
       const [kind, who] = run.key.split(":");
