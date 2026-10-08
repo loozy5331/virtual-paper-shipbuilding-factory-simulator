@@ -30,6 +30,11 @@
     {"id": "S4", "type": "CONT", "order_day": 1, "due_day": 56, "price": 2600}
   ],
   "initial_stock": {"paper": 0, "paint": 0, "flag": 0},
+  "ordering": {
+    "bulk": {"name": "일괄 발주", "summary": "모든 자재를 1일에 한꺼번에 발주한다. 자재 대기는 없지만 재고비가 쌓인다."},
+    "jit": {"name": "역산 발주", "summary": "자재가 필요한 날에서 리드타임만큼 거꾸로 세어 발주한다.", "buffer_days": 0},
+    "late": {"name": "늦은 발주", "summary": "자재가 필요한 날 발주한다. 리드타임만큼 자재 대기가 생긴다."}
+  },
   "blocks": {"sub_assembly": 12, "block_assembly": 6, "grand_assembly": 3, "erection": 1},
   "rules": {
     "max_workers_per_station": 2,

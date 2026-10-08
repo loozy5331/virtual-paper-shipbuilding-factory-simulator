@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -125,6 +126,10 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
     elif len(set(queue)) != len(queue):
         errors.append("같은 연구를 두 번 넣을 수 없습니다")
 
+    ordering = config.get("ordering")
+    if ordering is not None and ordering not in scenario["ordering"]:
+        errors.append(f"발주 방식은 {', '.join(scenario['ordering'])} 중 하나이거나 비워 둬야 합니다")
+
     skilled = config.get("skilled_station")
     if skilled is not None and skilled not in station_ids:
         errors.append("시니어는 공정 하나에 두거나 미배치(null)여야 합니다")
@@ -201,6 +206,7 @@ def preview(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> d
     """실행하지 않고 설정만으로 알 수 있는 값: 공정별 최대 처리량과 불량률, 고정비, 연구 일정."""
     scenario = scenario or load_scenario()
     validate_config(config, scenario)
+    order_days = resolve_order_days(config, scenario)
     rules = scenario["rules"]
     every = frozenset(config.get("research", []))
     stations = {}
@@ -212,8 +218,47 @@ def preview(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> d
             "defect_rate": station_defect_rate(cfg, skilled, scenario),
             "defect_rate_final": station_defect_rate(cfg, skilled, scenario, every),
         }
+    lead = {m["id"]: m["lead_days"] for m in scenario["materials"]}
+    materials = {sid: {mid: {"order_day": day, "arrival_day": None if day is None else day + lead[mid]}
+                       for mid, day in days.items()}
+                 for sid, days in order_days.items()}
     return {"stations": stations, "fixed_costs": fixed_costs(config, scenario),
-            "research": research_schedule(config.get("research", []), scenario)}
+            "research": research_schedule(config.get("research", []), scenario),
+            "materials": materials, "plan": plan_schedule(config, scenario)}
+
+
+def plan_schedule(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
+    """계획 막대: 배마다 착수일부터 공정을 이어 붙인 일정과, 같은 작업장을 두 배가 겹쳐 쓰는 구간.
+
+    배가 작업장과 사람을 혼자 쓰고 자재·설비가 멈추지 않는다고 본 일정이다(소요일 = 작업량 ÷ 처리량 올림,
+    공정 사이는 운반일). 실제 실행에서는 겹친 구간만큼 뒤 순위 배가 작업장 대기를 한다.
+    """
+    rules = scenario["rules"]
+    tr = scenario["transporter"]
+    move_days = math.ceil(tr["lot_weight"] / (tr["capacity"] * config["transporters"]["count"]))
+    assigned = min(config["pool"], rules["max_workers_per_station"])
+    ships: dict[str, dict[str, dict[str, int]]] = {}
+    for order in scenario["orders"]:
+        work = scenario["ship_types"][order["type"]]["work"]
+        day = config["ships"][order["id"]]["start_day"]
+        spans = {}
+        for st in scenario["stations"]:
+            rate = station_rate(config["stations"][st["id"]], rules, assigned)
+            end = day + math.ceil(work[st["id"]] / rate - EPS) - 1
+            spans[st["id"]] = {"start": day, "end": end}
+            day = end + move_days   # 끝난 다음 날부터 운반, 다 나른 날 다음 공정에 들어간다.
+        ships[order["id"]] = spans
+
+    conflicts = []
+    ids = list(ships)
+    for st in scenario["stations"]:
+        for i, a in enumerate(ids):
+            for b in ids[i + 1:]:
+                sa, sb = ships[a][st["id"]], ships[b][st["id"]]
+                start, end = max(sa["start"], sb["start"]), min(sa["end"], sb["end"])
+                if start <= end:
+                    conflicts.append({"station": st["id"], "ships": [a, b], "start": start, "end": end})
+    return {"ships": ships, "conflicts": conflicts}
 
 
 # ---------------------------------------------------------------------------
@@ -227,9 +272,9 @@ def simulate(config: dict[str, Any], scenario: dict[str, Any] | None = None, bas
     baseline이 참이면 기준선 프리셋(전부 최대 투입)도 같은 시나리오로 돌려 등급에 비교를 붙인다.
     """
     scenario = scenario or load_scenario()
-    result = _run(config, scenario)
+    result = _run(_with_order_days(config, scenario), scenario)
     base_cfg = _baseline_config(scenario) if baseline else None
-    base = _run(base_cfg, scenario) if base_cfg is not None else None
+    base = _run(_with_order_days(base_cfg, scenario), scenario) if base_cfg is not None else None
     result["grade"] = _grade(result, config, base, base_cfg, scenario)
     return result
 
@@ -278,12 +323,15 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     by_priority = sorted(range(n_ships), key=lambda i: priority[i])
 
     # 입고 일정: 발주일 + 리드타임 = 입고일.
+    # order_days는 결과에 싣는 배별 발주일(필요 없는 자재와 비운 칸은 뺀다).
     arrivals: dict[int, list[tuple[str, int, str]]] = {}
+    order_days: list[dict[str, int]] = [{} for _ in orders]
     for i, order in enumerate(orders):
         for mid, day in (config["ships"][order["id"]].get("order_days") or {}).items():
             qty = bom_of(i, mid)
             if day is None or qty == 0:
                 continue
+            order_days[i][mid] = day
             arrivals.setdefault(day + materials[mid]["lead_days"], []).append((mid, qty, order["id"]))
 
     stock = {mid: scenario.get("initial_stock", {}).get(mid, 0) for mid in materials}
@@ -573,6 +621,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             "price": order["price"],
             "priority": priority[i],
             "start_day": config["ships"][order["id"]]["start_day"],
+            "order_days": order_days[i],
+            "arrival_days": {mid: day + materials[mid]["lead_days"] for mid, day in order_days[i].items()},
             "started_day": started[i],
             "delivered_day": delivered[i],
             "late_days": late_days[i],
@@ -745,25 +795,65 @@ def suggest_order_days(config: dict[str, Any], scenario: dict[str, Any] | None =
                        buffer_days: int = 1) -> dict[str, dict[str, int]]:
     """자재가 필요한 날에서 역산한 발주일: 필요일 − 리드타임 − 여유일.
 
-    자재가 항상 충분하다고 보고 한 번 돌려서 각 배가 자재를 쓰는 날을 구한다.
+    1.0의 "발주일 역산" 버튼이 쓰던 함수다. 1.1부터 화면은 발주 방식(ordering)을 고르고,
+    이 함수는 /api/suggest-orders 하위 호환으로만 남는다.
     """
     scenario = scenario or load_scenario()
     validate_config(config, scenario)
+    lead = {m["id"]: m["lead_days"] for m in scenario["materials"]}
+    return {sid: {mid: _clamp_day(need - lead[mid] - buffer_days, scenario) for mid, need in needs.items()}
+            for sid, needs in _need_days(config, scenario).items()}
+
+
+def resolve_order_days(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> dict[str, dict[str, int | None]]:
+    """발주 방식(ordering)에 따른 배별 발주일. 방식이 없으면 설정의 order_days를 그대로 쓴다.
+
+    bulk: 모든 자재를 1일에. jit: 필요일 − 리드타임 − 여유일. late: 필요일에 (리드타임만큼 자재 대기).
+    필요일은 자재가 항상 충분하다고 보고 한 번 돌려서 구한다. 실제 실행에서는 앞 공정이 늦어지면 필요일도 밀린다.
+    """
+    scenario = scenario or load_scenario()
+    ordering = config.get("ordering")
+    if ordering is None:
+        return {sid: dict(ship.get("order_days") or {}) for sid, ship in config["ships"].items()}
+    lead = {m["id"]: m["lead_days"] for m in scenario["materials"]}
+    if ordering == "bulk":
+        return {sid: {mid: 1 for mid in lead} for sid in config["ships"]}
+    buffer = scenario["ordering"]["jit"]["buffer_days"]
+    offset = {mid: (lead[mid] + buffer if ordering == "jit" else 0) for mid in lead}
+    return {sid: {mid: _clamp_day(need - offset[mid], scenario) for mid, need in needs.items()}
+            for sid, needs in _need_days(config, scenario).items()}
+
+
+def _with_order_days(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
+    """발주 방식을 배별 발주일로 풀어 쓴 설정 사본. _run은 order_days만 읽는다."""
+    if config.get("ordering") is None:
+        return config
+    validate_config(config, scenario)
+    resolved = copy.deepcopy(config)
+    for sid, days in resolve_order_days(config, scenario).items():
+        resolved["ships"][sid]["order_days"] = days
+    return resolved
+
+
+def _need_days(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, dict[str, int]]:
+    """자재가 항상 충분할 때 각 배가 자재를 처음 쓰는 날. 쓰지 못하면 마지막 날."""
     probe_scenario = copy.deepcopy(scenario)
     probe_scenario["initial_stock"] = {m["id"]: 10 ** 6 for m in scenario["materials"]}
     probe_config = copy.deepcopy(config)
+    probe_config.pop("ordering", None)
     for ship in probe_config["ships"].values():
         ship["order_days"] = {}
     result = _run(probe_config, probe_scenario)
 
-    lead = {m["id"]: m["lead_days"] for m in scenario["materials"]}
     station_material = {s["id"]: s["material"] for s in scenario["stations"] if s["material"]}
-    suggestion: dict[str, dict[str, int]] = {}
+    needs: dict[str, dict[str, int]] = {}
     for ship in result["ships"]:
-        days_for_ship = {}
+        needs[ship["id"]] = {}
         for pid, mid in station_material.items():
             span = ship["spans"].get(pid)
-            need_day = span["start"] if span else scenario["days"]
-            days_for_ship[mid] = min(scenario["days"], max(1, need_day - lead[mid] - buffer_days))
-        suggestion[ship["id"]] = days_for_ship
-    return suggestion
+            needs[ship["id"]][mid] = span["start"] if span else scenario["days"]
+    return needs
+
+
+def _clamp_day(day: int, scenario: dict[str, Any]) -> int:
+    return min(scenario["days"], max(1, day))

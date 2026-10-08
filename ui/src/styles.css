@@ -210,6 +210,23 @@ select.priority { max-width: 84px; }
 .legend i.deliver-mark { width: 10px; height: 10px; background: var(--good); transform: rotate(45deg); border-radius: 1px; }
 .legend .sep { width: 1px; height: 14px; background: var(--line); }
 
+/* ----- 계획 간트 (착수일 끌기) ----- */
+.plan-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.plan-host { margin-top: 6px; touch-action: none; }
+.plan-gantt .ship-id.small { font-size: 12px; }
+.plan-gantt .plan-hit { fill: transparent; }
+.plan-gantt .plan-row { cursor: grab; outline: none; }
+.plan-gantt .plan-row:hover .plan-hit, .plan-gantt .plan-row:focus-visible .plan-hit { fill: var(--accent-soft); }
+.plan-gantt .plan-row:focus-visible .plan-hit { stroke: var(--accent); stroke-width: 1.5; }
+.plan-gantt .plan-row.dragging { cursor: grabbing; }
+.plan-gantt .plan-row.dragging .plan-hit { fill: var(--accent-soft); }
+.plan-gantt .plan-conflict { pointer-events: none; stroke: #898781; stroke-width: 1; }
+.plan-gantt .plan-live { font-size: 10px; font-weight: 700; fill: var(--accent); }
+.plan-gantt .plan-due { pointer-events: none; }
+.plan-gantt .plan-late { font-size: 13px; font-weight: 800; fill: var(--bad); }
+.legend i.plan-overlap { background: repeating-linear-gradient(45deg, #898781 0 2px, transparent 2px 5px); outline: 1px solid #898781; }
+.field-hint { margin: -2px 0 2px 80px; }
+
 .ticker {
   display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 12px; padding: 9px 12px;
   background: var(--panel-2); border-radius: 10px; min-height: 42px; font-size: 0.86rem;
