@@ -1,4 +1,5 @@
-// 왼쪽 계획 양식: 시나리오 → 프리셋 → ① 수주와 계획(배 요약 + 계획 간트) → ② [공통 | 배별] 탭 → 실행.
+// 왼쪽 계획 양식(생산계획서): ① 수주와 계획(배 요약 + 계획 간트) → ② [공통 | 배별] 탭 → 실행.
+// 분기 고르기와 예시 계획은 서식 밖, 클립보드 위 책상에 있다(renderPlanBar).
 // 입력 중에는 양식을 다시 그리지 않는다(그러면 커서가 사라진다). 값만 config에 넣고 알린다.
 // 탭 전환도 hidden만 바꾼다. 처리량, 불량률, 고정비, 연구 일정, 발주일, 계획 막대는
 // 서버의 /api/preview 결과를 data-preview 자리에 채운다.
@@ -57,39 +58,42 @@ function showTab(root: HTMLElement, tab: string): void {
   root.querySelectorAll<HTMLElement>("[data-tab]").forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === tab));
 }
 
+/**
+ * 책상 위, 생산계획서 밖: 분기 고르기와 예시 계획. 서식 안에는 계획 내용만 둔다(2026-10-08 사용자 피드백).
+ * 시나리오는 분기와 1:1이라 분기로 고르고, 시나리오 이름("수주 증가")은 옆에 메모처럼 붙인다.
+ */
+export function renderPlanBar(root: HTMLElement, ctx: FormContext): void {
+  const { scenario } = ctx;
+  const activePreset = ctx.presets.find((p) => p.id === ctx.presetId);
+  mount(root,
+    ctx.scenarios.length > 1 ? h("div", { class: "bar-row" },
+      h("span", { class: "bar-label" }, "분기"),
+      h("div", { class: "bar-choices" }, ctx.scenarios.map((sc) =>
+        h("button", {
+          class: `bar-choice${sc.id === scenario.id ? " active" : ""}`,
+          type: "button", title: sc.summary, disabled: ctx.busy,
+          onclick: () => { if (sc.id !== scenario.id) ctx.onScenario(sc.id); },
+        }, sc.period, h("small", null, ` ${sc.name} · ${sc.ships}척`))))) : null,
+    h("div", { class: "bar-row" },
+      h("span", { class: "bar-label" }, "예시 계획"),
+      h("div", { class: "bar-choices" }, ctx.presets.map((preset) =>
+        h("button", {
+          class: `bar-choice${preset.id === ctx.presetId ? " active" : ""}`,
+          type: "button", title: preset.summary, disabled: ctx.busy,
+          onclick: () => ctx.onPreset(preset.id),
+        }, preset.name)))),
+    h("p", { class: "bar-note" },
+      activePreset
+        ? [h("b", null, `${activePreset.name}: `), activePreset.summary, h("b", { class: "edited", hidden: !ctx.edited }, " (수정함)")]
+        : "직접 정한 계획입니다."),
+    ctx.scenarios.length > 1 ? h("p", { class: "bar-note" }, h("b", null, `${scenario.name}: `), scenario.summary) : null,
+  );
+}
+
 export function renderForm(root: HTMLElement, ctx: FormContext): void {
   current = ctx;
   const { scenario, config } = ctx;
   const orderIds = scenario.orders.map((o) => o.id);
-  const activePreset = ctx.presets.find((p) => p.id === ctx.presetId);
-
-  // 시나리오: 기본 분기(4척)에서 자원 활용을, 수주 증가(6척)에서 증설 판단을 익힌다.
-  const scenarioSection = ctx.scenarios.length > 1 ? h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, h("h2", null, "시나리오")),
-    h("div", { class: "preset-row" },
-      ctx.scenarios.map((sc) =>
-        h("button", {
-          class: `preset${sc.id === scenario.id ? " active" : ""}`,
-          type: "button", title: sc.summary, disabled: ctx.busy,
-          onclick: () => { if (sc.id !== scenario.id) ctx.onScenario(sc.id); },
-        }, `${sc.name} (${sc.ships}척)`))),
-    h("p", { class: "hint" }, scenario.summary),
-  ) : null;
-
-  const presetSection = h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, h("h2", null, "프리셋")),
-    h("div", { class: "preset-row" },
-      ctx.presets.map((preset) =>
-        h("button", {
-          class: `preset${preset.id === ctx.presetId ? " active" : ""}`,
-          type: "button", title: preset.summary,
-          onclick: () => ctx.onPreset(preset.id),
-        }, preset.name))),
-    h("p", { class: "hint" },
-      activePreset
-        ? [activePreset.summary, h("b", { class: "edited", hidden: !ctx.edited }, " (수정함)")]
-        : "직접 정한 설정입니다."),
-  );
 
   // ① 수주와 계획: 4척 요약 줄과 계획 간트. 우선순위는 겹치면 맞바꾸고, 착수 예정일은 간트에서 끌어 정한다.
   const summary = h("section", { class: "panel" },
@@ -155,11 +159,10 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
     fields: [
       ["계획 기간", `${scenario.period} (작업일 ${scenario.days}일)`],
       ["수주", `${orderIds.length}척 (${orderIds[0]}~${orderIds[orderIds.length - 1]})`],
-      ["기준", activePreset ? `${activePreset.name}${ctx.edited ? " 수정" : ""}` : "직접 작성"],
     ],
   });
 
-  mount(root, head, scenarioSection, presetSection, summary, settings, runSection);
+  mount(root, head, summary, settings, runSection);
   showTab(root, activeTab);
 }
 
