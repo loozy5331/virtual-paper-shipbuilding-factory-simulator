@@ -169,7 +169,7 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
   const runSection = h("section", { class: "run-bar" },
     h("div", { class: "errors", "data-preview": "errors" }),
     h("button", { class: "btn primary run", type: "button", disabled: ctx.busy, onclick: () => ctx.onRun() },
-      h("span", { class: "step light" }, "3"), `결재하고 ${scenario.days}일 실행`),
+      h("span", { class: "step light" }, "3"), `승인하고 ${scenario.days}일 실행`),
   );
 
   const head = docHead({
