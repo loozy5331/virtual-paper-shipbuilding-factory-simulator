@@ -59,23 +59,32 @@ function showTab(root: HTMLElement, tab: string): void {
 }
 
 /**
- * 책상 위, 생산계획서 밖: 지금 분기와 예시 계획. 서식 안에는 계획 내용만 둔다(2026-10-08 사용자 피드백).
- * 분기는 첫 화면(책상 위 클립보드)에서 고르고, 여기서는 "← 분기 고르기"로 돌아간다.
+ * 생산계획서 위 왼쪽: "← 분기 고르기"와 지금 분기. 안과 분기의 설명은 오른쪽 포스트잇(renderPlanNotes).
  */
 export function renderPlanBar(root: HTMLElement, ctx: FormContext): void {
   const { scenario } = ctx;
+  mount(root,
+    h("button", { class: "bar-back", type: "button", title: "책상으로 돌아가 다른 분기의 클립보드를 고릅니다", onclick: ctx.onDesk },
+      "← 분기 고르기"),
+    h("span", { class: "bar-quarter" }, scenario.period, h("small", null, ` ${scenario.name}`)));
+}
+
+/**
+ * 생산계획서 오른쪽에 붙인 포스트잇: 고른 안의 설명, 분기 메모. 서식 안이 아니라 종이 옆에 붙인 메모다.
+ * (목표와 이번 세션 최고 포스트잇은 회차를 아는 main.ts가 붙인다.)
+ */
+export function renderPlanNotes(root: HTMLElement, ctx: FormContext): void {
+  const { scenario } = ctx;
   const activePreset = ctx.presets.find((p) => p.id === ctx.presetId);
   mount(root,
-    h("div", { class: "bar-row" },
-      h("button", { class: "bar-back", type: "button", title: "책상으로 돌아가 다른 분기의 클립보드를 고릅니다", onclick: ctx.onDesk },
-        "← 분기 고르기"),
-      h("span", { class: "bar-quarter" }, scenario.period, h("small", null, ` ${scenario.name}`))),
-    h("p", { class: "bar-note" },
+    h("div", { class: "postit" },
       activePreset
-        ? [h("b", null, `${planLabel(ctx.presets, activePreset.id)}: `), activePreset.summary, h("b", { class: "edited", hidden: !ctx.edited }, " (수정함)")]
-        : "직접 정한 계획입니다."),
-    ctx.scenarios.length > 1 ? h("p", { class: "bar-note" }, h("b", null, `${scenario.name}: `), scenario.summary) : null,
-  );
+        ? [h("b", null, planLabel(ctx.presets, activePreset.id)), h("em", { class: "edited", hidden: !ctx.edited }, "수정함"),
+          h("p", null, activePreset.summary)]
+        : [h("b", null, "직접 정한 계획"), h("p", null, "예시 안을 바탕으로 하지 않은 계획입니다.")]),
+    h("div", { class: "postit blue" },
+      h("b", null, `${scenario.period} · ${scenario.name}`),
+      h("p", null, scenario.summary)));
 }
 
 /** 예시 계획의 이름: 프리셋 순서대로 A안, B안, C안. 회사 서류에서 대안을 비교할 때 쓰는 말이다. */

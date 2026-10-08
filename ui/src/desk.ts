@@ -19,6 +19,7 @@ export function renderDesk(root: HTMLElement, ctx: DeskContext): void {
   const maxLevel = Math.max(...ctx.scenarios.map((sc) => sc.level));
   mount(root,
     h("div", { class: "desk-intro" },
+      h("small", { class: "desk-brand" }, "종이배 조선소 · 생산관리 시뮬레이터"),
       h("h2", null, "어느 분기의 생산계획을 맡을까요?"),
       h("p", null, "왼쪽 분기부터 차례로 맡으면 좋습니다. 나중 분기일수록 수주가 많고 판단할 것이 늘어납니다.")),
     h("div", { class: "desk-boards" }, ctx.scenarios.map((sc) => {
