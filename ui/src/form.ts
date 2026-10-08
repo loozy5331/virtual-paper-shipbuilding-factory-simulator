@@ -6,6 +6,7 @@
 import type { Config, Ordering, Preset, Preview, Scenario } from "./api";
 import { h, mount, money, num, pct } from "./dom";
 import { STATION_COLOR } from "./labels";
+import { docHead } from "./paper";
 import { conflictText, renderPlanGantt } from "./plan-gantt";
 
 export interface FormContext {
@@ -130,10 +131,19 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
   const runSection = h("section", { class: "run-bar" },
     h("div", { class: "errors", "data-preview": "errors" }),
     h("button", { class: "btn primary run", type: "button", disabled: ctx.busy, onclick: () => ctx.onRun() },
-      h("span", { class: "step light" }, "3"), `${scenario.days}일 실행`),
+      h("span", { class: "step light" }, "3"), `결재하고 ${scenario.days}일 실행`),
   );
 
-  mount(root, presetSection, summary, settings, runSection);
+  const head = docHead({
+    title: "생산계획서", code: "PP-01",
+    fields: [
+      ["수주", `${orderIds.length}척 (${orderIds[0]}~${orderIds[orderIds.length - 1]})`],
+      ["기간", `1~${scenario.days}일`],
+      ["기준", activePreset ? `${activePreset.name}${ctx.edited ? " 수정" : ""}` : "직접 작성"],
+    ],
+  });
+
+  mount(root, head, presetSection, summary, settings, runSection);
   showTab(root, activeTab);
 }
 
