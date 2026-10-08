@@ -745,3 +745,107 @@ body { background: var(--desk); }
   .plan-tabs { flex-direction: row; padding-top: 0; }
   .plan-tab { border-right: 1px solid var(--board-edge); border-bottom: 0; border-radius: 6px 6px 0 0; margin-right: 0; }
 }
+
+/* =====================================================================
+   2.0 생산계획서 화면과 관제실(생산관리자 1인칭)
+   생산계획서: 클립보드가 화면 가운데. 관제실: 정면 벽 모니터 두 대, 아래 책상(계획서, 두 손, 작업모).
+   장식은 절제한다: 단색 벽과 책상, 모니터 테두리, 단순한 손과 작업모.
+   ===================================================================== */
+.fly-ghost { position: fixed; z-index: 60; margin: 0; transform-origin: top left; pointer-events: none; }
+
+/* ----- 생산계획서 화면 ----- */
+.plan-screen { width: min(100%, 600px); margin: 0 auto; padding: 16px 16px 24px; display: flex; flex-direction: column; gap: 10px; }
+.plan-screen .board-left .form { max-height: calc(100vh - 72px - 150px); }
+
+/* ----- 관제실 ----- */
+.room { --wall: #cfd3cb; --desk-top: #a39784; position: relative; height: 100vh; min-height: 640px; overflow: hidden; background: var(--wall); }
+.room .plate { position: absolute; left: 26px; top: 6px; z-index: 2; font-size: 12px; color: var(--ink-2); display: flex; gap: 10px; align-items: center; }
+.room .plate b { color: var(--ink); font-size: 13px; }
+.room .plate.right { left: auto; right: 26px; gap: 14px; }
+.plate-best { display: inline-flex; align-items: center; gap: 4px; }
+.plate-best .best-grade { width: 20px; height: 20px; font-size: 11px; }
+.plate-runs { display: inline-flex; align-items: center; gap: 4px; }
+.plate-runs .run-chip { padding: 1px 8px; font-size: 11px; }
+
+/* transform을 쓰지 않는다: 크게 보기의 position: fixed가 화면 기준이 되도록 */
+.monitors { position: absolute; top: 28px; left: 0; right: 0; margin: 0 auto; display: flex; gap: 22px; width: min(1222px, calc(100vw - 40px)); }
+.monitor { flex: 1; min-width: 0; }
+.monitor .bezel { position: relative; background: #1d2420; border-radius: 6px; padding: 9px; box-shadow: 0 6px 16px rgba(20, 24, 20, 0.25); }
+.monitor .screen { position: relative; height: clamp(330px, calc(100vh - 290px), 560px); background: var(--paper); border-radius: 2px; overflow: hidden; display: flex; flex-direction: column; }
+.monitor-label { text-align: center; font-size: 0.74rem; color: var(--ink-2); margin-top: 3px; font-weight: 600; }
+.zoom-btn { position: absolute; right: 16px; bottom: 14px; z-index: 3; border: 1px solid #c9cfc9; background: rgba(252, 250, 244, 0.92); color: var(--ink-2); font: inherit; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
+.zoom-btn .zoom-out, .monitor.zoomed .zoom-btn .zoom-in { display: none; }
+.monitor.zoomed .zoom-btn .zoom-out { display: inline; }
+.zoom-only { display: none; }
+.monitor.zoomed .zoom-only { display: flex; }
+.monitor.zoomed .ship-detail.zoom-only { display: flex; }
+/* 크게 보기: 그 모니터가 화면 가득. 나머지는 흐리게. */
+.monitor.zoomed { position: fixed; inset: 14px; z-index: 50; display: flex; flex-direction: column; }
+.monitor.zoomed .bezel { flex: 1; display: flex; }
+.monitor.zoomed .screen { flex: 1; height: auto; }
+.room.zooming::after { content: ""; position: fixed; inset: 0; z-index: 40; background: rgba(20, 24, 20, 0.55); }
+
+/* 왼쪽 모니터: 위 재생 막대(화면 속 조작부), 아래 간트 */
+.osd { flex: none; height: 36px; background: #26302b; color: #f3f1ea; display: flex; align-items: center; gap: 10px; padding: 0 10px; font-size: 12px; }
+.osd-btn { border: 1px solid rgba(243, 241, 234, 0.35); background: transparent; color: inherit; font: inherit; border-radius: 4px; padding: 2px 9px; cursor: pointer; }
+.osd-btn.play { background: #f3f1ea; color: #26302b; font-weight: 700; min-width: 74px; }
+.osd-speed { display: inline-flex; border: 1px solid rgba(243, 241, 234, 0.35); border-radius: 4px; overflow: hidden; }
+.osd-speed label { cursor: pointer; }
+.osd-speed input { position: absolute; opacity: 0; pointer-events: none; }
+.osd-speed span { display: block; padding: 2px 7px; }
+.osd-speed input:checked + span { background: rgba(243, 241, 234, 0.9); color: #26302b; font-weight: 700; }
+.osd .scrub { flex: 1; min-width: 60px; accent-color: #f3f1ea; }
+.osd .day-now { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gantt-screen { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 8px 28px; display: flex; flex-direction: column; gap: 4px; }
+.screen-tabs { display: flex; gap: 2px; }
+.screen-tab { border: 0; background: transparent; color: var(--ink-3); font: inherit; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
+.screen-tab.active { background: var(--ink); color: #fff; }
+.gantt-screen .legend { font-size: 0.74rem; }
+
+/* 오른쪽 모니터: 위 3/4 기호도 또는 CCTV, 아래 1/4 사건 기록 */
+.right-top { position: relative; flex: 3; min-height: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: center; }
+.right-top .schematic-host { margin: 0; padding: 6px 8px; }
+.cctv-host { position: absolute; inset: 0; height: auto; border-radius: 0; }
+.cam-label { position: absolute; left: 10px; top: 8px; z-index: 2; background: rgba(20, 24, 20, 0.8); color: #f3f1ea; font-size: 12px; padding: 3px 8px; border-radius: 3px; font-weight: 700; }
+.cam-label::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #c0262d; margin-right: 6px; vertical-align: 1px; }
+.cam-back { position: absolute; right: 10px; top: 8px; z-index: 2; background: #fff; border: 1px solid #c9cfc9; font: inherit; font-size: 12px; padding: 3px 9px; border-radius: 4px; font-weight: 700; color: var(--accent); cursor: pointer; }
+.cam-switch { position: absolute; left: 10px; bottom: 8px; z-index: 2; display: flex; gap: 4px; }
+.cam-switch button { border: 0; background: rgba(20, 24, 20, 0.62); color: #f3f1ea; font: inherit; font-size: 11px; padding: 2px 7px; border-radius: 3px; cursor: pointer; }
+.cam-switch button.active { background: rgba(20, 24, 20, 0.9); font-weight: 700; }
+.log { flex: 1; min-height: 0; margin: 0; padding: 4px 10px 26px; list-style: none; overflow-y: auto; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-2); background: #f6f3ea; }
+.log li { display: flex; gap: 8px; align-items: baseline; padding: 1px 0; }
+.log li.today { color: var(--ink); }
+.log li.quiet { color: var(--ink-3); }
+.log b { width: 34px; flex: none; color: var(--ink); font-variant-numeric: tabular-nums; }
+.log em { flex: none; font-style: normal; font-weight: 700; font-size: 11px; width: 26px; color: var(--ink-2); }
+.log em.defect { color: #cf3d0b; } .log em.accident, .log em.breakdown { color: #8e2e42; } .log em.arrival { color: #9a5a10; } .log em.delivery { color: var(--good); }
+
+/* 책상: 생산계획서, 두 손, 작업모 */
+.room-desk { position: absolute; left: 0; right: 0; bottom: 0; height: 185px; }
+.desk-top { position: absolute; inset: 0; background: var(--desk-top); border-top: 3px solid #b3a895; }
+.desk-clip { position: absolute; left: 80px; top: 26px; width: 120px; height: 150px; padding: 13px 7px 0; cursor: pointer; font: inherit; text-align: left;
+  background: var(--board); border: 1px solid var(--board-edge); border-radius: 5px; transition: transform 0.15s ease; }
+.desk-clip::before { content: ""; position: absolute; top: -5px; left: 50%; transform: translateX(-50%); width: 40px; height: 10px; background: #8c9195; border-radius: 2px; }
+.desk-clip:hover, .desk-clip:focus-visible { transform: translateY(-4px); }
+.clip-sheet { display: block; background: var(--paper); height: 100%; border-radius: 2px; padding: 8px; font-size: 10px; color: var(--ink-2); }
+.clip-sheet b { display: block; font-size: 12px; color: var(--ink); }
+.clip-sheet small { display: block; margin-bottom: 4px; }
+.clip-sheet i { display: block; height: 3px; background: #e2ddd0; margin: 6px 0; }
+.room .desk-label { display: block; font-size: 11px; color: #f3f1ea; font-weight: 600; text-align: center; text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3); margin-top: 4px; }
+.desk-clip .desk-label { position: absolute; left: 0; right: 0; top: 100%; }
+.desk-hat { position: absolute; right: 90px; top: 30px; width: 190px; border: 0; background: transparent; cursor: pointer; font: inherit; transition: transform 0.15s ease; }
+.desk-hat svg { width: 180px; display: block; margin: 0 auto; }
+.desk-hat:hover, .desk-hat:focus-visible { transform: translateY(-4px); }
+.hands { position: absolute; left: 50%; transform: translateX(-50%); bottom: -6px; width: min(720px, 60vw); z-index: 6; pointer-events: none; }
+.hands svg { display: block; width: 100%; }
+.room.board-up .hands, .room.board-down .hands { display: none; }
+
+/* 생산실적 평가서 클립보드: 올라오면 화면 앞, 내려 두면 아래 띠만 */
+.report-board { position: absolute; left: 50%; transform: translateX(-50%); width: min(900px, calc(100vw - 32px)); height: calc(100vh - 40px); top: 20px; z-index: 20;
+  padding: 20px 9px 9px; box-shadow: 0 10px 30px rgba(20, 24, 20, 0.35); transition: top 0.4s ease; }
+.room.board-down .report-board { top: calc(100vh - 46px); cursor: pointer; }
+.room.board-up::before { content: ""; position: absolute; inset: 0; z-index: 15; background: rgba(30, 34, 30, 0.35); }
+.report-sheet { height: 100%; overflow-y: auto; background: var(--paper); border-radius: 3px; padding: 14px 20px 20px; }
+.room.board-down .report-sheet { overflow: hidden; }
+.report-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+@media (prefers-reduced-motion: reduce) { .report-board { transition: none; } }
