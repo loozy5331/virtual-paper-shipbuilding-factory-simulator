@@ -664,20 +664,13 @@ body { background: var(--desk); }
 }
 @keyframes board-lower { from { transform: translateY(0); opacity: 1; } to { transform: translateY(40%); opacity: 0; } }
 .scene-wrap { position: relative; }
-.postit {
-  position: absolute; top: 12px; left: 12px; z-index: 3; max-width: 260px;
-  background: #fff1a8; color: var(--ink); padding: 8px 12px; border-radius: 2px;
-  font-size: 0.86rem; font-weight: 700; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
-  animation: postit-in 0.3s ease 0.3s both;
-}
-@keyframes postit-in { from { opacity: 0; transform: translateY(-6px); } }
 @media (prefers-reduced-motion: reduce) { .board-ghost, .postit, .toast { animation: none; } .board-ghost { display: none; } }
 
 /* =====================================================================
    2.0 첫 화면: 책상 위 클립보드 (클립보드 1개 = 분기 1개)
    왼쪽부터 옛 분기 → 나중 분기(어려움). 장식은 절제한다: 판과 종이만, 기울이지 않는다.
    ===================================================================== */
-.desk { min-height: calc(100vh - 72px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; padding: 32px 16px 48px; }
+.desk { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; padding: 32px 16px 48px; }
 .desk-intro { text-align: center; color: var(--ink); }
 .desk-intro h2 { margin: 0 0 6px; font-size: 1.35rem; letter-spacing: -0.01em; }
 .desk-intro p { margin: 0; color: var(--ink-2); font-size: 0.9rem; }
@@ -754,8 +747,32 @@ body { background: var(--desk); }
 .fly-ghost { position: fixed; z-index: 60; margin: 0; transform-origin: top left; pointer-events: none; }
 
 /* ----- 생산계획서 화면 ----- */
-.plan-screen { width: min(100%, 600px); margin: 0 auto; padding: 16px 16px 24px; display: flex; flex-direction: column; gap: 10px; }
-.plan-screen .board-left .form { max-height: calc(100vh - 72px - 150px); }
+.plan-screen { width: min(100%, 1080px); margin: 0 auto; padding: 10px 16px 12px; display: flex; flex-direction: column; gap: 8px; }
+.plan-screen .plan-bar { padding-left: 56px; }
+.plan-screen .bar-row { display: flex; align-items: baseline; gap: 12px; }
+/* [A안·B안·C안 탭][생산계획서][포스트잇] */
+.plan-body { display: grid; grid-template-columns: 56px minmax(0, 720px) 230px; gap: 0 18px; align-items: start; justify-content: center; }
+.plan-body .plan-tabs { margin-right: -18px; }
+.plan-screen .board-left .form { max-height: calc(100vh - 92px); }
+.plan-notes { display: flex; flex-direction: column; gap: 14px; padding-top: 40px; }
+.plan-notes-main { display: contents; }
+/* 포스트잇: 장식은 절제한다(기울이지 않고 얇은 그림자만) */
+.postit { background: #fff1a8; color: var(--ink); padding: 12px 14px 14px; border-radius: 2px; font-size: 0.84rem; line-height: 1.5;
+  box-shadow: 0 2px 5px rgba(30, 28, 20, 0.16); }
+.postit.blue { background: #dcebf4; }
+.postit.green { background: #e0eedb; }
+.postit b { display: block; font-size: 0.92rem; margin-bottom: 4px; }
+.postit em { font-style: normal; font-size: 0.72rem; font-weight: 700; color: var(--accent); }
+.postit p { margin: 0; color: var(--ink-2); }
+.postit ul { margin: 0 0 6px; padding-left: 16px; color: var(--ink-2); }
+.postit .postit-best { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: 0.78rem; }
+.postit .best-grade { width: 20px; height: 20px; font-size: 11px; }
+.desk-brand { display: block; color: var(--ink-3); font-size: 0.8rem; letter-spacing: 0.04em; margin-bottom: 6px; }
+@media (max-width: 1100px) {
+  .plan-body { grid-template-columns: 1fr; }
+  .plan-notes { padding-top: 0; flex-direction: row; flex-wrap: wrap; }
+  .plan-notes .postit { flex: 1 1 200px; }
+}
 
 /* ----- 관제실 ----- */
 .room { --wall: #cfd3cb; --desk-top: #a39784; position: relative; height: 100vh; min-height: 640px; overflow: hidden; background: var(--wall); }

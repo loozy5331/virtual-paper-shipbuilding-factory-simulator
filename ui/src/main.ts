@@ -10,7 +10,7 @@
 import { api, ApiError, type Config, type Finding, type Preview, type Result, type ScenarioPayload } from "./api";
 import { h, mount, num, pct } from "./dom";
 import { renderDesk } from "./desk";
-import { planLabel, renderForm, renderPlanBar, renderPlanTabs, updatePreview, type FormContext } from "./form";
+import { planLabel, renderForm, renderPlanBar, renderPlanNotes, renderPlanTabs, updatePreview, type FormContext } from "./form";
 import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
 import { docHead } from "./paper";
 import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, STATION_COLOR, TRANSPORT_STATE } from "./labels";
@@ -71,7 +71,6 @@ let previewSeq = 0;
 let previewTimer: number | undefined;
 
 const els = {
-  topbar: h("header", { class: "topbar" }),
   desk: h("section", { class: "desk", "aria-label": "분기 고르기" }),
   plan: h("section", { class: "plan-screen", "aria-label": "생산계획서" }),
   room: h("section", { class: "room", "aria-label": "관제실" }),
@@ -80,9 +79,11 @@ const els = {
   fieldOsd: h("div", { class: "osd field-osd" }),
   sceneField: h("div", { class: "scene-host field-host" }),
   form: h("aside", { class: "form" }),
-  planBar: h("div", { class: "plan-bar" }),
+  planBar: h("div", { class: "bar-row" }),
   planTabs: h("nav", { class: "plan-tabs", "aria-label": "계획안" }),
-  best: h("div", { class: "best" }),
+  // 생산계획서 오른쪽 포스트잇: 안·분기 설명(form.ts), 목표와 이번 세션 최고(goalNote)
+  planNotes: h("div", { class: "plan-notes-main" }),
+  goalNote: h("div", { class: "postit green" }),
   // 관제실
   plate: h("div", { class: "plate" }),
   plateRight: h("div", { class: "plate right" }),
@@ -122,7 +123,7 @@ function drawForm(): void {
       if (redraw) drawForm();
       // 입력 중에 양식을 다시 그리면 커서가 빠지므로 "(수정함)" 표시만 드러낸다.
       else {
-        els.planBar.querySelector(".edited")?.removeAttribute("hidden");
+        els.planNotes.querySelector(".edited")?.removeAttribute("hidden");
         els.planTabs.querySelector(".tab-edited")?.removeAttribute("hidden");
       }
       schedulePreview();
@@ -133,6 +134,7 @@ function drawForm(): void {
   };
   renderForm(els.form, ctx);
   renderPlanBar(els.planBar, ctx);
+  renderPlanNotes(els.planNotes, ctx);
   renderPlanTabs(els.planTabs, ctx);
   updatePreview(els.form, state.preview, state.errors, state.busy);
 }
@@ -185,8 +187,6 @@ function setScreen(screen: Screen): void {
   els.plan.hidden = screen !== "plan";
   els.room.hidden = screen !== "room";
   els.field.hidden = screen !== "field";
-  // 관제실과 현장은 화면 전체를 쓴다. 상단 바는 책상과 생산계획서에서만.
-  els.topbar.hidden = screen === "room" || screen === "field";
   if (screen !== "room" && screen !== "field") {
     yard?.stop();
     unzoom();
@@ -236,7 +236,6 @@ async function openPlan(source: HTMLElement): Promise<void> {
   // 지금 화면을 먼저 치워야 생산계획서가 화면 맨 위 제자리에서 재진다.
   els.desk.hidden = true;
   els.room.hidden = true;
-  els.topbar.hidden = false;
   const to = flying ? measureHidden(els.plan, () => els.plan.querySelector(".board-left")) : null;
   setScreen("plan");
   if (flying && to) {
@@ -345,8 +344,7 @@ async function run(): Promise<void> {
   // 생산계획서 클립보드를 띄워 두고(복제), 관제실을 보이지 않게 그려 책상 위 자리를 잰다.
   const flying = reduceMotion() || !source ? null : makeGhost(source);
   state.screen = "room";        // drawRoom()과 tick()이 그리도록 먼저 바꾼다.
-  els.plan.hidden = true;       // 생산계획서와 상단 바를 치워야 관제실이 화면 맨 위 제자리에서 재진다.
-  els.topbar.hidden = true;
+  els.plan.hidden = true;       // 생산계획서를 치워야 관제실이 화면 맨 위 제자리에서 재진다.
   drawRoom();
   const to = flying ? measureHidden(els.room, () => els.deskClip) : null;
   setScreen("room");
@@ -811,17 +809,20 @@ function notify(text: string): void {
   window.setTimeout(() => toast.remove(), 2400);
 }
 
-/** 상단 바(책상, 생산계획서): 생산계획서에서는 지금 분기의 이번 세션 최고, 없으면 목표. */
+/** 생산계획서 오른쪽 포스트잇: 이 분기의 목표와 이번 세션 최고. */
 function drawTopbar(): void {
   const sc = state.data.scenario;
   const best = sessionBest(sc.id);
   const k = sc.kpi;
-  if (state.screen === "desk") return mount(els.best);
-  mount(els.best, best
-    ? [h("span", null, "이번 세션 최고"), gradeChip(best.result.grade.grade, "best-grade"),
-      h("span", null, `${best.result.grade.score.toFixed(1)}점 · ${best.n}회차 ${best.label}`)]
-    : h("span", { class: "best-empty" },
-      `${sc.name} 목표: 매출 ${num(k.revenue)} · 이익 ${num(k.profit)} · 납기 ${pct(k.on_time_rate, 0)} · 직행률 ${pct(k.first_pass_yield, 0)}`));
+  mount(els.goalNote,
+    h("b", null, "목표"),
+    h("ul", null,
+      h("li", null, `매출 ${num(k.revenue)}`), h("li", null, `이익 ${num(k.profit)}`),
+      h("li", null, `납기 준수 ${pct(k.on_time_rate, 0)}`), h("li", null, `직행률 ${pct(k.first_pass_yield, 0)}`)),
+    best
+      ? h("p", { class: "postit-best" }, "이번 세션 최고 ", gradeChip(best.result.grade.grade, "best-grade"),
+        ` ${best.result.grade.score.toFixed(1)}점 · ${best.n}회차 ${best.label}`)
+      : h("p", null, "S 105 · A 85 · B 70 · C 50"));
 }
 
 function onKey(e: KeyboardEvent): void {
@@ -890,17 +891,12 @@ async function start(): Promise<void> {
     fieldFocus: null,
   };
 
-  mount(els.topbar,
-    h("div", { class: "brand" },
-      h("span", { class: "logo", "aria-hidden": "true" }, "⛵"),
-      h("div", null,
-        h("h1", null, "종이배 조선소 관제실"),
-        h("p", null, "생산관리 시뮬레이터 · 7요소 · QCD · 4M"))),
-    els.best);
-
   mount(els.plan,
-    els.planBar,
-    h("div", { class: "board-row" }, els.planTabs, h("div", { class: "clipboard board-left" }, els.form)));
+    h("div", { class: "plan-bar" }, els.planBar),
+    h("div", { class: "plan-body" },
+      els.planTabs,
+      h("div", { class: "clipboard board-left" }, els.form),
+      h("aside", { class: "plan-notes", "aria-label": "메모" }, els.planNotes, els.goalNote)));
 
   monitor(els.monitorLeft, "left", "공정 간트", els.osd, els.ganttScreen);
   monitor(els.monitorRight, "right", "기호도", els.rightTop, els.log);
@@ -922,7 +918,7 @@ async function start(): Promise<void> {
     els.reportBoard);
 
   mount(els.field, els.fieldHead, els.sceneField, els.fieldOsd);
-  mount(root, els.topbar, els.desk, els.plan, els.room, els.field);
+  mount(root, els.desk, els.plan, els.room, els.field);
 
   document.addEventListener("keydown", onKey);
   drawForm();
