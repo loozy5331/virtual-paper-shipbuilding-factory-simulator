@@ -65,18 +65,24 @@ def _read(path: Path) -> Any:
 
 
 def scenario_ids() -> list[str]:
-    """고를 수 있는 시나리오. 기본 분기가 먼저다."""
-    ids = sorted(p.stem for p in (DATA_DIR / "scenarios").glob("*.json"))
-    return sorted(ids, key=lambda sid: sid != DEFAULT_SCENARIO)
+    """고를 수 있는 시나리오. 난이도(level) 순: 옛 분기가 쉽고 나중 분기가 어렵다."""
+    level = {p.stem: _read(p).get("level", 0) for p in (DATA_DIR / "scenarios").glob("*.json")}
+    return sorted(level, key=lambda sid: (level[sid], sid))
 
 
 def list_scenarios() -> list[dict[str, Any]]:
-    """화면의 시나리오 고르기용 요약."""
+    """첫 화면(책상 위 클립보드)과 분기 고르기용 요약. 난이도 순."""
+    rules = _read(DATA_DIR / "rules.json")
     out = []
     for sid in scenario_ids():
         sc = _read(DATA_DIR / "scenarios" / f"{sid}.json")
+        mix: dict[str, int] = {}
+        for o in sc["orders"]:
+            name = rules["ship_types"][o["type"]]["name"]
+            mix[name] = mix.get(name, 0) + 1
         out.append({"id": sid, "name": sc["name"], "summary": sc["summary"], "period": sc["period"],
-                    "ships": len(sc["orders"])})
+                    "level": sc.get("level", 0), "ships": len(sc["orders"]), "ship_mix": mix,
+                    "kpi": sc["kpi"], "days": sc["days"]})
     return out
 
 

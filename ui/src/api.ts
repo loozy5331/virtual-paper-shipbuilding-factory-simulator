@@ -109,7 +109,13 @@ export interface ScenarioSummary {
   name: string;
   summary: string;
   period: string;
+  /** 난이도. 옛 분기가 쉽다(1부터). */
+  level: number;
   ships: number;
+  /** 선종 이름 → 척수 */
+  ship_mix: Record<string, number>;
+  kpi: { revenue: number; profit: number; on_time_rate: number; first_pass_yield: number };
+  days: number;
 }
 
 export interface ScenarioPayload {

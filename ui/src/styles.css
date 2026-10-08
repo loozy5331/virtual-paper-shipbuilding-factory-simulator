@@ -672,3 +672,53 @@ body { background: var(--desk); }
 }
 @keyframes postit-in { from { opacity: 0; transform: translateY(-6px); } }
 @media (prefers-reduced-motion: reduce) { .board-ghost, .postit, .toast { animation: none; } .board-ghost { display: none; } }
+
+/* =====================================================================
+   2.0 첫 화면: 책상 위 클립보드 (클립보드 1개 = 분기 1개)
+   왼쪽부터 옛 분기 → 나중 분기(어려움). 장식은 절제한다: 판과 종이만, 기울이지 않는다.
+   ===================================================================== */
+.desk { min-height: calc(100vh - 72px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; padding: 32px 16px 48px; }
+.desk-intro { text-align: center; color: var(--ink); }
+.desk-intro h2 { margin: 0 0 6px; font-size: 1.35rem; letter-spacing: -0.01em; }
+.desk-intro p { margin: 0; color: var(--ink-2); font-size: 0.9rem; }
+.desk-boards { display: flex; flex-wrap: wrap; justify-content: center; gap: 36px; }
+.desk-board {
+  width: 280px; min-height: 360px; cursor: pointer; font: inherit; color: inherit; text-align: left;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.2s ease;
+}
+.desk-board:hover, .desk-board:focus-visible { transform: translateY(-4px); box-shadow: 0 8px 18px rgba(30, 28, 20, 0.18); outline: none; }
+.desk-board:focus-visible { box-shadow: 0 0 0 3px var(--accent), 0 8px 18px rgba(30, 28, 20, 0.18); }
+.desk-sheet {
+  flex: 1; background: var(--paper); border-radius: 3px; padding: 18px 18px 14px;
+  display: flex; flex-direction: column; gap: 12px; box-shadow: 0 1px 2px rgba(30, 28, 20, 0.12);
+}
+.desk-org { color: var(--ink-3); font-size: 0.72rem; letter-spacing: 0.04em; }
+.desk-sheet h3 { margin: 0; font-size: 1.45rem; line-height: 1.25; letter-spacing: 0.02em; border-bottom: 2px solid var(--ink); padding-bottom: 10px; }
+.desk-sheet h3 span { display: block; font-size: 1rem; font-weight: 600; letter-spacing: 0; color: var(--ink-2); }
+.desk-fields { margin: 0; display: flex; flex-direction: column; gap: 6px; font-size: 0.86rem; }
+.desk-fields div { display: grid; grid-template-columns: 36px 1fr; gap: 8px; }
+.desk-fields dt { color: var(--ink-3); }
+.desk-fields dd { margin: 0; font-weight: 600; }
+.desk-fields dd small { font-weight: 400; color: var(--ink-3); }
+.desk-foot { display: flex; align-items: center; justify-content: space-between; margin-top: auto; }
+.desk-level { display: inline-flex; align-items: center; gap: 4px; }
+.desk-level i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--ink-2); }
+.desk-level i.on { background: var(--ink-2); }
+.desk-level small { margin-left: 4px; color: var(--ink-2); font-size: 0.78rem; font-weight: 600; }
+.desk-stamp {
+  width: 40px; height: 40px; border-radius: 50%; border: 2.5px solid; display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 1.15rem; transform: rotate(-8deg);
+}
+.desk-memo { margin: 0; padding: 8px 10px; background: #f3efe2; border-left: 3px solid var(--board-edge); font-size: 0.8rem; color: var(--ink-2); line-height: 1.4; }
+.desk-memo b { color: var(--ink); }
+/* 집어 든 클립보드 말고는 흐려진다 */
+.desk.leaving .desk-board:not(.picked) { opacity: 0.25; }
+.desk.leaving .desk-board.picked { visibility: hidden; }
+.desk-ghost { position: fixed; z-index: 30; margin: 0; transform-origin: top left; pointer-events: none; }
+
+/* 생산계획서 위: 지금 분기와 "← 분기 고르기" */
+.bar-back { border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 0.84rem; font-weight: 700; cursor: pointer; padding: 2px 0; }
+.bar-back:hover { text-decoration: underline; }
+.bar-quarter { font-size: 0.9rem; font-weight: 700; color: var(--ink); }
+.bar-quarter small { color: var(--ink-3); font-weight: 500; }
+@media (prefers-reduced-motion: reduce) { .desk-board { transition: none; } }

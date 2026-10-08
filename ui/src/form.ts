@@ -21,8 +21,8 @@ export interface FormContext {
   /** 값이 바뀌었다. redraw가 true면 양식 전체를 다시 그린다. */
   onEdit(redraw: boolean): void;
   onPreset(id: string): void;
-  /** 다른 시나리오를 골랐다. 서버에서 새 시나리오를 받아 양식을 처음부터 그린다. */
-  onScenario(id: string): void;
+  /** 책상(첫 화면)으로 돌아가 다른 분기를 고른다. */
+  onDesk(): void;
   onRun(): void;
 }
 
@@ -59,21 +59,17 @@ function showTab(root: HTMLElement, tab: string): void {
 }
 
 /**
- * 책상 위, 생산계획서 밖: 분기 고르기와 예시 계획. 서식 안에는 계획 내용만 둔다(2026-10-08 사용자 피드백).
- * 시나리오는 분기와 1:1이라 분기로 고르고, 시나리오 이름("수주 증가")은 옆에 메모처럼 붙인다.
+ * 책상 위, 생산계획서 밖: 지금 분기와 예시 계획. 서식 안에는 계획 내용만 둔다(2026-10-08 사용자 피드백).
+ * 분기는 첫 화면(책상 위 클립보드)에서 고르고, 여기서는 "← 분기 고르기"로 돌아간다.
  */
 export function renderPlanBar(root: HTMLElement, ctx: FormContext): void {
   const { scenario } = ctx;
   const activePreset = ctx.presets.find((p) => p.id === ctx.presetId);
   mount(root,
-    ctx.scenarios.length > 1 ? h("div", { class: "bar-row" },
-      h("span", { class: "bar-label" }, "분기"),
-      h("div", { class: "bar-choices" }, ctx.scenarios.map((sc) =>
-        h("button", {
-          class: `bar-choice${sc.id === scenario.id ? " active" : ""}`,
-          type: "button", title: sc.summary, disabled: ctx.busy,
-          onclick: () => { if (sc.id !== scenario.id) ctx.onScenario(sc.id); },
-        }, sc.period, h("small", null, ` ${sc.name} · ${sc.ships}척`))))) : null,
+    h("div", { class: "bar-row" },
+      h("button", { class: "bar-back", type: "button", title: "책상으로 돌아가 다른 분기의 클립보드를 고릅니다", onclick: ctx.onDesk },
+        "← 분기 고르기"),
+      h("span", { class: "bar-quarter" }, scenario.period, h("small", null, ` ${scenario.name}`))),
     h("div", { class: "bar-row" },
       h("span", { class: "bar-label" }, "예시 계획"),
       h("div", { class: "bar-choices" }, ctx.presets.map((preset) =>
