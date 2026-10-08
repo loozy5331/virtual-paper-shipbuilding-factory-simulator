@@ -878,3 +878,7 @@ body { background: var(--desk); }
 .field-cams button.active { background: #f3f1ea; color: #26302b; font-weight: 700; }
 .field-host { flex: 1; height: auto; border-radius: 0; color: var(--ink); }
 .field-osd { flex: none; height: 44px; }
+
+/* 오른쪽 모니터의 재생 막대는 크게 볼 때만 */
+.monitor .osd-right { display: none; }
+.monitor.zoomed .osd-right { display: flex; }
