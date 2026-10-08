@@ -593,3 +593,5 @@ body { background: var(--desk); }
   display: inline-grid; place-items: center; width: 18px; height: 18px; margin-right: 6px; border-radius: 50%;
   background: var(--ink); color: var(--paper); font-size: 0.72rem; font-weight: 800; vertical-align: 1px;
 }
+.doc-title h2 { white-space: nowrap; }
+.doc-title .doc-period { display: block; font-size: 0.95rem; letter-spacing: 0.06em; font-weight: 700; line-height: 1.3; }

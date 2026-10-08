@@ -76,6 +76,8 @@ export interface ResearchInfo {
 }
 
 export interface Scenario {
+  /** 계획 기간의 이름. 60일은 이 분기의 작업일로 본다. */
+  period: string;
   days: number;
   stations: StationInfo[];
   materials: MaterialInfo[];

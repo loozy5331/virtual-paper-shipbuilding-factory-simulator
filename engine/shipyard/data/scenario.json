@@ -1,4 +1,5 @@
 {
+  "period": "2026년 4분기",
   "days": 60,
   "stations": [
     {"id": "sub_assembly", "name": "소조립", "real": "소조립 정반: 부재를 붙여 작은 블록 12개", "material": "paper"},

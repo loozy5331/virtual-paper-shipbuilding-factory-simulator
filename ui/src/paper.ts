@@ -7,6 +7,8 @@ import { h, type Child } from "./dom";
 export interface DocHead {
   /** 서식 이름. 예: "생산계획서" */
   title: string;
+  /** 제목 앞에 작게 붙이는 대상 기간. 예: "2026년 4분기" */
+  period?: string;
   /** 문서 번호. 예: "PP-01" */
   code: string;
   /** 기재 항목 [이름, 값]. */
@@ -21,7 +23,7 @@ export function docHead(doc: DocHead): HTMLElement {
   return h("header", { class: "doc-head" },
     h("div", { class: "doc-title" },
       h("small", null, "종이배 조선소"),
-      h("h2", null, doc.title),
+      h("h2", null, doc.period ? h("span", { class: "doc-period" }, doc.period) : null, doc.title),
       h("span", { class: "doc-code" }, `No. ${doc.code}`)),
     h("dl", { class: "doc-fields" },
       doc.fields.map(([name, value]) => h("div", null, h("dt", null, name), h("dd", null, value)))),
