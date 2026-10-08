@@ -1,6 +1,7 @@
 /* 종이배 조선소 화면.
    발표장 오프라인에서도 돌아가야 하므로 웹 글꼴을 쓰지 않고 시스템 한글 글꼴을 쓴다.
-   배경 #EAF0EB는 작업장 색과 손실 색을 색각 이상 검증한 기준 배경이다. */
+   작업장 색과 손실 색은 #EAF0EB 배경에서 색각 이상 검증을 통과했다. 1.1부터 그 위에 얹는 종이는 #FCFAF4로,
+   모든 색의 배경 대비가 검증 때보다 조금씩 높다(예: 중조립 2.33 → 2.58). 맨 아래 "클립보드 위 종이"를 본다. */
 
 :root {
   --bg: #eaf0eb;
@@ -448,3 +449,133 @@ select.priority { max-width: 84px; }
 .ship-events { max-height: 220px; }
 .ship-events li.quiet { display: block; color: var(--ink-3); }
 .chip.cut { background: #2a78d6; color: #fff; }
+
+/* =====================================================================
+   1.1 클립보드 위 종이 (D2)
+   나무 책상 위에 클립보드 두 개: 왼쪽 작업지시서(계획), 오른쪽 공정 실적표(관제실)와 검사 성적서(레포트).
+   현장(3D)을 볼 때는 오른쪽 클립보드를 내려놓는다(board-down).
+   ===================================================================== */
+:root {
+  --paper: #fcfaf4;
+  --paper-2: #f4f0e4;
+  --panel: var(--paper);
+  --panel-2: var(--paper-2);
+  --line: #d9d1bf;
+  --line-soft: #e9e3d4;
+  --board: #6b4a2e;
+  --board-edge: #553821;
+  --serif: "Nanum Myeongjo", "AppleMyungjo", "Batang", "Noto Serif KR", serif;
+}
+
+body {
+  background-color: #b48a5d;
+  background-image:
+    repeating-linear-gradient(90deg, rgba(92, 58, 28, 0.07) 0 2px, transparent 2px 11px),
+    repeating-linear-gradient(90deg, rgba(255, 240, 214, 0.06) 0 1px, transparent 1px 29px),
+    linear-gradient(180deg, #bf9568, #a67a4d);
+}
+
+.topbar { background: #3f2c1d; color: #f6efe1; box-shadow: 0 2px 8px rgba(40, 24, 10, 0.35); }
+.logo { background: rgba(246, 239, 225, 0.12); }
+
+/* ----- 클립보드 ----- */
+.clipboard {
+  position: relative; background: var(--board); border-radius: 18px; padding: 36px 14px 14px;
+  box-shadow: inset 0 0 0 2px var(--board-edge), inset 0 2px 0 rgba(255, 255, 255, 0.08), 0 10px 26px rgba(40, 24, 10, 0.35);
+  display: flex; flex-direction: column; gap: 10px; min-width: 0;
+}
+.clipboard::before {          /* 금속 집게 */
+  content: ""; position: absolute; top: -12px; left: 50%; transform: translateX(-50%); z-index: 2;
+  width: 150px; height: 40px; border-radius: 10px 10px 16px 16px;
+  background: linear-gradient(180deg, #e9ecef, #aab1b8 55%, #8a9199);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+.clipboard::after {           /* 집게 구멍 */
+  content: ""; position: absolute; top: -4px; left: 50%; transform: translateX(-50%); z-index: 3;
+  width: 38px; height: 10px; border-radius: 6px; background: #5d646b; box-shadow: inset 0 2px 2px rgba(0, 0, 0, 0.5);
+}
+.board-left { position: sticky; top: 18px; align-self: start; }
+.board-left .form { position: static; max-height: calc(100vh - 36px - 50px); }
+@media (max-width: 1100px) { .board-left { position: static; } .board-left .form { max-height: none; } }
+
+/* 클립보드를 내려놓은 현장: 집게와 판 없이 3D만 */
+.clipboard.board-down { background: transparent; box-shadow: none; padding: 0; }
+.clipboard.board-down::before, .clipboard.board-down::after { display: none; }
+.field-panel { background: #2b241e; color: #f6efe1; border: 0; border-radius: 14px; box-shadow: 0 10px 26px rgba(40, 24, 10, 0.4); }
+.field-panel .hint { color: rgba(246, 239, 225, 0.7); }
+.field-panel .focus-note { color: #ffd98a; }
+.field-panel .select { background: #fff; color: var(--ink); }
+.field-panel .scene-host { color: var(--ink); }   /* 3D 라벨은 흰 바탕이라 원래 글자색 */
+
+/* ----- 종이 ----- */
+.board-left .form, .board-right > .panel:not(.field-panel) {
+  background: var(--paper); border: 0; border-radius: 3px; padding: 22px 22px 18px;
+  box-shadow: 0 1px 0 #e7e0cf, 0 3px 0 -1px #f3eee2, 0 4px 0 -1px #ded6c3, 0 6px 14px rgba(40, 24, 10, 0.25);
+}
+.board-left .form { gap: 0; }
+.board-left .form > .panel {
+  background: transparent; border: 0; box-shadow: none; border-radius: 0;
+  padding: 14px 0; border-top: 1px dashed var(--line);
+}
+.board-left .form > .doc-head + .panel { border-top: 0; padding-top: 4px; }
+.board-left .form > .run-bar { padding-top: 14px; border-top: 1px dashed var(--line); }
+.board-right > .playbar { padding: 10px 16px; }
+.btn.run { border-radius: 4px; }
+
+/* 오른쪽 종이 한 장 = 머리글 + 재생 막대 + 본문. 조각 사이 틈과 그림자를 없애고 맨 아래에만 겹친 종이 그림자 */
+.board-right:not(.board-down) { gap: 0; }
+.board-right:not(.board-down) > .panel { border-radius: 0; box-shadow: none; padding-top: 10px; padding-bottom: 10px; }
+.board-right:not(.board-down) > .sheet-head { border-radius: 3px 3px 0 0; padding: 22px 22px 0; }
+.board-right:not(.board-down) > .sheet-head .doc-head { margin-bottom: 0; }
+.board-right:not(.board-down) > .playbar { padding: 12px 22px 4px; }
+.board-right:not(.board-down) > .control-panel, .board-right:not(.board-down) > .report-panel {
+  border-radius: 0 0 3px 3px; padding-bottom: 20px;
+  box-shadow: 0 1px 0 #e7e0cf, 0 3px 0 -1px #f3eee2, 0 4px 0 -1px #ded6c3, 0 8px 14px rgba(40, 24, 10, 0.22);
+}
+.report-panel .report-top { margin-top: 6px; }
+
+/* 종이 안의 상자는 서식 칸처럼: 흰 카드 대신 가는 선 */
+.card, .grade-card, .findings { background: transparent; border: 1px solid var(--line); border-radius: 4px; }
+.kpi { border-radius: 4px; border-color: var(--line); }
+.station, .research { border-radius: 6px; border-color: var(--line); }
+.station { border-top-width: 4px; border-top-color: var(--station); }
+
+/* ----- 서식 머리글 ----- */
+.doc-head {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px 16px; align-items: end;
+  border-bottom: 2px solid var(--ink); padding-bottom: 10px; margin-bottom: 12px;
+}
+.doc-title small { display: block; font-size: 0.7rem; letter-spacing: 0.2em; color: var(--ink-3); }
+.doc-title h2 { font-family: var(--serif); font-size: 1.5rem; font-weight: 800; letter-spacing: 0.32em; line-height: 1.2; }
+.doc-code { font-size: 0.74rem; color: var(--ink-3); font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
+.doc-fields { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; font-size: 0.82rem; align-self: end; }
+.doc-fields div { display: flex; gap: 6px; border-bottom: 1px solid var(--line); padding-bottom: 1px; }
+.doc-fields dt { color: var(--ink-3); }
+.doc-fields dd { margin: 0; font-weight: 700; }
+.approval { display: flex; border: 1px solid var(--ink-2); align-self: start; }
+.sign { display: flex; flex-direction: column; width: 50px; }
+.sign + .sign { border-left: 1px solid var(--ink-2); }
+.sign > span { font-size: 0.66rem; text-align: center; border-bottom: 1px solid var(--ink-2); padding: 1px 0; color: var(--ink-2); }
+.sign-box { height: 42px; display: grid; place-items: center; }
+.stamp {
+  width: 40px; height: 40px; border: 2.5px solid; border-radius: 50%; transform: rotate(-12deg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1;
+  font-family: var(--serif); background: rgba(252, 250, 244, 0.6);
+}
+.stamp b { font-size: 1.15rem; font-weight: 900; }
+.stamp small { font-size: 0.5rem; color: inherit; font-family: inherit; }
+/* 왼쪽 종이는 좁아서 기재 항목을 아랫줄로 내린다 */
+.board-left .doc-head { grid-template-columns: minmax(0, 1fr) auto; }
+.board-left .doc-fields { grid-column: 1 / -1; order: 3; }
+.panel-head h3 { font-size: 0.95rem; }
+
+/* ----- 색인 탭 (관제실 | 현장 | 레포트) ----- */
+.view-tabs { margin-bottom: -6px; padding: 0 18px; }
+.view-tabs .tabs { background: none; border: 0; padding: 0; gap: 4px; align-items: flex-end; }
+.view-tabs .tab {
+  background: #e8dfcb; color: var(--ink-2); border-radius: 8px 8px 0 0; padding: 7px 18px 9px;
+  box-shadow: 0 -1px 3px rgba(40, 24, 10, 0.18);
+}
+.view-tabs .tab.active { background: var(--paper); color: var(--ink); padding-bottom: 12px; box-shadow: 0 -2px 5px rgba(40, 24, 10, 0.22); }
+.view-tabs .tab:disabled { opacity: 1; color: var(--ink-3); background: #ddd2bb; }
+.run-chip { background: var(--paper); border-color: #cdbf9f; }

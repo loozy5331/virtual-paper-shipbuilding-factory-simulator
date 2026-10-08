@@ -6,6 +6,7 @@ import { api, ApiError, type Config, type Finding, type Preview, type Result, ty
 import { h, mount } from "./dom";
 import { renderForm, updatePreview } from "./form";
 import { renderGantt, renderShipGantt } from "./gantt";
+import { docHead } from "./paper";
 import { EVENT_NAME, GRADE_COLOR, LOSS_STATES, STATION_COLOR, TRANSPORT_STATE } from "./labels";
 import { breakdownBar, breakdownLegend, eventText, renderReport } from "./report";
 import type { Yard } from "./scene/yard";
@@ -60,6 +61,10 @@ const els = {
   field: h("section", { class: "panel field-panel" }),
   report: h("section", { class: "panel report-panel" }),
   playbar: h("div", { class: "panel playbar" }),
+  // 오른쪽 클립보드. 현장(3D)을 볼 때는 클립보드를 내려놓는다(board-down).
+  board: h("div", { class: "clipboard board-right" }),
+  // 종이 머리글(공정 실적표 / 검사 성적서). 재생 막대보다 위에 와야 해서 패널 밖에 둔다.
+  sheetHead: h("div", { class: "panel sheet-head" }),
   sceneField: h("div", { class: "scene-host field" }),
 };
 
@@ -305,7 +310,30 @@ function drawAll(): void {
   drawControl();
   drawField();
   drawReport();
+  drawSheetHead();
   tick(true);
+}
+
+/** 오른쪽 종이의 서식 머리글. 관제실은 공정 실적표, 레포트는 검사 성적서, 현장에는 종이가 없다. */
+function drawSheetHead(): void {
+  const r = currentRun();
+  const days = state.data.scenario.days;
+  els.sheetHead.hidden = state.view === "field";
+  if (state.view === "report") {
+    const g = r?.result.grade;
+    mount(els.sheetHead, docHead({
+      title: "검사 성적서", code: r ? `QC-${r.n}` : "QC-—",
+      fields: r
+        ? [["회차", `${r.n}회차`], ["설정", r.label], ["판정", r.finished && g ? `${g.grade} (${g.score.toFixed(1)}점)` : "진행 중"]]
+        : [["회차", "—"]],
+      stamp: r?.finished && g ? { text: g.grade, sub: `${g.score.toFixed(1)}점`, color: GRADE_COLOR[g.grade] ?? "#4b5a51" } : null,
+    }));
+  } else if (state.view === "control") {
+    mount(els.sheetHead, docHead({
+      title: "공정 실적표", code: r ? `PR-${r.n}` : "PR-—",
+      fields: r ? [["회차", `${r.n}회차`], ["설정", r.label], ["기간", `1~${days}일`]] : [["회차", "—"], ["기간", `1~${days}일`]],
+    }));
+  }
 }
 
 /** 이번 세션 최고 등급. 화면 상태로만 보관한다. */
@@ -356,6 +384,7 @@ function drawTabs(): void {
   els.field.hidden = state.view !== "field";
   els.report.hidden = state.view !== "report";
   els.playbar.hidden = state.view === "report" || !r;
+  els.board.classList.toggle("board-down", state.view === "field");
 }
 
 function drawPlaybar(): void {
@@ -394,7 +423,6 @@ function drawControl(): void {
   const { scenario } = state.data;
   if (!r) {
     mount(els.control,
-      h("div", { class: "panel-head" }, h("h2", null, "관제실")),
       h("div", { class: "empty" },
         h("p", null, h("b", null, "아직 실행한 회차가 없습니다.")),
         h("p", null, "왼쪽에서 프리셋을 고르거나 직접 계획을 세운 뒤 실행하면, 4척이 60일 동안 블록 조립을 지나가는 모습이 여기에 나옵니다.")));
@@ -422,7 +450,7 @@ function drawControl(): void {
 
   mount(els.control,
     h("div", { class: "panel-head" },
-      h("h2", null, "관제실"),
+      h("h3", null, "배별 공정 실적"),
       h("div", { class: "tabs" }, shipTab(null, "전체"), r.result.ships.map((sh) => shipTab(sh.id, sh.id)))),
     h("div", { class: "gantt-chart" }),
     legend,
@@ -491,7 +519,7 @@ function drawReport(): void {
   const r = currentRun();
   const { scenario } = state.data;
   if (!r) {
-    mount(els.report, h("div", { class: "panel-head" }, h("h2", null, "레포트")),
+    mount(els.report,
       h("p", { class: "hint" }, "실행이 끝나면 등급, 의문점, QCD, 원가, 리드타임 분해, OEE가 여기에 나옵니다."));
     return;
   }
@@ -501,9 +529,7 @@ function drawReport(): void {
       h("p", null, h("b", null, "60일 진행 중입니다.")),
       h("p", null, "끝까지 진행하면 레포트가 나옵니다."),
       h("button", { class: "btn ghost", type: "button", onclick: finish }, "끝으로 건너뛰기 ⏭"));
-  mount(els.report,
-    h("div", { class: "panel-head" }, h("h2", null, "레포트"), h("span", { class: "run-name" }, `${r.n}회차 · ${r.label}`)),
-    body);
+  mount(els.report, body);
 }
 
 // ---------------------------------------------------------------------------
@@ -560,6 +586,7 @@ async function start(): Promise<void> {
     focus: null,
   };
 
+  els.board.append(els.sheetHead, els.playbar, els.control, els.field, els.report);
   mount(root,
     h("header", { class: "topbar" },
       h("div", { class: "brand" },
@@ -568,8 +595,10 @@ async function start(): Promise<void> {
           h("h1", null, "종이배 조선소 관제실"),
           h("p", null, "생산관리 시뮬레이터 · 7요소 · QCD · 4M"))),
       els.best),
-    h("div", { class: "layout" }, els.form,
-      h("main", { class: "main" }, els.tabs, els.playbar, els.control, els.field, els.report)));
+    h("div", { class: "layout" },
+      h("div", { class: "clipboard board-left" }, els.form),
+      h("main", { class: "main" }, els.tabs,
+        els.board)));
 
   document.addEventListener("keydown", onKey);
   drawForm();

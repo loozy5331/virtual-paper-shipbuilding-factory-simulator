@@ -6,6 +6,7 @@
 import type { Config, Ordering, Preset, Preview, Scenario } from "./api";
 import { h, mount, money, num, pct } from "./dom";
 import { STATION_COLOR } from "./labels";
+import { docHead } from "./paper";
 import { conflictText, renderPlanGantt } from "./plan-gantt";
 
 export interface FormContext {
@@ -133,7 +134,16 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
       h("span", { class: "step light" }, "3"), `${scenario.days}일 실행`),
   );
 
-  mount(root, presetSection, summary, settings, runSection);
+  const head = docHead({
+    title: "작업지시서", code: "WO-01",
+    fields: [
+      ["수주", `${orderIds.length}척 (${orderIds[0]}~${orderIds[orderIds.length - 1]})`],
+      ["기간", `1~${scenario.days}일`],
+      ["기준", activePreset ? `${activePreset.name}${ctx.edited ? " 수정" : ""}` : "직접 작성"],
+    ],
+  });
+
+  mount(root, head, presetSection, summary, settings, runSection);
   showTab(root, activeTab);
 }
 
