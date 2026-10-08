@@ -7,7 +7,11 @@ export interface StationConfig {
   maintenance: boolean;
   /** 작업장 수(2.0 증설). 없으면 1. */
   units?: number;
+  /** 인력(2.0 4M): normal 일반, skilled 숙련공, robot 로봇. 없으면 일반. */
+  crew?: Crew;
 }
+
+export type Crew = "normal" | "skilled" | "robot";
 
 export interface ShipConfig {
   priority: number;
@@ -27,7 +31,10 @@ export interface Config {
   pool: number;
   transporters: { count: number; maintenance: boolean };
   research: string[];
-  skilled_station: string | null;
+  /** 1.x 설정의 시니어. 2.0부터는 공정의 crew = "skilled"로 쓴다(엔진이 둘 다 읽는다). */
+  skilled_station?: string | null;
+  /** 자재 등급(2.0 4M): 자재 id → standard 표준 | cheap 저가. 없으면 표준. */
+  materials?: Record<string, "standard" | "cheap">;
 }
 
 export interface Preset {
@@ -49,6 +56,8 @@ export interface MaterialInfo {
   name: string;
   price: number;
   lead_days: number;
+  /** 저가 등급 품목 이름(종이 → 휴지) */
+  cheap_name: string;
 }
 
 export interface ShipType {
@@ -69,6 +78,18 @@ export interface Method {
   name: string;
   speed: number;
   defect_rate: number;
+  /** 신공법: 로트를 끝낼 때마다 불량률이 이만큼 줄어 defect_floor에서 멈춘다. */
+  learning_step?: number;
+  defect_floor?: number;
+  setup_cost?: number;
+  summary?: string;
+}
+
+export interface CrewInfo {
+  name: string;
+  summary: string;
+  defect_add?: number;
+  install_cost?: number;
 }
 
 export interface ResearchInfo {
@@ -95,10 +116,12 @@ export interface Scenario {
     max_workers_per_station: number;
     max_pool: number;
     methods: Record<string, Method>;
+    crews: Record<Crew, CrewInfo>;
     overtime: { speed: number };
   };
   transporter: { max_count: number; capacity: number; lot_weight: number };
   expansion: { name: string; max_units: number; summary: string; cost: Record<string, number> };
+  material_grades: Record<"standard" | "cheap", { name: string; price_factor: number; defect_add: number }>;
   research: Record<string, ResearchInfo>;
   ordering: Record<Ordering, { name: string; summary: string }>;
   kpi: { revenue: number; profit: number; on_time_rate: number; first_pass_yield: number };
@@ -138,7 +161,7 @@ export interface ResearchSlot {
 
 export interface Preview {
   stations: Record<string, { rate: number; defect_rate: number; defect_rate_final: number }>;
-  fixed_costs: { labor: number; maintenance: number; transporter: number; expansion: number; research: number };
+  fixed_costs: { labor: number; maintenance: number; transporter: number; investment: number; research: number };
   research: ResearchSlot[];
   /** 배별 자재의 발주일과 입고일. 엔진이 발주 방식에 따라 정한다. */
   materials: Record<string, Record<string, { order_day: number | null; arrival_day: number | null }>>;
@@ -196,6 +219,8 @@ export interface StationDay {
 export interface StationResult {
   id: string;
   name: string;
+  /** 인력(2.0 4M) */
+  crew: Crew;
   max_rate: number;
   defect_rate: number;
   busy_days: number;

@@ -37,7 +37,9 @@ export interface UnitView {
 export interface StationView extends Omit<UnitView, "unit"> {
   id: string;
   name: string;
+  /** 숙련공 공정이면 참. 3D는 시니어 소인(흰 띠)으로 그린다. */
   senior: boolean;
+  crew: "normal" | "skilled" | "robot";
   overtime: boolean;
   units: UnitView[];
 }
@@ -136,7 +138,8 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
       id: st.id,
       name: st.name,
       ...first,
-      senior: config.skilled_station === st.id,
+      senior: st.crew === "skilled",
+      crew: st.crew,
       overtime: config.stations[st.id].overtime,
       units,
     };

@@ -46,7 +46,7 @@ export const LEAD_TIME_STATES: StateInfo[] = [WORK_STATE, TRANSPORT_STATE, ...LO
 export const STATE_INFO: Record<string, StateInfo> = Object.fromEntries(LEAD_TIME_STATES.map((s) => [s.state, s]));
 
 export const COST_ITEMS: { key: string; name: string; note: string }[] = [
-  { key: "labor", name: "인건비", note: "대기소 인원 일당 × 60일, 시니어 수당 포함" },
+  { key: "labor", name: "인건비", note: "대기소 인원 일당 × 60일, 숙련공 할증(배정 인원 일당 +5) 포함" },
   { key: "overtime", name: "잔업수당", note: "잔업한 날마다 배정 인원 일당의 50%" },
   { key: "maintenance", name: "정비비", note: "정비한 공정의 작업장마다 100" },
   { key: "material", name: "자재비", note: "BOM 수량 × 단가" },
@@ -56,7 +56,7 @@ export const COST_ITEMS: { key: string; name: string; note: string }[] = [
   { key: "accident", name: "사고", note: "사고 1건에 300" },
   { key: "breakdown", name: "고장 수리비", note: "고장 1건에 150 (작업장, 트랜스포터)" },
   { key: "transporter", name: "트랜스포터", note: "대당 5/일, 정비하면 대당 50" },
-  { key: "expansion", name: "증설비", note: "증설한 작업장마다 정반 300, 골리앗 크레인 800" },
+  { key: "investment", name: "설비 투자비", note: "증설(정반 300, 크레인 800), 로봇 도입(작업장마다 700), 신공법 도입(공정마다 150)" },
   { key: "research", name: "연구비", note: "대기열에 넣은 연구 비용" },
   { key: "late_penalty", name: "지연 배상", note: "계약금의 3%/일" },
 ];
