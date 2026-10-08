@@ -50,7 +50,7 @@ print(result["profit"], result["grade"]["grade"])  # 3030.0 A
 | --- | --- | --- |
 | `GET /api/scenario` | 없음 | 버전, 수주, BOM, 규칙 숫자, 프리셋 3개, 최대 처리량 |
 | `POST /api/simulate` | `{"config": {...}}` | 60일 기록, 레포트 값, 등급과 기준선 비교 |
-| `POST /api/preview` | `{"config": {...}}` | 작업장별 처리량과 불량률, 고정비, 연구 일정, 배별 발주일·입고일 |
+| `POST /api/preview` | `{"config": {...}}` | 작업장별 처리량과 불량률, 고정비, 연구 일정, 배별 발주일·입고일, 계획 막대와 작업장 겹침 |
 | `POST /api/suggest-orders` | `{"config": {...}}` | 필요일에서 역산한 발주일 (1.0 하위 호환) |
 
 설정이 규칙에 맞지 않으면 422와 `{"errors": [...]}`를 돌려준다.

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -223,7 +224,41 @@ def preview(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> d
                  for sid, days in order_days.items()}
     return {"stations": stations, "fixed_costs": fixed_costs(config, scenario),
             "research": research_schedule(config.get("research", []), scenario),
-            "materials": materials}
+            "materials": materials, "plan": plan_schedule(config, scenario)}
+
+
+def plan_schedule(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
+    """계획 막대: 배마다 착수일부터 공정을 이어 붙인 일정과, 같은 작업장을 두 배가 겹쳐 쓰는 구간.
+
+    배가 작업장과 사람을 혼자 쓰고 자재·설비가 멈추지 않는다고 본 일정이다(소요일 = 작업량 ÷ 처리량 올림,
+    공정 사이는 운반일). 실제 실행에서는 겹친 구간만큼 뒤 순위 배가 작업장 대기를 한다.
+    """
+    rules = scenario["rules"]
+    tr = scenario["transporter"]
+    move_days = math.ceil(tr["lot_weight"] / (tr["capacity"] * config["transporters"]["count"]))
+    assigned = min(config["pool"], rules["max_workers_per_station"])
+    ships: dict[str, dict[str, dict[str, int]]] = {}
+    for order in scenario["orders"]:
+        work = scenario["ship_types"][order["type"]]["work"]
+        day = config["ships"][order["id"]]["start_day"]
+        spans = {}
+        for st in scenario["stations"]:
+            rate = station_rate(config["stations"][st["id"]], rules, assigned)
+            end = day + math.ceil(work[st["id"]] / rate - EPS) - 1
+            spans[st["id"]] = {"start": day, "end": end}
+            day = end + move_days   # 끝난 다음 날부터 운반, 다 나른 날 다음 공정에 들어간다.
+        ships[order["id"]] = spans
+
+    conflicts = []
+    ids = list(ships)
+    for st in scenario["stations"]:
+        for i, a in enumerate(ids):
+            for b in ids[i + 1:]:
+                sa, sb = ships[a][st["id"]], ships[b][st["id"]]
+                start, end = max(sa["start"], sb["start"]), min(sa["end"], sb["end"])
+                if start <= end:
+                    conflicts.append({"station": st["id"], "ships": [a, b], "start": start, "end": end})
+    return {"ships": ships, "conflicts": conflicts}
 
 
 # ---------------------------------------------------------------------------

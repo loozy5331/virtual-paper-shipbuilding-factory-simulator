@@ -1,10 +1,12 @@
-// 왼쪽 계획 양식: 프리셋 → ① 수주와 계획(4척 요약) → ② [공통 | S1~S4] 탭 → 실행.
+// 왼쪽 계획 양식: 프리셋 → ① 수주와 계획(4척 요약 + 계획 간트) → ② [공통 | S1~S4] 탭 → 실행.
 // 입력 중에는 양식을 다시 그리지 않는다(그러면 커서가 사라진다). 값만 config에 넣고 알린다.
-// 탭 전환도 hidden만 바꾼다. 처리량, 불량률, 고정비, 연구 일정은 서버의 /api/preview 결과를 data-preview 자리에 채운다.
+// 탭 전환도 hidden만 바꾼다. 처리량, 불량률, 고정비, 연구 일정, 발주일, 계획 막대는
+// 서버의 /api/preview 결과를 data-preview 자리에 채운다.
 
-import type { Config, Preset, Preview, Scenario } from "./api";
+import type { Config, Ordering, Preset, Preview, Scenario } from "./api";
 import { h, mount, money, num, pct } from "./dom";
 import { STATION_COLOR } from "./labels";
+import { conflictText, renderPlanGantt } from "./plan-gantt";
 
 export interface FormContext {
   scenario: Scenario;
@@ -16,13 +18,13 @@ export interface FormContext {
   /** 값이 바뀌었다. redraw가 true면 양식 전체를 다시 그린다. */
   onEdit(redraw: boolean): void;
   onPreset(id: string): void;
-  /** 발주일 역산. shipId가 있으면 그 배만 바꾼다. */
-  onSuggest(shipId: string | null): void;
   onRun(): void;
 }
 
 // 다시 그려도 보던 탭을 유지한다.
 let activeTab = "common";
+// 미리보기가 도착하면 계획 간트를 다시 그려야 해서 마지막 양식의 상태를 들고 있는다.
+let current: FormContext | null = null;
 
 function segmented<T extends string | number>(
   name: string, options: { value: T; label: string }[], current: T, onPick: (value: T) => void,
@@ -45,19 +47,6 @@ function toggle(label: string, checked: boolean, onToggle: (on: boolean) => void
     h("span", null, label));
 }
 
-function dayInput(value: number | null, onValue: (v: number | null) => void, max: number, allowEmpty: boolean): HTMLElement {
-  return h("input", {
-    class: "day-input", type: "number", min: 1, max, step: 1, inputmode: "numeric",
-    value: value === null ? "" : String(value),
-    placeholder: allowEmpty ? "없음" : "",
-    oninput: (e: Event) => {
-      const raw = (e.target as HTMLInputElement).value.trim();
-      // 빈칸은 "발주 안 함"(null). 착수일 빈칸은 서버 검사가 잡아내도록 그대로 보낸다.
-      onValue(raw === "" ? null : Number(raw));
-    },
-  });
-}
-
 function showTab(root: HTMLElement, tab: string): void {
   activeTab = tab;
   root.querySelectorAll<HTMLElement>("[data-pane]").forEach((pane) => { pane.hidden = pane.dataset.pane !== tab; });
@@ -65,6 +54,7 @@ function showTab(root: HTMLElement, tab: string): void {
 }
 
 export function renderForm(root: HTMLElement, ctx: FormContext): void {
+  current = ctx;
   const { scenario, config } = ctx;
   const orderIds = scenario.orders.map((o) => o.id);
   const activePreset = ctx.presets.find((p) => p.id === ctx.presetId);
@@ -84,7 +74,7 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
         : "직접 정한 설정입니다."),
   );
 
-  // ① 수주와 계획: 4척 요약 줄. 우선순위는 겹치면 맞바꾼다.
+  // ① 수주와 계획: 4척 요약 줄과 계획 간트. 우선순위는 겹치면 맞바꾸고, 착수일은 간트에서 끌어 정한다.
   const summary = h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("span", { class: "step" }, "1"), h("h2", null, "수주와 계획")),
     h("table", { class: "plan" },
@@ -108,11 +98,19 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
               ctx.onEdit(true);
             },
           }, orderIds.map((_, k) => h("option", { value: k + 1, selected: ship.priority === k + 1 }, `${k + 1}순위`)))),
-          h("td", null, dayInput(ship.start_day, (v) => { ship.start_day = v as number; ctx.onEdit(false); }, scenario.days, false)));
+          h("td", null, h("b", { "data-preview": `start:${order.id}` }, `${ship.start_day}일`)));
       }))),
-    h("div", { class: "row-end" },
-      h("p", { class: "hint" }, "작업장, 사람, 운반 모두 우선순위 순으로 받습니다."),
-      h("button", { class: "btn ghost", type: "button", disabled: ctx.busy, onclick: () => ctx.onSuggest(null) }, "전체 발주일 역산")),
+    h("p", { class: "hint" }, "작업장, 사람, 운반 모두 우선순위 순으로 받습니다."),
+    h("div", { class: "plan-head" },
+      h("b", null, "계획 간트"),
+      h("small", null, "배 줄을 좌우로 끌거나, 줄을 누르고 ←/→로 착수일을 옮깁니다.")),
+    h("div", { class: "plan-host", "data-plan": "" }),
+    h("div", { class: "legend plan-legend" },
+      scenario.stations.map((st) => h("span", null, h("i", { style: { background: STATION_COLOR[st.id] } }), st.name)),
+      h("span", null, h("i", { class: "plan-overlap" }), "작업장 겹침"),
+      h("span", null, h("i", { class: "due-mark" }), "납기")),
+    h("p", { class: "hint", "data-preview": "conflicts" }),
+    h("p", { class: "hint" }, "막대는 배 한 척이 작업장을 혼자 쓸 때의 일정입니다. 겹치는 날은 뒤 순위 배가 기다립니다."),
   );
 
   // ② 탭
@@ -193,8 +191,16 @@ function commonPane(ctx: FormContext): HTMLElement {
     );
   });
 
+  const orderings = Object.entries(scenario.ordering) as [Ordering, { name: string; summary: string }][];
+  const ordering = h("div", { class: "field-row" },
+    h("span", { class: "field-label" }, "자재 발주"),
+    segmented("ordering", orderings.map(([id, o]) => ({ value: id, label: o.name })),
+      config.ordering ?? "jit", (v) => { config.ordering = v; ctx.onEdit(true); }));
+  const orderingHint = h("p", { class: "hint field-hint" },
+    scenario.ordering[config.ordering ?? "jit"].summary, " 배별 발주일은 S1~S4 탭에 있습니다.");
+
   return h("div", { class: "pane", "data-pane": "common" },
-    pool, senior, transporter,
+    pool, senior, transporter, ordering, orderingHint,
     researchQueue(ctx),
     h("div", { class: "stations" }, stationCards),
     h("p", { class: "hint fixed" },
@@ -241,10 +247,9 @@ function researchQueue(ctx: FormContext): HTMLElement {
 }
 
 function shipPane(ctx: FormContext, sid: string): HTMLElement {
-  const { scenario, config } = ctx;
+  const { scenario } = ctx;
   const order = scenario.orders.find((o) => o.id === sid)!;
   const type = scenario.ship_types[order.type];
-  const ship = config.ships[sid];
 
   return h("div", { class: "pane", "data-pane": sid, hidden: true },
     h("dl", { class: "ship-info" },
@@ -260,19 +265,17 @@ function shipPane(ctx: FormContext, sid: string): HTMLElement {
     h("table", { class: "plan orders-table" },
       h("thead", null, h("tr", null,
         h("th", null, "자재"), h("th", { class: "r" }, "소요량"), h("th", null, "쓰는 공정"),
-        h("th", null, "발주일"), h("th", null, "리드타임"))),
+        h("th", null, "발주일"), h("th", null, "입고일"))),
       h("tbody", null, scenario.materials.map((m) => {
         const station = scenario.stations.find((st) => st.material === m.id);
         return h("tr", null,
           h("td", null, h("b", null, m.name)),
           h("td", { class: "r" }, type.bom[m.id] ?? 0),
           h("td", null, station?.name ?? "—"),
-          h("td", null, dayInput(ship.order_days[m.id] ?? null, (v) => { ship.order_days[m.id] = v; ctx.onEdit(false); }, scenario.days, true)),
-          h("td", null, h("small", null, `입고 +${m.lead_days}일`)));
+          h("td", { "data-preview": `order:${sid}:${m.id}` }, "…"),
+          h("td", null, h("span", { "data-preview": `arrival:${sid}:${m.id}` }, "…"), h("small", null, ` (+${m.lead_days}일)`)));
       }))),
-    h("div", { class: "row-end" },
-      h("p", { class: "hint" }, "재고는 4척이 함께 씁니다. 빈칸은 발주하지 않습니다."),
-      h("button", { class: "btn ghost", type: "button", disabled: ctx.busy, onclick: () => ctx.onSuggest(sid) }, "이 배만 역산")));
+    h("p", { class: "hint" }, "발주일은 공통 탭의 발주 방식으로 정해집니다. 재고는 4척이 함께 씁니다."));
 }
 
 /** 서버가 준 미리보기 값을 양식의 자리에 채운다. 오류가 있으면 실행 버튼을 막고, 오류가 난 탭에 ⚠를 붙인다. */
@@ -297,6 +300,15 @@ export function updatePreview(root: HTMLElement, preview: Preview | null, errors
       const el = slot(`research:${r.id}`);
       if (el) el.textContent = r.done ? `${r.start}~${r.end}일, ${r.effective_from}일부터 효과` : `${r.start}일 시작, 기간 안에 못 끝남`;
     }
+    for (const [sid, mats] of Object.entries(preview.materials)) {
+      for (const [mid, m] of Object.entries(mats)) {
+        const order = slot(`order:${sid}:${mid}`);
+        const arrival = slot(`arrival:${sid}:${mid}`);
+        if (order) order.textContent = m.order_day === null ? "안 함" : `${m.order_day}일`;
+        if (arrival) arrival.textContent = m.arrival_day === null ? "—" : `${m.arrival_day}일`;
+      }
+    }
+    drawPlan(root, preview);
   }
   // 오류 메시지는 "S2: …"처럼 배 id로 시작한다. 배가 아닌 오류는 공통 탭에 표시한다.
   root.querySelectorAll<HTMLElement>("[data-warn]").forEach((mark) => {
@@ -310,4 +322,24 @@ export function updatePreview(root: HTMLElement, preview: Preview | null, errors
   if (box) mount(box, errors.length ? h("ul", null, errors.map((e) => h("li", null, e))) : null);
   const run = root.querySelector<HTMLButtonElement>("button.run");
   if (run) run.disabled = busy || errors.length > 0;
+}
+
+/** 계획 간트와 겹침 문구를 미리보기 값으로 다시 그린다. */
+function drawPlan(root: HTMLElement, preview: Preview): void {
+  const host = root.querySelector<HTMLElement>("[data-plan]");
+  if (!host || !current) return;
+  const ctx = current;
+  const { scenario, config } = ctx;
+  const startDays = Object.fromEntries(Object.entries(config.ships).map(([sid, ship]) => [sid, ship.start_day]));
+  mount(host, renderPlanGantt({
+    scenario, plan: preview.plan, startDays,
+    onMove: (sid, day) => {
+      config.ships[sid].start_day = day;
+      const label = root.querySelector<HTMLElement>(`[data-preview="start:${sid}"]`);
+      if (label) label.textContent = `${day}일`;
+      ctx.onEdit(false);
+    },
+  }));
+  const text = root.querySelector<HTMLElement>(`[data-preview="conflicts"]`);
+  if (text) text.textContent = conflictText(scenario, preview.plan);
 }

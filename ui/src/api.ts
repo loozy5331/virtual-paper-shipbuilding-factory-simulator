@@ -10,10 +10,14 @@ export interface StationConfig {
 export interface ShipConfig {
   priority: number;
   start_day: number;
-  order_days: Record<string, number | null>;
+  /** 1.0 설정에서만 쓴다. 1.1부터는 ordering을 고르면 엔진이 정한다. */
+  order_days?: Record<string, number | null>;
 }
 
+export type Ordering = "bulk" | "jit" | "late";
+
 export interface Config {
+  ordering?: Ordering;
   ships: Record<string, ShipConfig>;
   stations: Record<string, StationConfig>;
   pool: number;
@@ -84,6 +88,7 @@ export interface Scenario {
   };
   transporter: { max_count: number; capacity: number; lot_weight: number };
   research: Record<string, ResearchInfo>;
+  ordering: Record<Ordering, { name: string; summary: string }>;
   kpi: { revenue: number; profit: number; on_time_rate: number; first_pass_yield: number };
 }
 
@@ -108,6 +113,17 @@ export interface Preview {
   stations: Record<string, { rate: number; defect_rate: number; defect_rate_final: number }>;
   fixed_costs: { labor: number; maintenance: number; transporter: number; research: number };
   research: ResearchSlot[];
+  /** 배별 자재의 발주일과 입고일. 엔진이 발주 방식에 따라 정한다. */
+  materials: Record<string, Record<string, { order_day: number | null; arrival_day: number | null }>>;
+  plan: Plan;
+}
+
+export interface Span { start: number; end: number }
+
+/** 계획 막대: 배가 작업장을 혼자 쓴다고 본 공정 일정과, 두 배가 같은 작업장을 겹쳐 쓰는 구간. */
+export interface Plan {
+  ships: Record<string, Record<string, Span>>;
+  conflicts: { station: string; ships: [string, string]; start: number; end: number }[];
 }
 
 export type ShipState =
@@ -131,6 +147,8 @@ export interface ShipResult {
   price: number;
   priority: number;
   start_day: number;
+  order_days: Record<string, number>;
+  arrival_days: Record<string, number>;
   started_day: number | null;
   delivered_day: number | null;
   late_days: number;
@@ -272,6 +290,4 @@ export const api = {
   scenario: () => request<ScenarioPayload>("/api/scenario"),
   simulate: (config: Config) => post<Result>("/api/simulate", config),
   preview: (config: Config) => post<Preview>("/api/preview", config),
-  suggestOrders: (config: Config) =>
-    post<{ order_days: Record<string, Record<string, number>> }>("/api/suggest-orders", config),
 };

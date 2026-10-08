@@ -90,7 +90,6 @@ function drawForm(): void {
       schedulePreview();
     },
     onPreset: loadPreset,
-    onSuggest: suggestOrders,
     onRun: run,
   });
   updatePreview(els.form, state.preview, state.errors, state.busy);
@@ -123,21 +122,6 @@ async function refreshPreview(): Promise<void> {
     state.errors = error instanceof ApiError ? error.messages : [String(error)];
   }
   updatePreview(els.form, state.preview, state.errors, state.busy);
-}
-
-async function suggestOrders(shipId: string | null): Promise<void> {
-  try {
-    const { order_days } = await api.suggestOrders(state.config);
-    for (const [sid, days] of Object.entries(order_days)) {
-      if (shipId === null || sid === shipId) Object.assign(state.config.ships[sid].order_days, days);
-    }
-    state.edited = true;
-    drawForm();
-    schedulePreview();
-  } catch (error) {
-    state.errors = error instanceof ApiError ? error.messages : [String(error)];
-    updatePreview(els.form, state.preview, state.errors, state.busy);
-  }
 }
 
 function runLabel(): string {
@@ -528,7 +512,8 @@ function drawReport(): void {
 
 function onKey(e: KeyboardEvent): void {
   const target = e.target as HTMLElement;
-  if (target.closest("input, select, textarea")) return;
+  // 계획 간트처럼 화살표 키를 스스로 쓰는 요소에 포커스가 있으면 재생 단축키를 쓰지 않는다.
+  if (target.closest("input, select, textarea, [data-own-keys]")) return;
   const r = currentRun();
   if (!r) return;
   if (e.key === " ") {

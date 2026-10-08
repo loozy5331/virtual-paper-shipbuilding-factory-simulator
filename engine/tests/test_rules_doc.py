@@ -365,6 +365,14 @@ class Contract(unittest.TestCase):
         self.assertEqual([(x["id"], x["end"]) for x in p["research"]], [("auto_inspect", 8)])
         self.assertEqual(p["materials"]["S1"]["flag"], {"order_day": 12, "arrival_day": 22})
 
+    def test_plan_bars_match_the_run_when_nothing_gets_in_the_way(self):
+        # 관리 프리셋 S1은 막힘 없이 지나가므로 계획 막대가 실제 구간과 같다.
+        plan = preview(PRESETS["managed"])["plan"]
+        run = simulate(PRESETS["managed"], baseline=False)
+        self.assertEqual(plan["ships"]["S1"], run["ships"][0]["spans"])
+        # S1 중조립(8~15일)과 S2 중조립(15~20일)이 15일에 겹친다.
+        self.assertIn({"station": "block_assembly", "ships": ["S1", "S2"], "start": 15, "end": 15}, plan["conflicts"])
+
     def test_invalid_config_is_rejected(self):
         cfg = copy.deepcopy(PRESETS["managed"])
         cfg["pool"] = 9
