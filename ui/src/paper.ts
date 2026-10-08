@@ -4,6 +4,9 @@
 
 import { h, type Child } from "./dom";
 
+/** 결재란 "작성" 칸에 적는 작성자(사용자 결정). */
+export const AUTHOR = "Bell";
+
 export interface DocHead {
   /** 서식 이름. 예: "생산계획서" */
   title: string;
@@ -13,13 +16,15 @@ export interface DocHead {
   code: string;
   /** 기재 항목 [이름, 값]. */
   fields: [string, Child][];
+  /** 결재란 "작성" 칸의 이름. 없으면 AUTHOR. */
+  author?: string;
   /** 결재란 승인 칸에 찍을 도장(생산실적 평가서의 등급). 없으면 빈 칸. */
   stamp?: { text: string; sub: string; color: string; strong?: boolean; fill?: string; ink?: string } | null;
 }
 
 export function docHead(doc: DocHead): HTMLElement {
   const sign = (role: string, mark: Child = null) =>
-    h("div", { class: "sign" }, h("span", null, role), h("div", { class: "sign-box" }, mark));
+    h("div", { class: "sign" }, h("span", null, role), h("div", { class: "sign-box", "data-sign": role }, mark));
   return h("header", { class: "doc-head" },
     h("div", { class: "doc-title" },
       h("small", null, "종이배 조선소"),
@@ -28,7 +33,7 @@ export function docHead(doc: DocHead): HTMLElement {
     h("dl", { class: "doc-fields" },
       doc.fields.map(([name, value]) => h("div", null, h("dt", null, name), h("dd", null, value)))),
     h("div", { class: "approval", "aria-label": "결재란" },
-      sign("작성"),
+      sign("작성", h("span", { class: "sign-name" }, doc.author ?? AUTHOR)),
       sign("검토"),
       sign("승인", doc.stamp
         ? h("span", {

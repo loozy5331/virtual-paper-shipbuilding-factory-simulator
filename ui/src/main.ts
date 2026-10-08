@@ -84,8 +84,8 @@ const els = {
   // 생산계획서 오른쪽 포스트잇: 안·분기 설명(form.ts), 목표와 이번 세션 최고(goalNote)
   planNotes: h("div", { class: "plan-notes-main" }),
   goalNote: h("div", { class: "postit green" }),
-  // 승인: 생산계획서 밖, 화면 오른쪽 아래
-  approve: h("button", { class: "approve-btn", type: "button" }),
+  // 펜: 생산계획서 밖, 화면 오른쪽 아래. 누르면 결재란 "승인" 칸에 서명하고 실행한다.
+  pen: h("button", { class: "desk-pen", type: "button" }),
   // 관제실
   plate: h("div", { class: "plate" }),
   plateRight: h("div", { class: "plate right" }),
@@ -146,8 +146,10 @@ function drawForm(): void {
 /** 양식의 미리보기 숫자와 오류, 승인 버튼 상태를 갱신한다. */
 function updateForm(): void {
   updatePreview(els.form, state.preview, state.errors, state.busy);
-  els.approve.disabled = state.busy || state.errors.length > 0;
-  els.approve.title = state.errors.length ? "생산계획서에서 고칠 곳이 있습니다" : `승인하면 ${state.data.scenario.days}일을 실행합니다`;
+  const blocked = state.busy || state.errors.length > 0;
+  els.pen.classList.toggle("blocked", blocked);
+  els.pen.setAttribute("aria-disabled", String(blocked));
+  els.pen.title = state.errors.length ? "생산계획서에서 고칠 곳이 있어 서명할 수 없습니다" : `결재란 "승인" 칸에 서명하고 ${state.data.scenario.days}일을 실행합니다`;
 }
 
 function loadPreset(id: string): void {
@@ -243,6 +245,7 @@ function reveal(screen: HTMLElement): void {
 /** 클립보드를 생산계획서 자리로 옮기며 생산계획서 화면을 연다. */
 async function openPlan(source: HTMLElement): Promise<void> {
   window.scrollTo(0, 0);
+  clearSignature();   // 계획을 고치러 오면 아직 서명하지 않은 새 계획이다.
   const flying = reduceMotion() ? null : makeGhost(source);
   // 지금 화면을 먼저 치워야 생산계획서가 화면 맨 위 제자리에서 재진다.
   els.desk.hidden = true;
@@ -330,7 +333,72 @@ async function backToPlan(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// 실행: 승인하면 클립보드를 책상에 내려놓고 관제실로
+// 서명: 펜으로 결재란 "승인" 칸에 서명한다
+// ---------------------------------------------------------------------------
+
+// 손으로 쓴 듯한 서명 한 획(가로 120, 세로 40). 그려지는 모습은 stroke-dashoffset으로 낸다.
+const SIGNATURE_PATH = "M6 30 C 10 6, 22 2, 20 18 C 18 32, 6 32, 14 22 C 22 12, 32 12, 32 24 C 32 32, 40 30, 44 18 C 48 6, 54 8, 52 22 C 51 32, 60 30, 66 20 L 72 27 C 78 33, 86 18, 94 20 S 106 28, 116 10";
+// 펜 그림(PEN_SVG, 160×160을 120px로 그림)에서 펜 끝의 자리. 서명할 때 이 점을 칸에 댄다.
+const PEN_TIP = { x: 15, y: 95 };
+let signing = false;
+const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+function clearSignature(): void {
+  els.form.querySelectorAll(".signature").forEach((el) => el.remove());
+}
+
+/** 펜을 결재란으로 옮겨 "승인" 칸에 서명하고, 서명이 끝나면 실행한다. */
+async function signAndRun(): Promise<void> {
+  if (signing || state.busy) return;
+  if (state.errors.length) {
+    notify("생산계획서에서 고칠 곳이 있어 서명할 수 없습니다");
+    els.form.querySelector(".errors")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+  const box = els.form.querySelector<HTMLElement>('[data-sign="승인"]');
+  if (!box) return void run();
+  signing = true;
+  clearSignature();
+  const reduce = reduceMotion();
+  els.form.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+  if (!reduce) await wait(320);
+
+  // 서명: 칸 안에 획을 하나 그린다.
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", SIGNATURE_PATH);
+  const sig = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  sig.setAttribute("viewBox", "0 0 120 40");
+  sig.setAttribute("class", "signature");
+  sig.setAttribute("aria-label", "서명");
+  sig.append(path);
+  box.append(sig);
+
+  if (!reduce) {
+    // 펜 끝(왼쪽 아래)이 칸의 왼쪽에 닿게 옮긴 뒤, 서명하는 동안 칸을 가로질러 움직인다.
+    const art = els.pen.querySelector("svg")!.getBoundingClientRect();
+    const target = box.getBoundingClientRect();
+    const dx = target.left + 6 - (art.left + PEN_TIP.x);
+    const dy = target.top + target.height * 0.72 - (art.top + PEN_TIP.y);
+    els.pen.classList.add("writing");
+    await els.pen.animate([{ transform: "translate(0, 0)" }, { transform: `translate(${dx}px, ${dy}px)` }],
+      { duration: 480, easing: "cubic-bezier(.2,.7,.2,1)", fill: "forwards" }).finished;
+    const length = path.getTotalLength();
+    path.style.strokeDasharray = `${length}`;
+    path.style.strokeDashoffset = `${length}`;
+    const draw = path.animate([{ strokeDashoffset: length }, { strokeDashoffset: 0 }], { duration: 700, easing: "ease-in-out", fill: "forwards" });
+    els.pen.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: `translate(${dx + target.width - 10}px, ${dy - 4}px)` }],
+      { duration: 700, easing: "ease-in-out", fill: "forwards" });
+    await draw.finished;
+    await wait(250);
+    els.pen.getAnimations().forEach((a) => a.cancel());
+    els.pen.classList.remove("writing");
+  }
+  signing = false;
+  await run();
+}
+
+// ---------------------------------------------------------------------------
+// 실행: 서명하면 클립보드를 책상에 내려놓고 관제실로
 // ---------------------------------------------------------------------------
 
 async function run(): Promise<void> {
@@ -886,6 +954,8 @@ function onKey(e: KeyboardEvent): void {
 
 // 생산관리자의 두 손(1인칭): 소매와 손등만. 평가서를 보고 있으면 숨긴다(CSS).
 const HANDS_SVG = `<svg viewBox="0 0 720 130"><path d="M0 130 L 70 70 Q 90 56 110 66 L 150 92 L 92 130 Z" fill="#33413a"/><ellipse cx="138" cy="74" rx="34" ry="20" transform="rotate(-18 138 74)" fill="#e2c4a6"/><path d="M720 130 L 650 70 Q 630 56 610 66 L 570 92 L 628 130 Z" fill="#33413a"/><ellipse cx="582" cy="74" rx="34" ry="20" transform="rotate(18 582 74)" fill="#e2c4a6"/></svg>`;
+// 만년필: 먹색 몸통, 무광 금색 펜촉. 펜 끝은 왼쪽 아래(서명할 때 칸에 닿는 쪽).
+const PEN_SVG = `<svg viewBox="0 0 160 160" aria-hidden="true"><g transform="rotate(-38 80 80)"><rect x="22" y="72" width="96" height="16" rx="8" fill="#26302b"/><rect x="104" y="72" width="30" height="16" rx="7" fill="#33413a"/><rect x="96" y="70" width="4" height="20" fill="#b8a271"/><path d="M22 72 L 4 80 L 22 88 Z" fill="#b8a271"/><path d="M8 80 L 18 80" stroke="#26302b" stroke-width="1.2"/></g></svg>`;
 // 작업모: 관리자 색 #d9480f
 const HAT_SVG = `<svg viewBox="0 0 120 70" aria-hidden="true"><ellipse cx="60" cy="58" rx="50" ry="8" fill="#b23a0b"/><path d="M22 56 C 22 24, 98 24, 98 56 Z" fill="#d9480f"/><rect x="56" y="22" width="8" height="34" rx="3" fill="#e8662f"/></svg>`;
 
@@ -923,10 +993,15 @@ async function start(): Promise<void> {
     fieldFocus: null,
   };
 
-  mount(els.approve, h("b", null, "승인"), h("small", null, `${data.scenario.days}일 실행`));
-  els.approve.addEventListener("click", () => void run());
+  els.pen.innerHTML = PEN_SVG;
+  els.pen.append(h("span", { class: "pen-label" }, "펜 · 결재란에 서명하고 실행"));
+  els.pen.addEventListener("click", () => void signAndRun());
+  // 결재란 "승인" 칸을 직접 눌러도 서명한다.
+  els.form.addEventListener("click", (e) => {
+    if ((e.target as HTMLElement).closest('[data-sign="승인"]')) void signAndRun();
+  });
   mount(els.plan,
-    els.approve,
+    els.pen,
     h("div", { class: "plan-bar" }, els.planBar),
     h("div", { class: "plan-body" },
       els.planTabs,
