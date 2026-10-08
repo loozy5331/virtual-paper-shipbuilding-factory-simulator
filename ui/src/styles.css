@@ -424,7 +424,6 @@ select.priority { max-width: 84px; }
 .chip { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; }
 .chip.late { background: var(--bad); color: #fff; }
 .field-panel { position: relative; }
-.focus-note { font-weight: 700; color: var(--accent); }
 .finding-btns { display: flex; gap: 6px; }
 
 /* 현장 전환: 안전모를 쓴 관리자가 문으로 뛰어나간다 */
@@ -499,7 +498,6 @@ body { background: var(--desk); }
 .clipboard.board-down::before, .clipboard.board-down::after { display: none; }
 .field-panel { background: #26302b; color: #f3f1ea; border: 0; border-radius: 8px; box-shadow: 0 2px 8px rgba(30, 28, 20, 0.2); }
 .field-panel .hint { color: rgba(243, 241, 234, 0.7); }
-.field-panel .focus-note { color: #ffd98a; }
 .field-panel .select { background: #fff; color: var(--ink); }
 .field-panel .scene-host { color: var(--ink); }   /* 3D 라벨은 흰 바탕이라 원래 글자색 */
 
@@ -596,3 +594,63 @@ body { background: var(--desk); }
 }
 .doc-title h2 { white-space: nowrap; }
 .doc-title .doc-period { display: block; font-size: 0.95rem; letter-spacing: 0.06em; font-weight: 700; line-height: 1.3; }
+
+/* =====================================================================
+   1.2 관제실 기호도 (D6) 와 현장 들어가는 길 (D7)
+   기호도는 간트와 같은 색을 쓴다. 손실 색에는 항상 글(상태 이름)을 함께 둔다.
+   ===================================================================== */
+.schematic-host { margin-bottom: 14px; }
+.schematic { width: 100%; height: auto; display: block; }
+.schematic .box { fill: #fff; stroke: var(--line); stroke-width: 1; }
+.schematic .sch-box.store .box, .schematic .sch-box.deliver .box, .schematic .sch-box.small .box { fill: var(--panel-2); }
+.schematic .box-title { font-size: 13px; font-weight: 800; fill: var(--ink); }
+.schematic .box-tag { font-size: 11px; font-weight: 700; fill: var(--ink-2); text-anchor: end; }
+.schematic .box-tag.senior { fill: #6f42c1; }
+.schematic .unit { fill: rgba(31, 42, 36, 0.035); }
+.schematic .unit-name { font-size: 11px; font-weight: 700; fill: var(--ink-3); }
+.schematic .unit-status { font-size: 12px; font-weight: 700; fill: var(--ink-2); }
+.schematic .unit-status.stop { fill: #8e2e42; }
+.schematic .worker { fill: #d6a400; stroke: #8a6a00; stroke-width: 1; }
+.schematic .queue-label { font-size: 11px; font-weight: 700; fill: var(--ink-3); }
+.schematic .queue-label.end { text-anchor: end; }
+.schematic .chip-box { fill: #fff; stroke: var(--ink-2); stroke-width: 1; }
+.schematic .chip-box.late { stroke: var(--bad); stroke-width: 1.6; }
+.schematic .chip-text { font-size: 11px; font-weight: 800; fill: var(--ink); text-anchor: middle; }
+.schematic .shelf-name { font-size: 12px; fill: var(--ink-2); }
+.schematic .shelf-qty { font-size: 12px; font-weight: 700; fill: var(--ink); text-anchor: end; font-variant-numeric: tabular-nums; }
+.schematic .shelf-qty.empty { fill: #9a5a10; }
+.schematic .deliver-note { font-size: 11px; font-weight: 700; fill: var(--good); }
+.schematic .deliver-note.late { fill: var(--bad); }
+.schematic .cell-text { font-size: 12px; fill: var(--ink-2); }
+.schematic .sch-flow { stroke: var(--ink-3); stroke-width: 1.3; }
+.schematic .sch-arrowhead { fill: var(--ink-3); }
+.schematic .pick { cursor: pointer; }
+.schematic .pick:hover .box, .schematic .pick:focus-visible .box { stroke: var(--accent); stroke-width: 2; }
+.schematic .pick:focus { outline: none; }
+.gantt .pick { cursor: pointer; }
+.gantt .pick:hover rect:first-of-type { filter: brightness(0.92); }
+
+/* 안내 한 줄 (60일 전에 현장을 누르면) */
+.toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 20;
+  background: var(--ink); color: #fff; padding: 8px 16px; border-radius: 8px; font-size: 0.88rem;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2); animation: toast-in 0.15s ease;
+}
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 6px); } }
+
+/* 현장 전환: 클립보드를 내려놓고(board-ghost), 무엇을 보러 왔는지 포스트잇으로 남긴다 */
+.board-ghost {
+  position: absolute; inset: 0; z-index: 6; pointer-events: none; border-radius: 8px;
+  background: var(--paper); border: 1px solid var(--board-edge);
+  animation: board-lower 0.45s ease-in forwards;
+}
+@keyframes board-lower { from { transform: translateY(0); opacity: 1; } to { transform: translateY(40%); opacity: 0; } }
+.scene-wrap { position: relative; }
+.postit {
+  position: absolute; top: 12px; left: 12px; z-index: 3; max-width: 260px;
+  background: #fff1a8; color: var(--ink); padding: 8px 12px; border-radius: 2px;
+  font-size: 0.86rem; font-weight: 700; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  animation: postit-in 0.3s ease 0.3s both;
+}
+@keyframes postit-in { from { opacity: 0; transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) { .board-ghost, .postit, .toast { animation: none; } .board-ghost { display: none; } }

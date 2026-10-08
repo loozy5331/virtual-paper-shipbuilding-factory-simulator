@@ -1,14 +1,17 @@
 // 화면의 상태와 연결. 서버에서 시나리오를 받고, 설정을 고치고, 실행 결과를 회차로 쌓는다.
 // 시연 흐름: 분기 목표와 수주 → 계획 → 자원 배치 → 60일 진행(관제실) → 레포트(등급) → 현장 재현 → 재시도.
-// 오른쪽은 [관제실 | 현장 | 레포트] 탭이다. 관제실은 간트([전체 | 배별]), 현장은 3D이고 재생 커서를 함께 쓴다.
+// 오른쪽은 [관제실 | 현장 | 레포트] 탭이다. 관제실은 기호도 + 간트([전체 | 배별]), 현장은 3D이고 재생 커서를 함께 쓴다.
+// 현장으로 들어가는 길은 셋이다: 의문점 카드, 기호도 작업장, 간트 막대(D7). 60일을 끝낸 회차만 열린다.
 
 import { api, ApiError, type Config, type Finding, type Preview, type Result, type ScenarioPayload } from "./api";
 import { h, mount } from "./dom";
 import { renderForm, updatePreview } from "./form";
-import { renderGantt, renderShipGantt } from "./gantt";
+import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
 import { docHead } from "./paper";
 import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, STATION_COLOR, TRANSPORT_STATE } from "./labels";
 import { breakdownBar, breakdownLegend, eventText, renderReport } from "./report";
+import { renderSchematic } from "./schematic";
+import { buildFrame } from "./scene/frame";
 import type { Yard } from "./scene/yard";
 
 const SPEEDS = [1, 2, 4, 8];
@@ -72,7 +75,6 @@ const els = {
 let yard: Yard | null = null;
 let yardLoading: Promise<void> | null = null;
 let yardRun: Run | null = null;
-let buildFrame: typeof import("./scene/frame").buildFrame | null = null;
 const introSeen = new Set<number>();
 
 // ---------------------------------------------------------------------------
@@ -220,9 +222,15 @@ function tick(jump: boolean): void {
   const { result } = r;
   const { scenario } = state.data;
 
+  const schematic = els.control.querySelector(".schematic-host");
+  if (schematic) {
+    mount(schematic, renderSchematic(buildFrame(result, scenario, r.config, state.day, 1), scenario, {
+      onStation: (p) => goField(p, `${scenario.stations[p].name} · ${state.day || 1}일`, Math.max(1, state.day)),
+    }));
+  }
   const chart = els.control.querySelector(".gantt-chart");
   const ship = result.ships.find((sh) => sh.id === state.ganttShip);
-  if (chart) mount(chart, ship ? renderShipGantt(result, scenario, ship.id, state.day) : renderGantt(result, scenario, state.day));
+  if (chart) mount(chart, ship ? renderShipGantt(result, scenario, ship.id, state.day, pickBar) : renderGantt(result, scenario, state.day, pickBar));
   const detail = els.control.querySelector(".ship-detail");
   if (detail && ship) {
     // 그 배의 사건(오늘까지)과, 60일이 끝났으면 리드타임 분해. 합계는 끝난 뒤에만 보여 준다.
@@ -274,9 +282,8 @@ function syncScene(jump: boolean): void {
     return;
   }
   if (!yard) {
-    yardLoading ??= Promise.all([import("./scene/yard"), import("./scene/frame")]).then(([y, f]) => {
+    yardLoading ??= import("./scene/yard").then((y) => {
       yard = new y.Yard();
-      buildFrame = f.buildFrame;
     });
     void yardLoading.then(() => syncScene(true));
     return;
@@ -290,7 +297,7 @@ function syncScene(jump: boolean): void {
   const { scenario } = state.data;
   const day = state.day;
   yard.setSource({
-    frameAt: (frac) => buildFrame!(r.result, scenario, r.config, day, frac),
+    frameAt: (frac) => buildFrame(r.result, scenario, r.config, day, frac),
     playing: state.playing,
     msPerDay: BASE_MS_PER_DAY / state.speed,
     // 1배속 이하에서만 걷는 모습을 보여 준다. 빠르면 바로 옮긴다.
@@ -456,6 +463,10 @@ function drawControl(): void {
 
   mount(els.control,
     h("div", { class: "panel-head" },
+      h("h3", null, "기호도"),
+      h("span", { class: "hint" }, r.finished ? "작업장을 누르면 현장에서 봅니다" : "오늘 어디에 무엇이 있는지")),
+    h("div", { class: "schematic-host" }),
+    h("div", { class: "panel-head" },
       h("h3", null, "배별 공정 실적"),
       h("div", { class: "tabs" }, shipTab(null, "전체"), r.result.ships.map((sh) => shipTab(sh.id, sh.id)))),
     h("div", { class: "gantt-chart" }),
@@ -463,14 +474,50 @@ function drawControl(): void {
     state.ganttShip ? h("div", { class: "ship-detail" }) : null);
 }
 
-/** 현장으로 나간다. 회차마다 처음 한 번은 안전모를 쓰고 뛰어나가는 전환을 보여 준다(누르면 건너뜀). */
+/** 잠깐 떴다 사라지는 안내. */
+function notify(text: string): void {
+  document.querySelector(".toast")?.remove();
+  const toast = h("div", { class: "toast", role: "status" }, text);
+  document.body.append(toast);
+  window.setTimeout(() => toast.remove(), 2400);
+}
+
+/** 기호도 작업장, 간트 막대, 의문점 카드가 함께 쓰는 길: 그 공정을 그 날짜부터 현장에서 본다. */
+function goField(station: number, text: string, day: number): void {
+  const r = currentRun();
+  if (!r?.finished) {
+    notify("60일을 끝까지 진행하면 현장에서 볼 수 있습니다");
+    return;
+  }
+  pause();
+  openField({ station, text });
+  seek(day);
+}
+
+function pickBar(pick: GanttPick): void {
+  const { scenario } = state.data;
+  const station = scenario.stations.findIndex((st) => st.id === pick.station);
+  goField(station, `${pick.ship ? `${pick.ship} · ` : ""}${scenario.stations[station].name} · ${pick.start}~${pick.end}일`, pick.start);
+}
+
+/**
+ * 현장으로 나간다. 포스트잇(무엇을 보러 가는지)을 남기고 클립보드를 내려놓는다.
+ * 회차마다 처음 한 번은 안전모를 쓰고 뛰어나가는 전환을 보여 준다(누르면 건너뜀).
+ */
 function openField(focus: State["focus"]): void {
   const r = currentRun();
   if (!r?.finished) return;
+  const from = state.view;
   state.view = "field";
   state.focus = focus;
   drawAll();
   yardCamera();
+  if (from !== "field") {
+    // 클립보드를 내려놓는 모습: 종이 한 장 크기의 판이 아래로 내려가며 사라진다.
+    const ghost = h("div", { class: "board-ghost", "aria-hidden": "true" });
+    els.board.append(ghost);
+    window.setTimeout(() => ghost.remove(), 500);
+  }
   if (!introSeen.has(r.n)) {
     introSeen.add(r.n);
     const overlay = h("div", { class: "field-intro", onclick: () => overlay.remove() },
@@ -493,7 +540,7 @@ function drawField(): void {
   mount(els.field,
     h("div", { class: "panel-head" },
       h("h2", null, "현장 재현"),
-      state.focus ? h("span", { class: "focus-note" }, state.focus.text) : h("span", { class: "hint" }, "같은 결과를 현장 눈높이로 다시 봅니다."),
+      h("span", { class: "hint" }, "같은 결과를 현장 눈높이로 다시 봅니다."),
       h("div", { class: "controls" },
         r ? h("select", {
           class: "select",
@@ -504,7 +551,9 @@ function drawField(): void {
           },
         }, h("option", { value: -1 }, "전체 보기"),
         state.data.scenario.stations.map((st, i) => h("option", { value: i, selected: state.focus?.station === i }, `${st.name} 가까이`))) : null)),
-    els.sceneField);
+    h("div", { class: "scene-wrap" },
+      els.sceneField,
+      state.focus?.text ? h("div", { class: "postit", title: "보러 나온 곳" }, state.focus.text) : null));
 }
 
 function openFinding(f: Finding, where: "field" | "gantt"): void {
@@ -512,12 +561,12 @@ function openFinding(f: Finding, where: "field" | "gantt"): void {
   const { scenario } = state.data;
   const station = scenario.stations.findIndex((st) => st.id === f.station);
   if (where === "field") {
-    openField({ station, text: `${f.ship} · ${scenario.stations[station]?.name ?? ""} · ${f.start}~${f.end}일` });
-  } else {
-    state.view = "control";
-    state.ganttShip = f.ship;
-    drawAll();
+    goField(station, `${f.ship} · ${scenario.stations[station]?.name ?? ""} · ${f.start}~${f.end}일`, f.start);
+    return;
   }
+  state.view = "control";
+  state.ganttShip = f.ship;
+  drawAll();
   seek(f.start);
 }
 
