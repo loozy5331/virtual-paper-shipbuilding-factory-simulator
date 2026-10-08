@@ -175,11 +175,9 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
     h("div", { class: "panel-head" }, h("span", { class: "step" }, "2"), h("h2", null, "자원과 일정")),
     tabBar, panes);
 
+  // 승인 버튼은 서식 밖, 화면 오른쪽 아래(main.ts). 서식 끝에는 고칠 곳(오류)만 남긴다.
   const runSection = h("section", { class: "run-bar" },
-    h("div", { class: "errors", "data-preview": "errors" }),
-    h("button", { class: "btn primary run", type: "button", disabled: ctx.busy, onclick: () => ctx.onRun() },
-      h("span", { class: "step light" }, "3"), `승인하고 ${scenario.days}일 실행`),
-  );
+    h("div", { class: "errors", "data-preview": "errors" }));
 
   const head = docHead({
     title: "생산계획서", period: scenario.period, code: "PP-01",

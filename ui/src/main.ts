@@ -84,6 +84,8 @@ const els = {
   // 생산계획서 오른쪽 포스트잇: 안·분기 설명(form.ts), 목표와 이번 세션 최고(goalNote)
   planNotes: h("div", { class: "plan-notes-main" }),
   goalNote: h("div", { class: "postit green" }),
+  // 승인: 생산계획서 밖, 화면 오른쪽 아래
+  approve: h("button", { class: "approve-btn", type: "button" }),
   // 관제실
   plate: h("div", { class: "plate" }),
   plateRight: h("div", { class: "plate right" }),
@@ -138,7 +140,14 @@ function drawForm(): void {
   renderPlanBar(els.planBar, ctx);
   renderPlanNotes(els.planNotes, ctx);
   renderPlanTabs(els.planTabs, ctx);
+  updateForm();
+}
+
+/** 양식의 미리보기 숫자와 오류, 승인 버튼 상태를 갱신한다. */
+function updateForm(): void {
   updatePreview(els.form, state.preview, state.errors, state.busy);
+  els.approve.disabled = state.busy || state.errors.length > 0;
+  els.approve.title = state.errors.length ? "생산계획서에서 고칠 곳이 있습니다" : `승인하면 ${state.data.scenario.days}일을 실행합니다`;
 }
 
 function loadPreset(id: string): void {
@@ -167,7 +176,7 @@ async function refreshPreview(): Promise<void> {
     if (seq !== previewSeq) return;
     state.errors = error instanceof ApiError ? error.messages : [String(error)];
   }
-  updatePreview(els.form, state.preview, state.errors, state.busy);
+  updateForm();
 }
 
 function runLabel(): string {
@@ -326,7 +335,7 @@ async function backToPlan(): Promise<void> {
 
 async function run(): Promise<void> {
   state.busy = true;
-  updatePreview(els.form, state.preview, state.errors, state.busy);
+  updateForm();
   let result: Result;
   const config = structuredClone(state.config);
   try {
@@ -336,7 +345,7 @@ async function run(): Promise<void> {
     return;
   } finally {
     state.busy = false;
-    updatePreview(els.form, state.preview, state.errors, state.busy);
+    updateForm();
   }
   state.runs.push({ n: state.runs.length + 1, scenario: state.data.scenario.id, label: runLabel(), config, result, finished: false });
   state.current = state.runs.length - 1;
@@ -690,7 +699,7 @@ function drawGanttScreen(): void {
 
 /** 오른쪽 모니터 위쪽: 기호도(작업장을 누르면 CCTV) 또는 CCTV. */
 function drawRightTop(): void {
-  const label = els.monitorRight.querySelector(".monitor-label");
+  const label = els.monitorRight.querySelector(".win-title");
   if (state.cctv === null) {
     mount(els.rightTop, h("div", { class: "schematic-host" }));
     if (label) label.textContent = "기호도 · 작업장을 누르면 CCTV";
@@ -725,9 +734,7 @@ function drawReportBoard(): void {
   mount(els.reportBoard,
     h("div", { class: "report-sheet" },
       h("div", { class: "report-actions" },
-        state.board === "up"
-          ? h("button", { class: "btn ghost small", type: "button", onclick: () => { state.board = "down"; drawReportBoard(); } }, "내려 두기 ▾")
-          : h("span", { class: "hint" }, "생산실적 평가서 · 누르면 다시 올림"),
+        h("span", { class: "hint" }, state.board === "up" ? "바깥 어두운 곳을 누르면 내려 둡니다" : "생산실적 평가서 · 누르면 다시 올림"),
         h("button", { class: "btn primary small", type: "button", onclick: () => void backToPlan() }, "계획 고치기")),
       docHead({
         title: "생산실적 평가서", code: `PE-${r.n}`,
@@ -763,13 +770,18 @@ function unzoom(): void {
   els.room.classList.remove("zooming");
 }
 
+/** 모니터: Windows 창처럼 제목 표시줄(제목, 최대화/이전 크기로, 닫기)과 화면. */
 function monitor(el: HTMLElement, which: "left" | "right", label: string, ...screen: Node[]): void {
+  const toggle = () => (state.zoomed === which ? unzoom() : zoom(which));
   mount(el,
     h("div", { class: "bezel" },
-      h("div", { class: "screen" }, ...screen),
-      h("button", { class: "zoom-btn", type: "button", title: "크게 보기 (Esc로 닫기)", onclick: () => (state.zoomed === which ? unzoom() : zoom(which)) },
-        h("span", { class: "zoom-in" }, "크게"), h("span", { class: "zoom-out" }, "✕ 닫기"))),
-    h("div", { class: "monitor-label" }, label));
+      h("div", { class: "win-titlebar", ondblclick: toggle },
+        h("span", { class: "win-title" }, label),
+        h("div", { class: "win-buttons" },
+          h("button", { class: "win-btn max", type: "button", title: "최대화", "aria-label": "최대화", onclick: toggle }, "□"),
+          h("button", { class: "win-btn restore", type: "button", title: "이전 크기로 (Esc)", "aria-label": "이전 크기로", onclick: unzoom }, "❐"),
+          h("button", { class: "win-btn close", type: "button", title: "닫기 (Esc)", "aria-label": "닫기", onclick: unzoom }, "✕"))),
+      h("div", { class: "screen" }, ...screen)));
 }
 
 // ---------------------------------------------------------------------------
@@ -911,15 +923,18 @@ async function start(): Promise<void> {
     fieldFocus: null,
   };
 
+  mount(els.approve, h("b", null, "승인"), h("small", null, `${data.scenario.days}일 실행`));
+  els.approve.addEventListener("click", () => void run());
   mount(els.plan,
+    els.approve,
     h("div", { class: "plan-bar" }, els.planBar),
     h("div", { class: "plan-body" },
       els.planTabs,
       h("div", { class: "clipboard board-left" }, els.form),
       h("aside", { class: "plan-notes", "aria-label": "메모" }, els.planNotes, els.goalNote)));
 
-  monitor(els.monitorLeft, "left", "공정 간트", els.osd, els.ganttScreen);
-  monitor(els.monitorRight, "right", "기호도", els.osdRight, els.rightTop, els.log);
+  monitor(els.monitorLeft, "left", "공정 간트", els.ganttScreen, els.osd);
+  monitor(els.monitorRight, "right", "기호도", els.rightTop, els.log, els.osdRight);
   els.hands.innerHTML = HANDS_SVG;
   els.hat.innerHTML = `${HAT_SVG}<span class="desk-label">작업모 · 현장으로</span>`;
   els.hat.addEventListener("click", goField);
