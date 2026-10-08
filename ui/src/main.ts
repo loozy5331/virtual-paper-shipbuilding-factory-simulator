@@ -6,7 +6,7 @@
 import { api, ApiError, type Config, type Finding, type Preview, type Result, type ScenarioPayload } from "./api";
 import { h, mount, num, pct } from "./dom";
 import { renderDesk } from "./desk";
-import { renderForm, renderPlanBar, updatePreview, type FormContext } from "./form";
+import { planLabel, renderForm, renderPlanBar, renderPlanTabs, updatePreview, type FormContext } from "./form";
 import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
 import { docHead } from "./paper";
 import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, STATION_COLOR, TRANSPORT_STATE } from "./labels";
@@ -67,6 +67,8 @@ const els = {
   form: h("aside", { class: "form" }),
   // 분기와 예시 계획: 생산계획서 밖, 왼쪽 클립보드 위
   planBar: h("div", { class: "plan-bar" }),
+  // A안·B안·C안: 생산계획서 왼쪽 가장자리의 인덱스 탭
+  planTabs: h("nav", { class: "plan-tabs", "aria-label": "계획안" }),
   best: h("div", { class: "best" }),
   tabs: h("div", { class: "view-tabs" }),
   control: h("section", { class: "panel control-panel" }),
@@ -97,13 +99,16 @@ function drawForm(): void {
     presets: state.data.presets,
     config: state.config,
     presetId: state.presetId,
-    edited: state.edited,
+    get edited() { return state.edited; },   // 탭이 누를 때의 값을 읽도록 그때그때
     busy: state.busy,
     onEdit: (redraw) => {
       state.edited = true;
       if (redraw) drawForm();
       // 입력 중에 양식을 다시 그리면 커서가 빠지므로 "(수정함)" 표시만 드러낸다.
-      else els.planBar.querySelector(".edited")?.removeAttribute("hidden");
+      else {
+        els.planBar.querySelector(".edited")?.removeAttribute("hidden");
+        els.planTabs.querySelector(".tab-edited")?.removeAttribute("hidden");
+      }
       schedulePreview();
     },
     onPreset: loadPreset,
@@ -112,6 +117,7 @@ function drawForm(): void {
   };
   renderForm(els.form, ctx);
   renderPlanBar(els.planBar, ctx);
+  renderPlanTabs(els.planTabs, ctx);
   updatePreview(els.form, state.preview, state.errors, state.busy);
 }
 
@@ -245,7 +251,8 @@ async function refreshPreview(): Promise<void> {
 function runLabel(): string {
   const preset = state.data.presets.find((p) => p.id === state.presetId);
   if (!preset) return "직접 설정";
-  return state.edited ? `${preset.name} 수정` : preset.name;
+  const label = planLabel(state.data.presets, preset.id);
+  return state.edited ? `${label} 수정` : label;
 }
 
 async function run(): Promise<void> {
@@ -551,7 +558,7 @@ function drawControl(): void {
     mount(els.control,
       h("div", { class: "empty" },
         h("p", null, h("b", null, "아직 실행한 회차가 없습니다.")),
-        h("p", null, "왼쪽에서 프리셋을 고르거나 직접 계획을 세운 뒤 실행하면, 4척이 60일 동안 블록 조립을 지나가는 모습이 여기에 나옵니다.")));
+        h("p", null, `왼쪽 생산계획서에서 A안~C안을 고르거나 직접 고친 뒤 결재하면, ${scenario.orders.length}척이 ${scenario.days}일 동안 블록 조립을 지나가는 모습이 여기에 나옵니다.`)));
     return;
   }
 
@@ -767,7 +774,8 @@ async function start(): Promise<void> {
     els.desk,
     els.work);
   mount(els.work,
-    h("div", { class: "left-col" }, els.planBar, h("div", { class: "clipboard board-left" }, els.form)),
+    h("div", { class: "left-col" }, els.planBar,
+      h("div", { class: "board-row" }, els.planTabs, h("div", { class: "clipboard board-left" }, els.form))),
     h("main", { class: "main" }, els.tabs, els.board));
 
   document.addEventListener("keydown", onKey);

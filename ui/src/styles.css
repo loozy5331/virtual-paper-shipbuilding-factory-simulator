@@ -55,7 +55,7 @@ th { font-weight: 600; color: var(--ink-3); font-size: 0.8rem; text-align: left;
 
 /* ----- 배치 ----- */
 .layout {
-  display: grid; grid-template-columns: minmax(400px, 460px) minmax(0, 1fr);
+  display: grid; grid-template-columns: minmax(456px, 520px) minmax(0, 1fr);   /* 왼쪽 = 인덱스 탭 56px + 생산계획서 */
   gap: 18px; padding: 18px 24px 40px; align-items: start;
 }
 .form { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 18px; max-height: calc(100vh - 36px); overflow: auto; padding-bottom: 4px; }
@@ -724,3 +724,24 @@ body { background: var(--desk); }
 @media (prefers-reduced-motion: reduce) { .desk-board { transition: none; } }
 .station .seg-item span { white-space: nowrap; }
 .field-label.sub { width: auto; min-width: 72px; }
+
+/* 생산계획서 왼쪽의 인덱스 탭(A안·B안·C안). 서류철 칸막이 탭처럼 판 밖으로 나와 있고, 고른 탭은 판과 이어진다. */
+.board-row { display: grid; grid-template-columns: 56px minmax(0, 1fr); align-items: start; }
+.plan-tabs { display: flex; flex-direction: column; gap: 6px; padding-top: 96px; }
+.plan-tab {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 10px 4px; margin-right: -1px; cursor: pointer; font: inherit; color: var(--ink-2);
+  background: #e6e0d0; border: 1px solid var(--board-edge); border-right: 0; border-radius: 6px 0 0 6px;
+}
+.plan-tab b { font-size: 0.95rem; color: var(--ink); }
+.plan-tab small { font-size: 0.7rem; line-height: 1.2; text-align: center; word-break: keep-all; }
+.plan-tab em { font-style: normal; font-size: 0.66rem; font-weight: 700; color: var(--accent); }
+.plan-tab:hover { background: #efe9db; }
+.plan-tab.active { background: var(--board); color: var(--ink); margin-right: -2px; z-index: 1; box-shadow: -2px 1px 3px rgba(30, 28, 20, 0.08); }
+.plan-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.plan-tab:disabled { cursor: default; opacity: 0.7; }
+@media (max-width: 1100px) {
+  .board-row { grid-template-columns: 1fr; }
+  .plan-tabs { flex-direction: row; padding-top: 0; }
+  .plan-tab { border-right: 1px solid var(--board-edge); border-bottom: 0; border-radius: 6px 6px 0 0; margin-right: 0; }
+}
