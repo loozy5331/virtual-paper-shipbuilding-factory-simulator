@@ -19,7 +19,7 @@ import { renderSchematic } from "./schematic";
 import { buildFrame } from "./scene/frame";
 import type { Yard } from "./scene/yard";
 
-const SPEEDS = [1, 2, 8];
+const SPEEDS = [1, 4];   // 기본 4배속(사용자 결정). 1배속에서만 소인이 걸어서 옮긴다.
 const BASE_MS_PER_DAY = 500;   // 1배속은 하루에 0.5초, 60일이 30초다.
 // 사건 기록에 남기는 사건. 투입, 완료, 출고, 운반은 너무 잦아서 뺀다.
 const LOG_EVENTS = new Set(["arrival", "defect", "accident", "breakdown", "delivery", "research_done"]);
@@ -405,6 +405,14 @@ function seek(day: number): void {
   else tick(true);
 }
 
+/** 받은 평가서를 다시 올린다(현장이면 관제실로 돌아와서). */
+function showReport(): void {
+  pause();
+  if (state.screen !== "room") setScreen("room");
+  state.board = "up";
+  drawRoom();
+}
+
 /** 60일에 닿았다: 재생을 멈추고 생산실적 평가서 클립보드를 받는다. */
 function finish(): void {
   const r = currentRun();
@@ -414,6 +422,7 @@ function finish(): void {
   window.clearInterval(timer);
   r.finished = true;
   state.board = "up";
+  if (state.screen !== "room") setScreen("room");   // 현장에서 끝으로 건너뛰면 관제실로 돌아와 받는다.
   drawRoom();
 }
 
@@ -647,7 +656,10 @@ function drawOsd(target: HTMLElement = els.osd): void {
       },
     }),
     h("b", { class: "day-now" }, ""),
-    r.finished ? null : h("button", { class: "osd-btn", type: "button", title: "끝으로 (End)", onclick: finish }, "⏭"));
+    // 바로 결과로: 60일 전이면 끝으로 건너뛰어 평가서를 받고, 이미 받았으면 평가서를 다시 올린다.
+    r.finished
+      ? h("button", { class: "osd-btn end", type: "button", title: "생산실적 평가서를 다시 봅니다", onclick: showReport }, "평가서 보기")
+      : h("button", { class: "osd-btn end", type: "button", title: "60일 끝으로 건너뛰고 평가서를 받습니다 (End)", onclick: finish }, "끝으로 ⏭"));
 }
 
 /** 왼쪽 모니터: 배 탭과 간트. 범례와 배 상세는 크게 볼 때만 보인다. */
@@ -892,7 +904,7 @@ async function start(): Promise<void> {
     ganttShip: null,
     day: 0,
     playing: false,
-    speed: 2,
+    speed: 4,
     board: "none",
     cctv: null,
     zoomed: null,
