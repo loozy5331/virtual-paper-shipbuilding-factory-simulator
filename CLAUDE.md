@@ -31,7 +31,7 @@
 - `engine/shipyard/sim.py`: 엔진. `simulate(config, scenario=None, baseline=True) -> dict`. 표준 라이브러리만 쓴다. 화면과 서버를 모른다.
   결과에 `grade`(점수, 등급, 기준선 비교)를 붙이려고 기준선 프리셋도 같은 시나리오로 함께 돌린다.
 - `engine/shipyard/data/scenario.json`: 규칙의 모든 숫자. `presets.json`: 프리셋 3개.
-- `engine/tests/test_rules_doc.py`: 규칙 문서 10장의 값(손 계산 예시 3개, 프리셋 3개, OEE, 등급 표 11행, 발주 방식). 27개 모두 통과한다.
+- `engine/tests/test_rules_doc.py`: 규칙 문서 10장의 값(손 계산 예시 3개, 프리셋 3개, OEE, 등급 표 11행, 발주 방식, 계획 막대). 28개 모두 통과한다.
 - `server/app.py`: 표준 라이브러리 HTTP 서버. API 4개와 `ui/dist` 정적 파일.
 - `ui/`: 화면. 프레임워크 없는 TypeScript와 esbuild. `npm run build`가 `ui/dist`를 만들고 서버가 그것을 내보낸다.
 
