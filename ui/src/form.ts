@@ -223,6 +223,8 @@ function commonPane(ctx: FormContext): HTMLElement {
       config.transporters.count, (v) => { config.transporters.count = v; ctx.onEdit(false); }),
     toggle("정비", config.transporters.maintenance, (on) => { config.transporters.maintenance = on; ctx.onEdit(false); }));
 
+  // 공정마다 작업장 수 상한: 분기 상한과 공정 상한(탑재 도크는 크레인이 있어야 해 2곳) 중 작은 것
+  const unitCap = (pid: string) => Math.min(opts.max_units, scenario.expansion.max_units_by_station?.[pid] ?? opts.max_units);
   const crews = (Object.entries(scenario.rules.crews) as [Crew, { name: string; summary: string; install_cost?: number }][])
     .filter(([id]) => opts.crews.includes(id));
   const stationCards = scenario.stations.map((st) => {
@@ -257,9 +259,9 @@ function commonPane(ctx: FormContext): HTMLElement {
           st.id === scenario.stations[scenario.stations.length - 1].id || !opts.split
             ? null
             : toggle("나눠 하기", cfg.split ?? false, (on) => { if (on) cfg.split = true; else delete cfg.split; ctx.onEdit(false); })),
-        opts.max_units > 1 ? h("span", { class: "field-label" }, "작업장") : null,
-        opts.max_units <= 1 ? null : segmented(`units-${st.id}`,
-          Array.from({ length: opts.max_units }, (_, k) => ({
+        unitCap(st.id) > 1 ? h("span", { class: "field-label" }, "작업장") : null,
+        unitCap(st.id) <= 1 ? null : segmented(`units-${st.id}`,
+          Array.from({ length: unitCap(st.id) }, (_, k) => ({
             value: k + 1, label: k === 0 ? "1개" : `${k + 1}개 (+${num(scenario.expansion.cost[st.id] * k)})`,
           })),
           cfg.units ?? 1, (v) => { if (v > 1) cfg.units = v; else delete cfg.units; ctx.onEdit(false); }),

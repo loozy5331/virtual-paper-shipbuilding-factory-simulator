@@ -39,7 +39,8 @@ def space(sc: dict[str, Any]) -> dict[str, list[Any]]:
         out[f"{pid}.method"] = list(opts["methods"])
         out[f"{pid}.overtime"] = [False, True]
         out[f"{pid}.maintenance"] = [False, True]
-        out[f"{pid}.units"] = list(range(1, opts["max_units"] + 1))
+        cap = sc["expansion"].get("max_units_by_station", {}).get(pid, opts["max_units"])
+        out[f"{pid}.units"] = list(range(1, min(opts["max_units"], cap) + 1))
         out[f"{pid}.split"] = [False, True] if opts["split"] else [False]   # 나눠 하기(3.0). 탑재는 엔진이 나누지 않는다
     for m in sc["materials"]:
         out[f"material.{m['id']}"] = list(opts["material_grades"])

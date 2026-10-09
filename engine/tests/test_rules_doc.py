@@ -700,6 +700,13 @@ class LevelOptions(unittest.TestCase):
         with self.assertRaises(ConfigError):
             simulate(cfg)
 
+    def test_erection_docks_need_a_crane_each(self):
+        # 탑재 도크마다 골리앗 크레인(걸리버의 두 손)이 있어야 해서 3.0에서도 2곳까지다.
+        cfg = copy.deepcopy(SURGE["managed"])
+        cfg["stations"]["erection"]["units"] = 3
+        with self.assertRaises(ConfigError):
+            simulate(cfg)
+
     def test_surge_opens_everything(self):
         cfg = copy.deepcopy(SURGE["managed"])
         cfg["stations"]["block_assembly"].update(units=3, split=True, crew="robot", method="new")

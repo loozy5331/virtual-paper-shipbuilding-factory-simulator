@@ -156,13 +156,14 @@ export class GiantHand {
   private static readonly TOP = 40;   // 팔이 끝나는 높이(화면 밖)
   private static readonly SCALE = 0.72;
 
-  constructor() {
+  /** left: 걸리버의 왼손(2호 도크 크레인). 엄지가 반대쪽이다. */
+  constructor(left = false) {
     this.arm = mesh(new THREE.CapsuleGeometry(0.62, 1, 6, 16), "#34495e");
     const mitten = mesh(new THREE.SphereGeometry(0.9, 20, 14), "#c9b79a");
     mitten.scale.set(1.15, 1.2, 0.8);
     const thumb = mesh(new THREE.CapsuleGeometry(0.28, 0.5, 6, 10), "#c9b79a");
-    thumb.position.set(0.95, 0.1, 0);
-    thumb.rotation.z = -0.5;
+    thumb.position.set(left ? -0.95 : 0.95, 0.1, 0);
+    thumb.rotation.z = left ? 0.5 : -0.5;
     const cuff = mesh(new THREE.CylinderGeometry(0.75, 0.75, 0.35, 18), "#e9e4d8");
     cuff.position.y = 1.05;
     const magnet = mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.14, 28), "#6f7a82", { metalness: 0.6, roughness: 0.35 });
