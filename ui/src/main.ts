@@ -724,7 +724,7 @@ function syncScene(jump: boolean): void {
   yard.attach(host);
   yard.setManagerName(r.signer?.nickname ?? "생산관리자");
   if (yardRun !== r) {
-    yard.load(r.result.ships.map((s) => s.id));
+    yard.load(r.result.ships.map((s) => ({ id: s.id, type: s.type })));
     yardRun = r;
     jump = true;
   }

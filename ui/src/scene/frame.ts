@@ -15,6 +15,8 @@ export type Place =
 
 export interface LotView {
   ship: string;
+  /** 선종 id(VLCC, CONT, LNG). 배 모양을 고른다(2.1). */
+  type: string;
   place: Place;
   station: number;          // 자리의 공정 번호 (0 소조립 … 3 탑재)
   unit: number;             // 정반 위면 작업장 번호(0 = 1호, 1 = 2호). 그 밖에는 0
@@ -85,7 +87,7 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
   const stationAt = (id: string | null) => (id === null ? -1 : stationIds.indexOf(id));
 
   const lots: LotView[] = result.ships.map((ship) => {
-    const base = { ship: ship.id, slot: 0, unit: 0, late: ship.late_days > 0 };
+    const base = { ship: ship.id, type: ship.type, slot: 0, unit: 0, late: ship.late_days > 0 };
     if (day <= 0) return { ...base, place: "hidden", station: 0, form: 0, state: "not_started" };
     const rec = ship.daily[index];
     const p = stationAt(rec.station);

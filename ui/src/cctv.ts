@@ -67,8 +67,47 @@ function robot(x: number, z: number): SVGElement {
     s("path", { d: `M${cx} ${b - 5} L${cx - 3} ${b - 18} L${cx + 8} ${b - 23}`, stroke: "#9aa3a8", "stroke-width": 3, fill: "none", "stroke-linecap": "round" }));
 }
 
+/** 다 지은 배를 위에서 비스듬히 본 모양: 선체(앞이 뾰족) + 선종별 갑판 구조물, 선실은 고물(왼쪽). */
+function ship(x: number, z: number, kind: string, scale = 1): SVGElement {
+  const k = scale * S;
+  const cx = px(x), cy = py(z);
+  const len = kind === "VLCC" ? 1.45 : kind === "LNG" ? 1.35 : 1.3;   // 반 길이(단위)
+  const half = 0.42;                                                     // 반 폭
+  const deckY = cy - 0.3 * k;                                            // 갑판 높이만큼 위로
+  const g = s("g", { class: "cc-ship" });
+  // 선체 옆면(앞쪽에 보이는 띠)과 갑판
+  g.append(
+    s("path", { d: `M${cx - len * k} ${deckY} L${cx + len * k} ${deckY} L${cx + (len - 0.3) * k} ${cy} L${cx - (len - 0.25) * k} ${cy} Z`, fill: PAPER_SIDE, stroke: EDGE, "stroke-width": 0.6 }),
+    s("path", { d: `M${cx - len * k} ${deckY} L${cx - (len - 0.2) * k} ${deckY - half * k * DEPTH} L${cx + (len - 0.45) * k} ${deckY - half * k * DEPTH} L${cx + len * k} ${deckY - half * k * DEPTH * 0.5} L${cx + len * k} ${deckY} Z`, fill: PAPER, stroke: EDGE, "stroke-width": 0.6 }));
+  const deckMid = deckY - half * k * DEPTH * 0.5;
+  const blk = (bx: number, w: number, d: number, h: number, fill: string) => {
+    const x0 = cx + (bx - w / 2) * k, top = deckMid - (d / 2) * k * DEPTH - h * k * RISE;
+    g.append(
+      s("rect", { x: x0, y: top, width: w * k, height: d * k * DEPTH, fill, stroke: EDGE, "stroke-width": 0.5 }),
+      s("rect", { x: x0, y: top + d * k * DEPTH, width: w * k, height: h * k * RISE, fill: PAPER_SIDE, stroke: EDGE, "stroke-width": 0.5 }));
+  };
+  if (kind === "CONT") {
+    const kraft = ["#efe7d4", "#d9cba8", "#e6dcc6"];
+    for (let bay = 0; bay < 4; bay++) blk(-0.35 + bay * 0.38, 0.32, 0.7, 0.3, kraft[bay % kraft.length]);
+  } else if (kind === "LNG") {
+    for (let t = 0; t < 4; t++) {
+      const tx = cx + (-0.35 + t * 0.4) * k;
+      g.append(s("ellipse", { cx: tx, cy: deckMid - 0.12 * k, rx: 0.19 * k, ry: 0.19 * k * 0.9, fill: PAPER, stroke: EDGE, "stroke-width": 0.6 }),
+        s("path", { d: `M${tx - 0.1 * k} ${deckMid - 0.2 * k} q${0.06 * k} ${-0.06 * k} ${0.14 * k} ${-0.02 * k}`, stroke: "#ffffff", "stroke-width": 1.2, fill: "none" }));
+    }
+  } else {
+    g.append(s("line", { x1: cx - 0.5 * k, x2: cx + 0.9 * k, y1: deckMid, y2: deckMid, stroke: PAPER_SIDE, "stroke-width": Math.max(1.5, 0.06 * k) }));
+    blk(0.2, 0.1, 0.55, 0.05, PAPER_SIDE);
+  }
+  // 선미 선실(창문 선)
+  blk(-len + 0.42, 0.34, 0.62, 0.55, PAPER);
+  const wy = deckMid - 0.31 * k * DEPTH - 0.55 * k * RISE + 0.62 * k * DEPTH;
+  g.append(s("line", { x1: cx + (-len + 0.27) * k, x2: cx + (-len + 0.57) * k, y1: wy + 0.12 * k * RISE, y2: wy + 0.12 * k * RISE, stroke: "#3a3f3c", "stroke-width": 1 }));
+  return g;
+}
+
 /** 로트: 조립 단계(부재 → 소블록 12 → 중블록 6 → 대블록 3 → 배). 정지 화면이라 정수 단계로만. */
-function lot(x: number, z: number, form: number, scale = 1): SVGElement {
+function lot(x: number, z: number, form: number, scale = 1, kind = "VLCC"): SVGElement {
   const stage = Math.min(4, Math.floor(form + 1e-6));
   const g = s("g", { class: "cc-lot" });
   const b = (bx: number, bz: number, w: number, d: number, h: number) =>
@@ -82,10 +121,7 @@ function lot(x: number, z: number, form: number, scale = 1): SVGElement {
   } else if (stage === 3) {
     for (let c = 0; c < 3; c++) b(-0.6 + c * 0.6, 0, 0.55, 0.7, 0.5);
   } else {
-    const cx = px(x), cy = py(z), k = scale * S;
-    g.append(
-      s("path", { d: `M${cx - 1.1 * k} ${cy - 0.35 * k} L${cx + 1.1 * k} ${cy - 0.35 * k} L${cx + 0.75 * k} ${cy} L${cx - 0.75 * k} ${cy} Z`, fill: PAPER, stroke: EDGE, "stroke-width": 0.6 }),
-      s("path", { d: `M${cx - 0.15 * k} ${cy - 0.35 * k} L${cx + 0.15 * k} ${cy - 1.05 * k} L${cx + 0.45 * k} ${cy - 0.35 * k} Z`, fill: PAPER, stroke: EDGE, "stroke-width": 0.6 }));
+    g.append(ship(x, z, kind, scale));
   }
   return g;
 }
@@ -185,7 +221,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
       add(z - d / 2, g);
       const here = frame.lots.find((l) => l.place === "bench" && l.station === p && l.ship === unit.ship);
       if (here) {
-        add(z, lot(x, z, here.form));
+        add(z, lot(x, z, here.form, 1, here.type));
         // 배 이름표는 정반 뒤 가장자리 바로 위(정반 안의 글과 겹치지 않게)
         add(z + 0.02, chip(x, z - d / 2, 0, here, lateNow(here)));
       }
@@ -255,9 +291,12 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   add(CUP.z - CUP.r, s("ellipse", { cx: px(CUP.x), cy: py(CUP.z, 1.42), rx: CUP.r * S, ry: CUP.r * S * DEPTH, fill: "#3d5a6c", stroke: "#8fa7b4", "stroke-width": 1.2 }));
   const sea = frame.lots.filter((l) => l.place === "sea").sort((a, b) => a.slot - b.slot);
   sea.slice(0, 6).forEach((l, i) => {
-    const sx = CUP.x - 1.2 + (i % 3) * 1.2, sz = CUP.z - 0.8 + Math.floor(i / 3) * 1.3;
-    add(sz, s("g", { transform: `translate(0 ${-1.42 * S * RISE})` }, lot(sx, sz, 4, 0.5)));
-    add(sz + 0.01, chip(sx, sz - 0.2, 1.42 + 0.4, l, l.late));
+    // 두 척씩 세 줄. 이름은 배 아래 작은 글(지연이면 빨강) — 이름표 상자는 배를 가린다.
+    const col = i % 2, row = Math.floor(i / 2);
+    const bx = CUP.x - 0.85 + col * 1.7, bz = CUP.z - 1.15 + row * 1.05;
+    const lift = -1.42 * S * RISE;
+    add(bz, s("g", { transform: `translate(0 ${lift})` }, lot(bx, bz, 4, 0.55, l.type),
+      s("text", { x: px(bx), y: py(bz) + 11, class: l.late ? "cc-sea-name late" : "cc-sea-name" }, l.ship)));
   });
   const waiting = frame.lots.filter((l) => l.place === "hidden").map((l) => l.ship);
   add(9, tag(px(CUP.x), py(CUP.z + 3.1) + 14, `인도 ${sea.length}척${waiting.length ? ` · 착수 전 ${waiting.join(" ")}` : ""}`, "cc-tag mid"));

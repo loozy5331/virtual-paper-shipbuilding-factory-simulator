@@ -13,6 +13,7 @@ import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import type { Frame, LotView } from "./frame";
 import { mesh, Person, SENIOR_NAME, WORKER_NAMES } from "./people";
+import { shipLook } from "./ships";
 import { clamp01, ease, flatOf, hullTris, sailTris, type Tri } from "../proto/model";
 import { STATE_INFO, STATION_COLOR } from "../labels";
 
@@ -124,7 +125,7 @@ class FoldMesh {
 }
 
 // ---------------------------------------------------------------------------
-// 로트: 블록 12개 → 6개 → 3개(도장) → 배
+// 로트: 블록 12개 → 6개 → 3개(도장) → 배(선종마다 다른 갑판 구조물, ships.ts)
 // ---------------------------------------------------------------------------
 
 class Lot {
@@ -137,7 +138,11 @@ class Lot {
   private readonly boat = new THREE.Group();
   private readonly hullMat = paperMaterial();
   private readonly hull = new FoldMesh(hullTris(), this.hullMat);
-  private readonly sail = new FoldMesh(sailTris(), paperMaterial());
+  /** 접힌 선체를 덮는 갑판(종이 한 장). 다 접힌 뒤에 보인다. */
+  private readonly deck: THREE.Mesh;
+  /** 선종별 구조물(의장). 탑재 끝에 크레인이 하나씩 올려 붙인다. 마지막이 선실. */
+  private readonly parts: THREE.Object3D[];
+  private readonly partX: number[];
   private readonly flag = new THREE.Group();
   readonly tag: CSS2DObject;
   /** 크레인 훅이 따라갈 로트 기준 x(로컬). 탑재 중이 아니면 null. */
@@ -146,7 +151,7 @@ class Lot {
   readonly target = new THREE.Vector3();
   floatPhase = 0;
 
-  constructor(readonly ship: string) {
+  constructor(readonly ship: string, kind: string) {
     const geo = new THREE.BoxGeometry(UNIT, 0.22, UNIT);
     for (let u = 0; u < 12; u++) {
       const m = new THREE.Mesh(geo, this.unitMat);
@@ -171,8 +176,20 @@ class Lot {
     const cloth = mesh(new THREE.ShapeGeometry(shape), "#c0392b", { side: THREE.DoubleSide });
     cloth.position.y = 0.54;
     this.flag.add(stick, cloth);
-    this.flag.position.y = 1.2;
-    this.boat.add(this.hull.mesh, this.sail.mesh, this.flag);
+    const look = shipLook(kind);
+    this.flag.position.copy(look.flagAt);
+    this.flag.scale.setScalar(0.6);
+    const deckShape = new THREE.Shape([[-0.62, 0], [-0.45, 0.38], [0.45, 0.38], [0.7, 0], [0.45, -0.38], [-0.45, -0.38]].map(([x, z]) => new THREE.Vector2(x, z)));
+    this.deck = new THREE.Mesh(new THREE.ShapeGeometry(deckShape), paperMaterial());
+    this.deck.rotation.x = Math.PI / 2;
+    this.deck.position.y = 0.395;
+    this.deck.receiveShadow = true;
+    this.parts = look.parts;
+    this.partX = this.parts.map((part) => new THREE.Box3().setFromObject(part).getCenter(new THREE.Vector3()).x);
+    const body = new THREE.Group();
+    body.add(this.hull.mesh, this.deck, ...this.parts, this.flag);
+    body.scale.set(...look.hull);
+    this.boat.add(body);
     this.boat.scale.setScalar(0.85);
     this.tag = label("", "lot-tag");
     this.tag.position.y = 1.0;
@@ -244,10 +261,22 @@ class Lot {
     });
 
     if (stage >= 3) {
-      const fold = stage === 4 ? 1 : t;
+      // 선체는 블록이 옮겨지는 동안(0~0.75) 접히고, 끝 무렵(0.75~1)에 구조물이 하나씩 올라붙는다. 마지막에 깃발.
+      const fold = stage === 4 ? 1 : clamp01(t / 0.75);
       this.hull.set(fold);
-      this.sail.set(fold);
-      this.flag.scale.setScalar(stage === 4 ? 1 : Math.max(0.001, clamp01((t - 0.8) / 0.2)));
+      this.deck.visible = fold >= 0.98;
+      const n = this.parts.length;
+      const outfit = stage === 4 ? n : clamp01((t - 0.75) / 0.22) * n;
+      this.parts.forEach((part, k) => {
+        const u = clamp01(outfit - k);
+        part.visible = u > 0;
+        part.position.y = (1 - ease(u)) * 0.6;   // 위에서 내려와 앉는다
+        if (stage === 3 && u > 0 && u < 1) {
+          this.hookX = boatX + this.partX[k] * 0.85;
+          this.hookY = 0.85 + (1 - ease(u)) * 0.5;
+        }
+      });
+      this.flag.visible = stage === 4 || t > 0.97;
       this.boat.position.set(stage === 4 ? 0 : boatX, 0, 0);
     }
   }
@@ -659,15 +688,15 @@ export class Yard {
   }
 
   /** 새 결과. 배 로트를 다시 만든다. */
-  load(ships: string[]): void {
+  load(ships: { id: string; type: string }[]): void {
     for (const lot of this.lots.values()) {
       this.scene.remove(lot.group);
       // CSS2D 라벨은 부모를 지워도 DOM에 남는다. 직접 뗀다.
       lot.tag.element.remove();
     }
     this.lots.clear();
-    ships.forEach((id, i) => {
-      const lot = new Lot(id);
+    ships.forEach(({ id, type }, i) => {
+      const lot = new Lot(id, type);
       lot.floatPhase = i * 1.7;
       lot.group.visible = false;
       this.lots.set(id, lot);
