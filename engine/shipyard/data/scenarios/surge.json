@@ -74,6 +74,7 @@
     "on_time_rate": 1.0,
     "first_pass_yield": 0.9
   },
+  "options": {"crews": ["normal", "skilled", "robot"], "methods": ["standard", "fast", "new"], "material_grades": ["standard", "cheap"], "max_units": 3, "split": true},
   "grade": {
     "weights": {
       "revenue": 30,

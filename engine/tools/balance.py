@@ -28,17 +28,21 @@ RESEARCH_SETS = [[], ["automation"], ["auto_inspect"], ["predictive"], ["automat
 def space(sc: dict[str, Any]) -> dict[str, list[Any]]:
     """바꿀 수 있는 칸과 그 값들. 공정 칸은 '<공정>.<항목>'이다."""
     rules = sc["rules"]
+    # 분기가 열어 둔 옵션만 고른다(D33). options가 없으면 모두.
+    opts = sc.get("options") or {"crews": list(rules["crews"]), "methods": list(rules["methods"]),
+                                 "material_grades": list(sc["material_grades"]),
+                                 "max_units": sc["expansion"]["max_units"], "split": True}
     out: dict[str, list[Any]] = {}
     for st in sc["stations"]:
         pid = st["id"]
-        out[f"{pid}.crew"] = list(rules["crews"])
-        out[f"{pid}.method"] = list(rules["methods"])
+        out[f"{pid}.crew"] = list(opts["crews"])
+        out[f"{pid}.method"] = list(opts["methods"])
         out[f"{pid}.overtime"] = [False, True]
         out[f"{pid}.maintenance"] = [False, True]
-        out[f"{pid}.units"] = list(range(1, sc["expansion"]["max_units"] + 1))
-        out[f"{pid}.split"] = [False, True]   # 나눠 하기(3.0). 탑재는 엔진이 나누지 않는다
+        out[f"{pid}.units"] = list(range(1, opts["max_units"] + 1))
+        out[f"{pid}.split"] = [False, True] if opts["split"] else [False]   # 나눠 하기(3.0). 탑재는 엔진이 나누지 않는다
     for m in sc["materials"]:
-        out[f"material.{m['id']}"] = list(sc["material_grades"])
+        out[f"material.{m['id']}"] = list(opts["material_grades"])
     out["pool"] = list(range(1, rules["max_pool"] + 1))
     out["transporters"] = list(range(1, sc["transporter"]["max_count"] + 1))
     out["tr_maintenance"] = [False, True]

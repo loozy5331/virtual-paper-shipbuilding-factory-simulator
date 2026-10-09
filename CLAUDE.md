@@ -32,6 +32,7 @@
 
 - `engine/shipyard/sim.py`: 엔진. `simulate(config, scenario=None, baseline=True) -> dict`. 표준 라이브러리만 쓴다. 화면과 서버를 모른다.
   결과에 `grade`(점수, 등급, 기준선 비교)를 붙이려고 기준선 프리셋도 같은 시나리오로 함께 돌린다.
+- 분기별 옵션(D33): 시나리오 파일의 `options`(crews·methods·material_grades·max_units·split). 생산계획서(`form.ts`의 `openOptions`)는 여기 없는 옵션을 그리지 않고, 엔진(`_locked_options`)은 쓴 설정을 거절한다. 기본 분기 = 일반·숙련공, 표준·속성, 증설 없음 / 수주 증가 = 모든 4M, 작업장 2 / 수주 급증 = 작업장 3, 나눠 하기. 규칙 검증 테스트는 `opened()`로 잠금을 푼다.
 - `engine/shipyard/data/rules.json`: 모든 시나리오가 함께 쓰는 규칙의 숫자(공정, 자재, 선종, 단가, 고장, 운반, 증설, 연구, 난수표).
   `data/scenarios/<id>.json`: 시나리오마다 수주, 기간, 목표(KPI), 등급, 품질 난수, 프리셋 3개. `load_scenario(id)`가 둘을 합친다(2.0).
   설정의 `scenario`가 없으면 기본 분기(`basic`)로 돈다(1.x 설정 하위 호환).

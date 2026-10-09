@@ -221,8 +221,40 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
                                            for m, g in grades.items()):
         errors.append(f"자재 등급은 자재마다 {', '.join(scenario['material_grades'])} 중 하나여야 합니다")
 
+    if not errors:
+        errors += _locked_options(config, scenario)
     if errors:
         raise ConfigError(errors)
+
+
+def _locked_options(config: dict[str, Any], scenario: dict[str, Any]) -> list[str]:
+    """분기(난이도)가 열어 둔 옵션만 썼는지(D33). 화면이 숨긴 옵션을 설정 JSON으로 보내도 여기서 막는다.
+
+    시나리오 파일의 options: crews·methods·material_grades(쓸 수 있는 값), max_units(작업장 수 상한), split(나눠 하기).
+    options가 없는 시나리오(손 계산용 등)는 모두 열려 있다.
+    """
+    opts = scenario.get("options")
+    if not opts:
+        return []
+    name = scenario.get("name", "이 분기")
+    rules = scenario["rules"]
+    errors: list[str] = []
+    for st in scenario["stations"]:
+        pid, label = st["id"], st["name"]
+        cfg = config["stations"][pid]
+        crew = crew_of(config, pid)
+        if crew not in opts["crews"]:
+            errors.append(f"{name}에서는 인력 '{rules['crews'][crew]['name']}'을(를) 쓸 수 없습니다({label})")
+        if cfg["method"] not in opts["methods"]:
+            errors.append(f"{name}에서는 공법 '{rules['methods'][cfg['method']]['name']}'을(를) 쓸 수 없습니다({label})")
+        if cfg.get("units", 1) > opts["max_units"]:
+            errors.append(f"{name}에서는 작업장을 {opts['max_units']}개까지 둘 수 있습니다({label})")
+        if cfg.get("split", False) and not opts["split"]:
+            errors.append(f"{name}에서는 나눠 하기를 쓸 수 없습니다({label})")
+    for mid, grade in (config.get("materials") or {}).items():
+        if grade not in opts["material_grades"]:
+            errors.append(f"{name}에서는 자재 등급 '{scenario['material_grades'][grade]['name']}'을(를) 쓸 수 없습니다({mid})")
+    return errors
 
 
 # ---------------------------------------------------------------------------

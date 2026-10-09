@@ -102,10 +102,20 @@ export interface ResearchInfo {
   effect: string;
 }
 
+/** 분기(난이도)가 열어 둔 옵션(D33). 생산계획서는 여기 없는 옵션을 그리지 않고, 엔진은 거절한다. */
+export interface ScenarioOptions {
+  crews: Crew[];
+  methods: string[];
+  material_grades: string[];
+  max_units: number;
+  split: boolean;
+}
+
 export interface Scenario {
   id: string;
   name: string;
   summary: string;
+  options?: ScenarioOptions;
   /** 계획 기간의 이름. 60일은 이 분기의 작업일로 본다. */
   period: string;
   days: number;
