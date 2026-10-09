@@ -1,6 +1,9 @@
 // 화면에 쓰는 이름과 색. 색은 색각 이상 검증기를 통과한 값이다(CLAUDE.md 참고).
 // 색만으로 구분하지 않도록, 색을 쓰는 곳에는 항상 라벨이나 범례를 함께 둔다.
 
+/** 고깔모자(작업모) 색: 역할. 3D 소인과 2D 작업 현황 기호가 함께 쓴다. */
+export const HAT = { worker: "#d6a400", manager: "#d9480f", senior: "#6f42c1" } as const;
+
 export const STATION_COLOR: Record<string, string> = {
   sub_assembly: "#2a78d6",
   block_assembly: "#e87ba4",

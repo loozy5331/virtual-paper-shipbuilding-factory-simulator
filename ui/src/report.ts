@@ -139,7 +139,7 @@ export function renderReport(result: Result, scenario: Scenario, maxRate: number
         h("b", null, h("span", { class: "rank" }, `${i + 1}`), findingText(f, scenario)),
         h("p", { class: "hint" }, FINDING_HINT[f.kind] ?? ""),
         h("div", { class: "finding-btns" },
-          h("button", { type: "button", class: "btn primary small", onclick: () => onFinding(f, "field") }, `현장에서 ${f.start}일 보기`),
+          h("button", { type: "button", class: "btn primary small", onclick: () => onFinding(f, "field") }, `작업 현황에서 ${f.start}일 보기`),
           h("button", { type: "button", class: "btn ghost small", onclick: () => onFinding(f, "gantt") }, "간트"))))
       : h("p", { class: "hint" }, "손실 구간이 없습니다."));
 

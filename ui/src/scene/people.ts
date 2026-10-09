@@ -2,14 +2,12 @@
 // 생김새는 정원 노움 같은 소인국 사람(2.1): 고깔모자, 둥근 코, 짧은 다리, 둥근 배, 수염.
 // 고깔모자 색이 역할이다(색각 검증을 통과한 작업모 색). 안전은 고깔 대신 전신 안전벨트(하네스)로 보여 준다. 손실색과 겹치므로 어두운 테두리를 두고, 시니어는 흰 띠로도 구분한다.
 //
-// 그림 스타일 둘(2.1): 관제실 CCTV는 "익명" — 모두 같은 체격, 눈·수염·머리 없음, 이름 없음(누군지 알 수 없다).
-// 작업모를 쓰고 직접 나간 현장은 "일러스트" — 사람마다 얼굴, 수염과 머리, 피부색, 체격이 다르고 이름표를 단다.
-// 원격으로는 공정을 보고, 사람은 직접 가야 보인다(근태 감시 우려에 대한 설계상의 답).
+// 3D 소인은 작업모를 쓰고 직접 나간 현장에만 나온다(2.1): 사람마다 얼굴, 수염과 머리, 피부색, 체격이 다르고 이름표를 단다.
+// 관제실의 작업 현황 전경(cctv.ts)은 사람을 2D 기호로만 그린다. 원격으로는 공정을 보고, 사람은 직접 가야 보인다
+// (근태 감시 우려에 대한 설계상의 답, D24).
 
 import * as THREE from "three";
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
-
-export type SceneStyle = "cctv" | "field";
 
 // 현장에서 보이는 생김새. 사람 번호로 고른다(결정적: 같은 사람은 늘 같은 모습).
 const SKIN = ["#f0c8a0", "#e2b48c", "#c99a74", "#f5d2b0", "#d8a982"];
@@ -19,7 +17,9 @@ const BUILD = [[1.0, 1.0], [1.06, 0.96], [0.94, 1.06], [1.03, 1.08], [0.97, 0.94
 export const WORKER_NAMES = ["김하늘", "이도윤", "박서연", "최민준", "정지우", "강예린", "조현우", "윤서진"];
 export const SENIOR_NAME = "한정호 반장";
 
-export const HAT = { worker: "#d6a400", manager: "#d9480f", senior: "#6f42c1" } as const;
+import { HAT } from "../labels";
+
+export { HAT };
 export type Role = keyof typeof HAT;
 
 export function mesh(geometry: THREE.BufferGeometry, color: THREE.ColorRepresentation,
@@ -92,15 +92,11 @@ export class Person {
   private readonly hair = new THREE.Group();
   readonly nameTag: CSS2DObject;
   private readonly build: readonly [number, number];
-  private readonly skinMeshes: THREE.Mesh[] = [];
-  private readonly fieldSkin: THREE.Color;
-  private style: SceneStyle = "cctv";
   private tagShown = true;
 
   constructor(role: Role, look = 0, name = "") {
-    const skin = "#f0c8a0";
+    const skin = SKIN[look % SKIN.length];
     this.build = BUILD[look % BUILD.length];
-    this.fieldSkin = new THREE.Color(SKIN[look % SKIN.length]);
     const hairColor = HAIR[look % HAIR.length];
     const cloth = role === "manager" ? "#3d4a5c" : "#5c6b62";
 
@@ -157,14 +153,12 @@ export class Person {
 
     this.head = mesh(new THREE.SphereGeometry(0.08, 24, 18), skin);
     this.head.position.y = HEAD_Y;
-    this.skinMeshes.push(this.head);
-    // 둥근 코: 노움의 실루엣이라 CCTV에서도 보인다.
+    // 둥근 코
     const nose = mesh(new THREE.SphereGeometry(0.03, 16, 12), skin);
     nose.position.set(0, -0.005, 0.08);
-    this.skinMeshes.push(nose);
     this.head.add(nose);
 
-    // 얼굴(현장에서만): 눈, 눈썹. 수염이 없는 사람은 입도.
+    // 얼굴: 눈, 눈썹. 수염이 없는 사람은 입도.
     const ink = new THREE.MeshBasicMaterial({ color: "#1c1c1c" });
     for (const ex of [-0.03, 0.03]) {
       const eye = new THREE.Mesh(new THREE.SphereGeometry(0.012, 10, 8), ink);
@@ -175,7 +169,7 @@ export class Person {
       brow.position.set(ex, 0.045, 0.067);
       this.face.add(eye, brow);
     }
-    // 수염과 머리(현장에서만): 번호에 따라 긴 수염 / 짧은 수염 / 수염 없이 땋은 머리.
+    // 수염과 머리: 번호에 따라 긴 수염 / 짧은 수염 / 수염 없이 땋은 머리.
     const kind = look % 3;
     if (kind === 0 || kind === 1) {
       const beard = kind === 0
@@ -208,8 +202,6 @@ export class Person {
     back.rotation.x = -0.5;
     back.position.z = -0.006;
     this.hair.add(back);
-    this.face.visible = false;
-    this.hair.visible = false;
     this.head.add(this.face, this.hair);
 
     // 고깔모자 + 어두운 테두리, 시니어는 흰 띠
@@ -232,7 +224,6 @@ export class Person {
       m.position.y = -0.07;
       const hand = mesh(new THREE.SphereGeometry(0.032, 16, 12), skin);
       hand.position.y = -0.15;
-      this.skinMeshes.push(hand);
       arm.add(m, hand);
       arm.position.set(x, 0.34, 0);
       this.torso.add(arm);
@@ -247,9 +238,10 @@ export class Person {
     this.knife.visible = false;
     this.armR.add(this.knife);
     this.root.add(this.torso);
-    this.root.scale.setScalar(1.8);
+    const [height, width] = this.build;
+    this.root.scale.set(1.8 * width, 1.8 * height, 1.8 * width);
 
-    // 이름표(현장에서만): 고깔모자 끝 바로 위 작은 팻말. 머리에 붙여 앉거나 숙여도 따라간다. 가상 인물이다.
+    // 이름표: 고깔모자 끝 바로 위 작은 팻말. 머리에 붙여 앉거나 숙여도 따라간다. 가상 인물이다.
     const tag = document.createElement("div");
     tag.className = "name-tag";
     tag.textContent = name;
@@ -277,21 +269,7 @@ export class Person {
   }
 
   private syncTag(): void {
-    this.nameTag.visible = this.root.visible && this.tagShown && this.style === "field" && this.nameTag.element.textContent !== "";
-  }
-
-  /** CCTV(익명): 같은 체격, 눈·수염·머리·이름 없음. 현장(일러스트): 사람마다 다른 생김새와 이름표. */
-  setStyle(style: SceneStyle): void {
-    this.style = style;
-    const field = style === "field";
-    this.face.visible = field;
-    this.hair.visible = field;
-    this.syncTag();
-    const [height, width] = field ? this.build : [1, 1];
-    this.root.scale.set(1.8 * width, 1.8 * height, 1.8 * width);
-    for (const m of this.skinMeshes) {
-      (m.material as THREE.MeshStandardMaterial).color.set(field ? this.fieldSkin : "#f0c8a0");
-    }
+    this.nameTag.visible = this.root.visible && this.tagShown && this.nameTag.element.textContent !== "";
   }
 
   holdKnife(on: boolean): void {
