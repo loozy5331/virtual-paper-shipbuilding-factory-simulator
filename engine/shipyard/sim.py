@@ -907,6 +907,15 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             "daily": ship_daily[i],
         })
 
+    # 짝 대기(3.0): 나눠 한 배의 먼저 끝난 부분이 나머지를 기다린 날을 공정·작업장마다 센다.
+    # 그 작업장은 비어 있어 다른 배를 받을 수 있으므로 OEE(작업장의 손실)에는 넣지 않고, 배의 리드타임에서는 작업으로 센다.
+    pair_wait_days = [[0] * n for n in n_units]
+    for i in range(n_ships):
+        for rec in ship_daily[i]:
+            for part in rec.get("parts", []):
+                if part["state"] == PAIR_WAIT:
+                    pair_wait_days[stations.index(next(s for s in stations if s["id"] == rec["station"]))][part["unit"] - 1] += 1
+
     top = max_rate(rules)
     stations_out = []
     for p, st in enumerate(stations):
@@ -927,12 +936,14 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             "breakdown_stop_days": breakdown_stopped[p],
             "material_wait_days": material_wait[p],
             "labor_wait_days": labor_wait[p],
+            "pair_wait_days": sum(pair_wait_days[p]),
             "breakdowns": station_breakdowns[p],
             "work_done": work_done[p],
             "inspections": inspections[p],
             "passes": passes[p],
             "oee": {"availability": availability, "performance": performance, "quality": quality, "oee": oee},
             "units": [{"unit": u + 1, "busy_days": unit_busy[p][u], "breakdowns": unit_breakdowns[p][u],
+                       "pair_wait_days": pair_wait_days[p][u],
                        "daily": station_daily[p][u]} for u in range(n_units[p])],
             # 1호 작업장의 하루 기록. 화면이 units를 읽게 되면(2.0 화면) 지운다.
             "daily": station_daily[p][0],
