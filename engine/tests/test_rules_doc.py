@@ -68,6 +68,30 @@ class HandExamples(unittest.TestCase):
         self.assertEqual(r["costs"]["breakdown"], 150)
         self.assertEqual(r["costs"]["transporter"], 350)
 
+    def test_example_4_split(self):
+        # 3.0 손 계산 예시 4: 예시 1에서 중조립만 작업장 2곳 + 나눠 하기, 대기소 4명.
+        cfg = one_ship_config()
+        cfg["pool"] = 4
+        cfg["stations"]["block_assembly"].update({"units": 2, "split": True})
+        r = simulate(cfg, one_ship_scenario(FULL))
+        # 중조립 16을 2곳에 8씩, 곳마다 2명 → 4일(6~9일). 인도는 예시 1(23일)보다 4일 빠른 19일.
+        self.assertEqual(spans(r, "S1"), {"sub_assembly": (1, 4), "block_assembly": (6, 9),
+                                          "grand_assembly": (11, 14), "erection": (16, 19)})
+        self.assertEqual(r["ships"][0]["delivered_day"], 19)
+        self.assertEqual((r["costs"]["wip"], r["costs"]["labor"], r["costs"]["investment"], r["costs"]["maintenance"]),
+                         (180, 2400, 300, 500))
+        # 대기소가 2명이면 2호는 1호가 끝날 때까지 인력 대기, 그 뒤 1호가 짝 대기 → 나누지 않은 것과 같은 6~13일.
+        cfg["pool"] = 2
+        r = simulate(cfg, one_ship_scenario(FULL))
+        self.assertEqual(spans(r, "S1")["block_assembly"], (6, 13))
+        parts = [[p["state"] for p in d["parts"]] for d in r["ships"][0]["daily"][5:13]]
+        self.assertEqual(parts, [["work", "labor_wait"]] * 4 + [["pair_wait", "work"]] * 4)
+        # 3곳 + 6명이면 부분 5.33, 3일(6~8일), 인도 18일.
+        cfg["pool"] = 6
+        cfg["stations"]["block_assembly"]["units"] = 3
+        r = simulate(cfg, one_ship_scenario(FULL))
+        self.assertEqual((spans(r, "S1")["block_assembly"], r["ships"][0]["delivered_day"]), ((6, 8), 18))
+
     def test_example_2_defect_and_rework(self):
         cfg = one_ship_config()
         cfg["stations"]["block_assembly"] = {"method": "fast", "overtime": True, "maintenance": False}
@@ -380,7 +404,7 @@ class Contract(unittest.TestCase):
 
     def test_invalid_config_is_rejected(self):
         cfg = copy.deepcopy(PRESETS["managed"])
-        cfg["pool"] = 9
+        cfg["pool"] = 13   # 3.0 상한 12명(D30)
         cfg["ships"]["S2"]["priority"] = 1
         cfg["research"] = ["automation", "automation"]
         with self.assertRaises(ConfigError) as ctx:
@@ -438,8 +462,9 @@ class Expansion(unittest.TestCase):
         self.assertTrue(on_unit_2)
 
     def test_too_many_units_is_rejected(self):
+        # 3.0: 작업장은 공정마다 3개까지(D30)
         with self.assertRaises(ConfigError):
-            simulate(expanded("managed", block_assembly=3))
+            simulate(expanded("managed", block_assembly=4))
 
 
 
@@ -494,7 +519,7 @@ class Scenarios(unittest.TestCase):
 
     def test_list(self):
         self.assertEqual([(s["id"], s["name"], s["ships"]) for s in list_scenarios()],
-                         [("basic", "기본 분기", 4), ("growth", "수주 증가", 6)])
+                         [("basic", "기본 분기", 4), ("growth", "수주 증가", 6), ("surge", "수주 급증", 8)])
 
     def test_config_without_scenario_runs_as_basic(self):
         # 하위 호환: 1.x 설정(scenario 없음)은 기본 분기로 돈다.
@@ -531,6 +556,91 @@ class Scenarios(unittest.TestCase):
         cfg["scenario"] = "growth"
         with self.assertRaises(ConfigError):
             simulate(cfg, load_scenario("basic"))
+
+
+
+def as_areas(cfg, **over):
+    """2.x 설정을 3.0 모양(areas)으로 바꾼다. over로 공정마다 바꿀 값(stations, split 등)을 준다."""
+    c = copy.deepcopy(cfg)
+    c["areas"] = {pid: {**{k: v for k, v in st.items() if k != "units"}, "stations": st.get("units", 1)}
+                  for pid, st in c.pop("stations").items()}
+    for pid, v in over.items():
+        c["areas"][pid].update(v)
+    return c
+
+
+class AreasAndSplit(unittest.TestCase):
+    """3.0(규칙 문서 "3.0 설계 초안"): 공정 = 구역, 작업장 1~3개, 공정마다 4M, 나눠 하기."""
+
+    def test_areas_form_gives_the_same_result(self):
+        # 하위 호환: 같은 설정을 areas로 적어도 결과가 같다.
+        for pid in ("unmanaged", "managed", "all_in"):
+            self.assertEqual(simulate(as_areas(PRESETS[pid]))["profit"], simulate(PRESETS[pid])["profit"], pid)
+        self.assertEqual(simulate(as_areas(GROWTH["managed"]))["profit"], simulate(GROWTH["managed"])["profit"])
+
+    def test_split_without_extra_station_changes_nothing(self):
+        cfg = {**PRESETS["managed"], "pool": 4}
+        plain = simulate(as_areas(cfg), baseline=False)
+        split = simulate(as_areas(cfg, block_assembly={"split": True}), baseline=False)
+        self.assertEqual(split["profit"], plain["profit"])
+
+    def test_split_divides_work_and_waits_for_the_pair(self):
+        # 1차 시험 결과: 관리안 인원 4명(한 척 1일 지연)에 중조립 2곳 나눠 하기 → 지연 없음, 98.5점.
+        cfg = as_areas({**PRESETS["managed"], "pool": 4}, block_assembly={"stations": 2, "split": True})
+        r = simulate(cfg)
+        self.assertEqual((r["grade"]["grade"], r["grade"]["score"], r["qcd"]["delivery"]["on_time"]), ("A", 98.5, 4))
+        # 들어갈 때 빈 작업장 수만큼 나눈다. 세 척은 2곳(투입 기록 2개), 한 척은 다른 배가 2호를 쓰는 중이라 1곳이다.
+        # 검사는 배 한 척에 한 번이다.
+        enters = [e for e in r["events"] if e["type"] == "enter" and e["station"] == "block_assembly"]
+        self.assertEqual(len(enters), 7)
+        block = next(s for s in r["stations"] if s["id"] == "block_assembly")
+        self.assertEqual(block["inspections"], 4)
+        parts = [d["parts"] for s in r["ships"] for d in s["daily"] if "parts" in d]
+        self.assertTrue(parts and all(len(p) == 2 for p in parts))
+
+    def test_expanding_without_split_does_not_fix_the_delay(self):
+        cfg = as_areas({**PRESETS["managed"], "pool": 4}, block_assembly={"stations": 2})
+        r = simulate(cfg)
+        self.assertEqual((r["grade"]["score"], r["qcd"]["delivery"]["on_time"]), (91.6, 3))
+
+    def test_plan_bar_uses_part_work(self):
+        # 계획 막대: 나눠 하기를 켠 공정은 작업장을 모두 쓴다고 보고 부분 작업량으로 잰다(S1 중조립 16 ÷ 2곳 ÷ 2/일 = 4일).
+        plan = preview(as_areas(PRESETS["managed"], block_assembly={"stations": 2, "split": True}))["plan"]
+        span = plan["ships"]["S1"]["block_assembly"]
+        self.assertEqual(span["end"] - span["start"] + 1, 4)
+
+    def test_erection_is_never_split(self):
+        cfg = as_areas(GROWTH["managed"], erection={"stations": 2, "split": True})
+        r = simulate(cfg, baseline=False)
+        self.assertFalse([d for s in r["ships"] for d in s["daily"] if "parts" in d and d["station"] == "erection"])
+
+    def test_limits(self):
+        cfg = as_areas(PRESETS["managed"], block_assembly={"stations": 3, "split": True})
+        cfg["pool"] = 12
+        simulate(cfg)   # 3곳, 12명까지는 된다
+        cfg["areas"]["block_assembly"]["split"] = "yes"
+        with self.assertRaises(ConfigError):
+            simulate(cfg)
+
+
+SURGE = {p["id"]: p["config"] for p in load_presets("surge")}
+
+
+class Surge(unittest.TestCase):
+    """3.0 새 분기 "수주 급증"(8척): 3호 작업장과 나눠 하기의 판단 거리."""
+
+    def test_presets(self):
+        cases = {"unmanaged": (-17090.0, 19.4, "F"), "managed": (10712.8, 99.0, "A"), "all_in": (795.2, 54.5, "C")}
+        for pid, (profit, score, grade) in cases.items():
+            r = simulate(SURGE[pid])
+            self.assertEqual((r["profit"], r["grade"]["score"], r["grade"]["grade"]), (profit, score, grade), pid)
+
+    def test_split_is_what_saves_the_schedule(self):
+        # 관리안에서 나눠 하기만 끄면 납기를 놓친다.
+        off = copy.deepcopy(SURGE["managed"])
+        off["stations"]["block_assembly"]["split"] = False
+        on = simulate(SURGE["managed"], baseline=False)
+        self.assertGreater(on["qcd"]["delivery"]["on_time"], simulate(off, baseline=False)["qcd"]["delivery"]["on_time"])
 
 
 if __name__ == "__main__":

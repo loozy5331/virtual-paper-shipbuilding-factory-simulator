@@ -36,6 +36,7 @@ def space(sc: dict[str, Any]) -> dict[str, list[Any]]:
         out[f"{pid}.overtime"] = [False, True]
         out[f"{pid}.maintenance"] = [False, True]
         out[f"{pid}.units"] = list(range(1, sc["expansion"]["max_units"] + 1))
+        out[f"{pid}.split"] = [False, True]   # 나눠 하기(3.0). 탑재는 엔진이 나누지 않는다
     for m in sc["materials"]:
         out[f"material.{m['id']}"] = list(sc["material_grades"])
     out["pool"] = list(range(1, rules["max_pool"] + 1))
@@ -54,7 +55,7 @@ def to_config(sc: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
         "scenario": sc["id"],
         "ordering": plan["ordering"],
         "ships": {o["id"]: {"priority": k + 1, "start_day": min(sc["days"], 1 + k * plan["gap"])} for k, o in enumerate(by_due)},
-        "stations": {st["id"]: {key: plan[f"{st['id']}.{key}"] for key in ("crew", "method", "overtime", "maintenance", "units")}
+        "stations": {st["id"]: {key: plan[f"{st['id']}.{key}"] for key in ("crew", "method", "overtime", "maintenance", "units", "split")}
                      for st in sc["stations"]},
         "materials": {m["id"]: plan[f"material.{m['id']}"] for m in sc["materials"]},
         "pool": plan["pool"],
@@ -118,14 +119,14 @@ def run(scenario_id: str, starts: int, seed: int, report: Callable[[str], None] 
            f"직행률 {r['qcd']['quality']['first_pass_yield']:.2f}")
     for st in sc["stations"]:
         c = cfg["stations"][st["id"]]
-        report(f"  {st['name']}: 인력 {c['crew']}, 공법 {c['method']}, 잔업 {c['overtime']}, 정비 {c['maintenance']}, 작업장 {c['units']}")
+        report(f"  {st['name']}: 인력 {c['crew']}, 공법 {c['method']}, 잔업 {c['overtime']}, 정비 {c['maintenance']}, 작업장 {c['units']}, 나눠 {c['split']}")
     report(f"  자재 {cfg['materials']}, 인원 {cfg['pool']}, 트랜스포터 {cfg['transporters']}, 연구 {cfg['research']}, "
            f"발주 {cfg['ordering']}, 착수 간격 {best_plan['gap']}일")
 
     # 상위 설정에서 선택지 사용 비율
     top = [p for s, p in found if s >= best_score - 5]
     report(f"\n최고와 5점 안의 설정 {len(top)}개에서 고른 값 (공정 칸은 4공정을 합쳐 셈)")
-    for kind in ("crew", "method", "overtime", "maintenance", "units"):
+    for kind in ("crew", "method", "overtime", "maintenance", "units", "split"):
         counts = Counter(p[f"{st['id']}.{kind}"] for p in top for st in sc["stations"])
         report(f"  {kind:12s} " + ", ".join(f"{k}: {v}" for k, v in counts.most_common()))
     for name in ("material.paper", "material.paint", "material.flag", "pool", "research", "ordering"):
@@ -136,12 +137,12 @@ def run(scenario_id: str, starts: int, seed: int, report: Callable[[str], None] 
     # 모든 공정을 한 값으로 고정했을 때의 최고 점수
     report("\n모든 공정을 한 값으로 고정했을 때의 최고 (최고와의 차이)")
     forced = {}
-    for kind in ("crew", "method"):
+    for kind in ("crew", "method", "units", "split"):
         for v in sp[f"{sc['stations'][0]['id']}.{kind}"]:
             fixed = {f"{st['id']}.{kind}": v for st in sc["stations"]}
             got = max(climb(sc, sp, {**p, **fixed}, fixed, cache)[0] for _, p in found[:5])
             forced[(kind, v)] = got
-            report(f"  {kind} = {v:9s} {got:6.1f}점 ({got - best_score:+.1f})")
+            report(f"  {kind} = {str(v):9s} {got:6.1f}점 ({got - best_score:+.1f})")
     return {"best": best_score, "plan": best_plan, "forced": forced}
 
 
