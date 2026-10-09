@@ -420,6 +420,8 @@ async function switchScenario(id: string): Promise<void> {
   }
   const first = data.presets.find((p) => p.id === "managed") ?? data.presets[0];
   const last = state.runs.map((r, i) => (r.scenario === id ? i : -1)).filter((i) => i >= 0).pop();
+  // 앞 분기의 설정으로 보낸 미리보기가 늦게 오면 버린다(배 수가 달라 계획 간트가 깨진다).
+  previewSeq++;
   Object.assign(state, {
     data, config: structuredClone(first.config), presetId: first.id, edited: false, preview: null, errors: [],
     current: last ?? null, ganttShip: null, cctv: null, board: "none",
