@@ -551,6 +551,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     for day in range(1, days + 1):
         done_research = frozenset(r["id"] for r in schedule if r["end"] < day)
         ship_state: dict[int, tuple[str, int, int | None]] = {}   # 배 → (상태, 공정, 작업장 번호)
+        closed_today: dict[int, dict[str, Any]] = {}             # 오늘 공정을 끝낸 묶음(하루 기록의 parts용)
 
         def put(i: int, entry: tuple[str, int, int | None]) -> None:
             """배의 오늘 상태. 부분 하나라도 일하면 작업(재작업)이고, 다른 부분의 대기·중지로 덮지 않는다."""
@@ -776,9 +777,10 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                 current[p][u] = None
                 group["left"] -= 1
                 group["done"].append(u)
+                group.setdefault("done_day", {})[u] = day
                 if group["left"] > 0:
                     continue
-                del groups[i]
+                closed_today[i] = groups.pop(i)
                 events.append({"day": day, "type": "complete", "ship": orders[i]["id"], "station": pid, "unit": u + 1})
                 stage[i] = p + 1
                 if p == n_st - 1:
@@ -797,11 +799,14 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             if i in ship_state:
                 state, p, u = ship_state[i]
                 rec = {"state": state, "station": stations[p]["id"], "unit": None if u is None else u + 1}
-                group = groups.get(i)
+                group = groups.get(i) or closed_today.get(i)
                 if group and len(group["units"]) > 1:
                     # 나눠 하는 중: 부분(작업장)마다 오늘 상태. 먼저 끝난 부분은 짝 대기.
                     gp = group["station"]
-                    rec["parts"] = [{"unit": v + 1, "state": PAIR_WAIT if v in group["done"] else station_today[gp][v]["state"]}
+                    # 먼저 끝난 부분은 다음 날부터 짝 대기다. 오늘 끝난 부분은 오늘 한 일(작업)로 적는다.
+                    finished = group.get("done_day", {})
+                    rec["parts"] = [{"unit": v + 1,
+                                     "state": PAIR_WAIT if v in finished and finished[v] < day else station_today[gp][v]["state"]}
                                     for v in group["units"]]
                 ship_daily[i].append(rec)
             elif delivered[i] is not None:

@@ -68,6 +68,30 @@ class HandExamples(unittest.TestCase):
         self.assertEqual(r["costs"]["breakdown"], 150)
         self.assertEqual(r["costs"]["transporter"], 350)
 
+    def test_example_4_split(self):
+        # 3.0 손 계산 예시 4: 예시 1에서 중조립만 작업장 2곳 + 나눠 하기, 대기소 4명.
+        cfg = one_ship_config()
+        cfg["pool"] = 4
+        cfg["stations"]["block_assembly"].update({"units": 2, "split": True})
+        r = simulate(cfg, one_ship_scenario(FULL))
+        # 중조립 16을 2곳에 8씩, 곳마다 2명 → 4일(6~9일). 인도는 예시 1(23일)보다 4일 빠른 19일.
+        self.assertEqual(spans(r, "S1"), {"sub_assembly": (1, 4), "block_assembly": (6, 9),
+                                          "grand_assembly": (11, 14), "erection": (16, 19)})
+        self.assertEqual(r["ships"][0]["delivered_day"], 19)
+        self.assertEqual((r["costs"]["wip"], r["costs"]["labor"], r["costs"]["investment"], r["costs"]["maintenance"]),
+                         (180, 2400, 300, 500))
+        # 대기소가 2명이면 2호는 1호가 끝날 때까지 인력 대기, 그 뒤 1호가 짝 대기 → 나누지 않은 것과 같은 6~13일.
+        cfg["pool"] = 2
+        r = simulate(cfg, one_ship_scenario(FULL))
+        self.assertEqual(spans(r, "S1")["block_assembly"], (6, 13))
+        parts = [[p["state"] for p in d["parts"]] for d in r["ships"][0]["daily"][5:13]]
+        self.assertEqual(parts, [["work", "labor_wait"]] * 4 + [["pair_wait", "work"]] * 4)
+        # 3곳 + 6명이면 부분 5.33, 3일(6~8일), 인도 18일.
+        cfg["pool"] = 6
+        cfg["stations"]["block_assembly"]["units"] = 3
+        r = simulate(cfg, one_ship_scenario(FULL))
+        self.assertEqual((spans(r, "S1")["block_assembly"], r["ships"][0]["delivered_day"]), ((6, 8), 18))
+
     def test_example_2_defect_and_rework(self):
         cfg = one_ship_config()
         cfg["stations"]["block_assembly"] = {"method": "fast", "overtime": True, "maintenance": False}
