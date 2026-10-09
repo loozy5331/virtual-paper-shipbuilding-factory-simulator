@@ -36,7 +36,7 @@ LEAD_TIME_STATES = [WORK, REWORK, MATERIAL_WAIT, STATION_WAIT, LABOR_WAIT,
 LOSS_STATES = [s for s in LEAD_TIME_STATES if s not in (WORK, TRANSPORT)]
 
 COST_KEYS = ["labor", "overtime", "maintenance", "material", "holding", "wip", "rework",
-             "accident", "breakdown", "transporter", "research", "late_penalty"]
+             "accident", "breakdown", "transporter", "investment", "research", "late_penalty"]
 
 EPS = 1e-9
 
@@ -57,14 +57,60 @@ class ConfigError(ValueError):
 # 데이터
 # ---------------------------------------------------------------------------
 
-def load_scenario() -> dict[str, Any]:
-    """수주, BOM, 단가, 난수표 등 규칙의 모든 숫자."""
-    return json.loads((DATA_DIR / "scenario.json").read_text(encoding="utf-8"))
+DEFAULT_SCENARIO = "basic"   # 시나리오를 적지 않은 설정(1.x)은 기본 분기로 돈다.
 
 
-def load_presets() -> list[dict[str, Any]]:
-    """규칙 문서 10장의 프리셋 3개 (무관리, 관리, 전부 최대 투입)."""
-    return json.loads((DATA_DIR / "presets.json").read_text(encoding="utf-8"))
+def _read(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def scenario_ids() -> list[str]:
+    """고를 수 있는 시나리오. 난이도(level) 순: 옛 분기가 쉽고 나중 분기가 어렵다."""
+    level = {p.stem: _read(p).get("level", 0) for p in (DATA_DIR / "scenarios").glob("*.json")}
+    return sorted(level, key=lambda sid: (level[sid], sid))
+
+
+def list_scenarios() -> list[dict[str, Any]]:
+    """첫 화면(책상 위 클립보드)과 분기 고르기용 요약. 난이도 순."""
+    rules = _read(DATA_DIR / "rules.json")
+    out = []
+    for sid in scenario_ids():
+        sc = _read(DATA_DIR / "scenarios" / f"{sid}.json")
+        mix: dict[str, int] = {}
+        for o in sc["orders"]:
+            name = rules["ship_types"][o["type"]]["name"]
+            mix[name] = mix.get(name, 0) + 1
+        out.append({"id": sid, "name": sc["name"], "summary": sc["summary"], "period": sc["period"],
+                    "level": sc.get("level", 0), "ships": len(sc["orders"]), "ship_mix": mix,
+                    "kpi": sc["kpi"], "days": sc["days"]})
+    return out
+
+
+def load_scenario(scenario_id: str = DEFAULT_SCENARIO) -> dict[str, Any]:
+    """규칙의 모든 숫자: 공통 규칙(rules.json)에 시나리오(수주, 기간, 목표, 품질 난수)를 얹는다."""
+    if scenario_id not in scenario_ids():
+        raise ConfigError([f"시나리오는 {', '.join(scenario_ids())} 중 하나여야 합니다"])
+    rules = _read(DATA_DIR / "rules.json")
+    rules.pop("_comment", None)
+    sc = _read(DATA_DIR / "scenarios" / f"{scenario_id}.json")
+    sc.pop("presets")
+    random = {**rules.pop("random"), **sc.pop("random")}
+    return {**sc, **rules, "random": random}
+
+
+def load_presets(scenario_id: str = DEFAULT_SCENARIO) -> list[dict[str, Any]]:
+    """시나리오의 프리셋 3개 (무관리, 관리, 전부 최대 투입)."""
+    if scenario_id not in scenario_ids():
+        raise ConfigError([f"시나리오는 {', '.join(scenario_ids())} 중 하나여야 합니다"])
+    return _read(DATA_DIR / "scenarios" / f"{scenario_id}.json")["presets"]
+
+
+def scenario_of(config: dict[str, Any]) -> dict[str, Any]:
+    """설정이 고른 시나리오. 적지 않았으면 기본 분기."""
+    sid = config.get("scenario", DEFAULT_SCENARIO) if isinstance(config, dict) else DEFAULT_SCENARIO
+    if not isinstance(sid, str):
+        raise ConfigError([f"시나리오는 {', '.join(scenario_ids())} 중 하나여야 합니다"])
+    return load_scenario(sid)
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +120,8 @@ def load_presets() -> list[dict[str, Any]]:
 def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
     """설정이 4장의 선택지 안에 있는지 확인한다. 틀리면 ConfigError."""
     errors: list[str] = []
+    if config.get("scenario") not in (None, scenario.get("id")):
+        errors.append(f"설정의 시나리오({config.get('scenario')})와 돌리려는 시나리오({scenario.get('id')})가 다릅니다")
     days = scenario["days"]
     rules = scenario["rules"]
     order_ids = [o["id"] for o in scenario["orders"]]
@@ -88,7 +136,7 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
             continue
         start = ship.get("start_day")
         if not _is_int(start) or not 1 <= start <= days:
-            errors.append(f"{sid}: 착수일은 1~{days} 사이의 정수여야 합니다")
+            errors.append(f"{sid}: 착수 예정일은 1~{days} 사이의 정수여야 합니다")
         for mid in material_ids:
             day = (ship.get("order_days") or {}).get(mid)
             if day is not None and (not _is_int(day) or not 1 <= day <= days):
@@ -108,6 +156,12 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
         for key in ("overtime", "maintenance"):
             if not isinstance(st.get(key), bool):
                 errors.append(f"{pid}: {key}는 true 또는 false여야 합니다")
+        if st.get("crew", "normal") not in rules["crews"]:
+            errors.append(f"{pid}: 인력은 {', '.join(rules['crews'])} 중 하나여야 합니다")
+        units = st.get("units", 1)
+        max_units = scenario["expansion"]["max_units"]
+        if not _is_int(units) or not 1 <= units <= max_units:
+            errors.append(f"{pid}: 작업장 수는 1~{max_units}개여야 합니다")
 
     pool = config.get("pool")
     if not _is_int(pool) or not 1 <= pool <= rules["max_pool"]:
@@ -134,6 +188,11 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
     if skilled is not None and skilled not in station_ids:
         errors.append("시니어는 공정 하나에 두거나 미배치(null)여야 합니다")
 
+    grades = config.get("materials") or {}
+    if not isinstance(grades, dict) or any(m not in material_ids or g not in scenario["material_grades"]
+                                           for m, g in grades.items()):
+        errors.append(f"자재 등급은 자재마다 {', '.join(scenario['material_grades'])} 중 하나여야 합니다")
+
     if errors:
         raise ConfigError(errors)
 
@@ -142,25 +201,52 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
 # 계산식 (3장, 5장)
 # ---------------------------------------------------------------------------
 
+def crew_of(config: dict[str, Any], station_id: str) -> str:
+    """공정의 인력: normal, skilled, robot. 1.x 설정의 시니어(skilled_station)는 그 공정의 숙련공으로 읽는다."""
+    crew = config["stations"][station_id].get("crew")
+    if crew is not None:
+        return crew
+    return "skilled" if config.get("skilled_station") == station_id else "normal"
+
+
+def material_grade(config: dict[str, Any], material_id: str | None) -> str:
+    """자재 등급: standard(표준) 또는 cheap(저가). 설정에 없으면 표준."""
+    return (config.get("materials") or {}).get(material_id, "standard") if material_id else "standard"
+
+
+def is_overtime(station_cfg: dict[str, Any]) -> bool:
+    """잔업은 사람이 하는 일이다. 로봇 공정은 잔업을 켜도 하지 않는다."""
+    return station_cfg["overtime"] and station_cfg.get("crew") != "robot"
+
+
 def station_rate(station_cfg: dict[str, Any], rules: dict[str, Any], assigned: int, worker_factor: float = 1) -> float:
-    """하루 처리량 = min(배정 인원 × 자동화 배수, 설비 수용 인원) × 공법 속도 × 잔업 계수."""
-    workers = min(assigned * worker_factor, rules["max_workers_per_station"])
+    """하루 처리량 = min(배정 인원 × 자동화 배수, 설비 수용 인원) × 공법 속도 × 잔업 계수. 로봇은 정해진 인원분."""
     speed = rules["methods"][station_cfg["method"]]["speed"]
-    overtime = rules["overtime"]["speed"] if station_cfg["overtime"] else 1.0
+    if station_cfg.get("crew") == "robot":
+        return rules["crews"]["robot"]["rate"] * speed
+    workers = min(assigned * worker_factor, rules["max_workers_per_station"])
+    overtime = rules["overtime"]["speed"] if is_overtime(station_cfg) else 1.0
     return workers * speed * overtime
 
 
-def station_defect_rate(station_cfg: dict[str, Any], is_skilled: bool, scenario: dict[str, Any],
-                        research: frozenset[str] = frozenset()) -> float:
-    """불량률 = 공법 기본값 + 잔업 + 미정비 − 시니어 − 자동 검사. research는 효과가 난 연구."""
+def station_defect_rate(station_cfg: dict[str, Any], crew: str, scenario: dict[str, Any],
+                        research: frozenset[str] = frozenset(), lots_done: int = 0, grade: str = "standard") -> float:
+    """불량률 = 공법(신공법은 끝낸 로트 수만큼 낮아짐) + 잔업 + 미정비 + 인력 + 자재 등급 − 자동 검사.
+
+    예지 정비는 고장만 막는다(2.0). 정비를 안 한 공정의 불량 가산은 그대로다.
+
+    research는 효과가 난 연구, lots_done은 이 공정에서 검사를 마친 로트 수(학습 곡선)."""
     rules = scenario["rules"]
-    rate = rules["methods"][station_cfg["method"]]["defect_rate"]
-    if station_cfg["overtime"]:
+    method = rules["methods"][station_cfg["method"]]
+    rate = method["defect_rate"]
+    if "learning_step" in method:
+        rate = max(method["defect_floor"], rate - method["learning_step"] * lots_done)
+    if is_overtime({**station_cfg, "crew": crew}):
         rate += rules["overtime"]["defect_add"]
-    if not station_cfg["maintenance"] and "predictive" not in research:
+    if not station_cfg["maintenance"]:
         rate += rules["no_maintenance_defect_add"]
-    if is_skilled:
-        rate -= rules["skilled_defect_reduction"]
+    rate += rules["crews"][crew].get("defect_add", 0)
+    rate += scenario["material_grades"][grade]["defect_add"]
     if "auto_inspect" in research:
         rate -= scenario["research"]["auto_inspect"]["defect_sub"]
     return round(max(0.0, rate), 6)
@@ -185,26 +271,51 @@ def research_schedule(queue: list[str], scenario: dict[str, Any]) -> list[dict[s
     return out
 
 
+def station_units(config: dict[str, Any], scenario: dict[str, Any]) -> list[int]:
+    """공정마다 작업장 수. 설정에 없으면 1개(1.x 설정)."""
+    return [config["stations"][s["id"]].get("units", 1) for s in scenario["stations"]]
+
+
+def investment(config: dict[str, Any], scenario: dict[str, Any]) -> float:
+    """설비 투자비: 증설한 작업장 + 로봇 도입(작업장마다) + 신공법 도입(공정마다)."""
+    rules = scenario["rules"]
+    total = 0.0
+    for st, n in zip(scenario["stations"], station_units(config, scenario)):
+        cfg = config["stations"][st["id"]]
+        total += (n - 1) * scenario["expansion"]["cost"][st["id"]]
+        if crew_of(config, st["id"]) == "robot":
+            total += n * rules["crews"]["robot"]["install_cost"]
+        total += rules["methods"][cfg["method"]].get("setup_cost", 0)
+    return total
+
+
+def material_prices(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, float]:
+    """자재 단가. 저가 등급은 단가 × price_factor."""
+    return {m["id"]: m["price"] * scenario["material_grades"][material_grade(config, m["id"])]["price_factor"]
+            for m in scenario["materials"]}
+
+
 def fixed_costs(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, float]:
-    """실행 전에 정해지는 비용: 인건비, 정비비, 트랜스포터, 연구비."""
+    """실행 전에 정해지는 비용: 인건비(대기소), 정비비(작업장마다), 트랜스포터, 설비 투자비, 연구비."""
     costs = scenario["rules"]["costs"]
     tr = scenario["transporter"]
     days = scenario["days"]
     n_tr = config["transporters"]["count"]
+    units = station_units(config, scenario)
     return {
-        "labor": (config["pool"] * costs["wage_per_day"]
-                  + (costs["skilled_bonus_per_day"] if config.get("skilled_station") else 0)) * days,
-        "maintenance": sum(1 for s in scenario["stations"] if config["stations"][s["id"]]["maintenance"])
+        "labor": config["pool"] * costs["wage_per_day"] * days,
+        "maintenance": sum(n for s, n in zip(scenario["stations"], units) if config["stations"][s["id"]]["maintenance"])
         * costs["maintenance_per_station"],
         "transporter": n_tr * tr["cost_per_day"] * days
         + (n_tr * tr["maintenance_cost"] if config["transporters"]["maintenance"] else 0),
+        "investment": investment(config, scenario),
         "research": sum(scenario["research"][r]["cost"] for r in config.get("research", [])),
     }
 
 
 def preview(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> dict[str, Any]:
     """실행하지 않고 설정만으로 알 수 있는 값: 공정별 최대 처리량과 불량률, 고정비, 연구 일정."""
-    scenario = scenario or load_scenario()
+    scenario = scenario or scenario_of(config)
     validate_config(config, scenario)
     order_days = resolve_order_days(config, scenario)
     rules = scenario["rules"]
@@ -212,11 +323,13 @@ def preview(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> d
     stations = {}
     for st in scenario["stations"]:
         cfg = config["stations"][st["id"]]
-        skilled = config.get("skilled_station") == st["id"]
+        crew = crew_of(config, st["id"])
+        grade = material_grade(config, st["material"])
+        cfg = {**cfg, "crew": crew}
         stations[st["id"]] = {
             "rate": station_rate(cfg, rules, rules["max_workers_per_station"]),
-            "defect_rate": station_defect_rate(cfg, skilled, scenario),
-            "defect_rate_final": station_defect_rate(cfg, skilled, scenario, every),
+            "defect_rate": station_defect_rate(cfg, crew, scenario, grade=grade),
+            "defect_rate_final": station_defect_rate(cfg, crew, scenario, every, lots_done=len(scenario["orders"]), grade=grade),
         }
     lead = {m["id"]: m["lead_days"] for m in scenario["materials"]}
     materials = {sid: {mid: {"order_day": day, "arrival_day": None if day is None else day + lead[mid]}
@@ -249,15 +362,23 @@ def plan_schedule(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str,
             day = end + move_days   # 끝난 다음 날부터 운반, 다 나른 날 다음 공정에 들어간다.
         ships[order["id"]] = spans
 
+    # 겹침: 같은 공정을 쓰는 배가 그 공정의 작업장 수보다 많은 날. 두 배씩 묶어 그 날들의 구간으로 적는다.
     conflicts = []
     ids = list(ships)
-    for st in scenario["stations"]:
+    for st, n_units in zip(scenario["stations"], station_units(config, scenario)):
+        sid = st["id"]
+        users = lambda day: sum(1 for k in ids if ships[k][sid]["start"] <= day <= ships[k][sid]["end"])
         for i, a in enumerate(ids):
             for b in ids[i + 1:]:
-                sa, sb = ships[a][st["id"]], ships[b][st["id"]]
-                start, end = max(sa["start"], sb["start"]), min(sa["end"], sb["end"])
-                if start <= end:
-                    conflicts.append({"station": st["id"], "ships": [a, b], "start": start, "end": end})
+                sa, sb = ships[a][sid], ships[b][sid]
+                run_start = None
+                for day in range(max(sa["start"], sb["start"]), min(sa["end"], sb["end"]) + 2):
+                    over = day <= min(sa["end"], sb["end"]) and users(day) > n_units
+                    if over and run_start is None:
+                        run_start = day
+                    elif not over and run_start is not None:
+                        conflicts.append({"station": sid, "ships": [a, b], "start": run_start, "end": day - 1})
+                        run_start = None
     return {"ships": ships, "conflicts": conflicts}
 
 
@@ -271,7 +392,7 @@ def simulate(config: dict[str, Any], scenario: dict[str, Any] | None = None, bas
     같은 설정이면 항상 같은 결과가 나온다. 난수는 시나리오의 표에서 읽는다.
     baseline이 참이면 기준선 프리셋(전부 최대 투입)도 같은 시나리오로 돌려 등급에 비교를 붙인다.
     """
-    scenario = scenario or load_scenario()
+    scenario = scenario or scenario_of(config)
     result = _run(_with_order_days(config, scenario), scenario)
     base_cfg = _baseline_config(scenario) if baseline else None
     base = _run(_with_order_days(base_cfg, scenario), scenario) if base_cfg is not None else None
@@ -282,7 +403,9 @@ def simulate(config: dict[str, Any], scenario: dict[str, Any] | None = None, bas
 def _baseline_config(scenario: dict[str, Any]) -> dict[str, Any] | None:
     """기준선 프리셋 설정. 시나리오의 배가 프리셋과 다르면(손 계산용 시나리오 등) 없다."""
     pid = scenario["grade"]["baseline_preset"]
-    preset = next(p for p in load_presets() if p["id"] == pid)
+    preset = next((p for p in load_presets(scenario.get("id", DEFAULT_SCENARIO)) if p["id"] == pid), None)
+    if preset is None:
+        return None
     if set(preset["config"]["ships"]) != {o["id"] for o in scenario["orders"]}:
         return None
     return preset["config"]
@@ -304,8 +427,12 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     types = scenario["ship_types"]
     n_ships, n_st = len(orders), len(stations)
 
-    st_cfg = [config["stations"][s["id"]] for s in stations]
-    skilled = config.get("skilled_station")
+    crews = [crew_of(config, s["id"]) for s in stations]
+    st_cfg = [{**config["stations"][s["id"]], "crew": c} for s, c in zip(stations, crews)]
+    grades = [material_grade(config, s["material"]) for s in stations]
+    prices = material_prices(config, scenario)
+    skilled_extra = rules["crews"]["skilled"]["extra_wage_per_worker_day"]
+    n_units = station_units(config, scenario)              # 공정마다 작업장 수 (증설하면 2)
     pool: int = config["pool"]
     n_tr: int = config["transporters"]["count"]
     tr_maintained: bool = config["transporters"]["maintenance"]
@@ -339,16 +466,19 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     ready = [config["ships"][o["id"]]["start_day"] for o in orders]   # 그 공정에 들어갈 수 있는 첫날
     started: list[int | None] = [None] * n_ships           # 소조립에 들어간 날
     delivered: list[int | None] = [None] * n_ships
-    current: list[dict[str, Any] | None] = [None] * n_st   # 작업장에 들어가 있는 로트
-    stop_until = [0] * n_st
-    stop_cause = [ACCIDENT_STOP] * n_st
-    overtime_days = [0] * n_st
+    # 작업장 단위 상태는 [공정][작업장 번호]. 작업장 하나에 로트 하나다.
+    current: list[list[dict[str, Any] | None]] = [[None] * n for n in n_units]   # 작업장에 들어가 있는 로트
+    stop_until = [[0] * n for n in n_units]
+    stop_cause = [[ACCIDENT_STOP] * n for n in n_units]
+    overtime_days = [[0] * n for n in n_units]
+    unit_busy = [[0] * n for n in n_units]                 # 작업장마다 일한 날 (고장 판정 간격)
+    unit_breakdowns = [[0] * n for n in n_units]
     transit: dict[int, dict[str, Any]] = {}                # 공정 사이를 옮기는 로트
     tr_moves = [0] * n_tr
     tr_stop_until = [0] * n_tr
 
     ship_daily: list[list[dict[str, Any]]] = [[] for _ in range(n_ships)]
-    station_daily: list[list[dict[str, Any]]] = [[] for _ in range(n_st)]
+    station_daily: list[list[list[dict[str, Any]]]] = [[[] for _ in range(n)] for n in n_units]
     transporter_daily: list[list[dict[str, Any]]] = [[] for _ in range(n_tr)]
     workforce_daily: list[dict[str, int]] = []
     spans: list[dict[str, dict[str, int]]] = [{} for _ in range(n_ships)]
@@ -374,8 +504,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
 
     for day in range(1, days + 1):
         done_research = frozenset(r["id"] for r in schedule if r["end"] < day)
-        ship_state: dict[int, tuple[str, int]] = {}
-        station_today: list[dict[str, Any]] = [{"state": "idle", "ship": None, "workers": 0} for _ in range(n_st)]
+        ship_state: dict[int, tuple[str, int, int | None]] = {}   # 배 → (상태, 공정, 작업장 번호)
+        station_today = [[{"state": "idle", "ship": None, "workers": 0} for _ in range(n)] for n in n_units]
 
         # 1. 입고
         for mid, qty, for_ship in arrivals.get(day, []):
@@ -411,7 +541,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                 ready[i] = day
                 events.append({"day": day, "type": "transport_end", **route})
             else:
-                ship_state[i] = (TRANSPORT if took else TRANSPORT_WAIT, lot["from"])
+                ship_state[i] = (TRANSPORT if took else TRANSPORT_WAIT, lot["from"], None)
 
         # 2-1. 오늘 운행한 트랜스포터는 운행 횟수를 세고, 정해진 간격마다 고장 판정을 한다.
         for k in range(n_tr):
@@ -434,119 +564,135 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                     tr_breakdowns[k] += 1
                     events.append({"day": day, "type": "breakdown", "transporter": f"T{k + 1}"})
 
-        # 3. 투입: 작업장을 공정 순서대로 보고, 비어 있으면 우선순위 순으로 들어올 로트를 찾는다.
+        # 3. 투입: 공정 순서대로, 작업장 번호 순서대로 본다. 비어 있으면 우선순위 순으로 들어올 로트를 찾는다.
         for p in range(n_st):
             pid = stations[p]["id"]
-            cur = current[p]
+            inside = {c["ship"] for c in current[p] if c}
             waiting = [i for i in by_priority
                        if delivered[i] is None and i not in transit and stage[i] == p and ready[i] <= day
-                       and not (cur and cur["ship"] == i)]
+                       and i not in inside]
+            entered: set[int] = set()
+            stopped_causes = []
 
-            # 3-1. 사고나 고장으로 중지 중이면 건너뛴다.
-            if day <= stop_until[p]:
-                cause = stop_cause[p]
-                if cause == ACCIDENT_STOP:
-                    accident_stopped[p] += 1
-                else:
-                    breakdown_stopped[p] += 1
-                for i in waiting + ([cur["ship"]] if cur else []):
-                    ship_state[i] = (cause, p)
-                station_today[p] = {"state": cause, "ship": orders[cur["ship"]]["id"] if cur else None, "workers": 0}
-                continue
+            for u in range(n_units[p]):
+                cur = current[p][u]
+                # 3-1. 사고나 고장으로 중지 중이면 건너뛴다.
+                if day <= stop_until[p][u]:
+                    cause = stop_cause[p][u]
+                    stopped_causes.append(cause)
+                    if cause == ACCIDENT_STOP:
+                        accident_stopped[p] += 1
+                    else:
+                        breakdown_stopped[p] += 1
+                    if cur:
+                        ship_state[cur["ship"]] = (cause, p, u)
+                    station_today[p][u] = {"state": cause, "ship": orders[cur["ship"]]["id"] if cur else None, "workers": 0}
+                    continue
 
-            # 3-2. 비어 있으면 자재를 꺼내(출고) 로트를 들인다.
-            if cur is None:
-                mid = stations[p]["material"]
-                for i in waiting:
-                    need = bom_of(i, mid) if mid else 0
-                    if mid and stock[mid] < need:
-                        ship_state[i] = (MATERIAL_WAIT, p)
-                        continue
-                    if mid:
-                        stock[mid] -= need
-                        events.append({"day": day, "type": "issue", "material": mid, "quantity": need,
-                                       "ship": orders[i]["id"], "station": pid})
-                    work = work_of(i, p)
-                    cur = current[p] = {"ship": i, "remaining": work, "amount": work, "rework": False}
-                    spans[i][pid] = {"start": day, "end": day}
-                    if p == 0:
-                        started[i] = day
-                    events.append({"day": day, "type": "enter", "ship": orders[i]["id"], "station": pid})
-                    break
+                # 3-2. 비어 있으면 자재를 꺼내(출고) 로트를 들인다.
+                if cur is None:
+                    mid = stations[p]["material"]
+                    for i in waiting:
+                        if i in entered or ship_state.get(i, ("",))[0] == MATERIAL_WAIT:
+                            continue
+                        need = bom_of(i, mid) if mid else 0
+                        if mid and stock[mid] < need:
+                            ship_state[i] = (MATERIAL_WAIT, p, None)
+                            continue
+                        if mid:
+                            stock[mid] -= need
+                            events.append({"day": day, "type": "issue", "material": mid, "quantity": need,
+                                           "ship": orders[i]["id"], "station": pid})
+                        work = work_of(i, p)
+                        cur = current[p][u] = {"ship": i, "remaining": work, "amount": work, "rework": False}
+                        entered.add(i)
+                        spans[i][pid] = {"start": day, "end": day}
+                        if p == 0:
+                            started[i] = day
+                        events.append({"day": day, "type": "enter", "ship": orders[i]["id"], "station": pid, "unit": u + 1})
+                        break
+                    if cur is None and any(ship_state.get(i, ("",))[0] == MATERIAL_WAIT for i in waiting):
+                        material_wait[p] += 1
+                        station_today[p][u] = {"state": MATERIAL_WAIT, "ship": None, "workers": 0}
+
+            # 못 들어간 로트: 모든 작업장이 중지 중이면 그 원인, 아니면 작업장 대기.
+            all_stopped = len(stopped_causes) == n_units[p]
             for i in waiting:
-                if i not in ship_state and not (cur and cur["ship"] == i):
-                    ship_state[i] = (STATION_WAIT, p)
-
-            if cur is None and any(ship_state.get(i, ("", -1))[0] == MATERIAL_WAIT for i in waiting):
-                material_wait[p] += 1
-                station_today[p] = {"state": MATERIAL_WAIT, "ship": None, "workers": 0}
+                if i not in ship_state and i not in entered:
+                    ship_state[i] = (stopped_causes[0], p, None) if all_stopped else (STATION_WAIT, p, None)
 
         # 4. 인원 배정: 로트가 있고 중지가 아닌 작업장에, 그 로트의 배 우선순위 순으로 사람을 보낸다.
         automated = "automation" in done_research
         need = automation["workers_needed"] if automated else rules["max_workers_per_station"]
         factor = automation["worker_factor"] if automated else 1
         idle = pool
-        assigned = [0] * n_st
-        for p in sorted((p for p in range(n_st) if current[p] and day > stop_until[p]),
-                        key=lambda p: priority[current[p]["ship"]]):
-            assigned[p] = min(need, idle)
-            idle -= assigned[p]
+        assigned = [[0] * n for n in n_units]
+        for p, u in sorted(((p, u) for p in range(n_st) for u in range(n_units[p])
+                            if current[p][u] and day > stop_until[p][u] and crews[p] != "robot"),
+                           key=lambda pu: priority[current[pu[0]][pu[1]]["ship"]]):
+            assigned[p][u] = min(need, idle)
+            idle -= assigned[p][u]
         man_days += pool - idle
         workforce_daily.append({"assigned": pool - idle, "idle": idle})
 
         # 5. 작업: 남은 작업량에서 처리량을 뺀다. 오늘 들어온 로트도 오늘부터 작업한다.
-        for p in range(n_st):
-            cur = current[p]
-            if cur is None or day <= stop_until[p]:
+        #    사고·고장 판정은 작업장마다 따로 센다. 난수표는 작업장 번호만큼 한 칸씩 밀어 읽는다(1호는 그대로).
+        for p, u in ((p, u) for p in range(n_st) for u in range(n_units[p])):
+            cur = current[p][u]
+            if cur is None or day <= stop_until[p][u]:
                 continue
             pid = stations[p]["id"]
             i = cur["ship"]
-            if assigned[p] == 0:
+            if assigned[p][u] == 0 and crews[p] != "robot":
                 labor_wait[p] += 1
-                ship_state[i] = (LABOR_WAIT, p)
-                station_today[p] = {"state": LABOR_WAIT, "ship": orders[i]["id"], "workers": 0}
+                ship_state[i] = (LABOR_WAIT, p, u)
+                station_today[p][u] = {"state": LABOR_WAIT, "ship": orders[i]["id"], "workers": 0}
                 continue
 
-            cur["remaining"] -= station_rate(st_cfg[p], rules, assigned[p], factor)
+            cur["remaining"] -= station_rate(st_cfg[p], rules, assigned[p][u], factor)
+            if crews[p] == "skilled":
+                cost["labor"] += assigned[p][u] * skilled_extra
             busy[p] += 1
+            unit_busy[p][u] += 1
             state = REWORK if cur["rework"] else WORK
-            ship_state[i] = (state, p)
-            station_today[p] = {"state": state, "ship": orders[i]["id"], "workers": assigned[p]}
+            ship_state[i] = (state, p, u)
+            station_today[p][u] = {"state": state, "ship": orders[i]["id"], "workers": assigned[p][u]}
             spans[i][pid]["end"] = day
 
             # 5-1. 잔업일을 세고, 정해진 간격마다 사고 판정을 한다.
-            if st_cfg[p]["overtime"]:
-                overtime_days[p] += 1
-                cost["overtime"] += assigned[p] * costs["wage_per_day"] * ot["pay_rate"]
-                if overtime_days[p] % ot["accident_every_days"] == 0:
+            if is_overtime(st_cfg[p]):
+                overtime_days[p][u] += 1
+                cost["overtime"] += assigned[p][u] * costs["wage_per_day"] * ot["pay_rate"]
+                if overtime_days[p][u] % ot["accident_every_days"] == 0:
                     table = rnd["accident"][pid]
-                    n = overtime_days[p] // ot["accident_every_days"]
-                    if table[(n - 1) % len(table)] < ot["accident_threshold"]:
-                        stop_until[p] = day + ot["accident_stop_days"]
-                        stop_cause[p] = ACCIDENT_STOP
+                    n = overtime_days[p][u] // ot["accident_every_days"]
+                    if table[(n - 1 + u) % len(table)] < ot["accident_threshold"]:
+                        stop_until[p][u] = day + ot["accident_stop_days"]
+                        stop_cause[p][u] = ACCIDENT_STOP
                         cost["accident"] += costs["accident"]
                         accidents += 1
-                        events.append({"day": day, "type": "accident", "station": pid, "ship": orders[i]["id"]})
+                        events.append({"day": day, "type": "accident", "station": pid, "unit": u + 1, "ship": orders[i]["id"]})
 
             # 5-2. 일한 날을 세고, 정해진 간격마다 고장 판정을 한다. 오늘 사고로 멈췄으면 판정하지 않는다.
-            if busy[p] % bd["every_busy_days"] == 0 and day > stop_until[p]:
+            if unit_busy[p][u] % bd["every_busy_days"] == 0 and day > stop_until[p][u]:
                 threshold = 0 if "predictive" in done_research else (
                     bd["threshold_maintained"] if st_cfg[p]["maintenance"] else bd["threshold"])
                 table = rnd["breakdown"][pid]
-                n = busy[p] // bd["every_busy_days"]
-                if table[(n - 1) % len(table)] < threshold:
-                    stop_until[p] = day + bd["stop_days"]
-                    stop_cause[p] = BREAKDOWN_STOP
+                n = unit_busy[p][u] // bd["every_busy_days"]
+                if table[(n - 1 + u) % len(table)] < threshold:
+                    stop_until[p][u] = day + bd["stop_days"]
+                    stop_cause[p][u] = BREAKDOWN_STOP
                     cost["breakdown"] += bd["cost"]
                     station_breakdowns[p] += 1
-                    events.append({"day": day, "type": "breakdown", "station": pid, "ship": orders[i]["id"]})
+                    unit_breakdowns[p][u] += 1
+                    events.append({"day": day, "type": "breakdown", "station": pid, "unit": u + 1, "ship": orders[i]["id"]})
 
             # 5-3. 다 끝났으면 검사하고, 불량이면 재작업량을 넣는다. 합격하면 다음 날부터 운반을 기다린다.
             if cur["remaining"] <= EPS:
                 work_done[p] += cur["amount"]
                 if not cur["rework"]:
                     inspections[p] += 1
-                    rate = station_defect_rate(st_cfg[p], skilled == pid, scenario, done_research)
+                    rate = station_defect_rate(st_cfg[p], crews[p], scenario, done_research, inspections[p] - 1, grades[p])
                     if rnd["quality"][orders[i]["id"]][pid] < rate:
                         ratio = (scenario["research"]["auto_inspect"]["rework_ratio"]
                                  if "auto_inspect" in done_research else rules["rework_ratio"])
@@ -554,11 +700,11 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                         cur["rework"] = True
                         cost["rework"] += costs["rework_per_defect"]
                         defects += 1
-                        events.append({"day": day, "type": "defect", "ship": orders[i]["id"], "station": pid})
+                        events.append({"day": day, "type": "defect", "ship": orders[i]["id"], "station": pid, "unit": u + 1})
                         continue
                     passes[p] += 1
-                events.append({"day": day, "type": "complete", "ship": orders[i]["id"], "station": pid})
-                stage[i], current[p] = p + 1, None
+                events.append({"day": day, "type": "complete", "ship": orders[i]["id"], "station": pid, "unit": u + 1})
+                stage[i], current[p][u] = p + 1, None
                 if p == n_st - 1:
                     delivered[i] = day
                     events.append({"day": day, "type": "delivery", "ship": orders[i]["id"],
@@ -573,17 +719,18 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         # 6. 기록: 배마다 오늘의 상태 하나, 작업장마다 하나.
         for i in range(n_ships):
             if i in ship_state:
-                state, p = ship_state[i]
-                ship_daily[i].append({"state": state, "station": stations[p]["id"]})
+                state, p, u = ship_state[i]
+                ship_daily[i].append({"state": state, "station": stations[p]["id"], "unit": None if u is None else u + 1})
             elif delivered[i] is not None:
                 ship_daily[i].append({"state": DONE, "station": None})
             else:
                 ship_daily[i].append({"state": NOT_STARTED, "station": None})
         for p in range(n_st):
-            station_daily[p].append(station_today[p])
+            for u in range(n_units[p]):
+                station_daily[p][u].append(station_today[p][u])
 
         # 7. 비용을 더한다: 재고비, 재공비. (잔업수당, 사고, 고장, 재작업은 위에서 더했다.)
-        value = sum(stock[mid] * materials[mid]["price"] for mid in stock)
+        value = sum(stock[mid] * prices[mid] for mid in stock)
         cost["holding"] += value * costs["holding_rate_per_day"]
         cost["wip"] += sum(costs["wip_per_ship_day"] for i in range(n_ships)
                            if started[i] is not None and delivered[i] is None)
@@ -591,8 +738,10 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         inventory_value_daily.append(value)
 
     # ----- 기간이 끝난 뒤 한 번에 계산하는 원가 (7장) -----
+    skilled_premium = cost["labor"]                     # 숙련공 할증(작업 중에 더했다)
     cost.update(fixed_costs(config, scenario))
-    cost["material"] = sum(bom_of(i, mid) * materials[mid]["price"] for i in range(n_ships) for mid in materials)
+    cost["labor"] += skilled_premium
+    cost["material"] = sum(bom_of(i, mid) * prices[mid] for i in range(n_ships) for mid in materials)
 
     late_days = []
     for i, order in enumerate(orders):
@@ -646,8 +795,9 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         stations_out.append({
             "id": st["id"],
             "name": st["name"],
+            "crew": crews[p],
             "max_rate": station_rate(st_cfg[p], rules, rules["max_workers_per_station"]),
-            "defect_rate": station_defect_rate(st_cfg[p], skilled == st["id"], scenario),
+            "defect_rate": station_defect_rate(st_cfg[p], crews[p], scenario, grade=grades[p]),
             "busy_days": busy[p],
             "accident_stop_days": accident_stopped[p],
             "breakdown_stop_days": breakdown_stopped[p],
@@ -658,7 +808,10 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             "inspections": inspections[p],
             "passes": passes[p],
             "oee": {"availability": availability, "performance": performance, "quality": quality, "oee": oee},
-            "daily": station_daily[p],
+            "units": [{"unit": u + 1, "busy_days": unit_busy[p][u], "breakdowns": unit_breakdowns[p][u],
+                       "daily": station_daily[p][u]} for u in range(n_units[p])],
+            # 1호 작업장의 하루 기록. 화면이 units를 읽게 되면(2.0 화면) 지운다.
+            "daily": station_daily[p][0],
         })
 
     transporters_out = [{
@@ -769,7 +922,7 @@ def _grade(result: dict[str, Any], config: dict[str, Any], base: dict[str, Any] 
                            "baseline": None, "vs_baseline": None}
     if base is not None and base_cfg is not None:
         base_grade = _grade(base, base_cfg, None, None, scenario)
-        preset = next(p for p in load_presets() if p["id"] == g["baseline_preset"])
+        preset = next(p for p in load_presets(scenario.get("id", DEFAULT_SCENARIO)) if p["id"] == g["baseline_preset"])
         out["baseline"] = {"preset": preset["id"], "name": preset["name"], "score": base_grade["score"],
                            "grade": base_grade["grade"], "profit": base["profit"], "pool": base_cfg["pool"],
                            "on_time": base["qcd"]["delivery"]["on_time"]}
@@ -798,7 +951,7 @@ def suggest_order_days(config: dict[str, Any], scenario: dict[str, Any] | None =
     1.0의 "발주일 역산" 버튼이 쓰던 함수다. 1.1부터 화면은 발주 방식(ordering)을 고르고,
     이 함수는 /api/suggest-orders 하위 호환으로만 남는다.
     """
-    scenario = scenario or load_scenario()
+    scenario = scenario or scenario_of(config)
     validate_config(config, scenario)
     lead = {m["id"]: m["lead_days"] for m in scenario["materials"]}
     return {sid: {mid: _clamp_day(need - lead[mid] - buffer_days, scenario) for mid, need in needs.items()}
@@ -811,7 +964,7 @@ def resolve_order_days(config: dict[str, Any], scenario: dict[str, Any] | None =
     bulk: 모든 자재를 1일에. jit: 필요일 − 리드타임 − 여유일. late: 필요일에 (리드타임만큼 자재 대기).
     필요일은 자재가 항상 충분하다고 보고 한 번 돌려서 구한다. 실제 실행에서는 앞 공정이 늦어지면 필요일도 밀린다.
     """
-    scenario = scenario or load_scenario()
+    scenario = scenario or scenario_of(config)
     ordering = config.get("ordering")
     if ordering is None:
         return {sid: dict(ship.get("order_days") or {}) for sid, ship in config["ships"].items()}

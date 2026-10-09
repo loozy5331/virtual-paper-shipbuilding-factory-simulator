@@ -63,7 +63,7 @@ const FINDING_HINT: Record<string, string> = {
   rework: "검사 불량. 공법, 잔업, 정비, 시니어 배치를 확인하세요.",
   material_wait: "자재가 아직 안 들어왔습니다. 발주일 + 리드타임을 확인하세요.",
   labor_wait: "대기소에 보낼 사람이 없었습니다. 인원이나 우선순위를 확인하세요.",
-  station_wait: "앞 배가 작업장을 쓰고 있었습니다. 착수일 간격을 확인하세요.",
+  station_wait: "앞 배가 작업장을 쓰고 있었습니다. 착수 예정일 간격을 확인하세요.",
   transport_wait: "트랜스포터가 다른 로트를 나르거나 고장이었습니다.",
   accident_stop: "잔업 사고로 작업장이 멈췄습니다.",
   breakdown_stop: "설비 고장으로 멈췄습니다. 정비 여부를 확인하세요.",
@@ -145,18 +145,18 @@ export function renderReport(result: Result, scenario: Scenario, maxRate: number
 
   const qcdRow = h("div", { class: "qcd" },
     h("div", { class: "kpi" },
-      h("span", { class: "kpi-tag q" }, "Q 품질"),
+      h("span", { class: "kpi-tag q" }, "Q 직행률"),
       h("b", { class: "kpi-value" }, pct(qcd.quality.first_pass_yield)),
-      h("span", { class: "kpi-sub" }, `직행률 · 첫 검사 합격 ${qcd.quality.passes} / ${qcd.quality.inspections}`)),
+      h("span", { class: "kpi-sub" }, `품질 · 첫 검사 합격 ${qcd.quality.passes} / ${qcd.quality.inspections}`)),
     h("div", { class: "kpi" },
-      h("span", { class: "kpi-tag c" }, "C 원가"),
+      h("span", { class: "kpi-tag c" }, "C 이익"),
       h("b", { class: `kpi-value ${profitTone}` }, money(result.profit)),
-      h("span", { class: "kpi-sub" }, `이익 · 매출 ${money(result.revenue)} − 총원가 ${money(result.total_cost)}`)),
+      h("span", { class: "kpi-sub" }, `원가 · 매출 ${money(result.revenue)} − 총원가 ${money(result.total_cost)}`)),
     h("div", { class: "kpi" },
-      h("span", { class: "kpi-tag d" }, "D 납기"),
+      h("span", { class: "kpi-tag d" }, "D 납기 준수"),
       h("b", { class: `kpi-value ${qcd.delivery.on_time === qcd.delivery.ships ? "good" : "bad"}` },
         `${qcd.delivery.on_time} / ${qcd.delivery.ships}척`),
-      h("span", { class: "kpi-sub" }, `납기 준수 ${pct(qcd.delivery.on_time_rate, 0)} · 총 지연 ${qcd.delivery.total_late_days}일`)),
+      h("span", { class: "kpi-sub" }, `납기 · 준수율 ${pct(qcd.delivery.on_time_rate, 0)} · 총 지연 ${qcd.delivery.total_late_days}일`)),
   );
 
   const wf = result.workforce;

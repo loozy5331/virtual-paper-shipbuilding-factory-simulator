@@ -5,7 +5,13 @@ export interface StationConfig {
   method: string;
   overtime: boolean;
   maintenance: boolean;
+  /** 작업장 수(2.0 증설). 없으면 1. */
+  units?: number;
+  /** 인력(2.0 4M): normal 일반, skilled 숙련공, robot 로봇. 없으면 일반. */
+  crew?: Crew;
 }
+
+export type Crew = "normal" | "skilled" | "robot";
 
 export interface ShipConfig {
   priority: number;
@@ -17,13 +23,18 @@ export interface ShipConfig {
 export type Ordering = "bulk" | "jit" | "late";
 
 export interface Config {
+  /** 시나리오 id(2.0). 없으면 기본 분기. */
+  scenario?: string;
   ordering?: Ordering;
   ships: Record<string, ShipConfig>;
   stations: Record<string, StationConfig>;
   pool: number;
   transporters: { count: number; maintenance: boolean };
   research: string[];
-  skilled_station: string | null;
+  /** 1.x 설정의 시니어. 2.0부터는 공정의 crew = "skilled"로 쓴다(엔진이 둘 다 읽는다). */
+  skilled_station?: string | null;
+  /** 자재 등급(2.0 4M): 자재 id → standard 표준 | cheap 저가. 없으면 표준. */
+  materials?: Record<string, "standard" | "cheap">;
 }
 
 export interface Preset {
@@ -45,6 +56,8 @@ export interface MaterialInfo {
   name: string;
   price: number;
   lead_days: number;
+  /** 저가 등급 품목 이름(종이 → 휴지) */
+  cheap_name: string;
 }
 
 export interface ShipType {
@@ -65,6 +78,18 @@ export interface Method {
   name: string;
   speed: number;
   defect_rate: number;
+  /** 신공법: 로트를 끝낼 때마다 불량률이 이만큼 줄어 defect_floor에서 멈춘다. */
+  learning_step?: number;
+  defect_floor?: number;
+  setup_cost?: number;
+  summary?: string;
+}
+
+export interface CrewInfo {
+  name: string;
+  summary: string;
+  defect_add?: number;
+  install_cost?: number;
 }
 
 export interface ResearchInfo {
@@ -76,6 +101,9 @@ export interface ResearchInfo {
 }
 
 export interface Scenario {
+  id: string;
+  name: string;
+  summary: string;
   /** 계획 기간의 이름. 60일은 이 분기의 작업일로 본다. */
   period: string;
   days: number;
@@ -88,18 +116,36 @@ export interface Scenario {
     max_workers_per_station: number;
     max_pool: number;
     methods: Record<string, Method>;
+    crews: Record<Crew, CrewInfo>;
     overtime: { speed: number };
   };
   transporter: { max_count: number; capacity: number; lot_weight: number };
+  expansion: { name: string; max_units: number; summary: string; cost: Record<string, number> };
+  material_grades: Record<"standard" | "cheap", { name: string; price_factor: number; defect_add: number }>;
   research: Record<string, ResearchInfo>;
   ordering: Record<Ordering, { name: string; summary: string }>;
   kpi: { revenue: number; profit: number; on_time_rate: number; first_pass_yield: number };
+}
+
+export interface ScenarioSummary {
+  id: string;
+  name: string;
+  summary: string;
+  period: string;
+  /** 난이도. 옛 분기가 쉽다(1부터). */
+  level: number;
+  ships: number;
+  /** 선종 이름 → 척수 */
+  ship_mix: Record<string, number>;
+  kpi: { revenue: number; profit: number; on_time_rate: number; first_pass_yield: number };
+  days: number;
 }
 
 export interface ScenarioPayload {
   version: string;
   scenario: Scenario;
   presets: Preset[];
+  scenarios: ScenarioSummary[];
   max_rate: number;
 }
 
@@ -115,7 +161,7 @@ export interface ResearchSlot {
 
 export interface Preview {
   stations: Record<string, { rate: number; defect_rate: number; defect_rate_final: number }>;
-  fixed_costs: { labor: number; maintenance: number; transporter: number; research: number };
+  fixed_costs: { labor: number; maintenance: number; transporter: number; investment: number; research: number };
   research: ResearchSlot[];
   /** 배별 자재의 발주일과 입고일. 엔진이 발주 방식에 따라 정한다. */
   materials: Record<string, Record<string, { order_day: number | null; arrival_day: number | null }>>;
@@ -161,7 +207,7 @@ export interface ShipResult {
   lead_time_parts: Record<string, number>;
   spans: Record<string, { start: number; end: number }>;
   segments: Segment[];
-  daily: { state: ShipState; station: string | null }[];
+  daily: { state: ShipState; station: string | null; unit?: number | null }[];
 }
 
 export interface StationDay {
@@ -173,6 +219,8 @@ export interface StationDay {
 export interface StationResult {
   id: string;
   name: string;
+  /** 인력(2.0 4M) */
+  crew: Crew;
   max_rate: number;
   defect_rate: number;
   busy_days: number;
@@ -189,6 +237,8 @@ export interface StationResult {
     quality: number | null;
     oee: number | null;
   };
+  /** 작업장별 기록(2.0 증설). daily는 1호와 같다. */
+  units: { unit: number; busy_days: number; breakdowns: number; daily: StationDay[] }[];
   daily: StationDay[];
 }
 
@@ -290,8 +340,40 @@ function post<T>(path: string, config: Config): Promise<T> {
   });
 }
 
+/** 수업용 저장(2.0 ⑤): 반의 시나리오별 최고 회차 */
+export interface ClassBest {
+  grade: string;
+  score: number;
+  profit: number;
+  nickname: string;
+  on_time: number;
+  ships: number;
+  players?: number;
+}
+
+export interface Leaderboard {
+  class_code: string;
+  best: Record<string, ClassBest>;
+}
+
+export interface SavedRun {
+  id: number;
+  nickname: string;
+  class_code: string;
+  scenario: string;
+  grade: string;
+  score: number;
+  profit: number;
+}
+
 export const api = {
-  scenario: () => request<ScenarioPayload>("/api/scenario"),
+  saveRun: (nickname: string, classCode: string, config: Config) => request<SavedRun>("/api/runs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nickname, class_code: classCode, config }),
+  }),
+  leaderboard: (classCode: string) => request<Leaderboard>(`/api/leaderboard?class=${encodeURIComponent(classCode)}`),
+  scenario: (id = "basic") => request<ScenarioPayload>(`/api/scenario?id=${encodeURIComponent(id)}`),
   simulate: (config: Config) => post<Result>("/api/simulate", config),
   preview: (config: Config) => post<Preview>("/api/preview", config),
 };

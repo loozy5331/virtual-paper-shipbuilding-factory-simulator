@@ -13,6 +13,9 @@ import { STATE_INFO, STATION_COLOR } from "../labels";
 // ----- 배치 (책상 위 좌표, 단위는 대략 소인 키의 4배) -----
 const STATION_X = [-9, -3.5, 2, 8.5];
 const MAT_W = 3.2, MAT_D = 2.6, MAT_TOP = 0.08;
+// 증설한 2호 작업장은 1호 바로 뒤(책상 안쪽)에 놓는다(2.0).
+const UNIT2_Z = -2.85, MAT2_D = 2.3;
+const unitZ = (unit: number) => (unit === 1 ? UNIT2_Z : 0);
 const QUEUE_Z = 2.2;
 const LANE_Z = 3.7;
 const DEPOT = new THREE.Vector3(-12, 0, LANE_Z);
@@ -267,6 +270,10 @@ export class Yard {
   private readonly manager = new Person("manager");
   private readonly stationProps: {
     tag: CSS2DObject; smoke: THREE.Group; tape: THREE.Group; candle: THREE.PointLight; flame: THREE.Mesh;
+    /** 2호 정반과 팻말(증설했을 때만 보인다) */
+    mat2: THREE.Mesh; tag2: CSS2DObject;
+    /** 로봇 팔(인력이 로봇인 공정). 작업장마다 하나 */
+    robots: THREE.Group[];
   }[] = [];
   private readonly carts: { group: THREE.Group; tag: CSS2DObject; smoke: THREE.Group }[] = [];
   private readonly shelves: { boxes: THREE.Mesh[]; tag: CSS2DObject }[] = [];
@@ -387,7 +394,26 @@ export class Yard {
       candle.position.set(x + MAT_W / 2 + 0.3, 0, -1.2);
       this.scene.add(candle);
 
-      this.stationProps.push({ tag, smoke, tape, candle: light, flame });
+      // 2호 정반(증설): 1호 바로 뒤. 처음에는 숨겨 둔다.
+      const mat2 = mesh(new THREE.BoxGeometry(MAT_W, MAT_TOP, MAT2_D), color, { roughness: 0.95 });
+      mat2.position.set(x, MAT_TOP / 2, UNIT2_Z);
+      mat2.castShadow = false;
+      mat2.visible = false;
+      this.scene.add(mat2);
+      const tag2 = label("2호", "place-tag small");
+      tag2.position.set(x - MAT_W / 2 - 0.2, 0.1, UNIT2_Z);
+      tag2.visible = false;
+      this.scene.add(tag2);
+
+      const robots = [0, 1].map((u) => {
+        const robot = buildRobot();
+        robot.position.set(x + MAT_W / 2 + 0.25, 0, unitZ(u));
+        robot.visible = false;
+        this.scene.add(robot);
+        return robot;
+      });
+
+      this.stationProps.push({ tag, smoke, tape, candle: light, flame, mat2, tag2, robots });
     });
   }
 
@@ -690,7 +716,8 @@ export class Yard {
       } else {
         lot.group.rotation.set(0, 0, 0);
       }
-      if (view.place === "bench" && view.station === 3 && lot.hookX !== null) hook = { x: lot.hookX, y: lot.hookY };
+      // 골리앗 크레인 훅은 1호 탑재 정반의 블록을 따라간다(2호는 같은 크레인 아래 안쪽 자리).
+      if (view.place === "bench" && view.station === 3 && view.unit === 0 && lot.hookX !== null) hook = { x: lot.hookX, y: lot.hookY };
       setLabel(lot.tag, this.lotLabel(view));
       lot.tag.position.y = view.form >= 3 ? 1.9 : 1.0;
     }
@@ -703,26 +730,43 @@ export class Yard {
     this.hook.scale.y = Math.max(0.05, len);
     this.hook.position.set(hx, 3.1 - len / 2, 0);
 
-    // 정반: 인원, 시니어, 중지, 잔업
+    // 정반: 작업장(1호, 증설하면 2호)마다 인원 또는 로봇, 시니어, 중지, 잔업
     let person = 0;
     f.stations.forEach((st, i) => {
       const x = STATION_X[i];
       const props = this.stationProps[i];
       const working = st.state === "work" || st.state === "rework";
-      for (let k = 0; k < st.workers; k++) {
-        const side = k % 2 === 0 ? 1 : -1;
-        const at = new THREE.Vector3(x - 0.9 * side, MAT_TOP, side * 1.0);
-        const p = this.people[person++];
-        p?.place(at, side > 0 ? Math.PI : 0, working ? "work" : "stand", jump);
-        p?.holdKnife(i === 0 && working);
+      const robot = st.crew === "robot";
+      props.mat2.visible = st.units.length > 1;
+      props.tag2.visible = st.units.length > 1;
+      props.robots.forEach((r, u) => {
+        r.visible = robot && u < st.units.length;
+        r.userData.working = robot && (st.units[u]?.state === "work" || st.units[u]?.state === "rework");
+      });
+      if (!robot) {
+        st.units.forEach((unit, u) => {
+          const unitWorking = unit.state === "work" || unit.state === "rework";
+          for (let k = 0; k < unit.workers; k++) {
+            const side = k % 2 === 0 ? 1 : -1;
+            const at = new THREE.Vector3(x - 0.9 * side, MAT_TOP, unitZ(u) + side * 1.0);
+            const p = this.people[person++];
+            p?.place(at, side > 0 ? Math.PI : 0, unitWorking ? "work" : "stand", jump);
+            p?.holdKnife(i === 0 && unitWorking);
+          }
+        });
       }
       if (st.senior) {
         this.senior.root.visible = true;
         this.senior.place(new THREE.Vector3(x + 1.3, MAT_TOP, -0.2), -Math.PI / 2, working ? "work" : "stand", jump);
         this.senior.holdKnife(i === 0 && working);
       }
-      props.smoke.visible = st.stop === "breakdown";
-      props.tape.visible = st.stop === "accident";
+      // 멈춘 작업장에 연기(고장)나 통제 테이프(사고). 둘 다 멈췄으면 1호에 표시한다.
+      const stopped = st.units.findIndex((u) => u.stop !== null);
+      const stop = stopped >= 0 ? st.units[stopped].stop : null;
+      props.smoke.visible = stop === "breakdown";
+      props.tape.visible = stop === "accident";
+      props.smoke.position.z = unitZ(Math.max(0, stopped)) - 0.9;
+      props.tape.position.z = unitZ(Math.max(0, stopped));
       props.candle.intensity = st.overtime ? 5 : 0;
       props.flame.visible = st.overtime;
       const chip = st.stop === "accident" ? chipHtml("accident_stop", "사고 · 통제")
@@ -730,7 +774,8 @@ export class Yard {
         : st.state === "labor_wait" ? chipHtml("labor_wait", "인력 대기")
         : st.state === "material_wait" ? chipHtml("material_wait", "자재 대기")
         : i === 0 && working ? `<span class="chip cut">절단 중</span>` : "";
-      setLabel(props.tag, `<i style="background:${STATION_COLOR[st.id]}"></i>${st.name}${st.overtime ? " · 잔업" : ""}${chip}`);
+      const crewNote = robot ? " · 로봇" : st.crew === "skilled" ? " · 숙련공" : "";
+      setLabel(props.tag, `<i style="background:${STATION_COLOR[st.id]}"></i>${st.name}${st.units.length > 1 ? " 1호" : ""}${crewNote}${st.overtime && !robot ? " · 잔업" : ""}${chip}`);
     });
     if (!f.stations.some((st) => st.senior)) this.senior.root.visible = false;
 
@@ -785,7 +830,7 @@ export class Yard {
   private lotPosition(view: LotView, frac: number, f: Frame): THREE.Vector3 {
     const x = STATION_X[view.station];
     switch (view.place) {
-      case "bench": return new THREE.Vector3(x, MAT_TOP, 0);
+      case "bench": return new THREE.Vector3(x, MAT_TOP, unitZ(view.unit));
       case "queue": return new THREE.Vector3(x - 0.9 - view.slot * 1.9, 0, QUEUE_Z);
       case "outbound": return new THREE.Vector3(x + 1.2 + view.slot * 1.9, 0, QUEUE_Z);
       case "carried": {
@@ -821,12 +866,44 @@ export class Yard {
         ((c as THREE.Mesh).material as THREE.MeshStandardMaterial).opacity = 0.6 * (1 - u);
       });
     };
-    this.stationProps.forEach((p) => {
+    this.stationProps.forEach((p, i) => {
       puffs(p.smoke, 2.2);
       p.flame.scale.set(1, 1 + Math.sin(t * 13) * 0.12, 1);
+      // 로봇 팔: 일하는 동안 정반 위로 팔을 뻗었다 접는다.
+      p.robots.forEach((r, u) => {
+        if (!r.visible) return;
+        const arm = r.userData.arm as THREE.Object3D;
+        const fore = r.userData.fore as THREE.Object3D;
+        const w = r.userData.working ? 1 : 0;
+        arm.rotation.y = Math.PI + Math.sin(t * 2.2 + i + u) * 0.6 * w;
+        fore.rotation.z = -0.9 + Math.sin(t * 3.1 + u) * 0.35 * w;
+      });
     });
     this.carts.forEach((c) => puffs(c.smoke, 1.4));
   }
+}
+
+/** 로봇 팔: 받침, 돌아가는 기둥, 위팔, 아래팔, 집게. 무광 회색(장식은 절제). */
+function buildRobot(): THREE.Group {
+  const robot = new THREE.Group();
+  const base = mesh(new THREE.CylinderGeometry(0.34, 0.4, 0.22, 16), "#7c858a");
+  base.position.y = 0.11;
+  const arm = new THREE.Group();                    // 기둥 위에서 좌우로 돈다
+  arm.position.y = 0.22;
+  const post = mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.9, 12), "#9aa3a8");
+  post.position.y = 0.45;
+  const fore = new THREE.Group();                   // 어깨에서 정반 쪽으로 뻗는다
+  fore.position.y = 0.9;
+  const upper = mesh(new THREE.BoxGeometry(1.1, 0.14, 0.14), "#b5bcc0");
+  upper.position.x = 0.55;
+  const hand = mesh(new THREE.BoxGeometry(0.1, 0.3, 0.2), "#5d666b");
+  hand.position.set(1.1, -0.12, 0);
+  fore.add(upper, hand);
+  arm.add(post, fore);
+  robot.add(base, arm);
+  robot.userData.arm = arm;
+  robot.userData.fore = fore;
+  return robot;
 }
 
 function chipHtml(state: string, text: string): string {

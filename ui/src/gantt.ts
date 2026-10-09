@@ -2,6 +2,7 @@
 // 위쪽은 배 4척: 배마다 두 줄, 위는 작업장을 차지한 구간(작업장 색, 재작업은 빗금, 운반은 점선 틀), 아래 얇은 줄은 손실 구간.
 // 아래쪽은 설비: 연구소, 트랜스포터(대별), 골리앗 크레인(탑재 작업장).
 // 배 탭(renderShipGantt)은 한 척을 공정별 줄로 펼치고, 같은 공정을 쓰던 다른 배를 옅게 함께 그린다.
+// 막대를 누르면 onPick으로 그 배·공정·기간을 넘긴다(현장 들어가는 길, D7).
 // 재생 중에는 today까지만 그린다. 엔진이 준 segments와 daily를 자르고 묶기만 하고 새로 계산하지 않는다.
 
 import type { Result, Scenario, Segment } from "./api";
@@ -25,6 +26,10 @@ const RESEARCH_COLOR = "#1d5c45";
 
 interface Run<T> { key: T; start: number; end: number }
 
+/** 막대를 눌렀을 때 넘기는 것: 현장에서 그 공정을 그 날짜부터 본다. */
+export interface GanttPick { ship: string | null; station: string; start: number; end: number }
+export type OnPick = (pick: GanttPick) => void;
+
 /** 하루 기록에서 같은 값이 이어지는 구간을 묶는다. key가 null인 날은 건너뛴다. */
 function runs<T>(daily: unknown[], keyOf: (day: number) => T | null, today: number): Run<T>[] {
   const out: Run<T>[] = [];
@@ -40,8 +45,8 @@ function runs<T>(daily: unknown[], keyOf: (day: number) => T | null, today: numb
 
 /** 막대 하나. 넓으면 안에 라벨을 쓰고, 빗금이 필요하면 덧씌운다. 제목은 마우스를 올리면 나온다. */
 function barEl(x0: number, y: number, w: number, hgt: number, fill: string, title: string,
-  opts: { label?: string; textColor?: string; hatch?: boolean; className?: string } = {}): SVGElement {
-  const g = s("g", null,
+  opts: { label?: string; textColor?: string; hatch?: boolean; className?: string; onPick?: () => void } = {}): SVGElement {
+  const g = s("g", opts.onPick ? { class: "pick", onclick: opts.onPick } : null,
     s("title", null, title),
     s("rect", { x: x0 + 0.5, y, width: Math.max(1, w - 1), height: hgt, rx: 3, fill, class: opts.className ?? "" }));
   if (opts.hatch) g.append(s("rect", { x: x0 + 0.5, y, width: Math.max(1, w - 1), height: hgt, rx: 3, fill: "url(#hatch)" }));
@@ -51,14 +56,15 @@ function barEl(x0: number, y: number, w: number, hgt: number, fill: string, titl
   return g;
 }
 
-export function renderGantt(result: Result, scenario: Scenario, today: number): SVGElement {
+export function renderGantt(result: Result, scenario: Scenario, today: number, onPick?: OnPick): SVGElement {
   const days = result.days;
   const dayW = (W - LEFT - RIGHT) / days;
   const x = (day: number) => LEFT + (day - 1) * dayW;      // day의 왼쪽 끝
   const width = (start: number, end: number) => (end - start + 1) * dayW;
   const stationName = Object.fromEntries(scenario.stations.map((st) => [st.id, st.name]));
   const shipsBottom = TOP + result.ships.length * ROW_H;
-  const eqRows = 1 + result.transporters.length + 1;
+  const craneUnits = result.stations.find((st) => st.id === CRANE)?.units.length ?? 1;
+  const eqRows = 1 + result.transporters.length + craneUnits;
   const height = shipsBottom + SECTION_GAP + eqRows * EQ_H + 8;
   const ended = today >= days;   // 합계는 끝난 뒤에만 보여 준다(재생 중에 결과를 미리 알려 주지 않게).
 
@@ -104,11 +110,12 @@ export function renderGantt(result: Result, scenario: Scenario, today: number): 
       const w = width(seg.start, clipEnd(seg));
       const name = stationName[seg.station];
       const span = `${seg.start}~${seg.end}일 (${seg.end - seg.start + 1}일)`;
+      const pick = onPick && (() => onPick({ ship: ship.id, station: seg.station, start: seg.start, end: seg.end }));
       if (seg.state === "work" || seg.state === "rework") {
         // 위 줄: 작업장을 차지한 구간
         const label = seg.state === "rework" ? `${name} 재작업` : name;
         g.append(bar(x0, y, w, BAR_H, STATION_COLOR[seg.station], `${ship.id} · ${label} · ${span}`,
-          { label: seg.state === "work" ? name : "재작업", textColor: STATION_TEXT[seg.station], hatch: seg.state === "rework" }));
+          { label: seg.state === "work" ? name : "재작업", textColor: STATION_TEXT[seg.station], hatch: seg.state === "rework", onPick: pick }));
       } else if (seg.state === "transport") {
         // 운반은 손실이 아니다. 위 줄에 점선 틀로만 그린다.
         g.append(s("g", null,
@@ -118,7 +125,7 @@ export function renderGantt(result: Result, scenario: Scenario, today: number): 
         // 아래 얇은 줄: 손실 구간. 같은 색끼리는 빗금과 라벨로 구분한다.
         const info = STATE_INFO[seg.state];
         g.append(bar(x0, y + BAR_H + LOSS_GAP, w, LOSS_H, info.color, `${ship.id} · ${info.name} (${name}) · ${span}`,
-          { hatch: info.hatch }));
+          { hatch: info.hatch, onPick: pick }));
       }
     }
 
@@ -195,27 +202,28 @@ export function renderGantt(result: Result, scenario: Scenario, today: number): 
     });
   }
 
-  // 골리앗 크레인: 탑재 작업장의 하루 기록
+  // 골리앗 크레인: 탑재 작업장의 하루 기록. 증설하면 1호·2호 두 줄.
   const crane = result.stations.find((st) => st.id === CRANE);
-  if (crane) {
-    eqRow("골리앗 크레인", ended ? `${crane.name} · 고장 ${crane.breakdowns}건` : crane.name, (g, y) => {
+  for (const unit of crane?.units ?? []) {
+    const title = crane!.units.length > 1 ? `골리앗 크레인 ${unit.unit}호` : "골리앗 크레인";
+    eqRow(title, ended ? `${crane!.name} · 고장 ${unit.breakdowns}건` : crane!.name, (g, y) => {
       const key = (day: number) => {
-        const rec = crane.daily[day - 1];
+        const rec = unit.daily[day - 1];
         return rec.state === "idle" ? null : `${rec.state}:${rec.ship ?? ""}`;
       };
-      for (const run of runs(crane.daily, key, today)) {
+      for (const run of runs(unit.daily, key, today)) {
         const [state, ship] = run.key.split(":");
         const w = width(run.start, run.end);
         const span = `${run.start}~${run.end}일`;
         if (state === "work" || state === "rework") {
           g.append(bar(x(run.start), y, w, EQ_BAR, STATION_COLOR[CRANE], `${ship} ${state === "rework" ? "재작업" : "탑재"} · ${span}`,
-            { label: ship, hatch: state === "rework" }));
+            { label: ship, hatch: state === "rework", onPick: onPick && (() => onPick({ ship, station: CRANE, start: run.start, end: run.end })) }));
         } else {
           const info = STATE_INFO[state];
           if (!info) continue;
           const label = state === "accident_stop" ? "사고" : state === "breakdown_stop" ? "고장" : "";
           g.append(bar(x(run.start), y, w, EQ_BAR, info.color, `${info.name}${ship ? ` (${ship})` : ""} · ${span}`,
-            { label, hatch: info.hatch }));
+            { label, hatch: info.hatch, onPick: onPick && (() => onPick({ ship: ship || null, station: CRANE, start: run.start, end: run.end })) }));
         }
       }
     });
@@ -241,7 +249,7 @@ export function renderGantt(result: Result, scenario: Scenario, today: number): 
 const S_ROW_H = 58;
 const OTHER = "#d3dbd6";
 
-export function renderShipGantt(result: Result, scenario: Scenario, shipId: string, today: number): SVGElement {
+export function renderShipGantt(result: Result, scenario: Scenario, shipId: string, today: number, onPick?: OnPick): SVGElement {
   const days = result.days;
   const ship = result.ships.find((sh) => sh.id === shipId)!;
   const dayW = (W - LEFT - RIGHT) / days;
@@ -282,12 +290,15 @@ export function renderShipGantt(result: Result, scenario: Scenario, shipId: stri
       s("rect", { x: LEFT, y, width: days * dayW, height: BAR_H, class: "lane" }));
 
     // 같은 공정을 쓰던 다른 배와 그 공정의 중지(사고·고장): 이 배가 왜 기다렸는지 보인다.
-    const daily = result.stations[row].daily;
+    // 증설한 공정은 작업장을 합쳐 본다: 다른 배가 하나라도 있으면 그 배들, 모든 작업장이 멈췄으면 중지.
+    const units = result.stations[row].units;
+    const daily = units[0].daily;
     const key = (day: number) => {
-      const rec = daily[day - 1];
-      if (rec.state === "accident_stop" || rec.state === "breakdown_stop") return `${rec.state}:`;
-      if (rec.ship && rec.ship !== ship.id) return `other:${rec.ship}`;
-      return null;
+      const recs = units.map((u) => u.daily[day - 1]);
+      const stopped = recs.filter((rec) => rec.state === "accident_stop" || rec.state === "breakdown_stop");
+      if (stopped.length === recs.length) return `${stopped[0].state}:`;
+      const others = recs.map((rec) => rec.ship).filter((sid) => sid && sid !== ship.id);
+      return others.length ? `other:${others.join("·")}` : null;
     };
     for (const run of runs(daily, key, today)) {
       const [kind, who] = run.key.split(":");
@@ -306,9 +317,10 @@ export function renderShipGantt(result: Result, scenario: Scenario, shipId: stri
       const x0 = x(seg.start);
       const w = width(seg.start, clip(seg.end));
       const span = `${seg.start}~${seg.end}일 (${seg.end - seg.start + 1}일)`;
+      const pick = onPick && (() => onPick({ ship: ship.id, station: st.id, start: seg.start, end: seg.end }));
       if (seg.state === "work" || seg.state === "rework") {
         g.append(barEl(x0, y, w, BAR_H, STATION_COLOR[st.id], `${ship.id} · ${st.name}${seg.state === "rework" ? " 재작업" : ""} · ${span}`,
-          { label: seg.state === "rework" ? "재작업" : ship.id, textColor: STATION_TEXT[st.id], hatch: seg.state === "rework" }));
+          { label: seg.state === "rework" ? "재작업" : ship.id, textColor: STATION_TEXT[st.id], hatch: seg.state === "rework", onPick: pick }));
       } else if (seg.state === "transport") {
         g.append(s("g", null,
           s("title", null, `${ship.id} · ${st.name} → 다음 공정 운반 · ${span}`),
@@ -316,7 +328,7 @@ export function renderShipGantt(result: Result, scenario: Scenario, shipId: stri
       } else if (STATE_INFO[seg.state]) {
         const info = STATE_INFO[seg.state];
         g.append(barEl(x0, y + BAR_H + LOSS_GAP, w, LOSS_H, info.color, `${ship.id} · ${info.name} (${st.name}) · ${span}`,
-          { hatch: info.hatch }));
+          { hatch: info.hatch, onPick: pick }));
       }
     }
     svg.append(g);
