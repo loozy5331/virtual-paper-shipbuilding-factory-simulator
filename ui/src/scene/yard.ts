@@ -15,7 +15,7 @@ import { LEAD_IN, type Frame, type LotView } from "./frame";
 import { mesh, Person, SENIOR_NAME, WORKER_NAMES } from "./people";
 import { shipLook } from "./ships";
 import { STOCK_D, STOCK_HALF, STOCK_STATIONS, STOCK_Z0, stockAssign, stockSpot } from "./stock";
-import { buildDock, buildLand, buildWalls, buildYardLines, GiantHand, SEA_Y, SHORE_X } from "./coast";
+import { buildDock, buildLand, buildWalls, buildYardLines, GiantHand, SEA_Y, SHORE_X, type DockParts } from "./coast";
 import { clamp01, ease, flatOf, hullTris, type Tri } from "../proto/model";
 import { STATE_INFO, STATION_COLOR } from "../labels";
 
@@ -27,6 +27,13 @@ const MAT2_D = 2.3;
 const UNIT_Z = [0, -2.85, -5.65];
 const unitZ = (unit: number) => UNIT_Z[unit] ?? 0;
 const unitDepth = (unit: number) => (unit === 0 ? MAT_D : MAT2_D);
+
+// 진수(그림만, 엔진 규칙 없음): 인도 다음 날 하루 안에 ① 작업자가 나가고 ② 도크에 물을 채우고 ③ 걸리버의 손이 문을 열고
+// ④ 배가 나가고 ⑤ 문을 닫고 ⑥ 물을 뺀다. 그동안 다음 블록은 도크 앞에서 기다린다. 값은 하루 안의 비율(frac).
+const LAUNCH = { fill: [0.1, 0.28], open: [0.28, 0.4], sail: [0.4, 0.62], close: [0.62, 0.74], drain: [0.74, 0.86] } as const;
+const LAUNCH_END = 0.86;
+const WATER_TOP = 0.32;
+const phase = (frac: number, [a, b]: readonly [number, number]) => clamp01((frac - a) / (b - a));
 // 샛길 자리: 소조립 왼쪽, 그리고 이웃한 공정의 작업장 사이 가운데(벽·구획선·도크를 피한다)
 const SPUR_X = [STATION_X[0] - MAT_W / 2 - 1.45,
   (STATION_X[0] + STATION_X[1]) / 2, (STATION_X[1] + STATION_X[2] - 0.05) / 2, (STATION_X[2] + MAT_W / 2 + 0.4 + STATION_X[3] - MAT_W / 2 - 0.6) / 2];
@@ -330,6 +337,8 @@ export class Yard {
   private readonly lounge: CSS2DObject;
   private readonly labTag: CSS2DObject;
   private readonly labWindow: THREE.MeshStandardMaterial;
+  /** 탑재 도크 부품(1호·2호·3호): 진수 장면의 문과 물 */
+  private readonly docks: DockParts[] = [];
   /** 오늘 적치장에 놓인 블록과 그 자리(stock.ts) */
   private stock: ReturnType<typeof stockAssign> = new Map();
   /** 골리앗 크레인 노릇을 하는 걸리버의 손(하늘에서 수직으로 내려온다). */
@@ -531,6 +540,7 @@ export class Yard {
           : p === 2 ? buildYardLines(x - MAT_W / 2 - 0.4, x + MAT_W / 2 + 0.4, z0, z1)
           : buildDock(x - MAT_W / 2 - 0.6, x + MAT_W / 2 + 0.6, z0, z1);
         this.scene.add(area);
+        if (p === 3) this.docks[unit] = area.userData.dock as DockParts;
         if (unit > 0) {
           area.visible = false;
           this.unitAreas[p][unit - 1] = area;
@@ -797,12 +807,28 @@ export class Yard {
     // 로트. 기다리는 블록의 적치장 자리를 먼저 정한다.
     this.stock = stockAssign(f);
     let hook: { x: number; y: number } | null = null;
+    // 진수: 재생 중 하루 안의 비율로 단계를 나눈다(멈춰 있으면 frac = 1이라 다 끝난 모습).
+    const launching = src.playing && frac < LAUNCH_END ? f.launches : [];
+    this.drawLaunchDocks(launching, frac);
     for (const view of f.lots) {
       const lot = this.lots.get(view.ship);
       if (!lot) continue;
       lot.group.visible = view.place !== "hidden";
       if (!lot.group.visible) continue;
-      const pos = this.lotPosition(view, frac, f);
+      const launch = launching.find((l) => l.ship === view.ship);
+      if (launch) {
+        // 진수하는 배: 도크에서 물에 뜨고, 문으로 나가 바다 자리로
+        lot.setForm(4, false);
+        lot.group.rotation.set(0, 0, 0);
+        lot.group.position.copy(this.launchPosition(launch.unit, frac, this.lotPosition(view, frac, f)));
+        lot.target.copy(lot.group.position);
+        lot.prev = null;
+        setLabel(lot.tag, this.lotLabel(view));
+        continue;
+      }
+      // 진수가 끝날 때까지 다음 블록은 도크 앞에서 기다린다
+      const held = view.place === "bench" && view.station === 3 && launching.some((l) => l.unit === view.unit);
+      const pos = held ? new THREE.Vector3(STATION_X[3] - 0.9, 0, QUEUE_Z) : this.lotPosition(view, frac, f);
       lot.target.copy(pos);
       this.planPath(lot, view, jump);
       if (jump || view.place === "carried" || view.place === "sea") lot.group.position.copy(pos);
@@ -828,7 +854,7 @@ export class Yard {
         lot.group.rotation.set(0, 0, 0);
       }
       // 골리앗 크레인 훅은 1호 탑재 정반의 블록을 따라간다(2호는 같은 크레인 아래 안쪽 자리).
-      if (view.place === "bench" && view.station === 3 && view.unit === 0 && lot.hookX !== null) hook = { x: lot.hookX, y: lot.hookY };
+      if (!held && view.place === "bench" && view.station === 3 && view.unit === 0 && lot.hookX !== null) hook = { x: lot.hookX, y: lot.hookY };
       setLabel(lot.tag, this.lotLabel(view));
       lot.tag.position.y = view.form >= 3 ? 1.9 : 1.0;
     }
@@ -836,7 +862,10 @@ export class Yard {
     // 골리앗 크레인(걸리버의 손): 탑재 중이면 자석판이 블록을 따라간다. 쉴 때는 도크 위에 손을 띄워 둔다.
     const hx = STATION_X[3] + (hook ? hook.x : 0);
     const hy = hook ? hook.y + 0.15 : 3.0;
-    this.gulliver.place(new THREE.Vector3(hx, hy, 0));
+    const handAt = new THREE.Vector3(hx, hy, 0);
+    // 진수 중이면 손이 도크 문으로 가서 열고 닫는다
+    const gateHand = launching.length ? this.gateHand(launching[0].unit, frac) : null;
+    this.gulliver.place(gateHand ? handAt.lerp(gateHand.at, gateHand.k) : handAt);
 
     // 정반: 작업장(1호, 증설하면 2호)마다 인원 또는 로봇, 시니어, 중지, 잔업
     let person = 0;
@@ -858,18 +887,23 @@ export class Yard {
       if (!robot) {
         st.units.forEach((unit, u) => {
           const unitWorking = unit.state === "work" || unit.state === "rework";
+          // 진수하는 도크의 작업자는 도크 밖(앞쪽)으로 비켜 선다
+          const out = i === 3 && launching.some((l) => l.unit === u);
           for (let k = 0; k < unit.workers; k++) {
             const side = k % 2 === 0 ? 1 : -1;
-            const at = new THREE.Vector3(x - 0.9 * side, MAT_TOP, unitZ(u) + side * 1.0);
+            const at = out ? new THREE.Vector3(x - 2.6 - k * 0.6, 0, unitZ(u) + 1.9)
+              : new THREE.Vector3(x - 0.9 * side, MAT_TOP, unitZ(u) + side * 1.0);
             const p = this.people[person++];
-            p?.place(at, side > 0 ? Math.PI : 0, unitWorking ? "work" : "stand", jump, within);
+            p?.place(at, side > 0 ? Math.PI : 0, unitWorking && !out ? "work" : "stand", jump, within);
             p?.holdKnife(i === 0 && unitWorking);
           }
         });
       }
       if (st.senior) {
         this.senior.setVisible(true);
-        this.senior.place(new THREE.Vector3(x + 1.3, MAT_TOP, -0.2), -Math.PI / 2, working ? "work" : "stand", jump, within);
+        const out = i === 3 && launching.length > 0;
+        this.senior.place(out ? new THREE.Vector3(x - 1.6, 0, 1.9) : new THREE.Vector3(x + 1.3, MAT_TOP, -0.2),
+          -Math.PI / 2, working && !out ? "work" : "stand", jump, within);
         this.senior.holdKnife(i === 0 && working);
       }
       // 멈춘 작업장에 연기(고장)나 통제 테이프(사고). 둘 다 멈췄으면 1호에 표시한다.
@@ -965,6 +999,46 @@ export class Yard {
     } else {
       lot.path = [];
     }
+  }
+
+  /** 진수 중인 도크의 물 높이와 문 각도. 진수가 없는 도크는 마른 채 닫힌다. */
+  private drawLaunchDocks(launching: { ship: string; unit: number }[], frac: number): void {
+    this.docks.forEach((dock, u) => {
+      if (!dock) return;
+      const on = launching.some((l) => l.unit === u);
+      const level = on ? phase(frac, LAUNCH.fill) * (1 - phase(frac, LAUNCH.drain)) : 0;
+      dock.water.visible = level > 0.01;
+      dock.water.scale.y = Math.max(0.01, level * WATER_TOP);
+      dock.water.position.y = (level * WATER_TOP) / 2;
+      const open = on ? phase(frac, [LAUNCH.open[0] + 0.05, LAUNCH.open[1]]) * (1 - phase(frac, [LAUNCH.close[0], LAUNCH.close[1] - 0.05])) : 0;
+      dock.hinge.rotation.z = ease(open) * 1.35;   // 아래쪽이 바다 쪽으로 들린다
+    });
+  }
+
+  /** 걸리버의 손이 문으로 가는 정도(k)와 문 바깥 자리. 열 때와 닫을 때만 문에 붙는다. */
+  private gateHand(unit: number, frac: number): { at: THREE.Vector3; k: number } | null {
+    const dock = this.docks[unit];
+    if (!dock) return null;
+    const go = phase(frac, [LAUNCH.fill[1] - 0.06, LAUNCH.open[0] + 0.04]);
+    const back = phase(frac, [LAUNCH.close[1] - 0.02, LAUNCH.close[1] + 0.08]);
+    const k = ease(go) * (1 - ease(back));
+    const open = ease(phase(frac, [LAUNCH.open[0] + 0.05, LAUNCH.open[1]]) * (1 - phase(frac, [LAUNCH.close[0], LAUNCH.close[1] - 0.05]))) * 1.35;
+    // 문짝 아래 끝(열린 각도를 따라 바다 쪽으로 올라간다)의 뒤쪽 모서리를 손바닥 자석판이 잡는다(배가 나가는 길을 가리지 않게)
+    const at = new THREE.Vector3(dock.x1 + 0.2 + Math.sin(open) * 0.5, 0.45 - Math.cos(open) * 0.5 + 0.35, dock.zc - dock.zHalf + 0.35);
+    return k > 0.001 ? { at, k } : null;
+  }
+
+  /** 진수하는 배의 자리: 도크 바닥 → 물에 떠오름 → 문 밖 → 바다의 제자리. */
+  private launchPosition(unit: number, frac: number, sea: THREE.Vector3): THREE.Vector3 {
+    const dock = this.docks[unit];
+    const cx = STATION_X[3], z = unitZ(unit);
+    const float = phase(frac, LAUNCH.fill) * WATER_TOP;
+    const t = phase(frac, LAUNCH.sail);
+    const inDock = new THREE.Vector3(cx, MAT_TOP + float, z);
+    const gate = new THREE.Vector3((dock?.x1 ?? cx + 2) + 1.0, SEA_Y + 0.02, z);
+    if (t <= 0) return inDock;
+    if (t < 0.45) return inDock.lerp(gate, ease(t / 0.45));
+    return gate.lerp(sea, ease((t - 0.45) / 0.55));
   }
 
   private lotPosition(view: LotView, frac: number, f: Frame): THREE.Vector3 {
