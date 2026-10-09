@@ -765,11 +765,12 @@ body { background: var(--desk); }
 .win-titlebar { display: flex; align-items: center; height: 30px; background: #f3f3f3; border-bottom: 1px solid #e1e1e1; border-radius: 2px 2px 0 0; user-select: none; }
 .win-title { flex: 1; padding-left: 12px; font-size: 12px; color: #1f1f1f; font-family: "Segoe UI", "Apple SD Gothic Neo", system-ui, sans-serif; }
 .win-buttons { display: flex; height: 100%; }
-.win-btn { width: 46px; height: 100%; border: 0; background: transparent; color: #1f1f1f; font: 13px "Segoe UI Symbol", "Apple SD Gothic Neo", system-ui, sans-serif; cursor: pointer; }
-.win-btn:hover { background: #e5e5e5; }
-.win-btn.close:hover { background: #c42b1c; color: #fff; }
-.win-btn.restore, .win-btn.close, .monitor.zoomed .win-btn.max { display: none; }
-.monitor.zoomed .win-btn.restore, .monitor.zoomed .win-btn.close { display: block; }
+/* 창 단추: 회색 바탕 위 진한 먹색 선 그림(대비 확보), 누를 자리임을 알게 옅은 바탕을 깐다 */
+.win-btn { width: 46px; height: 100%; border: 0; border-left: 1px solid #e1e1e1; background: #e9e9e9; color: #111; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.win-btn svg { width: 12px; height: 12px; display: block; }
+.win-btn:hover, .win-btn:focus-visible { background: #d4d4d4; }
+.win-btn.restore, .monitor.zoomed .win-btn.max { display: none; }
+.monitor.zoomed .win-btn.restore { display: flex; }
 .monitor .bezel .screen { border-radius: 0 0 2px 2px; }
 .zoom-only { display: none; }
 .monitor.zoomed .zoom-only { display: flex; }
