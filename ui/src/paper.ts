@@ -1,5 +1,6 @@
 // 클립보드에 꽂은 종이의 머리글. 계획 = 생산계획서, 관제실 = 공정 실적표, 레포트 = 생산실적 평가서.
-// 계획 → 실적 → 평가 순서다. 결재란은 작성(Bell) · 승인(Loozy) · 평가. 생산계획서는 펜으로 "평가" 칸에 서명하고 실행한다.
+// 계획 → 실적 → 평가 순서다. 결재란은 작성(Bell) · 승인(Loozy) · 평가.
+// 생산계획서는 "승인" 칸이 비어 있고, 펜으로 "Loozy"를 써 넣으면(서명) 실행한다. 평가서는 "평가" 칸에 등급 도장.
 // 문서 번호, 기재 항목, 결재란을 가진 서식처럼 보이게 한다. 값은 이미 화면에 있는 것만 옮겨 적는다.
 
 import { h, type Child } from "./dom";
@@ -20,6 +21,8 @@ export interface DocHead {
   fields: [string, Child][];
   /** 결재란 "작성" 칸의 이름. 없으면 AUTHOR. */
   author?: string;
+  /** 승인을 받았는가. false면 "승인" 칸을 비워 둔다(생산계획서: 펜으로 서명할 자리). 없으면 받은 것으로 본다. */
+  approved?: boolean;
   /** 결재란 평가 칸에 찍을 도장(생산실적 평가서의 등급). 없으면 빈 칸. */
   stamp?: { text: string; sub: string; color: string; strong?: boolean; fill?: string; ink?: string } | null;
 }
@@ -36,7 +39,7 @@ export function docHead(doc: DocHead): HTMLElement {
       doc.fields.map(([name, value]) => h("div", null, h("dt", null, name), h("dd", null, value)))),
     h("div", { class: "approval", "aria-label": "결재란" },
       sign("작성", h("span", { class: "sign-name" }, doc.author ?? AUTHOR)),
-      sign("승인", h("span", { class: "sign-name" }, REVIEWER)),
+      sign("승인", doc.approved === false ? null : h("span", { class: "sign-name" }, REVIEWER)),
       sign("평가", doc.stamp
         ? h("span", {
           class: `stamp${doc.stamp.strong ? " strong" : ""}`,

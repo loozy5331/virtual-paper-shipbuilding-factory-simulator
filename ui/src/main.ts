@@ -1,7 +1,7 @@
 // 화면의 상태와 연결. 서버에서 시나리오를 받고, 설정을 고치고, 실행 결과를 회차로 쌓는다.
 // 화면은 셋이다(2.0):
 //   desk  첫 화면. 책상 위 분기별 클립보드에서 분기를 고른다.
-//   plan  생산계획서 클립보드가 가운데. 왼쪽 인덱스 탭 A안·B안·C안, 맨 아래 펜으로 결재란 "평가" 칸에 서명하고 실행.
+//   plan  생산계획서 클립보드가 가운데. 왼쪽 인덱스 탭 A안·B안·C안, 맨 아래 펜으로 결재란 "승인" 칸에 서명하고 실행.
 //   room  관제실(생산관리자 1인칭). 정면 벽 모니터 두 대: 왼쪽 = 재생 막대 + 간트, 오른쪽 = 기호도(또는 CCTV) + 사건 기록.
 //         책상 위에 생산계획서 클립보드(누르면 계획 고치기)와 작업모. 60일이 끝나면 생산실적 평가서 클립보드를 받는다.
 //   field 현장. 작업모를 쓰고 직접 나간 생산관리자의 눈(3D 화면 전체). 전경·공정 가까이, 재생 막대, "관제실로".
@@ -12,7 +12,7 @@ import { h, mount, num, pct } from "./dom";
 import { renderDesk } from "./desk";
 import { planLabel, renderForm, renderPlanBar, renderPlanNotes, renderPlanTabs, updatePreview, type FormContext } from "./form";
 import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
-import { docHead } from "./paper";
+import { docHead, REVIEWER } from "./paper";
 import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, STATION_COLOR, TRANSPORT_STATE } from "./labels";
 import { breakdownBar, breakdownLegend, eventText, renderReport } from "./report";
 import { renderSchematic } from "./schematic";
@@ -84,7 +84,7 @@ const els = {
   // 생산계획서 오른쪽 포스트잇: 안·분기 설명(form.ts), 목표와 이번 세션 최고(goalNote)
   planNotes: h("div", { class: "plan-notes-main" }),
   goalNote: h("div", { class: "postit green" }),
-  // 펜: 생산계획서 밖, 화면 오른쪽 아래. 누르면 결재란 "평가" 칸에 서명하고 실행한다.
+  // 펜: 생산계획서 밖, 화면 오른쪽 아래. 누르면 결재란 "승인" 칸에 Loozy가 서명하고 실행한다.
   pen: h("button", { class: "desk-pen", type: "button" }),
   // 관제실
   plate: h("div", { class: "plate" }),
@@ -149,7 +149,7 @@ function updateForm(): void {
   const blocked = state.busy || state.errors.length > 0;
   els.pen.classList.toggle("blocked", blocked);
   els.pen.setAttribute("aria-disabled", String(blocked));
-  els.pen.title = state.errors.length ? "생산계획서에서 고칠 곳이 있어 서명할 수 없습니다" : `결재란 "평가" 칸에 서명하고 ${state.data.scenario.days}일을 실행합니다`;
+  els.pen.title = state.errors.length ? "생산계획서에서 고칠 곳이 있어 서명할 수 없습니다" : `결재란 "승인" 칸에 서명하고 ${state.data.scenario.days}일을 실행합니다`;
 }
 
 function loadPreset(id: string): void {
@@ -333,11 +333,9 @@ async function backToPlan(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// 서명: 펜으로 결재란 "평가" 칸에 서명한다
+// 서명: 펜으로 결재란 "승인" 칸에 승인자(Loozy)의 이름을 써 넣는다
 // ---------------------------------------------------------------------------
 
-// 손으로 쓴 듯한 서명 한 획(가로 120, 세로 40). 그려지는 모습은 stroke-dashoffset으로 낸다.
-const SIGNATURE_PATH = "M6 30 C 10 6, 22 2, 20 18 C 18 32, 6 32, 14 22 C 22 12, 32 12, 32 24 C 32 32, 40 30, 44 18 C 48 6, 54 8, 52 22 C 51 32, 60 30, 66 20 L 72 27 C 78 33, 86 18, 94 20 S 106 28, 116 10";
 // 펜 그림(PEN_SVG, 160×160을 120px로 그림)에서 펜 끝의 자리. 서명할 때 이 점을 칸에 댄다.
 const PEN_TIP = { x: 15, y: 95 };
 let signing = false;
@@ -347,7 +345,7 @@ function clearSignature(): void {
   els.form.querySelectorAll(".signature").forEach((el) => el.remove());
 }
 
-/** 펜을 결재란으로 옮겨 "평가" 칸에 서명하고, 서명이 끝나면 실행한다. */
+/** 펜을 결재란 "승인" 칸으로 옮겨 "Loozy"를 왼쪽부터 써 넣고, 다 쓰면 실행한다. */
 async function signAndRun(): Promise<void> {
   if (signing || state.busy) return;
   if (state.errors.length) {
@@ -355,7 +353,7 @@ async function signAndRun(): Promise<void> {
     els.form.querySelector(".errors")?.scrollIntoView({ behavior: "smooth", block: "center" });
     return;
   }
-  const box = els.form.querySelector<HTMLElement>('[data-sign="평가"]');
+  const box = els.form.querySelector<HTMLElement>('[data-sign="승인"]');
   if (!box) return void run();
   signing = true;
   clearSignature();
@@ -363,32 +361,25 @@ async function signAndRun(): Promise<void> {
   els.form.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
   if (!reduce) await wait(320);
 
-  // 서명: 칸 안에 획을 하나 그린다.
-  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  path.setAttribute("d", SIGNATURE_PATH);
-  const sig = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  sig.setAttribute("viewBox", "0 0 120 40");
-  sig.setAttribute("class", "signature");
-  sig.setAttribute("aria-label", "서명");
-  sig.append(path);
+  // 서명: 승인자 이름을 필기체로. 쓰는 모습은 왼쪽부터 드러내는 clip-path로 낸다.
+  const sig = h("span", { class: "sign-name signature", "aria-label": `${REVIEWER} 서명` }, REVIEWER);
   box.append(sig);
 
   if (!reduce) {
-    // 펜 끝(왼쪽 아래)이 칸의 왼쪽에 닿게 옮긴 뒤, 서명하는 동안 칸을 가로질러 움직인다.
+    // 펜 끝(왼쪽 아래)이 칸의 왼쪽에 닿게 옮긴 뒤, 쓰는 동안 칸을 가로질러 움직인다.
     const art = els.pen.querySelector("svg")!.getBoundingClientRect();
-    const target = box.getBoundingClientRect();
-    const dx = target.left + 6 - (art.left + PEN_TIP.x);
-    const dy = target.top + target.height * 0.72 - (art.top + PEN_TIP.y);
+    const target = sig.getBoundingClientRect();
+    const dx = target.left - 2 - (art.left + PEN_TIP.x);
+    const dy = target.bottom - 4 - (art.top + PEN_TIP.y);
     els.pen.classList.add("writing");
+    sig.style.clipPath = "inset(0 100% 0 0)";
     await els.pen.animate([{ transform: "translate(0, 0)" }, { transform: `translate(${dx}px, ${dy}px)` }],
       { duration: 480, easing: "cubic-bezier(.2,.7,.2,1)", fill: "forwards" }).finished;
-    const length = path.getTotalLength();
-    path.style.strokeDasharray = `${length}`;
-    path.style.strokeDashoffset = `${length}`;
-    const draw = path.animate([{ strokeDashoffset: length }, { strokeDashoffset: 0 }], { duration: 700, easing: "ease-in-out", fill: "forwards" });
-    els.pen.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: `translate(${dx + target.width - 10}px, ${dy - 4}px)` }],
-      { duration: 700, easing: "ease-in-out", fill: "forwards" });
-    await draw.finished;
+    const write = sig.animate([{ clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0 0 0)" }], { duration: 800, easing: "linear", fill: "forwards" });
+    els.pen.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: `translate(${dx + target.width}px, ${dy - 3}px)` }],
+      { duration: 800, easing: "linear", fill: "forwards" });
+    await write.finished;
+    sig.style.clipPath = "";
     await wait(250);
     els.pen.getAnimations().forEach((a) => a.cancel());
     els.pen.classList.remove("writing");
@@ -996,9 +987,9 @@ async function start(): Promise<void> {
   els.pen.innerHTML = PEN_SVG;
   els.pen.append(h("span", { class: "pen-label" }, "펜 · 결재란에 서명하고 실행"));
   els.pen.addEventListener("click", () => void signAndRun());
-  // 결재란 "평가" 칸을 직접 눌러도 서명한다.
+  // 결재란 "승인" 칸을 직접 눌러도 서명한다.
   els.form.addEventListener("click", (e) => {
-    if ((e.target as HTMLElement).closest('[data-sign="평가"]')) void signAndRun();
+    if ((e.target as HTMLElement).closest('[data-sign="승인"]')) void signAndRun();
   });
   mount(els.plan,
     els.pen,
