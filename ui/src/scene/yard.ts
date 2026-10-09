@@ -351,9 +351,11 @@ export class Yard {
   /** 관리자 자리와 위험 경고 */
   private managerSpot: ManagerSpot = "safe";
   private managerStation: number | null = null;
-  private craneRing!: THREE.Mesh;
+  /** 도크마다 크레인 반경 원(1호, 2호) */
+  private readonly craneRings: THREE.Mesh[] = [];
   private readonly cartRings: THREE.Mesh[] = [];
-  private craneActive = false;
+  /** 도크마다 크레인이 일하는가(탑재 중이거나 진수 문을 여닫는 중) */
+  private craneActive = [false, false];
   /** 탑재 도크 부품(1호·2호·3호): 진수 장면의 문과 물 */
   private readonly docks: DockParts[] = [];
   /** 오늘 적치장에 놓인 블록과 그 자리(stock.ts) */
@@ -503,9 +505,14 @@ export class Yard {
       m.position.y = 0.03;
       return m;
     };
-    this.craneRing = ring(CRANE_R);
-    this.craneRing.position.set(STATION_X[3], 0.03, 0);
-    this.scene.add(this.craneRing);
+    // 도크마다 크레인이 하나라 반경도 도크마다(2호는 2호 도크가 있을 때만 보인다)
+    for (let u = 0; u < 2; u++) {
+      const r = ring(CRANE_R);
+      r.position.set(STATION_X[3], 0.03, unitZ(u));
+      r.visible = u === 0;
+      this.craneRings.push(r);
+      this.scene.add(r);
+    }
     for (let k = 0; k < 2; k++) {
       const r = ring(CART_R);
       r.visible = false;
@@ -519,7 +526,7 @@ export class Yard {
 
   /** 위험 반경 원: 크레인은 일할 때 진하게, 트랜스포터는 움직일 때 따라다닌다. */
   private drawHazardRings(): void {
-    (this.craneRing.material as THREE.MeshBasicMaterial).opacity = this.craneActive ? 0.9 : 0.3;
+    this.craneRings.forEach((r, u) => { (r.material as THREE.MeshBasicMaterial).opacity = this.craneActive[u] ? 0.9 : 0.3; });
     this.carts.forEach((cart, k) => {
       const ring = this.cartRings[k];
       if (!ring) return;
@@ -954,6 +961,7 @@ export class Yard {
     const docks = f.stations[3]?.units.length ?? 1;
     const hands: [GiantHand, { x: number; y: number } | null, number][] = [[this.gulliver, hook, 0], [this.gulliver2, hook2, 1]];
     for (const [hand, hk, u] of hands) {
+      this.craneRings[u].visible = u < docks;
       if (u >= docks) { hand.root.visible = false; continue; }
       hand.root.visible = true;
       const at = new THREE.Vector3(STATION_X[3] + (hk ? hk.x : 0), hk ? hk.y + 0.15 : 3.0, unitZ(u));
@@ -961,7 +969,7 @@ export class Yard {
       const gate = launch ? this.gateHand(u, frac) : null;
       hand.place(gate ? at.lerp(gate.at, gate.k) : at);
     }
-    this.craneActive = hook !== null || hook2 !== null || launching.length > 0;
+    this.craneActive = [0, 1].map((u) => (u === 0 ? hook : hook2) !== null || launching.some((l) => l.unit === u));
 
     // 정반: 작업장(1호, 증설하면 2호)마다 인원 또는 로봇, 시니어, 중지, 잔업
     let person = 0;

@@ -155,8 +155,10 @@ select.priority { max-width: 84px; }
 
 /* 토글 */
 .toggles { display: flex; gap: 12px; }
-.toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 0.83rem; cursor: pointer; }
-.toggle input { position: absolute; opacity: 0; pointer-events: none; }
+/* 스위치: 진짜 체크박스는 보이지 않게 스위치 안에 겹쳐 둔다. 기준(position: relative)이 없으면 체크박스가 페이지 원래 자리에
+   놓여, 누를 때 브라우저가 포커스를 보여 주려고 그쪽(아래)으로 스크롤한다(3.0.1). */
+.toggle { position: relative; display: inline-flex; align-items: center; gap: 6px; font-size: 0.83rem; cursor: pointer; }
+.toggle input { position: absolute; left: 0; top: 0; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
 .toggle-track {
   width: 30px; height: 17px; border-radius: 9px; background: #c9d3cc; position: relative; transition: background 0.15s;
 }
@@ -779,8 +781,9 @@ body { background: var(--desk); }
 .monitor.zoomed .ship-detail.zoom-only { display: flex; }
 /* 크게 보기: 그 모니터가 화면 가득. 나머지는 흐리게. */
 .monitor.zoomed { position: fixed; inset: 14px; z-index: 50; display: flex; flex-direction: column; }
-.monitor.zoomed .bezel { flex: 1; display: flex; flex-direction: column; }
-.monitor.zoomed .screen { flex: 1; height: auto; }
+.monitor.zoomed .bezel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* min-height: 0이 없으면 화면이 내용(배 8척 간트)만큼 늘어나 창 밖으로 밀리고 안쪽 스크롤이 생기지 않는다(3.0.2) */
+.monitor.zoomed .screen { flex: 1; min-height: 0; height: auto; }
 .room.zooming::after { content: ""; position: fixed; inset: 0; z-index: 40; background: rgba(20, 24, 20, 0.55); cursor: zoom-out; }
 
 /* 재생 막대는 모니터 화면 맨 아래(왼쪽은 늘, 오른쪽은 크게 볼 때만) */
@@ -788,7 +791,7 @@ body { background: var(--desk); }
 .osd-btn { border: 1px solid rgba(243, 241, 234, 0.35); background: transparent; color: inherit; font: inherit; border-radius: 4px; padding: 2px 9px; cursor: pointer; }
 .osd-btn.play { background: #f3f1ea; color: #26302b; font-weight: 700; min-width: 74px; }
 .osd-speed { display: inline-flex; border: 1px solid rgba(243, 241, 234, 0.35); border-radius: 4px; overflow: hidden; }
-.osd-speed label { cursor: pointer; }
+.osd-speed label { position: relative; cursor: pointer; }   /* 숨긴 라디오의 기준(누를 때 스크롤이 튀지 않게) */
 .osd-speed input { position: absolute; opacity: 0; pointer-events: none; }
 .osd-speed span { display: block; padding: 2px 7px; }
 .osd-speed input:checked + span { background: rgba(243, 241, 234, 0.9); color: #26302b; font-weight: 700; }
