@@ -33,6 +33,14 @@ const unitDepth = (unit: number) => (unit === 0 ? MAT_D : MAT2_D);
 const LAUNCH = { fill: [0.1, 0.28], open: [0.28, 0.4], sail: [0.4, 0.62], close: [0.62, 0.74], drain: [0.74, 0.86] } as const;
 const LAUNCH_END = 0.86;
 const DOOR_OPEN = Math.PI * 0.47;   // 문이 거의 직각으로 열린다
+
+// 현장 안전(3.0, D27·D28): 위험 설비의 반경에 관리자가 들면 경고한다. 엔진 규칙이 아니라 현장 화면의 규칙이다.
+// 반경은 팻말에 "반경 10m"로 적는다(소인국 척도라 화면 크기는 보기 좋게만 맞춘다).
+const CRANE_R = 2.9;        // 걸리버의 손(골리앗 크레인): 탑재 도크 둘레
+const CART_R = 1.4;         // 운행 중인 트랜스포터
+const WALKWAY_Z = 1.95;     // 보행 통로(노란 선): 1호 작업장 앞과 큰길 사이
+export type ManagerSpot = "front" | "walkway";
+export interface Hazard { id: string; label: string }
 const WATER_TOP = 0.32;
 const phase = (frac: number, [a, b]: readonly [number, number]) => clamp01((frac - a) / (b - a));
 // 샛길 자리: 소조립 왼쪽, 그리고 이웃한 공정의 작업장 사이 가운데(벽·구획선·도크를 피한다)
@@ -338,6 +346,14 @@ export class Yard {
   private readonly lounge: CSS2DObject;
   private readonly labTag: CSS2DObject;
   private readonly labWindow: THREE.MeshStandardMaterial;
+  /** 관리자 자리와 위험 경고 */
+  private managerSpot: ManagerSpot = "front";
+  private managerStation: number | null = null;
+  private inside = new Set<string>();           // 지금 반경 안에 있는 설비(같은 설비는 나갔다 다시 들어와야 또 경고)
+  onHazard: ((h: Hazard) => void) | null = null;
+  private craneRing!: THREE.Mesh;
+  private readonly cartRings: THREE.Mesh[] = [];
+  private craneActive = false;
   /** 탑재 도크 부품(1호·2호·3호): 진수 장면의 문과 물 */
   private readonly docks: DockParts[] = [];
   /** 오늘 적치장에 놓인 블록과 그 자리(stock.ts) */
@@ -403,7 +419,8 @@ export class Yard {
       this.scene.add(p.root);
     }
     this.scene.add(this.senior.root, this.manager.root);
-    this.manager.place(new THREE.Vector3(-1, 0, 5.4), Math.PI, "stand", true);
+    this.manager.place(this.managerAt(), Math.PI, "stand", true);
+    this.buildSafety();
     this.setupLighting();
   }
 
@@ -442,6 +459,80 @@ export class Yard {
   /** 현장 이름표를 보일지(가까이 볼 때만). */
   showNameTags(on: boolean): void {
     for (const p of [...this.people, this.senior, this.manager]) p.showTag(on);
+  }
+
+  /** 현장에서 관리자가 설 자리: 보고 있는 공정의 작업장 앞(큰길 옆·도크 앞) 또는 보행 통로. */
+  setManagerSpot(spot: ManagerSpot, station: number | null): void {
+    this.managerSpot = spot;
+    this.managerStation = station;
+    this.manager.place(this.managerAt(), Math.PI, "stand", false, 0.4);
+  }
+
+  private managerAt(): THREE.Vector3 {
+    const i = this.managerStation;
+    if (this.managerSpot === "walkway") {
+      // 보행 통로: 탑재 쪽은 크레인 반경 밖으로 비켜 선다
+      const x = i === null ? -1 : i === 3 ? STATION_X[3] - CRANE_R - 0.8 : STATION_X[i];
+      return new THREE.Vector3(x, 0, WALKWAY_Z);
+    }
+    if (i === null) return new THREE.Vector3(-1, 0, LANE_Z + 0.9);
+    // 작업장 앞: 큰길 바로 옆(조립 공정), 도크 앞(탑재)
+    return i === 3 ? new THREE.Vector3(STATION_X[3] - 0.6, 0, MAT_D / 2 + 0.7) : new THREE.Vector3(STATION_X[i] - 0.3, 0, LANE_Z + 0.8);   // 트랜스포터가 블록을 내리는 자리 바로 옆
+  }
+
+  /** 위험 반경 표시(노랑·검정 점선 원), "반경 10m 출입 금지" 팻말, 보행 통로 노란 선 */
+  private buildSafety(): void {
+    const ring = (r: number) => {
+      const m = new THREE.Mesh(new THREE.RingGeometry(r - 0.07, r, 64),
+        new THREE.MeshBasicMaterial({ color: "#e0b43a", transparent: true, opacity: 0.35, side: THREE.DoubleSide }));
+      m.rotation.x = -Math.PI / 2;
+      m.position.y = 0.03;
+      return m;
+    };
+    this.craneRing = ring(CRANE_R);
+    this.craneRing.position.set(STATION_X[3], 0.03, 0);
+    this.scene.add(this.craneRing);
+    for (let k = 0; k < 2; k++) {
+      const r = ring(CART_R);
+      r.visible = false;
+      this.cartRings.push(r);
+      this.scene.add(r);
+    }
+    const sign = label("⚠ 골리앗 크레인 반경 10m 출입 금지", "place-tag small warn-tag");
+    sign.position.set(STATION_X[3] - CRANE_R + 0.3, 0.05, 2.6);
+    this.scene.add(sign);
+    const walk = new THREE.Mesh(new THREE.BoxGeometry(STATION_X[3] - CRANE_R - 0.3 - (-16), 0.012, 0.35),
+      new THREE.MeshStandardMaterial({ color: "#e0b43a", roughness: 0.8 }));
+    walk.position.set((-16 + STATION_X[3] - CRANE_R - 0.3) / 2, 0.008, WALKWAY_Z);
+    walk.receiveShadow = true;
+    this.scene.add(walk);
+    const wtag = label("보행 통로", "place-tag small");
+    wtag.position.set(-13, 0.05, WALKWAY_Z);
+    this.scene.add(wtag);
+  }
+
+  /** 관리자 자리와 위험 설비의 거리를 보고, 반경에 새로 들어온 설비를 알린다. 재생 중에만. */
+  private checkHazards(playing: boolean): void {
+    const me = this.manager.root.position;
+    const near: Hazard[] = [];
+    const flat = (v: THREE.Vector3) => Math.hypot(v.x - me.x, v.z - me.z);
+    const crane = new THREE.Vector3(STATION_X[3], 0, 0);
+    (this.craneRing.material as THREE.MeshBasicMaterial).opacity = this.craneActive ? 0.9 : 0.3;
+    if (this.craneActive && flat(crane) < CRANE_R) near.push({ id: "crane", label: "골리앗 크레인(걸리버의 손) 작업 반경" });
+    this.carts.forEach((cart, k) => {
+      const moving = cart.group.visible && cart.group.userData.moving === true;
+      const ring = this.cartRings[k];
+      if (ring) {
+        ring.visible = moving;
+        ring.position.set(cart.group.position.x, 0.03, cart.group.position.z);
+      }
+      if (moving && flat(cart.group.position) < CART_R) near.push({ id: `cart${k}`, label: `트랜스포터 T${k + 1} 운행 반경` });
+    });
+    const ids = new Set(near.map((h) => h.id));
+    for (const h of near) {
+      if (!this.inside.has(h.id) && playing) this.onHazard?.(h);
+    }
+    this.inside = ids;
   }
 
   /** 생산관리자 소인의 이름표: 서명한 닉네임. */
@@ -777,6 +868,7 @@ export class Yard {
     const t = this.timer.getElapsed();
     this.draw(false);
     for (const p of [...this.people, this.senior, this.manager]) p.update(dt);
+    this.checkHazards(this.source?.playing ?? false);
     for (const lot of this.lots.values()) {
       if (!lot.group.visible) continue;
       // 대기 줄 → 정반처럼 자리를 옮기는 로트도 준비 시간(1배속 0.15초) 안에 닿게 빨리 옮긴다.
@@ -866,6 +958,7 @@ export class Yard {
     const handAt = new THREE.Vector3(hx, hy, 0);
     // 진수 중이면 손이 도크 문으로 가서 열고 닫는다
     const gateHand = launching.length ? this.gateHand(launching[0].unit, frac) : null;
+    this.craneActive = hook !== null || launching.length > 0;
     this.gulliver.place(gateHand ? handAt.lerp(gateHand.at, gateHand.k) : handAt);
 
     // 정반: 작업장(1호, 증설하면 2호)마다 인원 또는 로봇, 시니어, 중지, 잔업
@@ -951,6 +1044,7 @@ export class Yard {
         at = new THREE.Vector3(DEPOT.x, 0, LANE_Z + k * 1.15);
       }
       cart.group.position.lerp(at, jump ? 1 : 0.2);
+      cart.group.userData.moving = tr.state === "move";
       // 운반 중인 로트는 트랜스포터가 실으러 온 뒤에야 함께 움직인다(수레보다 앞서 가지 않게).
       // 수레가 아직 멀면 로트는 실을 자리에서 기다린다.
       if (tr.state === "move" && lot?.place === "carried") {

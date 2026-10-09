@@ -45,6 +45,8 @@ interface Run {
   finished: boolean;           // 60일 끝까지 본 적이 있다 → 평가서가 나온다.
   /** 생산계획서에 서명한 사람(닉네임, 반 코드). 60일을 끝내면 이 이름으로 서버에 저장한다. */
   signer: Signer | null;
+  /** 현장 안전 경고 횟수(3.0, 등급과 무관). 현장에 나간 적이 없으면 없음 */
+  safetyWarnings?: number;
   /** 그 회차 계획의 미리보기(책상의 생산계획서를 펼쳐 볼 때 계획 간트·숫자를 채운다). 처음 펼칠 때 받아 둔다. */
   preview?: Preview;
 }
@@ -81,6 +83,8 @@ interface State {
   zoomed: "left" | "right" | null;
   /** 현장에서 가까이 보는 공정. null이면 전경. */
   fieldFocus: number | null;
+  /** 현장에서 관리자가 설 자리: 작업장 앞(위험 반경에 들 수 있음) 또는 보행 통로(3.0) */
+  managerSpot: "front" | "walkway";
   /** 마지막으로 서명한 사람(이 브라우저가 기억한다). */
   signer: Signer | null;
   /** 반 코드를 적었으면 그 반의 시나리오별 최고(서버). */
@@ -749,6 +753,7 @@ function openCctv(station: number, day?: number): void {
 function aimCamera(): void {
   const apply = () => {
     yard?.setCamera("field", state.fieldFocus);
+    yard?.setManagerSpot(state.managerSpot, state.fieldFocus);
     // 이름표는 현장에서 공정을 가까이 볼 때만.
     yard?.showNameTags(state.screen === "field" && state.fieldFocus !== null);
   };
@@ -778,6 +783,7 @@ function syncScene(jump: boolean): void {
   if (!yard) {
     yardLoading ??= import("./scene/yard").then((y) => {
       yard = new y.Yard();
+      yard.onHazard = warnHazard;
     });
     void yardLoading.then(() => {
       aimCamera();
@@ -982,6 +988,10 @@ function drawReportBoard(): void {
           ink: GRADE_TEXT[g.grade],
         },
       }),
+      r.safetyWarnings !== undefined
+        ? h("p", { class: "safety-line" }, `현장 안전 경고 ${r.safetyWarnings}회`,
+          h("small", null, r.safetyWarnings ? " · 현장에서 위험 설비 반경에 들어간 횟수입니다(등급과 무관)" : " · 현장에서 위험 반경에 들어가지 않았습니다"))
+        : null,
       renderReport(r.result, state.data.scenario, state.data.max_rate, openFinding)));
 }
 
@@ -1031,6 +1041,7 @@ function goField(): void {
   if (!r) return;
   state.fieldFocus = state.cctv;   // 작업 현황에서 확대해 보던 공정이 있으면 그 앞으로 나간다.
   pause();   // 현장에 나가면 시간이 멈춰 있다. 재생하면 1배속(하루 2초)으로 흐른다.
+  r.safetyWarnings ??= 0;
   setScreen("field");
   drawField();
   aimCamera();
@@ -1063,8 +1074,41 @@ function drawField(): void {
     h("div", { class: "field-cams", role: "group", "aria-label": "볼 곳" },
       h("button", { type: "button", class: state.fieldFocus === null ? "active" : "", onclick: () => { state.fieldFocus = null; drawField(); aimCamera(); } }, "전경"),
       scenario.stations.map((st, i) =>
-        h("button", { type: "button", class: state.fieldFocus === i ? "active" : "", onclick: () => { state.fieldFocus = i; drawField(); aimCamera(); } }, `${st.name} 가까이`))));
+        h("button", { type: "button", class: state.fieldFocus === i ? "active" : "", onclick: () => { state.fieldFocus = i; drawField(); aimCamera(); } }, `${st.name} 가까이`))),
+    // 관리자가 설 자리(3.0 안전): 작업장 앞은 설비가 다가오면 위험 반경에 들 수 있다
+    h("div", { class: "field-cams", role: "group", "aria-label": "관리자 자리" },
+      (["front", "walkway"] as const).map((spot) =>
+        h("button", { type: "button", class: state.managerSpot === spot ? "active" : "", onclick: () => moveManager(spot) },
+          spot === "front" ? "작업장 앞에 서기" : "보행 통로로"))));
   drawOsd(els.fieldOsd);
+}
+
+function moveManager(spot: "front" | "walkway"): void {
+  state.managerSpot = spot;
+  yard?.setManagerSpot(spot, state.fieldFocus);
+  drawField();
+}
+
+/** 위험 설비의 반경이 관리자에게 닿았다: 재생을 멈추고 알린다. 횟수는 그 회차 평가서에 한 줄(등급과 무관). */
+function warnHazard(hazard: { id: string; label: string }): void {
+  const r = currentRun();
+  if (!r || state.screen !== "field" || !state.playing) return;
+  pause();
+  r.safetyWarnings = (r.safetyWarnings ?? 0) + 1;
+  const close = (resume: boolean) => {
+    overlay.remove();
+    if (resume) play();
+  };
+  const overlay = h("div", { class: "safety-alert", role: "alertdialog", "aria-label": "현장 안전 경고" },
+    h("div", { class: "safety-card" },
+      h("b", null, "⚠ 위험 반경입니다"),
+      h("p", null, `${hazard.label}에 들어왔습니다. 시간을 멈췄습니다.`),
+      h("p", { class: "hint" }, "현장에서는 움직이는 설비 주변을 피해 노란 보행 통로로 다닙니다."),
+      h("div", { class: "safety-actions" },
+        h("button", { class: "btn primary", type: "button", onclick: () => { moveManager("walkway"); close(true); } }, "보행 통로로 비키기"),
+        h("button", { class: "btn", type: "button", onclick: () => close(true) }, "그대로 계속"))));
+  els.field.append(overlay);
+  overlay.querySelector<HTMLButtonElement>("button")?.focus();
 }
 
 // ---------------------------------------------------------------------------
@@ -1188,6 +1232,7 @@ async function start(): Promise<void> {
     cctv: null,
     zoomed: null,
     fieldFocus: null,
+    managerSpot: "front",
     signer: loadSigner(),
     classBest: {},
   };
