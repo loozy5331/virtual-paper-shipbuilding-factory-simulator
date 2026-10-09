@@ -875,6 +875,13 @@ body { background: var(--desk); }
 .room.board-down .report-sheet { overflow: hidden; }
 .report-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
 @media (prefers-reduced-motion: reduce) { .report-board { transition: none; } }
+/* 펼친 생산계획서(2.0.1): 평가서와 같은 자리, 같은 어두운 막. 읽기 전용: 탭만 누를 수 있다. */
+.room.plan-up::before { content: ""; position: absolute; inset: 0; z-index: 15; background: rgba(30, 34, 30, 0.35); cursor: pointer; }
+.room.plan-up .hands { display: none; }
+.plan-board, .room.board-down .plan-board { z-index: 21; top: 20px; cursor: auto; }
+.room.board-down .plan-board .report-sheet { overflow-y: auto; }
+.plan-board .form.plan-readonly { position: static; max-height: none; overflow: visible; box-shadow: none; }
+.plan-board .form.plan-readonly [data-plan] { pointer-events: none; }
 
 /* ----- 현장: 작업모를 쓰고 나간 생산관리자의 눈(3D 화면 전체) ----- */
 .field-screen { position: relative; height: 100vh; min-height: 560px; background: #26302b; display: flex; flex-direction: column; color: #f3f1ea; }
