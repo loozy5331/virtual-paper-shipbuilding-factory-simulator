@@ -15,18 +15,19 @@ import type { Frame, LotView } from "./scene/frame";
 // ----- 현장 3D와 같은 배치(yard.ts) -----
 const STATION_X = [-9, -3.5, 2, 8.5];
 const MAT_W = 3.2, MAT_D = 2.6, MAT2_D = 2.3, UNIT2_Z = -2.85;
-const QUEUE_Z = 2.2, LANE_Z = 3.7, DEPOT_X = -12;
-const CUP = { x: 13.4, z: 0.6, r: 2.3 };
-const LOUNGE = { x: -11.4, z: -4.4 };
-const SHELF_X = [-7.2, -4.7, -2.2], SHELF_Z = -4.8;
-const LAB = { x: 4.2, z: -5 };
+const QUEUE_Z = 2.2, LANE_Z = 3.7, DEPOT_X = -16;
+const LOUNGE = { x: -15.6, z: -4.4 };
+const SHELF_X = [-7.2, -4.7, -2.2], SHELF_Z = -6.6;
+const LAB = { x: 4.6, z: -7.2 };
+// 해안(coast.ts): 야드 오른쪽 만, 곶 끝의 등대
+const SHORE_X = 11.2, MOUTH_X = 23.5, BAY_MOUTH = 3.5;
 
 // ----- 투영: 위에서 30도 기운 정사영 -----
 const S = 30;                        // 1 단위 = 30px
 const DEPTH = Math.cos(Math.PI / 6); // 바닥 깊이는 0.87배로 줄고
 const RISE = Math.sin(Math.PI / 6);  // 높이는 0.5배로 보인다
-const X0 = -14, Z0 = -7.6, TOP = 34;
-const VIEW_W = (17.2 - X0) * S;
+const X0 = -18.5, Z0 = -9.2, TOP = 34;
+const VIEW_W = (26 - X0) * S;
 const VIEW_H = TOP + (5.6 - Z0) * S * DEPTH + 8;
 
 const px = (x: number) => (x - X0) * S;
@@ -142,6 +143,23 @@ function tag(x: number, y: number, text: string, cls = "cc-tag"): SVGElement {
   return s("text", { x, y, class: cls }, text);
 }
 
+/** 벽만 있는 작업장·구역(지붕 없음, 앞은 열림): 뒷벽은 앞면이 보이고, 옆벽은 위에서 본 띠. */
+function walls(x0: number, x1: number, z0: number, z1: number, h: number): SVGElement {
+  const t = 0.14, top = "#a3ada6", front = "#7d8a83";
+  return s("g", { class: "cc-walls" },
+    box((x0 + x1) / 2, z0, x1 - x0, t, h, top, front),
+    box(x0, (z0 + z1) / 2, t, z1 - z0, h, top, front),
+    box(x1, (z0 + z1) / 2, t, z1 - z0, h, top, front));
+}
+
+/** 드라이 도크: 콘크리트 테두리(뒤·앞·왼쪽)와 바다 쪽 문(오른쪽, 어두운 강철). */
+function dock(x0: number, x1: number, z0: number, z1: number): SVGElement {
+  const rim = "#8f8a80";
+  return s("g", { class: "cc-dock" },
+    s("rect", { x: px(x0), y: py(z0, 0.3), width: (x1 - x0) * S, height: (z1 - z0) * S * DEPTH, fill: "none", stroke: rim, "stroke-width": 4 }),
+    s("line", { x1: px(x1), x2: px(x1), y1: py(z0, 0.3), y2: py(z1, 0.3), stroke: "#4e5a63", "stroke-width": 6 }));
+}
+
 export interface CctvOptions {
   /** 확대해서 볼 공정. null이면 전경. */
   focus: number | null;
@@ -155,11 +173,20 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   const items: Item[] = [];
   const add = (z: number, el: SVGElement) => items.push({ z, el });
 
-  // ----- 바닥: 운반로, 작업대기소, 물그릇 받침 -----
-  const laneW = STATION_X[3] - DEPOT_X + 3;
-  add(-99, box((DEPOT_X + STATION_X[3]) / 2 + 1.5, LANE_Z, laneW, 1.0, 0.02, "#3a423d", "#3a423d"));
+  // ----- 바닥: 만(바다), 곶과 등대, 운반로, 작업대기소 -----
+  add(-100, s("rect", { x: px(SHORE_X), y: -2000, width: 4000, height: 6000, fill: "#2f4a5a" }));
+  add(-100, s("line", { x1: px(SHORE_X), x2: px(SHORE_X), y1: -2000, y2: 4000, stroke: "#8fa7b4", "stroke-width": 1.5 }));
+  for (const side of [-1, 1]) {
+    add(-99, s("ellipse", { cx: px(MOUTH_X + 1.5), cy: py(side * (BAY_MOUTH + 3.4)), rx: 3.4 * S, ry: 3.2 * S * DEPTH, fill: "#33402f", stroke: "#4f6147" }));
+  }
+  const lx = px(MOUTH_X), ly = py(-(BAY_MOUTH + 2.6));
+  add(-98, s("g", { class: "cc-lighthouse" },
+    s("rect", { x: lx - 5, y: ly - 34, width: 10, height: 34, fill: "#f3f1ea" }),
+    s("rect", { x: lx - 5, y: ly - 26, width: 10, height: 6, fill: "#b8322d" }),
+    s("path", { d: `M${lx - 7} ${ly - 34} L${lx} ${ly - 44} L${lx + 7} ${ly - 34} Z`, fill: "#b8322d" })));
+  add(-98, tag(lx, ly + 14, "등대", "cc-tag mid"));
+  add(-99, box((DEPOT_X - 1.5 + SHORE_X - 0.3) / 2, LANE_Z, SHORE_X - 0.3 - (DEPOT_X - 1.5), 1.0, 0.02, "#3a423d", "#3a423d"));
   add(-99, box(LOUNGE.x, LOUNGE.z, 3.2, 2.6, 0.02, "#2c3530", "#2c3530"));
-  add(-98, s("ellipse", { cx: px(CUP.x), cy: py(CUP.z), rx: 3.1 * S, ry: 3.1 * S * DEPTH, fill: "#2c3530", stroke: EDGE }));
 
   // ----- 자재창고 선반 -----
   frame.shelves.forEach((sh, i) => {
@@ -172,11 +199,13 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
       g.append(s("rect", { x: bx, y: by, width: 11, height: 8, fill: PAPER }));
     }
     const empty = sh.qty <= 0;
-    g.append(tag(px(x), py(SHELF_Z - 0.25, 1.6) - 6, `${sh.name} ${empty ? (sh.nextArrival ? `입고 D-${sh.nextArrival - frame.day}` : "없음") : sh.qty}`,
+    g.append(tag(px(x), py(SHELF_Z + 0.25) + 14, `${sh.name} ${empty ? (sh.nextArrival ? `입고 D-${sh.nextArrival - frame.day}` : "없음") : sh.qty}`,
       empty ? "cc-tag mid warn" : "cc-tag mid"));
     add(SHELF_Z, g);
   });
-  add(SHELF_Z - 1, tag(px(SHELF_X[1]), py(SHELF_Z - 0.25, 1.6) - 24, "자재창고", "cc-place"));
+  // 물류창고 구역: 선반 셋을 벽으로 묶는다(앞은 열림)
+  add(SHELF_Z - 2, walls(SHELF_X[0] - 1.5, SHELF_X[2] + 1.5, SHELF_Z - 0.9, SHELF_Z + 1.0, 1.9));
+  add(SHELF_Z - 1, tag(px(SHELF_X[1]), py(SHELF_Z - 0.9, 1.9) - 8, "물류창고 구역", "cc-place"));
 
   // ----- 연구소 -----
   const r = frame.research;
@@ -203,6 +232,11 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     view.units.forEach((unit, k) => {
       const z = k === 1 ? UNIT2_Z : 0;
       const d = k === 1 ? MAT2_D : MAT_D;
+      // 작업장마다: 소조립·중조립은 벽(뒤·옆), 대조립은 노란 구획선, 탑재는 드라이 도크(바다 쪽 문)
+      const z0 = z - d / 2 - 0.3, z1 = z + d / 2 + (k === 0 ? 0.35 : 0.05);
+      if (p < 2) add(z0 - 0.01, walls(x - MAT_W / 2 - 0.45, x + MAT_W / 2 + 0.45, z0, z1, 1.0));
+      else if (p === 2) add(z0 - 0.01, s("rect", { x: px(x - MAT_W / 2 - 0.4), y: py(z0), width: (MAT_W + 0.8) * S, height: (z1 - z0) * S * DEPTH, fill: "none", stroke: "#e0b43a", "stroke-width": 1.5, "stroke-dasharray": "6 4" }));
+      else add(z0 - 0.01, dock(x - MAT_W / 2 - 0.6, x + MAT_W / 2 + 0.6, z0, z1));
       const g = s("g", {
         class: "cc-station pick", role: "button", tabindex: 0,
         "aria-label": `${st.name} ${unit.unit}호. 눌러서 확대`,
@@ -287,19 +321,15 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     add(z + 0.5, tag(px(x), py(z + 0.4) + 13, tr.state === "breakdown_stop" ? `${tr.id} 고장` : tr.id, tr.state === "breakdown_stop" ? "cc-tag mid stop" : "cc-tag mid"));
   });
 
-  // ----- 물그릇(인도) -----
-  add(CUP.z - CUP.r, s("ellipse", { cx: px(CUP.x), cy: py(CUP.z, 1.42), rx: CUP.r * S, ry: CUP.r * S * DEPTH, fill: "#3d5a6c", stroke: "#8fa7b4", "stroke-width": 1.2 }));
+  // ----- 안벽 앞 바다(인도): 현장 3D와 같은 자리, 세 척씩 두 줄 -----
   const sea = frame.lots.filter((l) => l.place === "sea").sort((a, b) => a.slot - b.slot);
   sea.slice(0, 6).forEach((l, i) => {
-    // 두 척씩 세 줄. 이름은 배 아래 작은 글(지연이면 빨강) — 이름표 상자는 배를 가린다.
-    const col = i % 2, row = Math.floor(i / 2);
-    const bx = CUP.x - 0.85 + col * 1.7, bz = CUP.z - 1.15 + row * 1.05;
-    const lift = -1.42 * S * RISE;
-    add(bz, s("g", { transform: `translate(0 ${lift})` }, lot(bx, bz, 4, 0.55, l.type),
-      s("text", { x: px(bx), y: py(bz) + 11, class: l.late ? "cc-sea-name late" : "cc-sea-name" }, l.ship)));
+    const bx = SHORE_X + 1.9 + (i % 3) * 2.9, bz = -1.6 + Math.floor(i / 3) * 2.1;
+    add(bz, s("g", null, lot(bx, bz, 4, 0.75, l.type),
+      s("text", { x: px(bx), y: py(bz) + 12, class: l.late ? "cc-sea-name late" : "cc-sea-name" }, l.ship)));
   });
   const waiting = frame.lots.filter((l) => l.place === "hidden").map((l) => l.ship);
-  add(9, tag(px(CUP.x), py(CUP.z + 3.1) + 14, `인도 ${sea.length}척${waiting.length ? ` · 착수 전 ${waiting.join(" ")}` : ""}`, "cc-tag mid"));
+  add(9, tag(px(SHORE_X + 4.8), py(3.6) + 14, `안벽 · 인도 ${sea.length}척${waiting.length ? ` · 착수 전 ${waiting.join(" ")}` : ""}`, "cc-tag mid"));
 
   // ----- 그리기 -----
   const focus = opts.focus;

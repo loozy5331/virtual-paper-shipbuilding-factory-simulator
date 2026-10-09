@@ -14,28 +14,27 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import type { Frame, LotView } from "./frame";
 import { mesh, Person, SENIOR_NAME, WORKER_NAMES } from "./people";
 import { shipLook } from "./ships";
-import { clamp01, ease, flatOf, hullTris, sailTris, type Tri } from "../proto/model";
+import { buildDock, buildLand, buildWalls, buildYardLines, GiantHand, SEA_Y, SHORE_X } from "./coast";
+import { clamp01, ease, flatOf, hullTris, type Tri } from "../proto/model";
 import { STATE_INFO, STATION_COLOR } from "../labels";
 
-// ----- 배치 (책상 위 좌표, 단위는 대략 소인 키의 4배) -----
+// ----- 배치 (해안 조선소 야드 좌표, 단위는 대략 소인 키의 4배. 배경은 coast.ts) -----
 const STATION_X = [-9, -3.5, 2, 8.5];
 const MAT_W = 3.2, MAT_D = 2.6, MAT_TOP = 0.08;
-// 증설한 2호 작업장은 1호 바로 뒤(책상 안쪽)에 놓는다(2.0).
+// 증설한 2호 작업장은 1호 바로 뒤(야드 안쪽)에 놓는다(2.0).
 const UNIT2_Z = -2.85, MAT2_D = 2.3;
 const unitZ = (unit: number) => (unit === 1 ? UNIT2_Z : 0);
 const QUEUE_Z = 2.2;
 const LANE_Z = 3.7;
-const DEPOT = new THREE.Vector3(-12, 0, LANE_Z);
-const CUP = new THREE.Vector3(13.4, 0, 0.6);
-const WATER_Y = 1.42;
-const LOUNGE = new THREE.Vector3(-11.4, 0, -4.4);
+const DEPOT = new THREE.Vector3(-16, 0, LANE_Z);
+const LOUNGE = new THREE.Vector3(-15.6, 0, -4.4);   // 소조립 작업장 벽과 겹치지 않게 왼쪽으로
 const SHELF_X = [-7.2, -4.7, -2.2];
-const SHELF_Z = -4.8;
-const LAB = new THREE.Vector3(4.2, 0, -5);
+const SHELF_Z = -6.6;   // 물류창고 구역(벽으로 묶음), 공장 벽 뒤
+const LAB = new THREE.Vector3(4.6, 0, -7.2);
 
 const PAPER = new THREE.Color("#f4f0e6");
 const PAINT = new THREE.Color("#c8553d");
-const BG = new THREE.Color("#e9e1d1");
+const BG = new THREE.Color("#dbe5ea");   // 하늘
 const UNIT = 0.3;
 
 export type CameraMode = "control" | "field";
@@ -58,28 +57,6 @@ function label(html: string, className: string): CSS2DObject {
 
 function setLabel(obj: CSS2DObject, html: string): void {
   if (obj.element.innerHTML !== html) obj.element.innerHTML = html;
-}
-
-function woodTexture(): THREE.CanvasTexture {
-  const c = document.createElement("canvas");
-  c.width = c.height = 512;
-  const g = c.getContext("2d")!;
-  g.fillStyle = "#c79f74";
-  g.fillRect(0, 0, 512, 512);
-  // 나뭇결. 매번 같은 모양이 나오도록 난수 대신 사인으로 그린다.
-  for (let i = 0; i < 160; i++) {
-    const y = (i * 97.13) % 512;
-    g.strokeStyle = `rgba(${90 + (i * 37) % 30}, ${55 + (i * 13) % 20}, 30, ${0.05 + ((i * 7) % 12) / 100})`;
-    g.lineWidth = 1 + (i % 3);
-    g.beginPath();
-    for (let x = 0; x <= 512; x += 16) g.lineTo(x, y + Math.sin(x / 60 + i) * 4);
-    g.stroke();
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(3, 2);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
 }
 
 function paperMaterial(color: THREE.Color = PAPER): THREE.MeshStandardMaterial {
@@ -315,9 +292,11 @@ export class Yard {
   private readonly lounge: CSS2DObject;
   private readonly labTag: CSS2DObject;
   private readonly labWindow: THREE.MeshStandardMaterial;
-  private readonly trolley = new THREE.Group();
-  private readonly hook = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1, 12), new THREE.MeshStandardMaterial({ color: "#333" }));
-  private readonly camGoal = { pos: new THREE.Vector3(1, 22, 16.5), target: new THREE.Vector3(1, 0, -1.8) };
+  /** 골리앗 크레인 노릇을 하는 걸리버의 손(하늘에서 수직으로 내려온다). */
+  private readonly gulliver = new GiantHand();
+  /** 증설한 2호 작업장의 벽·구획선·도크(2호가 있을 때만 보인다). */
+  private readonly unit2Areas: THREE.Group[] = [];
+  private readonly camGoal = { pos: new THREE.Vector3(3, 13, 26), target: new THREE.Vector3(3, 3, -9) };
   private camMoving = 0;
 
   private readonly hemi = new THREE.HemisphereLight("#fff8ec", "#8a6a4a", 1.5);
@@ -332,14 +311,14 @@ export class Yard {
     this.labels.domElement.className = "scene-labels";
 
     this.scene.background = BG.clone();
-    this.scene.fog = new THREE.Fog(BG.clone(), 40, 80);
+    this.scene.fog = new THREE.Fog(BG.clone(), 45, 110);
     this.camera.position.copy(this.camGoal.pos);
     this.controls = new OrbitControls(this.camera, r.domElement);
     this.controls.target.copy(this.camGoal.target);
     this.controls.enableDamping = true;
     this.controls.maxPolarAngle = Math.PI * 0.46;
     this.controls.minDistance = 4;
-    this.controls.maxDistance = 45;
+    this.controls.maxDistance = 60;
     this.controls.addEventListener("start", () => { this.camMoving = 0; });
 
     const { hemi, sun } = this;
@@ -351,21 +330,22 @@ export class Yard {
     sun.shadow.normalBias = 0.02;
     this.scene.add(hemi, sun);
 
-    const desk = mesh(new THREE.BoxGeometry(50, 1, 30), "#ffffff", { map: woodTexture(), roughness: 0.75 });
-    desk.position.y = -0.5;
-    desk.castShadow = false;
-    this.scene.add(desk);
-
+    buildLand(this.scene);
+    this.buildAreas();
     this.buildStations();
-    this.buildCrane();
+    this.scene.add(this.gulliver.root);
+    const craneTag = label("골리앗 크레인 · 걸리버의 손", "place-tag");
+    craneTag.position.set(0, 1.5, 0);
+    this.gulliver.hand.add(craneTag);
     this.buildLane();
     this.lounge = this.buildLounge();
     this.buildShelves();
     const lab = this.buildLab();
     this.labTag = lab.tag;
     this.labWindow = lab.window;
-    this.buildSea();
-    this.buildGiant();
+    const seaTag = label("안벽 · 인도한 배", "place-tag");
+    seaTag.position.set(SHORE_X + 3, 0.2, 4.2);
+    this.scene.add(seaTag);
 
     for (let i = 0; i < 8; i++) {
       const p = new Person("worker", i, WORKER_NAMES[i]);
@@ -497,38 +477,28 @@ export class Yard {
     });
   }
 
-  private buildCrane(): void {
-    const x = STATION_X[3];
-    const steel = "#c9a227";
-    const crane = new THREE.Group();
-    for (const sx of [-1, 1]) {
-      for (const sz of [-1, 1]) {
-        const leg = mesh(new THREE.BoxGeometry(0.16, 3.4, 0.16), steel, { metalness: 0.3 });
-        leg.position.set(sx * 2.0, 1.7, sz * 1.8);
-        crane.add(leg);
+  /** 작업장마다: 소조립·중조립은 벽만 있는 공장(앞은 열림), 대조립은 바깥 정반(노란 구획선), 탑재는 드라이 도크. 그리고 물류창고 구역. */
+  private buildAreas(): void {
+    STATION_X.forEach((x, p) => {
+      for (const unit of [0, 1]) {
+        const zc = unitZ(unit), d = unit === 1 ? MAT2_D : MAT_D;
+        const z0 = zc - d / 2 - 0.3, z1 = zc + d / 2 + (unit === 0 ? 0.35 : 0.05);
+        const area = p < 2 ? buildWalls(x - MAT_W / 2 - 0.45, x + MAT_W / 2 + 0.45, z0, z1, 1.0)
+          : p === 2 ? buildYardLines(x - MAT_W / 2 - 0.4, x + MAT_W / 2 + 0.4, z0, z1)
+          : buildDock(x - MAT_W / 2 - 0.6, x + MAT_W / 2 + 0.6, z0, z1);
+        this.scene.add(area);
+        if (unit === 1) {
+          area.visible = false;
+          this.unit2Areas[p] = area;
+        }
       }
-      const side = mesh(new THREE.BoxGeometry(0.16, 0.16, 3.76), steel, { metalness: 0.3 });
-      side.position.set(sx * 2.0, 3.4, 0);
-      crane.add(side);
-    }
-    const girder = mesh(new THREE.BoxGeometry(4.3, 0.28, 0.32), steel, { metalness: 0.3 });
-    girder.position.set(0, 3.5, 0);
-    crane.add(girder);
-    const box = mesh(new THREE.BoxGeometry(0.4, 0.3, 0.5), "#3d4a5c");
-    this.trolley.add(box);
-    this.trolley.position.set(0, 3.25, 0);
-    this.hook.castShadow = true;
-    crane.add(this.trolley, this.hook);
-    crane.position.set(x, 0, 0);
-    this.scene.add(crane);
-    const tag = label("골리앗 크레인", "place-tag");
-    tag.position.set(x, 3.9, 0);
-    this.scene.add(tag);
+    });
+    this.scene.add(buildWalls(SHELF_X[0] - 1.5, SHELF_X[2] + 1.5, SHELF_Z - 0.9, SHELF_Z + 1.0, 1.9));
   }
 
   private buildLane(): void {
-    const lane = mesh(new THREE.BoxGeometry(STATION_X[3] - DEPOT.x + 3, 0.02, 1.0), "#b9b2a4", { roughness: 1 });
-    lane.position.set((DEPOT.x + STATION_X[3]) / 2 + 1.5, 0.01, LANE_Z);
+    const lane = mesh(new THREE.BoxGeometry(SHORE_X - 0.3 - (DEPOT.x - 1.5), 0.02, 1.0), "#9f9a8f", { roughness: 1 });
+    lane.position.set((DEPOT.x - 1.5 + SHORE_X - 0.3) / 2, 0.01, LANE_Z);
     lane.castShadow = false;
     this.scene.add(lane);
     for (let k = 0; k < 2; k++) {
@@ -621,8 +591,8 @@ export class Yard {
       this.scene.add(tag);
       this.shelves.push({ boxes, tag });
     });
-    const sign = label("자재창고", "place-tag");
-    sign.position.set(SHELF_X[1], 2.9, SHELF_Z - 0.6);
+    const sign = label("물류창고 구역", "place-tag");
+    sign.position.set(SHELF_X[1], 2.6, SHELF_Z - 0.9);
     this.scene.add(sign);
   }
 
@@ -640,39 +610,6 @@ export class Yard {
     tag.position.set(LAB.x, 2.8, LAB.z);
     this.scene.add(tag);
     return { tag, window };
-  }
-
-  private buildSea(): void {
-    const profile = [[0, 0], [1.9, 0], [2.05, 0.08], [2.25, 0.6], [2.4, 1.6], [2.3, 1.6], [2.12, 0.62], [1.95, 0.18], [0, 0.18]]
-      .map(([x, y]) => new THREE.Vector2(x, y));
-    const cup = mesh(new THREE.LatheGeometry(profile, 48), "#f7f7f4", { roughness: 0.3, side: THREE.DoubleSide });
-    cup.position.copy(CUP);
-    const water = new THREE.Mesh(new THREE.CircleGeometry(2.3, 48),
-      new THREE.MeshStandardMaterial({ color: "#4f8fc0", roughness: 0.15, transparent: true, opacity: 0.88 }));
-    water.rotation.x = -Math.PI / 2;
-    water.position.set(CUP.x, WATER_Y, CUP.z);
-    const saucer = mesh(new THREE.CylinderGeometry(3.1, 2.8, 0.12, 48), "#f1f0ea", { roughness: 0.3 });
-    saucer.position.set(CUP.x, 0.06, CUP.z);
-    this.scene.add(cup, water, saucer);
-    const tag = label("물그릇 · 인도한 배", "place-tag");
-    tag.position.set(CUP.x, 0.3, CUP.z + 3.3);
-    this.scene.add(tag);
-  }
-
-  private buildGiant(): void {
-    const giant = new THREE.Group();
-    const hull = new FoldMesh(hullTris(), paperMaterial());
-    const sail = new FoldMesh(sailTris(), paperMaterial());
-    hull.set(1);
-    sail.set(1);
-    giant.add(hull.mesh, sail.mesh);
-    giant.scale.setScalar(3.6);
-    giant.position.set(10, 0, -9);
-    giant.rotation.y = -0.3;
-    this.scene.add(giant);
-    const tag = label("<b>걸리버가 접은 견본</b>", "place-tag");
-    tag.position.set(10, 5.6, -9);
-    this.scene.add(tag);
   }
 
   // ----- 연결 -----
@@ -712,8 +649,9 @@ export class Yard {
 
   setCamera(mode: CameraMode, station: number | null = null): void {
     if (mode === "control" || station === null) {
-      this.camGoal.pos.set(1, 22, 16.5);
-      this.camGoal.target.set(1, 0, -1.8);
+      // 전경: 조금 낮게 비스듬히 봐서 능선 너머 걸리버의 상반신과 만 입구의 등대가 함께 들어오게.
+      this.camGoal.pos.set(3, 13, 26);
+      this.camGoal.target.set(3, 3, -9);
     } else {
       const x = STATION_X[station];
       this.camGoal.pos.set(x + 2.2, 4.6, 8.2);
@@ -794,7 +732,7 @@ export class Yard {
       lot.setForm(view.form, view.place === "bench");
       lot.animateCut(view.place === "bench" && view.station === 0 && (view.state === "work" || view.state === "rework"), performance.now() / 1000);
       if (view.place === "sea") {
-        lot.group.rotation.set(Math.sin(lot.floatPhase * 1.1) * 0.04, 0.6 + lot.floatPhase, Math.sin(lot.floatPhase * 1.3) * 0.05);
+        lot.group.rotation.set(Math.sin(lot.floatPhase * 1.1) * 0.03, 0, Math.sin(lot.floatPhase * 1.3) * 0.04);
       } else {
         lot.group.rotation.set(0, 0, 0);
       }
@@ -804,13 +742,10 @@ export class Yard {
       lot.tag.position.y = view.form >= 3 ? 1.9 : 1.0;
     }
 
-    // 크레인 훅: 탑재 중이면 블록을 따라간다.
-    const hx = hook ? hook.x : 0;
-    const hy = hook ? hook.y + 0.15 : 2.4;
-    this.trolley.position.x = hx;
-    const len = 3.1 - hy;
-    this.hook.scale.y = Math.max(0.05, len);
-    this.hook.position.set(hx, 3.1 - len / 2, 0);
+    // 골리앗 크레인(걸리버의 손): 탑재 중이면 자석판이 블록을 따라간다. 쉴 때는 도크 위에 손을 띄워 둔다.
+    const hx = STATION_X[3] + (hook ? hook.x : 0);
+    const hy = hook ? hook.y + 0.15 : 3.0;
+    this.gulliver.place(new THREE.Vector3(hx, hy, 0));
 
     // 정반: 작업장(1호, 증설하면 2호)마다 인원 또는 로봇, 시니어, 중지, 잔업
     let person = 0;
@@ -820,6 +755,7 @@ export class Yard {
       const working = st.state === "work" || st.state === "rework";
       const robot = st.crew === "robot";
       props.mat2.visible = st.units.length > 1;
+      if (this.unit2Areas[i]) this.unit2Areas[i].visible = st.units.length > 1;
       props.tag2.visible = st.units.length > 1;
       props.robots.forEach((r, u) => {
         r.visible = robot && u < st.units.length;
@@ -923,8 +859,8 @@ export class Yard {
         const lot = this.lots.get(view.ship)!;
         lot.floatPhase += 0.016;
         const i = f.lots.filter((l) => l.place === "sea").indexOf(view);
-        const a = i * 1.6;
-        return new THREE.Vector3(CUP.x + Math.cos(a) * 1.1, WATER_Y + Math.sin(lot.floatPhase * 1.6) * 0.04, CUP.z + Math.sin(a) * 1.1);
+        // 안벽 앞 바다에 세 척씩 두 줄로 띄운다.
+        return new THREE.Vector3(SHORE_X + 1.9 + (i % 3) * 2.9, SEA_Y + 0.02 + Math.sin(lot.floatPhase * 1.6) * 0.03, -1.6 + Math.floor(i / 3) * 2.1);
       }
       default: return new THREE.Vector3(DEPOT.x, -5, 0);
     }
