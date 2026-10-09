@@ -540,6 +540,9 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             arrivals.setdefault(day + materials[mid]["lead_days"], []).append((mid, qty, order["id"]))
 
     stock = {mid: scenario.get("initial_stock", {}).get(mid, 0) for mid in materials}
+    # 자재 페깅(3.1, 기록만): 창고의 자재를 입고 묶음 [입고일, 몫인 배, 수량]으로도 들고 있다. 처음 재고는 몫이 없다(공용).
+    # 규칙은 그대로 공용 재고(stock)를 본다. 묶음은 "누구 몫을 누가 썼나"를 결과에 남기려는 것뿐이다.
+    batches: dict[str, list[list[Any]]] = {mid: ([[0, None, stock[mid]]] if stock[mid] else []) for mid in materials}
     stage = [0] * n_ships                                  # 다음에 들어갈 공정
     ready = [config["ships"][o["id"]]["start_day"] for o in orders]   # 그 공정에 들어갈 수 있는 첫날
     started: list[int | None] = [None] * n_ships           # 소조립에 들어간 날
@@ -563,6 +566,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     workforce_daily: list[dict[str, int]] = []
     spans: list[dict[str, dict[str, int]]] = [{} for _ in range(n_ships)]
     inventory_daily: list[dict[str, int]] = []
+    pegging_daily: list[dict[str, list[dict[str, Any]]]] = []   # 그날 끝의 창고 재고를 몫(배)별로
     inventory_value_daily: list[float] = []            # 그날 작업이 끝난 뒤 창고 재고 금액 (재고비의 기준)
     events: list[dict[str, Any]] = []
 
@@ -598,6 +602,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         # 1. 입고
         for mid, qty, for_ship in arrivals.get(day, []):
             stock[mid] += qty
+            batches[mid].append([day, for_ship, qty])
             events.append({"day": day, "type": "arrival", "material": mid, "quantity": qty, "ship": for_ship})
 
         # 2. 운반: 공정을 끝낸 다음 날부터 우선순위 순으로 나른다.
@@ -690,7 +695,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                         if mid:
                             stock[mid] -= need
                             events.append({"day": day, "type": "issue", "material": mid, "quantity": need,
-                                           "ship": orders[i]["id"], "station": pid})
+                                           "ship": orders[i]["id"], "station": pid,
+                                           "from": _take_pegged(batches[mid], orders[i]["id"], need)})
                         # 나눠 하기: 지금 비어 있고 멈추지 않은 작업장(이 작업장 + 뒤 번호)에 작업량을 똑같이 나눈다.
                         work = work_of(i, p)
                         parts = [u] + [v for v in range(u + 1, n_units[p])
@@ -861,6 +867,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         cost["wip"] += sum(costs["wip_per_ship_day"] for i in range(n_ships)
                            if started[i] is not None and delivered[i] is None)
         inventory_daily.append(dict(stock))
+        pegging_daily.append({mid: _pegging(batches[mid]) for mid in materials})
         inventory_value_daily.append(value)
 
     # ----- 기간이 끝난 뒤 한 번에 계산하는 원가 (7장) -----
@@ -987,6 +994,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         "transporters": transporters_out,
         "research": schedule,
         "inventory_daily": inventory_daily,
+        "pegging_daily": pegging_daily,
         "inventory_value_daily": inventory_value_daily,
         "events": events,
         "findings": _findings(ships_out),
@@ -1094,6 +1102,33 @@ def suggest_order_days(config: dict[str, Any], scenario: dict[str, Any] | None =
     lead = {m["id"]: m["lead_days"] for m in scenario["materials"]}
     return {sid: {mid: _clamp_day(need - lead[mid] - buffer_days, scenario) for mid, need in needs.items()}
             for sid, needs in _need_days(config, scenario).items()}
+
+
+def _take_pegged(batches: list[list[Any]], ship: str, need: int) -> list[dict[str, Any]]:
+    """출고할 자재를 어느 몫에서 꺼냈는지 정한다(자재 페깅, 3.1, 기록만).
+
+    자기 몫 먼저, 다음 공용(처음 재고), 그래도 모자라면 남의 몫을 먼저 들어온 것부터 빌린다.
+    같은 순서 안에서는 먼저 들어온 묶음부터. 꺼낸 몫을 [{"ship": 몫, "quantity": 수량}]으로 돌려준다.
+    """
+    rank = lambda b: (0 if b[1] == ship else 1 if b[1] is None else 2, b[0])
+    taken: dict[str | None, int] = {}
+    for b in sorted(batches, key=rank):
+        if need <= 0:
+            break
+        q = min(b[2], need)
+        b[2] -= q
+        need -= q
+        taken[b[1]] = taken.get(b[1], 0) + q
+    batches[:] = [b for b in batches if b[2] > 0]
+    return [{"ship": owner, "quantity": q} for owner, q in taken.items()]
+
+
+def _pegging(batches: list[list[Any]]) -> list[dict[str, Any]]:
+    """창고 재고를 몫별로 묶는다. 먼저 들어온 몫이 앞이다. 몫이 None이면 공용."""
+    out: dict[str | None, int] = {}
+    for _, owner, q in sorted(batches, key=lambda b: b[0]):
+        out[owner] = out.get(owner, 0) + q
+    return [{"ship": owner, "quantity": q} for owner, q in out.items()]
 
 
 def resolve_order_days(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> dict[str, dict[str, int | None]]:
