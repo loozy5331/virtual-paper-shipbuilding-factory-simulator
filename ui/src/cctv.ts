@@ -326,22 +326,32 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     }
   }
 
-  // ----- 골리앗 크레인 위험 반경(3.0 안전, 현장 3D와 같은 반경 2.9): 점선 원, 탑재 중이면 진하게 -----
-  const craneBusy = frame.stations[3]?.units.some((u) => u.state === "work" || u.state === "rework");
-  add(-95, s("ellipse", { cx: px(STATION_X[3]), cy: py(0), rx: 2.9 * S, ry: 2.9 * S * DEPTH, fill: "none",
-    stroke: "#e0b43a", "stroke-width": craneBusy ? 2.2 : 1.2, "stroke-dasharray": "7 5", opacity: craneBusy ? 0.95 : 0.5 }));
+  // ----- 골리앗 크레인 위험 반경(3.0 안전, 현장 3D와 같은 반경 2.9): 도크마다 점선 원, 그 도크가 탑재 중이면 진하게 -----
+  // 도크마다 크레인이 하나다(D36): 2호 도크가 있으면 2호 크레인의 틀과 반경도 그린다.
+  const docks = frame.stations[3]?.units ?? [];
+  docks.forEach((dock, u) => {
+    const busy = dock.state === "work" || dock.state === "rework";
+    const zc = UNIT_Z[u] ?? 0;
+    add(-95, s("ellipse", { cx: px(STATION_X[3]), cy: py(zc), rx: 2.9 * S, ry: 2.9 * S * DEPTH, fill: "none",
+      stroke: "#e0b43a", "stroke-width": busy ? 2.2 : 1.2, "stroke-dasharray": "7 5", opacity: busy ? 0.95 : 0.5 }));
+  });
   add(-95, tag(px(STATION_X[3] - 2.9) + 4, py(2.6) + 4, "반경 10m 출입 금지", "cc-tag warn"));
 
-  // ----- 골리앗 크레인(탑재 위, 틀만) -----
+  // ----- 골리앗 크레인(탑재 위, 틀만): 도크마다 하나 -----
   const cx = STATION_X[3];
-  const crane = s("g", { class: "cc-crane", opacity: 0.85 });
-  for (const sx of [-1, 1]) {
-    for (const sz of [-1, 1]) crane.append(s("line", { x1: px(cx + sx * 2), y1: py(sz * 1.8), x2: px(cx + sx * 2), y2: py(sz * 1.8, 3.4), stroke: "#c9a640", "stroke-width": 3 }));
-    crane.append(s("line", { x1: px(cx + sx * 2), y1: py(-1.8, 3.4), x2: px(cx + sx * 2), y2: py(1.8, 3.4), stroke: "#c9a640", "stroke-width": 3 }));
-  }
-  crane.append(s("rect", { x: px(cx - 2.2), y: py(0, 3.5) - 4, width: 4.4 * S, height: 8, fill: "#c9a640" }));
-  add(1.9, crane);
-  add(-6, tag(px(cx), py(-1.8, 3.5) - 10, "골리앗 크레인", "cc-place"));
+  docks.forEach((_, u) => {
+    const zc = UNIT_Z[u] ?? 0;
+    const crane = s("g", { class: "cc-crane", opacity: 0.85 });
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) crane.append(s("line", { x1: px(cx + sx * 2), y1: py(zc + sz * 1.8), x2: px(cx + sx * 2), y2: py(zc + sz * 1.8, 3.4), stroke: "#c9a640", "stroke-width": 3 }));
+      crane.append(s("line", { x1: px(cx + sx * 2), y1: py(zc - 1.8, 3.4), x2: px(cx + sx * 2), y2: py(zc + 1.8, 3.4), stroke: "#c9a640", "stroke-width": 3 }));
+    }
+    crane.append(s("rect", { x: px(cx - 2.2), y: py(zc, 3.5) - 4, width: 4.4 * S, height: 8, fill: "#c9a640" }));
+    add(zc + 1.9, crane);
+  });
+  // 이름은 맨 뒤 크레인 위에 한 번만(겹친 틀 사이에 적으면 뒤 도크를 가린다). 도크 번호는 정반의 "1호·2호" 팻말.
+  const backZ = UNIT_Z[docks.length - 1] ?? 0;
+  add(backZ - 6, tag(px(cx), py(backZ - 1.8, 3.5) - 10, docks.length > 1 ? "골리앗 크레인 1·2호" : "골리앗 크레인", "cc-place"));
 
   // ----- 트랜스포터 -----
   frame.transporters.forEach((tr, k) => {
