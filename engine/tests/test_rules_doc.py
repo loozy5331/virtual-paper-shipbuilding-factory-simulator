@@ -380,7 +380,7 @@ class Contract(unittest.TestCase):
 
     def test_invalid_config_is_rejected(self):
         cfg = copy.deepcopy(PRESETS["managed"])
-        cfg["pool"] = 9
+        cfg["pool"] = 13   # 3.0 상한 12명(D30)
         cfg["ships"]["S2"]["priority"] = 1
         cfg["research"] = ["automation", "automation"]
         with self.assertRaises(ConfigError) as ctx:
@@ -438,8 +438,9 @@ class Expansion(unittest.TestCase):
         self.assertTrue(on_unit_2)
 
     def test_too_many_units_is_rejected(self):
+        # 3.0: 작업장은 공정마다 3개까지(D30)
         with self.assertRaises(ConfigError):
-            simulate(expanded("managed", block_assembly=3))
+            simulate(expanded("managed", block_assembly=4))
 
 
 
