@@ -9,6 +9,8 @@ export interface StationConfig {
   units?: number;
   /** 인력(2.0 4M): normal 일반, skilled 숙련공, robot 로봇. 없으면 일반. */
   crew?: Crew;
+  /** 나눠 하기(3.0): 배 한 척의 작업량을 빈 작업장 여러 곳에 나눈다. 없으면 끔. 탑재는 나누지 않는다. */
+  split?: boolean;
 }
 
 export type Crew = "normal" | "skilled" | "robot";
@@ -100,10 +102,24 @@ export interface ResearchInfo {
   effect: string;
 }
 
+/** 분기(난이도)가 열어 둔 옵션(D33). 생산계획서는 여기 없는 옵션을 그리지 않고, 엔진은 거절한다. */
+export interface ScenarioOptions {
+  crews: Crew[];
+  methods: string[];
+  material_grades: string[];
+  max_units: number;
+  split: boolean;
+}
+
 export interface Scenario {
   id: string;
   name: string;
   summary: string;
+  options?: ScenarioOptions;
+  /** 이 분기에서 새로 열린 옵션(D33 포스트잇). 첫 분기는 안내 문장 */
+  unlocks?: string;
+  /** 난이도 1~3(옛 분기가 쉽다) */
+  level?: number;
   /** 계획 기간의 이름. 60일은 이 분기의 작업일로 본다. */
   period: string;
   days: number;
@@ -120,7 +136,7 @@ export interface Scenario {
     overtime: { speed: number };
   };
   transporter: { max_count: number; capacity: number; lot_weight: number };
-  expansion: { name: string; max_units: number; summary: string; cost: Record<string, number> };
+  expansion: { name: string; max_units: number; max_units_by_station?: Record<string, number>; summary: string; cost: Record<string, number> };
   material_grades: Record<"standard" | "cheap", { name: string; price_factor: number; defect_add: number }>;
   research: Record<string, ResearchInfo>;
   ordering: Record<Ordering, { name: string; summary: string }>;
@@ -207,7 +223,8 @@ export interface ShipResult {
   lead_time_parts: Record<string, number>;
   spans: Record<string, { start: number; end: number }>;
   segments: Segment[];
-  daily: { state: ShipState; station: string | null; unit?: number | null }[];
+  /** parts: 나눠 하는 동안 부분(작업장)마다 상태(3.0). 먼저 끝난 부분은 pair_wait */
+  daily: { state: ShipState; station: string | null; unit?: number | null; parts?: { unit: number; state: string }[] }[];
 }
 
 export interface StationDay {
@@ -228,6 +245,8 @@ export interface StationResult {
   breakdown_stop_days: number;
   material_wait_days: number;
   labor_wait_days: number;
+  /** 나눠 하기에서 먼저 끝난 부분이 나머지를 기다린 날(작업장마다 합). OEE에는 넣지 않는다(3.0) */
+  pair_wait_days?: number;
   breakdowns: number;
   inspections: number;
   passes: number;
@@ -278,7 +297,7 @@ export interface Grade {
 export type SimEvent =
   | { day: number; type: "arrival"; material: string; quantity: number; ship: string }
   | { day: number; type: "issue"; material: string; quantity: number; ship: string; station: string }
-  | { day: number; type: "enter" | "complete" | "defect"; ship: string; station: string }
+  | { day: number; type: "enter" | "complete" | "defect"; ship: string; station: string; unit?: number; units?: number[] }
   | { day: number; type: "accident"; station: string; ship: string }
   | { day: number; type: "breakdown"; station?: string; transporter?: string; ship?: string }
   | { day: number; type: "transport_start" | "transport_end"; ship: string; from: string; to: string }

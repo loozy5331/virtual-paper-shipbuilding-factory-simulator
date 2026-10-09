@@ -1,6 +1,9 @@
 // 화면에 쓰는 이름과 색. 색은 색각 이상 검증기를 통과한 값이다(CLAUDE.md 참고).
 // 색만으로 구분하지 않도록, 색을 쓰는 곳에는 항상 라벨이나 범례를 함께 둔다.
 
+/** 고깔모자(작업모) 색: 역할. 3D 소인과 2D 작업 현황 기호가 함께 쓴다. */
+export const HAT = { worker: "#d6a400", manager: "#d9480f", senior: "#6f42c1" } as const;
+
 export const STATION_COLOR: Record<string, string> = {
   sub_assembly: "#2a78d6",
   block_assembly: "#e87ba4",
@@ -38,6 +41,9 @@ export const LOSS_STATES: StateInfo[] = [
   { state: "accident_stop", name: "사고 중지", color: STOP },
   { state: "breakdown_stop", name: "고장 중지", color: STOP, hatch: true },
 ];
+
+/** 나눠 하기(3.0)에서 먼저 끝난 부분이 나머지를 기다리는 상태. 부분 기록에만 있다(배 리드타임에는 없음). 대기 회색 + 빗금, 라벨로 구분 */
+export const PAIR_WAIT_STATE: StateInfo = { state: "pair_wait", name: "짝 대기", color: WAIT, hatch: true };
 
 // 리드타임 분해의 아홉 칸. 작업은 작업장 색과 섞이지 않게 짙은 먹색, 운반은 손실이 아니라 옅은 중립색이다.
 export const WORK_STATE: StateInfo = { state: "work", name: "작업", color: "#33413a" };

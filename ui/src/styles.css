@@ -412,13 +412,17 @@ select.priority { max-width: 84px; }
 /* ----- v3: 3D 장면 ----- */
 .scene-host { position: relative; height: clamp(420px, 62vh, 760px); border-radius: 12px; overflow: hidden; background: #e9e1d1; }
 .scene-host canvas { display: block; }
-.scene-labels { position: absolute; inset: 0; pointer-events: none; }
+.scene-labels { position: absolute; inset: 0; z-index: 1; pointer-events: none; }   /* 라벨의 z-index를 이 안에 가둔다(전환 막 아래로) */
 .scene-labels > div { font-family: inherit; }
+/* 현장 이름표(2.1, 가상의 이름): 작업복 가슴의 명찰처럼 흰 바탕에 작은 글자 */
+.name-tag { background: #fff; color: #33413a; border: 1px solid #33413a; border-radius: 2px; font-size: 10px; font-weight: 700; padding: 0 4px; line-height: 15px; white-space: nowrap; }
 .station-tag, .place-tag, .shelf-tag, .lot-tag {
   display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; white-space: nowrap;
   background: rgba(255, 255, 255, 0.93); font-size: 12px; font-weight: 700; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.14);
 }
 .station-tag i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.station-tag.small-tag { font-size: 11px; padding: 2px 7px; gap: 4px; }
+.station-tag.small-tag i { width: 8px; height: 8px; }
 .place-tag { display: inline-block; font-weight: 600; color: var(--ink-2); border-radius: 10px; text-align: center; }
 .place-tag.small { padding: 1px 7px; font-size: 11px; border-radius: 999px; }
 .lot-tag b { font-size: 12px; }
@@ -427,7 +431,8 @@ select.priority { max-width: 84px; }
 .field-panel { position: relative; }
 .finding-btns { display: flex; gap: 6px; }
 
-/* 현장 전환: 안전모를 쓴 관리자가 문으로 뛰어나간다 */
+/* 현장 전환: 작업모를 쓴 관리자가 문으로 뛰어나간다 */
+.intro-hat svg { width: 1.3em; height: 1em; vertical-align: -0.1em; }
 .field-intro {
   position: absolute; inset: 0; z-index: 5; border-radius: var(--radius); cursor: pointer;
   background: rgba(27, 34, 49, 0.88); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
@@ -612,39 +617,6 @@ body { background: var(--desk); }
 .doc-title h2 { white-space: nowrap; }
 .doc-title .doc-period { display: block; font-size: 0.95rem; letter-spacing: 0.06em; font-weight: 700; line-height: 1.3; }
 
-/* =====================================================================
-   1.2 관제실 기호도 (D6) 와 현장 들어가는 길 (D7)
-   기호도는 간트와 같은 색을 쓴다. 손실 색에는 항상 글(상태 이름)을 함께 둔다.
-   ===================================================================== */
-.schematic-host { margin-bottom: 14px; }
-.schematic { width: 100%; height: auto; display: block; }
-.schematic .box { fill: #fff; stroke: var(--line); stroke-width: 1; }
-.schematic .sch-box.store .box, .schematic .sch-box.deliver .box, .schematic .sch-box.small .box { fill: var(--panel-2); }
-.schematic .box-title { font-size: 13px; font-weight: 800; fill: var(--ink); }
-.schematic .box-tag { font-size: 11px; font-weight: 700; fill: var(--ink-2); text-anchor: end; }
-.schematic .box-tag.senior { fill: #6f42c1; }
-.schematic .unit { fill: rgba(31, 42, 36, 0.035); }
-.schematic .unit-name { font-size: 11px; font-weight: 700; fill: var(--ink-3); }
-.schematic .unit-status { font-size: 12px; font-weight: 700; fill: var(--ink-2); }
-.schematic .unit-status.stop { fill: #8e2e42; }
-.schematic .unit-status.small { font-size: 11px; }
-.schematic .worker { fill: #d6a400; stroke: #8a6a00; stroke-width: 1; }
-.schematic .queue-label { font-size: 11px; font-weight: 700; fill: var(--ink-3); }
-.schematic .queue-label.end { text-anchor: end; }
-.schematic .chip-box { fill: #fff; stroke: var(--ink-2); stroke-width: 1; }
-.schematic .chip-box.late { stroke: var(--bad); stroke-width: 1.6; }
-.schematic .chip-text { font-size: 11px; font-weight: 800; fill: var(--ink); text-anchor: middle; }
-.schematic .shelf-name { font-size: 12px; fill: var(--ink-2); }
-.schematic .shelf-qty { font-size: 12px; font-weight: 700; fill: var(--ink); text-anchor: end; font-variant-numeric: tabular-nums; }
-.schematic .shelf-qty.empty { fill: #9a5a10; }
-.schematic .deliver-note { font-size: 11px; font-weight: 700; fill: var(--good); }
-.schematic .deliver-note.late { fill: var(--bad); }
-.schematic .cell-text { font-size: 12px; fill: var(--ink-2); }
-.schematic .sch-flow { stroke: var(--ink-3); stroke-width: 1.3; }
-.schematic .sch-arrowhead { fill: var(--ink-3); }
-.schematic .pick { cursor: pointer; }
-.schematic .pick:hover .box, .schematic .pick:focus-visible .box { stroke: var(--accent); stroke-width: 2; }
-.schematic .pick:focus { outline: none; }
 .gantt .pick { cursor: pointer; }
 .gantt .pick:hover rect:first-of-type { filter: brightness(0.92); }
 
@@ -795,11 +767,12 @@ body { background: var(--desk); }
 .win-titlebar { display: flex; align-items: center; height: 30px; background: #f3f3f3; border-bottom: 1px solid #e1e1e1; border-radius: 2px 2px 0 0; user-select: none; }
 .win-title { flex: 1; padding-left: 12px; font-size: 12px; color: #1f1f1f; font-family: "Segoe UI", "Apple SD Gothic Neo", system-ui, sans-serif; }
 .win-buttons { display: flex; height: 100%; }
-.win-btn { width: 46px; height: 100%; border: 0; background: transparent; color: #1f1f1f; font: 13px "Segoe UI Symbol", "Apple SD Gothic Neo", system-ui, sans-serif; cursor: pointer; }
-.win-btn:hover { background: #e5e5e5; }
-.win-btn.close:hover { background: #c42b1c; color: #fff; }
-.win-btn.restore, .win-btn.close, .monitor.zoomed .win-btn.max { display: none; }
-.monitor.zoomed .win-btn.restore, .monitor.zoomed .win-btn.close { display: block; }
+/* 창 단추: 회색 바탕 위 진한 먹색 선 그림(대비 확보), 누를 자리임을 알게 옅은 바탕을 깐다 */
+.win-btn { width: 46px; height: 100%; border: 0; border-left: 1px solid #e1e1e1; background: #e9e9e9; color: #111; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.win-btn svg { width: 12px; height: 12px; display: block; }
+.win-btn:hover, .win-btn:focus-visible { background: #d4d4d4; }
+.win-btn.restore, .monitor.zoomed .win-btn.max { display: none; }
+.monitor.zoomed .win-btn.restore { display: flex; }
 .monitor .bezel .screen { border-radius: 0 0 2px 2px; }
 .zoom-only { display: none; }
 .monitor.zoomed .zoom-only { display: flex; }
@@ -822,19 +795,46 @@ body { background: var(--desk); }
 .osd .scrub { flex: 1; min-width: 60px; accent-color: #f3f1ea; }
 .osd .day-now { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .osd-btn.end { font-weight: 700; white-space: nowrap; }
+.osd-fixed { font-size: 12px; font-weight: 700; white-space: nowrap; padding: 2px 8px; border: 1px solid rgba(243, 241, 234, 0.35); border-radius: 4px; }
 .gantt-screen { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 8px 8px; display: flex; flex-direction: column; gap: 4px; }
 .screen-tabs { display: flex; gap: 2px; }
 .screen-tab { border: 0; background: transparent; color: var(--ink-3); font: inherit; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
 .screen-tab.active { background: var(--ink); color: #fff; }
 .gantt-screen .legend { font-size: 0.74rem; }
 
-/* 오른쪽 모니터: 위 3/4 기호도 또는 CCTV, 아래 1/4 사건 기록 */
+/* 오른쪽 모니터: 위 3/4 작업 현황 전경(2D), 아래 1/4 사건 기록 */
 .right-top { position: relative; flex: 3; min-height: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: center; }
-.right-top .schematic-host { margin: 0; padding: 6px 8px; }
-.cctv-host { position: absolute; inset: 0; height: auto; border-radius: 0; }
 .cam-label { position: absolute; left: 10px; top: 8px; z-index: 2; background: rgba(20, 24, 20, 0.8); color: #f3f1ea; font-size: 12px; padding: 3px 8px; border-radius: 3px; font-weight: 700; }
-.cam-label::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #c0262d; margin-right: 6px; vertical-align: 1px; }
+/* 작업 현황 전경(2.1): 기호도를 대신하는 2D 정지 화면. 위에서 비스듬히 내려다본 조선소, 사람은 기호뿐. */
+.cc-host { position: absolute; inset: 0; background: #1f2622; }
+.cc-feed { width: 100%; height: 100%; display: block; }
+.cc-feed .cc-bg { fill: #1f2622; }
+.cc-feed text { font-family: inherit; fill: #c9d3cc; }
+.cc-feed .cc-place { font-size: 13px; font-weight: 700; fill: #eef2ee; text-anchor: middle; }
+.cc-feed .cc-name { font-size: 14px; font-weight: 800; fill: #fff; }
+/* 정반(공정 색) 위 글: 바탕색이 제각각이라 어두운 테두리로 읽히게 */
+.cc-feed .cc-mat-text text { fill: #fff; paint-order: stroke; stroke: rgba(20, 26, 22, 0.75); stroke-width: 3px; stroke-linejoin: round; }
+.cc-feed .cc-mat-text .loss { fill: #ffd29a; }
+.cc-feed .cc-tag { font-size: 12px; fill: #b5c0b9; }
+.cc-feed .cc-unit { font-size: 11px; font-weight: 700; fill: rgba(255, 255, 255, 0.85); }
+.cc-feed .cc-tag.loss { fill: #f0b36a; font-weight: 700; }
+.cc-feed .warn { fill: #de9644; font-weight: 700; }
+.cc-feed .stop { fill: #ff8a95; font-weight: 800; }
+.cc-feed .cc-tag.pair { fill: #eef2ee; font-weight: 800; paint-order: stroke; stroke: #898781; stroke-width: 6px; stroke-linejoin: round; }
+.cc-feed .end { text-anchor: end; }
+.cc-feed .mid { text-anchor: middle; }
+.cc-feed .cc-chip rect { fill: #f3f1ea; }
+.cc-feed .cc-chip rect.late { stroke: #e0454c; stroke-width: 2; }
+.cc-feed .cc-sea-name { font-size: 10px; font-weight: 800; fill: #f3f1ea; text-anchor: middle; }
+.cc-feed .cc-sea-name.late { fill: #ff8a95; }
+.cc-feed .cc-chip text { font-size: 11px; font-weight: 800; fill: #1f2622; text-anchor: middle; }
+.cc-feed .pick { cursor: pointer; }
+.cc-feed .pick:hover > g > rect:first-child, .cc-feed .pick:focus-visible > g > rect:first-child { stroke: #f3f1ea; stroke-width: 2; }
+.cc-feed .pick:focus { outline: none; }
+.right-top .cam-anon { top: 34px; }
 .cam-back { position: absolute; right: 10px; top: 8px; z-index: 2; background: #fff; border: 1px solid #c9cfc9; font: inherit; font-size: 12px; padding: 3px 9px; border-radius: 4px; font-weight: 700; color: var(--accent); cursor: pointer; }
+/* 익명 표시(2.1): 관제실 화면은 개인을 구분하지 않는다는 표시. 화면 이름 바로 아래, 눈에 띄지만 조용하게. */
+.cam-anon { position: absolute; left: 10px; top: 34px; z-index: 2; background: rgba(243, 241, 234, 0.92); color: var(--ink-2); font-size: 11px; padding: 2px 7px; border-radius: 3px; border: 1px solid #c9cfc9; }
 .cam-switch { position: absolute; left: 10px; bottom: 8px; z-index: 2; display: flex; gap: 4px; }
 .cam-switch button { border: 0; background: rgba(20, 24, 20, 0.62); color: #f3f1ea; font: inherit; font-size: 11px; padding: 2px 7px; border-radius: 3px; cursor: pointer; }
 .cam-switch button.active { background: rgba(20, 24, 20, 0.9); font-weight: 700; }
@@ -933,3 +933,16 @@ body { background: var(--desk); }
 .sign-card-buttons { display: flex; justify-content: flex-end; gap: 8px; }
 .desk-class { margin: 0; font-size: 0.8rem; color: var(--ink-2); }
 .desk-class b { color: var(--ink); }
+
+/* 분기에서 새로 열린 옵션(D33) */
+.postit-unlock { margin-top: 8px; padding-top: 6px; border-top: 1px dashed rgba(31, 42, 36, 0.25); }
+.postit-unlock b { display: inline; font-size: inherit; }
+
+/* 현장 안전 경고(3.0): 재생을 멈추고 가운데에 카드 */
+.safety-alert { position: absolute; inset: 0; z-index: 6; display: flex; align-items: center; justify-content: center; background: rgba(27, 34, 30, 0.45); }
+.safety-card { background: #fffaf0; color: var(--ink); border: 3px solid #e0b43a; border-radius: 10px; padding: 18px 22px; max-width: 420px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3); }
+.safety-card > b { font-size: 17px; color: #8a5a00; }
+.safety-actions { display: flex; gap: 8px; margin-top: 12px; }
+.warn-tag { background: #f6d77a !important; color: #3a2d00 !important; font-weight: 700; }
+.safety-line { margin: 0 0 10px; padding: 6px 10px; background: #fff4d6; border-left: 4px solid #e0b43a; border-radius: 4px; font-weight: 700; }
+.safety-line small { font-weight: 400; color: var(--ink-2); }

@@ -11,7 +11,7 @@ export function eventText(ev: SimEvent, scenario: Scenario): string {
   switch (ev.type) {
     case "arrival": return `${material(ev.material)} ${ev.quantity}개 입고 (${ev.ship}용)`;
     case "issue": return `${material(ev.material)} ${ev.quantity}개 출고 → ${ev.ship} ${station(ev.station)}`;
-    case "enter": return `${ev.ship} ${station(ev.station)} 투입`;
+    case "enter": return `${ev.ship} ${station(ev.station)} 투입${ev.units ? ` (${ev.units.join("·")}호에 나눠)` : ""}`;
     case "complete": return `${ev.ship} ${station(ev.station)} 완료`;
     case "defect": return `${ev.ship} ${station(ev.station)} 검사 불량 → 재작업`;
     case "accident": return `${station(ev.station)} 잔업 사고 → 3일 중지`;
@@ -139,7 +139,7 @@ export function renderReport(result: Result, scenario: Scenario, maxRate: number
         h("b", null, h("span", { class: "rank" }, `${i + 1}`), findingText(f, scenario)),
         h("p", { class: "hint" }, FINDING_HINT[f.kind] ?? ""),
         h("div", { class: "finding-btns" },
-          h("button", { type: "button", class: "btn primary small", onclick: () => onFinding(f, "field") }, `현장에서 ${f.start}일 보기`),
+          h("button", { type: "button", class: "btn primary small", onclick: () => onFinding(f, "field") }, `작업 현황에서 ${f.start}일 보기`),
           h("button", { type: "button", class: "btn ghost small", onclick: () => onFinding(f, "gantt") }, "간트"))))
       : h("p", { class: "hint" }, "손실 구간이 없습니다."));
 
@@ -211,12 +211,15 @@ export function renderReport(result: Result, scenario: Scenario, maxRate: number
 
   const rules = scenario.rules;
   const fastest = Math.max(...Object.values(rules.methods).map((m) => m.speed));
+  // 나눠 하기를 쓴 회차만 짝 대기 칸을 보인다(3.0)
+  const split = result.stations.some((st) => (st.pair_wait_days ?? 0) > 0);
   const oeeCard = card("공정별 OEE",
     h("table", { class: "oee" },
       h("thead", null, h("tr", null,
         h("th", null, "공정"), h("th", { class: "r" }, "최대/일"), h("th", { class: "r" }, "불량률"),
         h("th", { class: "r" }, "시간가동률"), h("th", { class: "r" }, "성능가동률"), h("th", { class: "r" }, "양품률"),
-        h("th", null, "OEE"))),
+        h("th", null, "OEE"),
+        split ? h("th", { class: "r", title: "나눠 하기에서 먼저 끝난 부분이 나머지를 기다린 날(작업장마다 합)" }, "짝 대기") : null)),
       h("tbody", null, result.stations.map((st) => h("tr", null,
         h("td", null, h("span", { class: "dot", style: { background: STATION_COLOR[st.id] } }), st.name),
         h("td", { class: "r" }, num(st.max_rate, 3)),
@@ -227,10 +230,12 @@ export function renderReport(result: Result, scenario: Scenario, maxRate: number
         h("td", { class: "r" }, pct(st.oee.quality)),
         h("td", { class: "oee-cell" },
           h("span", { class: "meter" }, h("i", { style: { width: `${(st.oee.oee ?? 0) * 100}%` } })),
-          h("b", null, pct(st.oee.oee))))))),
+          h("b", null, pct(st.oee.oee))),
+        split ? h("td", { class: "r" }, st.pair_wait_days ? `${st.pair_wait_days}일` : "–") : null)))),
     h("p", { class: "hint" },
       `OEE = 시간가동률 × 성능가동률 × 양품률. 성능가동률의 기준은 최대 처리량 ${num(maxRate, 3)}/일 `,
-      `(${rules.max_workers_per_station}명 × 속도 ${num(fastest)} × 잔업 ${num(rules.overtime.speed, 2)})입니다.`),
+      `(${rules.max_workers_per_station}명 × 속도 ${num(fastest)} × 잔업 ${num(rules.overtime.speed, 2)})입니다.`,
+      split ? " 짝 대기는 나눠 한 배의 먼저 끝난 부분이 나머지를 기다린 날입니다. 그 작업장은 비어 다른 배를 받을 수 있어 OEE에는 넣지 않고, 배의 리드타임에서는 작업으로 셉니다." : ""),
   );
 
   const invCard = card("재고 금액 추이",

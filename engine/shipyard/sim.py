@@ -35,6 +35,11 @@ LEAD_TIME_STATES = [WORK, REWORK, MATERIAL_WAIT, STATION_WAIT, LABOR_WAIT,
                     TRANSPORT, TRANSPORT_WAIT, ACCIDENT_STOP, BREAKDOWN_STOP]
 LOSS_STATES = [s for s in LEAD_TIME_STATES if s not in (WORK, TRANSPORT)]
 
+# 나눠 하기(3.0): 한 배의 작업량을 빈 작업장 여러 곳에 나눌 때, 먼저 끝난 부분이 나머지를 기다리는 상태.
+# 배의 하루 상태가 아니라 부분(parts) 기록에만 쓴다. 배는 부분 하나라도 일하면 작업이다.
+PAIR_WAIT = "pair_wait"
+MAX_PARTS = 3
+
 COST_KEYS = ["labor", "overtime", "maintenance", "material", "holding", "wip", "rework",
              "accident", "breakdown", "transporter", "investment", "research", "late_penalty"]
 
@@ -105,6 +110,27 @@ def load_presets(scenario_id: str = DEFAULT_SCENARIO) -> list[dict[str, Any]]:
     return _read(DATA_DIR / "scenarios" / f"{scenario_id}.json")["presets"]
 
 
+def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
+    """3.0 설정(`areas`)을 엔진이 읽는 모양(`stations`)으로 바꾼다. 2.x·1.x 설정은 그대로 돌려준다.
+
+    areas.<공정> = {stations: 작업장 수 1~3, crew, method, overtime, maintenance, split}.
+    4M은 공정마다 하나이고 그 공정의 모든 작업장에 같게 적용한다(D30).
+    """
+    if not isinstance(config, dict) or not isinstance(config.get("areas"), dict):
+        return config
+    out = {k: v for k, v in config.items() if k != "areas"}
+    stations = {}
+    for pid, area in config["areas"].items():
+        if not isinstance(area, dict):
+            stations[pid] = area
+            continue
+        st = {k: v for k, v in area.items() if k != "stations"}
+        st["units"] = area.get("stations", 1)
+        stations[pid] = st
+    out["stations"] = stations
+    return out
+
+
 def scenario_of(config: dict[str, Any]) -> dict[str, Any]:
     """설정이 고른 시나리오. 적지 않았으면 기본 분기."""
     sid = config.get("scenario", DEFAULT_SCENARIO) if isinstance(config, dict) else DEFAULT_SCENARIO
@@ -158,10 +184,14 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
                 errors.append(f"{pid}: {key}는 true 또는 false여야 합니다")
         if st.get("crew", "normal") not in rules["crews"]:
             errors.append(f"{pid}: 인력은 {', '.join(rules['crews'])} 중 하나여야 합니다")
+        if not isinstance(st.get("split", False), bool):
+            errors.append(f"{pid}: 나눠 하기(split)는 true 또는 false여야 합니다")
         units = st.get("units", 1)
-        max_units = scenario["expansion"]["max_units"]
+        # 탑재 도크는 골리앗 크레인(걸리버의 두 손)이 있어야 하므로 2곳까지(3.0)
+        max_units = scenario["expansion"].get("max_units_by_station", {}).get(pid, scenario["expansion"]["max_units"])
         if not _is_int(units) or not 1 <= units <= max_units:
-            errors.append(f"{pid}: 작업장 수는 1~{max_units}개여야 합니다")
+            why = " (도크마다 골리앗 크레인이 있어야 하는데, 크레인은 걸리버의 두 손뿐입니다)" if pid == scenario["stations"][-1]["id"] and max_units < scenario["expansion"]["max_units"] else ""
+            errors.append(f"{pid}: 작업장 수는 1~{max_units}개여야 합니다{why}")
 
     pool = config.get("pool")
     if not _is_int(pool) or not 1 <= pool <= rules["max_pool"]:
@@ -193,8 +223,40 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
                                            for m, g in grades.items()):
         errors.append(f"자재 등급은 자재마다 {', '.join(scenario['material_grades'])} 중 하나여야 합니다")
 
+    if not errors:
+        errors += _locked_options(config, scenario)
     if errors:
         raise ConfigError(errors)
+
+
+def _locked_options(config: dict[str, Any], scenario: dict[str, Any]) -> list[str]:
+    """분기(난이도)가 열어 둔 옵션만 썼는지(D33). 화면이 숨긴 옵션을 설정 JSON으로 보내도 여기서 막는다.
+
+    시나리오 파일의 options: crews·methods·material_grades(쓸 수 있는 값), max_units(작업장 수 상한), split(나눠 하기).
+    options가 없는 시나리오(손 계산용 등)는 모두 열려 있다.
+    """
+    opts = scenario.get("options")
+    if not opts:
+        return []
+    name = scenario.get("name", "이 분기")
+    rules = scenario["rules"]
+    errors: list[str] = []
+    for st in scenario["stations"]:
+        pid, label = st["id"], st["name"]
+        cfg = config["stations"][pid]
+        crew = crew_of(config, pid)
+        if crew not in opts["crews"]:
+            errors.append(f"{name}에서는 인력 '{rules['crews'][crew]['name']}'을(를) 쓸 수 없습니다({label})")
+        if cfg["method"] not in opts["methods"]:
+            errors.append(f"{name}에서는 공법 '{rules['methods'][cfg['method']]['name']}'을(를) 쓸 수 없습니다({label})")
+        if cfg.get("units", 1) > opts["max_units"]:
+            errors.append(f"{name}에서는 작업장을 {opts['max_units']}개까지 둘 수 있습니다({label})")
+        if cfg.get("split", False) and not opts["split"]:
+            errors.append(f"{name}에서는 나눠 하기를 쓸 수 없습니다({label})")
+    for mid, grade in (config.get("materials") or {}).items():
+        if grade not in opts["material_grades"]:
+            errors.append(f"{name}에서는 자재 등급 '{scenario['material_grades'][grade]['name']}'을(를) 쓸 수 없습니다({mid})")
+    return errors
 
 
 # ---------------------------------------------------------------------------
@@ -276,6 +338,14 @@ def station_units(config: dict[str, Any], scenario: dict[str, Any]) -> list[int]
     return [config["stations"][s["id"]].get("units", 1) for s in scenario["stations"]]
 
 
+def split_parts(config: dict[str, Any], scenario: dict[str, Any], p: int, units: int) -> int:
+    """나눠 하기를 켠 공정에서 배 한 척을 나눌 최대 부분 수. 탑재(마지막 공정)는 나누지 않는다."""
+    st = scenario["stations"][p]
+    if p == len(scenario["stations"]) - 1 or not config["stations"][st["id"]].get("split", False):
+        return 1
+    return min(units, MAX_PARTS)
+
+
 def investment(config: dict[str, Any], scenario: dict[str, Any]) -> float:
     """설비 투자비: 증설한 작업장 + 로봇 도입(작업장마다) + 신공법 도입(공정마다)."""
     rules = scenario["rules"]
@@ -315,6 +385,7 @@ def fixed_costs(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, f
 
 def preview(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> dict[str, Any]:
     """실행하지 않고 설정만으로 알 수 있는 값: 공정별 최대 처리량과 불량률, 고정비, 연구 일정."""
+    config = normalize_config(config)
     scenario = scenario or scenario_of(config)
     validate_config(config, scenario)
     order_days = resolve_order_days(config, scenario)
@@ -350,6 +421,8 @@ def plan_schedule(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str,
     tr = scenario["transporter"]
     move_days = math.ceil(tr["lot_weight"] / (tr["capacity"] * config["transporters"]["count"]))
     assigned = min(config["pool"], rules["max_workers_per_station"])
+    units_of = dict(zip((s["id"] for s in scenario["stations"]), station_units(config, scenario)))
+    parts_of = {s["id"]: split_parts(config, scenario, p, units_of[s["id"]]) for p, s in enumerate(scenario["stations"])}
     ships: dict[str, dict[str, dict[str, int]]] = {}
     for order in scenario["orders"]:
         work = scenario["ship_types"][order["type"]]["work"]
@@ -357,7 +430,8 @@ def plan_schedule(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str,
         spans = {}
         for st in scenario["stations"]:
             rate = station_rate(config["stations"][st["id"]], rules, assigned)
-            end = day + math.ceil(work[st["id"]] / rate - EPS) - 1
+            # 나눠 하기: 작업장을 모두 쓴다고 보고 부분 작업량으로 잰다(배가 혼자 쓸 때의 일정).
+            end = day + math.ceil(work[st["id"]] / parts_of[st["id"]] / rate - EPS) - 1
             spans[st["id"]] = {"start": day, "end": end}
             day = end + move_days   # 끝난 다음 날부터 운반, 다 나른 날 다음 공정에 들어간다.
         ships[order["id"]] = spans
@@ -367,7 +441,8 @@ def plan_schedule(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str,
     ids = list(ships)
     for st, n_units in zip(scenario["stations"], station_units(config, scenario)):
         sid = st["id"]
-        users = lambda day: sum(1 for k in ids if ships[k][sid]["start"] <= day <= ships[k][sid]["end"])
+        # 나눠 하기를 켠 공정은 배 한 척이 작업장을 모두 차지한다.
+        users = lambda day: sum(parts_of[sid] for k in ids if ships[k][sid]["start"] <= day <= ships[k][sid]["end"])
         for i, a in enumerate(ids):
             for b in ids[i + 1:]:
                 sa, sb = ships[a][sid], ships[b][sid]
@@ -392,6 +467,7 @@ def simulate(config: dict[str, Any], scenario: dict[str, Any] | None = None, bas
     같은 설정이면 항상 같은 결과가 나온다. 난수는 시나리오의 표에서 읽는다.
     baseline이 참이면 기준선 프리셋(전부 최대 투입)도 같은 시나리오로 돌려 등급에 비교를 붙인다.
     """
+    config = normalize_config(config)
     scenario = scenario or scenario_of(config)
     result = _run(_with_order_days(config, scenario), scenario)
     base_cfg = _baseline_config(scenario) if baseline else None
@@ -412,6 +488,7 @@ def _baseline_config(scenario: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
+    config = normalize_config(config)
     validate_config(config, scenario)
 
     days: int = scenario["days"]
@@ -432,7 +509,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     grades = [material_grade(config, s["material"]) for s in stations]
     prices = material_prices(config, scenario)
     skilled_extra = rules["crews"]["skilled"]["extra_wage_per_worker_day"]
-    n_units = station_units(config, scenario)              # 공정마다 작업장 수 (증설하면 2)
+    n_units = station_units(config, scenario)              # 공정마다 작업장 수 (증설하면 2~3)
+    parts_max = [split_parts(config, scenario, p, n_units[p]) for p in range(n_st)]   # 나눠 하기: 배 한 척의 최대 부분 수
     pool: int = config["pool"]
     n_tr: int = config["transporters"]["count"]
     tr_maintained: bool = config["transporters"]["maintenance"]
@@ -474,6 +552,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     unit_busy = [[0] * n for n in n_units]                 # 작업장마다 일한 날 (고장 판정 간격)
     unit_breakdowns = [[0] * n for n in n_units]
     transit: dict[int, dict[str, Any]] = {}                # 공정 사이를 옮기는 로트
+    # 공정 안에 있는 배의 묶음: 부분(작업장) 수, 남은 부분, 끝난 작업장, 검사 판정. 나눠 하기를 끄면 부분 1개.
+    groups: dict[int, dict[str, Any]] = {}
     tr_moves = [0] * n_tr
     tr_stop_until = [0] * n_tr
 
@@ -505,6 +585,14 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     for day in range(1, days + 1):
         done_research = frozenset(r["id"] for r in schedule if r["end"] < day)
         ship_state: dict[int, tuple[str, int, int | None]] = {}   # 배 → (상태, 공정, 작업장 번호)
+        closed_today: dict[int, dict[str, Any]] = {}             # 오늘 공정을 끝낸 묶음(하루 기록의 parts용)
+
+        def put(i: int, entry: tuple[str, int, int | None]) -> None:
+            """배의 오늘 상태. 부분 하나라도 일하면 작업(재작업)이고, 다른 부분의 대기·중지로 덮지 않는다."""
+            old = ship_state.get(i)
+            if old and old[0] in (WORK, REWORK) and entry[0] not in (WORK, REWORK):
+                return
+            ship_state[i] = entry
         station_today = [[{"state": "idle", "ship": None, "workers": 0} for _ in range(n)] for n in n_units]
 
         # 1. 입고
@@ -570,7 +658,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             inside = {c["ship"] for c in current[p] if c}
             waiting = [i for i in by_priority
                        if delivered[i] is None and i not in transit and stage[i] == p and ready[i] <= day
-                       and i not in inside]
+                       and i not in inside and i not in groups]
             entered: set[int] = set()
             stopped_causes = []
 
@@ -585,7 +673,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                     else:
                         breakdown_stopped[p] += 1
                     if cur:
-                        ship_state[cur["ship"]] = (cause, p, u)
+                        put(cur["ship"], (cause, p, u))
                     station_today[p][u] = {"state": cause, "ship": orders[cur["ship"]]["id"] if cur else None, "workers": 0}
                     continue
 
@@ -603,13 +691,26 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                             stock[mid] -= need
                             events.append({"day": day, "type": "issue", "material": mid, "quantity": need,
                                            "ship": orders[i]["id"], "station": pid})
+                        # 나눠 하기: 지금 비어 있고 멈추지 않은 작업장(이 작업장 + 뒤 번호)에 작업량을 똑같이 나눈다.
                         work = work_of(i, p)
-                        cur = current[p][u] = {"ship": i, "remaining": work, "amount": work, "rework": False}
+                        parts = [u] + [v for v in range(u + 1, n_units[p])
+                                       if current[p][v] is None and day > stop_until[p][v]][:parts_max[p] - 1]
+                        k = len(parts)
+                        group = groups[i] = {"station": p, "units": parts, "done": [], "left": k,
+                                             "base": work / k, "verdict": None}
+                        for idx, v in enumerate(parts):
+                            current[p][v] = {"ship": i, "remaining": work / k, "amount": work / k, "rework": False,
+                                             "group": group, "part": idx}
+                        # 투입 기록은 배 한 척에 하나. 나눠 들어갔으면 작업장 목록(units)을 함께 싣는다(3.0).
+                        enter = {"day": day, "type": "enter", "ship": orders[i]["id"], "station": pid, "unit": parts[0] + 1}
+                        if k > 1:
+                            enter["units"] = [v + 1 for v in parts]
+                        events.append(enter)
+                        cur = current[p][u]
                         entered.add(i)
                         spans[i][pid] = {"start": day, "end": day}
                         if p == 0:
                             started[i] = day
-                        events.append({"day": day, "type": "enter", "ship": orders[i]["id"], "station": pid, "unit": u + 1})
                         break
                     if cur is None and any(ship_state.get(i, ("",))[0] == MATERIAL_WAIT for i in waiting):
                         material_wait[p] += 1
@@ -645,7 +746,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             i = cur["ship"]
             if assigned[p][u] == 0 and crews[p] != "robot":
                 labor_wait[p] += 1
-                ship_state[i] = (LABOR_WAIT, p, u)
+                put(i, (LABOR_WAIT, p, u))
                 station_today[p][u] = {"state": LABOR_WAIT, "ship": orders[i]["id"], "workers": 0}
                 continue
 
@@ -655,7 +756,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             busy[p] += 1
             unit_busy[p][u] += 1
             state = REWORK if cur["rework"] else WORK
-            ship_state[i] = (state, p, u)
+            put(i, (state, p, u))
             station_today[p][u] = {"state": state, "ship": orders[i]["id"], "workers": assigned[p][u]}
             spans[i][pid]["end"] = day
 
@@ -688,23 +789,38 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                     events.append({"day": day, "type": "breakdown", "station": pid, "unit": u + 1, "ship": orders[i]["id"]})
 
             # 5-3. 다 끝났으면 검사하고, 불량이면 재작업량을 넣는다. 합격하면 다음 날부터 운반을 기다린다.
+            #      나눠 한 배는 부분마다 끝나지만, 검사 판정은 배 한 척에 한 번이다(같은 난수, 같은 불량률).
+            #      불량이면 부분마다 자기 작업량의 비율만큼 재작업한다. 재작업비·불량 건수·검사 수도 배 한 척에 한 번.
             if cur["remaining"] <= EPS:
                 work_done[p] += cur["amount"]
+                group = cur["group"]
                 if not cur["rework"]:
-                    inspections[p] += 1
-                    rate = station_defect_rate(st_cfg[p], crews[p], scenario, done_research, inspections[p] - 1, grades[p])
-                    if rnd["quality"][orders[i]["id"]][pid] < rate:
+                    if group["verdict"] is None:
+                        inspections[p] += 1
+                        rate = station_defect_rate(st_cfg[p], crews[p], scenario, done_research, inspections[p] - 1, grades[p])
+                        group["verdict"] = rnd["quality"][orders[i]["id"]][pid] < rate
+                        if group["verdict"]:
+                            cost["rework"] += costs["rework_per_defect"]
+                            defects += 1
+                            events.append({"day": day, "type": "defect", "ship": orders[i]["id"], "station": pid, "unit": u + 1})
+                        else:
+                            passes[p] += 1
+                    if group["verdict"]:
                         ratio = (scenario["research"]["auto_inspect"]["rework_ratio"]
                                  if "auto_inspect" in done_research else rules["rework_ratio"])
-                        cur["remaining"] = cur["amount"] = work_of(i, p) * ratio
+                        cur["remaining"] = cur["amount"] = group["base"] * ratio
                         cur["rework"] = True
-                        cost["rework"] += costs["rework_per_defect"]
-                        defects += 1
-                        events.append({"day": day, "type": "defect", "ship": orders[i]["id"], "station": pid, "unit": u + 1})
                         continue
-                    passes[p] += 1
+                # 이 부분은 끝났다. 작업장을 비우고, 다른 부분이 남았으면 짝 대기.
+                current[p][u] = None
+                group["left"] -= 1
+                group["done"].append(u)
+                group.setdefault("done_day", {})[u] = day
+                if group["left"] > 0:
+                    continue
+                closed_today[i] = groups.pop(i)
                 events.append({"day": day, "type": "complete", "ship": orders[i]["id"], "station": pid, "unit": u + 1})
-                stage[i], current[p][u] = p + 1, None
+                stage[i] = p + 1
                 if p == n_st - 1:
                     delivered[i] = day
                     events.append({"day": day, "type": "delivery", "ship": orders[i]["id"],
@@ -720,7 +836,17 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         for i in range(n_ships):
             if i in ship_state:
                 state, p, u = ship_state[i]
-                ship_daily[i].append({"state": state, "station": stations[p]["id"], "unit": None if u is None else u + 1})
+                rec = {"state": state, "station": stations[p]["id"], "unit": None if u is None else u + 1}
+                group = groups.get(i) or closed_today.get(i)
+                if group and len(group["units"]) > 1:
+                    # 나눠 하는 중: 부분(작업장)마다 오늘 상태. 먼저 끝난 부분은 짝 대기.
+                    gp = group["station"]
+                    # 먼저 끝난 부분은 다음 날부터 짝 대기다. 오늘 끝난 부분은 오늘 한 일(작업)로 적는다.
+                    finished = group.get("done_day", {})
+                    rec["parts"] = [{"unit": v + 1,
+                                     "state": PAIR_WAIT if v in finished and finished[v] < day else station_today[gp][v]["state"]}
+                                    for v in group["units"]]
+                ship_daily[i].append(rec)
             elif delivered[i] is not None:
                 ship_daily[i].append({"state": DONE, "station": None})
             else:
@@ -783,6 +909,15 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             "daily": ship_daily[i],
         })
 
+    # 짝 대기(3.0): 나눠 한 배의 먼저 끝난 부분이 나머지를 기다린 날을 공정·작업장마다 센다.
+    # 그 작업장은 비어 있어 다른 배를 받을 수 있으므로 OEE(작업장의 손실)에는 넣지 않고, 배의 리드타임에서는 작업으로 센다.
+    pair_wait_days = [[0] * n for n in n_units]
+    for i in range(n_ships):
+        for rec in ship_daily[i]:
+            for part in rec.get("parts", []):
+                if part["state"] == PAIR_WAIT:
+                    pair_wait_days[stations.index(next(s for s in stations if s["id"] == rec["station"]))][part["unit"] - 1] += 1
+
     top = max_rate(rules)
     stations_out = []
     for p, st in enumerate(stations):
@@ -803,12 +938,14 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             "breakdown_stop_days": breakdown_stopped[p],
             "material_wait_days": material_wait[p],
             "labor_wait_days": labor_wait[p],
+            "pair_wait_days": sum(pair_wait_days[p]),
             "breakdowns": station_breakdowns[p],
             "work_done": work_done[p],
             "inspections": inspections[p],
             "passes": passes[p],
             "oee": {"availability": availability, "performance": performance, "quality": quality, "oee": oee},
             "units": [{"unit": u + 1, "busy_days": unit_busy[p][u], "breakdowns": unit_breakdowns[p][u],
+                       "pair_wait_days": pair_wait_days[p][u],
                        "daily": station_daily[p][u]} for u in range(n_units[p])],
             # 1호 작업장의 하루 기록. 화면이 units를 읽게 되면(2.0 화면) 지운다.
             "daily": station_daily[p][0],
@@ -951,6 +1088,7 @@ def suggest_order_days(config: dict[str, Any], scenario: dict[str, Any] | None =
     1.0의 "발주일 역산" 버튼이 쓰던 함수다. 1.1부터 화면은 발주 방식(ordering)을 고르고,
     이 함수는 /api/suggest-orders 하위 호환으로만 남는다.
     """
+    config = normalize_config(config)
     scenario = scenario or scenario_of(config)
     validate_config(config, scenario)
     lead = {m["id"]: m["lead_days"] for m in scenario["materials"]}
@@ -964,6 +1102,7 @@ def resolve_order_days(config: dict[str, Any], scenario: dict[str, Any] | None =
     bulk: 모든 자재를 1일에. jit: 필요일 − 리드타임 − 여유일. late: 필요일에 (리드타임만큼 자재 대기).
     필요일은 자재가 항상 충분하다고 보고 한 번 돌려서 구한다. 실제 실행에서는 앞 공정이 늦어지면 필요일도 밀린다.
     """
+    config = normalize_config(config)
     scenario = scenario or scenario_of(config)
     ordering = config.get("ordering")
     if ordering is None:

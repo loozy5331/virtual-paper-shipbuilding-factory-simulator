@@ -4,7 +4,7 @@
 // 탭 전환도 hidden만 바꾼다. 처리량, 불량률, 고정비, 연구 일정, 발주일, 계획 막대는
 // 서버의 /api/preview 결과를 data-preview 자리에 채운다.
 
-import type { Config, Crew, Ordering, Preset, Preview, Scenario, ScenarioSummary } from "./api";
+import type { Config, Crew, Ordering, Preset, Preview, Scenario, ScenarioOptions, ScenarioSummary } from "./api";
 import { h, mount, money, num, pct } from "./dom";
 import { STATION_COLOR } from "./labels";
 import { docHead } from "./paper";
@@ -84,7 +84,11 @@ export function renderPlanNotes(root: HTMLElement, ctx: FormContext): void {
         : [h("b", null, "직접 정한 계획"), h("p", null, "예시 안을 바탕으로 하지 않은 계획입니다.")]),
     h("div", { class: "postit blue" },
       h("b", null, `${scenario.period} · ${scenario.name}`),
-      h("p", null, scenario.summary)));
+      h("p", null, scenario.summary),
+      // 분기별 옵션(D33): 새로 열린 것이 곧 이 분기에서 배울 것
+      scenario.unlocks
+        ? h("p", { class: "postit-unlock" }, h("b", null, (scenario.level ?? 1) > 1 ? "새로 쓸 수 있는 것 " : "이 분기 "), scenario.unlocks)
+        : null));
 }
 
 /** 예시 계획의 이름: 프리셋 순서대로 A안, B안, C안. 회사 서류에서 대안을 비교할 때 쓰는 말이다. */
@@ -191,9 +195,19 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
   showTab(root, activeTab);
 }
 
+/** 분기가 열어 둔 옵션(D33). 시나리오에 없으면 모두 연다. */
+function openOptions(scenario: FormContext["scenario"]): ScenarioOptions {
+  return scenario.options ?? {
+    crews: Object.keys(scenario.rules.crews) as Crew[], methods: Object.keys(scenario.rules.methods),
+    material_grades: Object.keys(scenario.material_grades), max_units: scenario.expansion.max_units, split: true,
+  };
+}
+
 function commonPane(ctx: FormContext): HTMLElement {
   const { scenario, config } = ctx;
-  const methods = Object.entries(scenario.rules.methods);
+  const opts = openOptions(scenario);
+  // 쉬운 분기에서는 가린 옵션을 아예 그리지 않는다(D33).
+  const methods = Object.entries(scenario.rules.methods).filter(([id]) => opts.methods.includes(id));
 
   const pool = h("div", { class: "field-row" },
     h("span", { class: "field-label" }, "작업대기소"),
@@ -209,7 +223,10 @@ function commonPane(ctx: FormContext): HTMLElement {
       config.transporters.count, (v) => { config.transporters.count = v; ctx.onEdit(false); }),
     toggle("정비", config.transporters.maintenance, (on) => { config.transporters.maintenance = on; ctx.onEdit(false); }));
 
-  const crews = Object.entries(scenario.rules.crews) as [Crew, { name: string; summary: string; install_cost?: number }][];
+  // 공정마다 작업장 수 상한: 분기 상한과 공정 상한(탑재 도크는 크레인이 있어야 해 2곳) 중 작은 것
+  const unitCap = (pid: string) => Math.min(opts.max_units, scenario.expansion.max_units_by_station?.[pid] ?? opts.max_units);
+  const crews = (Object.entries(scenario.rules.crews) as [Crew, { name: string; summary: string; install_cost?: number }][])
+    .filter(([id]) => opts.crews.includes(id));
   const stationCards = scenario.stations.map((st) => {
     const cfg = config.stations[st.id];
     // 1.x 설정의 시니어는 그 공정의 숙련공으로 옮겨 적는다(엔진도 같이 읽는다).
@@ -237,10 +254,14 @@ function commonPane(ctx: FormContext): HTMLElement {
           robot
             ? h("span", { class: "hint", title: scenario.rules.crews.robot.summary }, "로봇은 잔업 없음")
             : toggle("잔업", cfg.overtime, (on) => { cfg.overtime = on; ctx.onEdit(false); }),
-          toggle("정비", cfg.maintenance, (on) => { cfg.maintenance = on; ctx.onEdit(false); })),
-        h("span", { class: "field-label" }, "작업장"),
-        segmented(`units-${st.id}`,
-          Array.from({ length: scenario.expansion.max_units }, (_, k) => ({
+          toggle("정비", cfg.maintenance, (on) => { cfg.maintenance = on; ctx.onEdit(false); }),
+          // 나눠 하기(3.0): 탑재는 배 한 척이 도크 하나에 들어가야 해서 나누지 않는다.
+          st.id === scenario.stations[scenario.stations.length - 1].id || !opts.split
+            ? null
+            : toggle("나눠 하기", cfg.split ?? false, (on) => { if (on) cfg.split = true; else delete cfg.split; ctx.onEdit(false); })),
+        unitCap(st.id) > 1 ? h("span", { class: "field-label" }, "작업장") : null,
+        unitCap(st.id) <= 1 ? null : segmented(`units-${st.id}`,
+          Array.from({ length: unitCap(st.id) }, (_, k) => ({
             value: k + 1, label: k === 0 ? "1개" : `${k + 1}개 (+${num(scenario.expansion.cost[st.id] * k)})`,
           })),
           cfg.units ?? 1, (v) => { if (v > 1) cfg.units = v; else delete cfg.units; ctx.onEdit(false); }),
@@ -261,7 +282,7 @@ function commonPane(ctx: FormContext): HTMLElement {
     ` 배별 발주일은 ${scenario.orders[0].id}~${scenario.orders[scenario.orders.length - 1].id} 탭에 있습니다.`);
 
   return h("div", { class: "pane", "data-pane": "common" },
-    pool, transporter, ordering, orderingHint, materialGrades(ctx),
+    pool, transporter, ordering, orderingHint, opts.material_grades.includes("cheap") ? materialGrades(ctx) : null,
     researchQueue(ctx),
     h("div", { class: "stations" }, stationCards),
     h("p", { class: "hint fixed" },

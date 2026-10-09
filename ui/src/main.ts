@@ -2,10 +2,11 @@
 // 화면은 셋이다(2.0):
 //   desk  첫 화면. 책상 위 분기별 클립보드에서 분기를 고른다.
 //   plan  생산계획서 클립보드가 가운데. 왼쪽 인덱스 탭 A안·B안·C안, 맨 아래 펜으로 결재란 "승인" 칸에 서명하고 실행.
-//   room  관제실(생산관리자 1인칭). 정면 벽 모니터 두 대: 왼쪽 = 재생 막대 + 간트, 오른쪽 = 기호도(또는 CCTV) + 사건 기록.
+//   room  관제실(생산관리자 1인칭). 정면 벽 모니터 두 대: 왼쪽 = 재생 막대 + 간트, 오른쪽 = 작업 현황 전경(2D, 공정 확대) + 사건 기록.
 //         책상 위에 생산계획서 클립보드(누르면 계획 고치기)와 작업모. 60일이 끝나면 생산실적 평가서 클립보드를 받는다.
 //   field 현장. 작업모를 쓰고 직접 나간 생산관리자의 눈(3D 화면 전체). 전경·공정 가까이, 재생 막대, "관제실로".
-// 현장을 보는 길: 기호도 작업장, 간트 막대, 평가서의 "현장에서 보기" → 오른쪽 모니터의 CCTV(재생 중에도 오늘을 본다).
+// 공정을 들여다보는 길: 전경의 정반, 간트 막대, 평가서의 "작업 현황에서 보기" → 오른쪽 모니터의 공정 확대(재생 중에도 오늘을 본다).
+// 사람의 얼굴과 이름은 작업모를 쓰고 현장(3D)에 직접 나가야 보인다(D24). 화면에는 "CCTV"라는 말을 쓰지 않는다(감시처럼 느껴져서).
 
 import { api, ApiError, type ClassBest, type Config, type Finding, type Preview, type Result, type ScenarioPayload } from "./api";
 import { h, mount, num, pct } from "./dom";
@@ -13,14 +14,22 @@ import { renderDesk } from "./desk";
 import { planLabel, renderForm, renderPlanBar, renderPlanNotes, renderPlanTabs, updatePreview, type FormContext } from "./form";
 import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
 import { docHead, REVIEWER } from "./paper";
-import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, STATION_COLOR, TRANSPORT_STATE } from "./labels";
+import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, PAIR_WAIT_STATE, STATION_COLOR, TRANSPORT_STATE } from "./labels";
 import { breakdownBar, breakdownLegend, eventText, renderReport } from "./report";
-import { renderSchematic } from "./schematic";
+import { renderCctv } from "./cctv";
 import { buildFrame } from "./scene/frame";
 import type { Yard } from "./scene/yard";
 
-const SPEEDS = [1, 4];   // 기본 4배속(사용자 결정). 1배속에서만 소인이 걸어서 옮긴다.
+const SPEEDS = [1, 4];   // 관제실 배속. 기본 4배속(사용자 결정). 현장은 따로 1배속 고정(FIELD_MS_PER_DAY).
 const BASE_MS_PER_DAY = 500;   // 1배속은 하루에 0.5초, 60일이 30초다.
+// 현장(3D)은 1배속 고정이고 하루가 더 길다(2초): 소인이 걸어서 작업장에 닿고 일하는 모습이 보이게(2.1.4, D28).
+// 나가면 시간이 멈춰 있고, 재생을 누르면 이 속도로 흐른다.
+const FIELD_MS_PER_DAY = 2000;   // 3초는 처음 자재를 기다리는 날들이 지루했다(2.1.5)
+
+/** 지금 화면의 하루 길이(ms). */
+function msPerDay(): number {
+  return state.screen === "field" ? FIELD_MS_PER_DAY : BASE_MS_PER_DAY / state.speed;
+}
 // 사건 기록에 남기는 사건. 투입, 완료, 출고, 운반은 너무 잦아서 뺀다.
 const LOG_EVENTS = new Set(["arrival", "defect", "accident", "breakdown", "delivery", "research_done"]);
 // 배 탭(크게 보기)의 그 배 사건: 투입, 완료, 입고, 불량, 사고, 운반, 인도
@@ -36,6 +45,8 @@ interface Run {
   finished: boolean;           // 60일 끝까지 본 적이 있다 → 평가서가 나온다.
   /** 생산계획서에 서명한 사람(닉네임, 반 코드). 60일을 끝내면 이 이름으로 서버에 저장한다. */
   signer: Signer | null;
+  /** 현장 안전 경고 횟수(3.0, 등급과 무관). 현장에 나간 적이 없으면 없음 */
+  safetyWarnings?: number;
   /** 그 회차 계획의 미리보기(책상의 생산계획서를 펼쳐 볼 때 계획 간트·숫자를 채운다). 처음 펼칠 때 받아 둔다. */
   preview?: Preview;
 }
@@ -66,12 +77,14 @@ interface State {
   playing: boolean;
   speed: number;
   board: BoardState;
-  /** 오른쪽 모니터 위쪽이 CCTV면 비추는 공정 번호. null이면 기호도. */
+  /** 오른쪽 모니터 위쪽 작업 현황에서 확대한 공정 번호. null이면 전경. (이름은 옛 CCTV에서 왔다) */
   cctv: number | null;
   /** 크게 보고 있는 모니터 */
   zoomed: "left" | "right" | null;
   /** 현장에서 가까이 보는 공정. null이면 전경. */
   fieldFocus: number | null;
+  /** 현장에서 관리자가 선 자리: 안전한 자리, 또는 버튼으로 순간이동한 설비 옆(3.0) */
+  managerSpot: "safe" | "crane" | "cart";
   /** 마지막으로 서명한 사람(이 브라우저가 기억한다). */
   signer: Signer | null;
   /** 반 코드를 적었으면 그 반의 시나리오별 최고(서버). */
@@ -109,7 +122,6 @@ const els = {
   osdRight: h("div", { class: "osd osd-right", "data-group": "speed-right" }),
   ganttScreen: h("div", { class: "gantt-screen" }),
   rightTop: h("div", { class: "right-top" }),
-  cctvHost: h("div", { class: "scene-host cctv-host" }),
   log: h("ol", { class: "log", "aria-label": "사건 기록" }),
   deskClip: h("button", { class: "desk-clip", type: "button", title: "생산계획서로 돌아가 계획을 고칩니다" }),
   hat: h("button", { class: "desk-hat", type: "button", title: "작업모를 쓰고 현장으로 나갑니다" }),
@@ -633,7 +645,7 @@ function restartTimer(): void {
     if (state.day >= r.result.days && !r.finished) finish();
     else if (state.day >= r.result.days) pause();
     else tick(false);
-  }, BASE_MS_PER_DAY / state.speed);
+  }, msPerDay());
 }
 
 function seek(day: number): void {
@@ -642,14 +654,6 @@ function seek(day: number): void {
   state.day = Math.max(0, Math.min(r.result.days, day));
   if (state.day >= r.result.days && state.playing) pause();
   else tick(true);
-}
-
-/** 받은 평가서를 다시 올린다(현장이면 관제실로 돌아와서). */
-function showReport(): void {
-  pause();
-  if (state.screen !== "room") setScreen("room");
-  state.board = "up";
-  drawRoom();
 }
 
 /** 60일에 닿았다: 재생을 멈추고 생산실적 평가서 클립보드를 받는다. */
@@ -666,7 +670,7 @@ function finish(): void {
   drawRoom();
 }
 
-/** 날짜가 바뀔 때마다 모니터(간트, 기호도·CCTV, 사건 기록)와 재생 막대를 갱신한다. jump면 3D 소인이 걷지 않고 바로 옮긴다. */
+/** 날짜가 바뀔 때마다 모니터(간트, 작업 현황, 사건 기록)와 재생 막대를 갱신한다. jump면 3D 소인이 걷지 않고 바로 옮긴다. */
 function tick(jump: boolean): void {
   const r = currentRun();
   if (!state || !r || (state.screen !== "room" && state.screen !== "field")) {
@@ -705,18 +709,15 @@ function tick(jump: boolean): void {
     if (playBtn) playBtn.textContent = state.playing ? "❚❚ 멈춤" : "▶ 재생";
   }
 
-  // 오른쪽 모니터 위: 기호도 또는 CCTV
-  if (state.cctv === null) {
-    const host = els.rightTop.querySelector(".schematic-host");
-    if (host) {
-      mount(host, renderSchematic(buildFrame(result, scenario, r.config, state.day, 1), scenario, {
-        onStation: (p) => openCctv(p),
-      }));
-    }
-  } else {
-    const cam = els.rightTop.querySelector(".cam-label");
-    if (cam) cam.textContent = camLabel(state.cctv);
+  // 오른쪽 모니터 위: 작업 현황(위에서 비스듬히 내려다본 2D 정지 화면). 전경 또는 고른 공정 확대.
+  const feed = els.rightTop.querySelector(".cc-host");
+  if (feed) {
+    mount(feed, renderCctv(buildFrame(result, scenario, r.config, state.day, 1), scenario, {
+      focus: state.cctv, onStation: (p) => openCctv(p),
+    }));
   }
+  const cam = els.rightTop.querySelector(".cam-label");
+  if (cam) cam.textContent = camLabel();
 
   // 오른쪽 모니터 아래: 사건 기록(오늘까지, 최근이 위). 스크롤해서 보던 자리는 지킨다.
   const keep = els.log.scrollTop;
@@ -731,42 +732,46 @@ function tick(jump: boolean): void {
 }
 
 // ---------------------------------------------------------------------------
-// CCTV (오른쪽 모니터 위쪽의 3D)
+// 작업 현황 전경 (오른쪽 모니터 위쪽, 2D)
 // ---------------------------------------------------------------------------
 
-function camLabel(station: number): string {
-  return `CAM ${station + 1} · ${state.data.scenario.stations[station].name} · ${state.day}일`;
+function camLabel(): string {
+  const where = state.cctv === null ? "작업 현황 전경" : `작업 현황 · ${state.data.scenario.stations[state.cctv].name}`;
+  return `${where} · ${state.day}일`;
 }
 
-/** 오른쪽 모니터를 그 공정의 CCTV로 바꾼다. 재생 중에도 오늘을 본다(결과를 미리 알려 주지 않는다). */
+/** 오른쪽 모니터 작업 현황을 그 공정으로 확대한다. 재생 중에도 오늘을 본다(결과를 미리 알려 주지 않는다). */
 function openCctv(station: number, day?: number): void {
   if (!currentRun()) return;
   state.cctv = station;
   drawRightTop();
   if (day !== undefined) seek(day);
   else tick(true);
-  aimCamera();
 }
 
-/** 카메라: 현장이면 전경 또는 고른 공정, CCTV면 그 공정. */
+/** 현장 카메라: 전경 또는 고른 공정. */
 function aimCamera(): void {
-  const apply = () => yard?.setCamera("field", state.screen === "field" ? state.fieldFocus : state.cctv);
+  const apply = () => {
+    yard?.setCamera("field", state.fieldFocus);
+    // 공정을 바꿔 보면 관리자는 그 공정 앞 안전한 자리로 간다
+    state.managerSpot = "safe";
+    yard?.setManagerSpot("safe", state.fieldFocus);
+    // 이름표는 현장에서 공정을 가까이 볼 때만.
+    yard?.showNameTags(state.screen === "field" && state.fieldFocus !== null);
+  };
   if (yard) apply();
   else void yardLoading?.then(apply);
 }
 
 function closeCctv(): void {
   state.cctv = null;
-  yard?.stop();
   drawRightTop();
   tick(true);
 }
 
-/** 3D를 그릴 자리: 현장이면 화면 전체, 관제실에서 CCTV를 보고 있으면 오른쪽 모니터. 아니면 없음. */
+/** 3D를 그릴 자리: 현장이면 화면 전체. 관제실은 2D라 3D가 없다. */
 function sceneHost(): HTMLElement | null {
-  if (state.screen === "field") return els.sceneField;
-  if (state.screen === "room" && state.cctv !== null) return els.cctvHost;
-  return null;
+  return state.screen === "field" ? els.sceneField : null;
 }
 
 /** 3D를 보는 중이면 장면을 오늘 날짜로 맞추고, 아니면 그리기를 멈춘다. */
@@ -788,8 +793,9 @@ function syncScene(jump: boolean): void {
     return;
   }
   yard.attach(host);
+  yard.setManagerName(r.signer?.nickname ?? "생산관리자");
   if (yardRun !== r) {
-    yard.load(r.result.ships.map((s) => s.id));
+    yard.load(r.result.ships.map((s) => ({ id: s.id, type: s.type })));
     yardRun = r;
     jump = true;
   }
@@ -798,9 +804,9 @@ function syncScene(jump: boolean): void {
   yard.setSource({
     frameAt: (frac) => buildFrame(r.result, scenario, r.config, day, frac),
     playing: state.playing,
-    msPerDay: BASE_MS_PER_DAY / state.speed,
+    msPerDay: msPerDay(),
     // 1배속 이하에서만 걷는 모습을 보여 준다. 빠르면 바로 옮긴다.
-    snap: jump || state.speed > 1,
+    snap: jump || (state.screen !== "field" && state.speed > 1),
   });
   yard.start();
 }
@@ -811,7 +817,7 @@ function pickBar(pick: GanttPick): void {
   openCctv(station, pick.start);
 }
 
-/** 평가서의 의문점 카드: 간트는 왼쪽 모니터를 그 배·날짜로, 현장은 오른쪽 모니터를 그 공정의 CCTV로. 보드는 내려 둔다. */
+/** 평가서의 의문점 카드: 간트는 왼쪽 모니터를 그 배·날짜로, 작업 현황은 오른쪽 모니터를 그 공정 확대로. 보드는 내려 둔다. */
 function openFinding(f: Finding, where: "field" | "gantt"): void {
   pause();
   state.board = "down";
@@ -882,10 +888,13 @@ function drawOsd(target: HTMLElement = els.osd): void {
   mount(target,
     h("button", { class: "osd-btn", type: "button", title: "처음부터", onclick: () => { pause(); seek(0); } }, "⟲"),
     h("button", { class: "osd-btn play", type: "button", onclick: () => (state.playing ? pause() : play()) }, "▶ 재생"),
-    h("div", { class: "osd-speed", role: "radiogroup", "aria-label": "배속" }, SPEEDS.map((sp) =>
-      h("label", null,
-        h("input", { type: "radio", name: group, checked: state.speed === sp, onchange: () => { state.speed = sp; restartTimer(); allOsds().forEach((o) => drawOsd(o)); tick(true); } }),
-        h("span", null, `${sp}×`)))),
+    // 현장은 1배속 고정(하루 2초): 배속 대신 안내만
+    target === els.fieldOsd
+      ? h("span", { class: "osd-fixed", title: "현장은 소인이 걸어서 일하는 모습을 보도록 1배속으로만 흐릅니다" }, `1× · 하루 ${FIELD_MS_PER_DAY / 1000}초`)
+      : h("div", { class: "osd-speed", role: "radiogroup", "aria-label": "배속" }, SPEEDS.map((sp) =>
+        h("label", null,
+          h("input", { type: "radio", name: group, checked: state.speed === sp, onchange: () => { state.speed = sp; restartTimer(); allOsds().forEach((o) => drawOsd(o)); tick(true); } }),
+          h("span", null, `${sp}×`)))),
     h("input", {
       class: "scrub", type: "range", min: 0, max: r.result.days, step: 1, value: String(state.day), "aria-label": "날짜",
       oninput: (e: Event) => {
@@ -896,9 +905,9 @@ function drawOsd(target: HTMLElement = els.osd): void {
       },
     }),
     h("b", { class: "day-now" }, ""),
-    // 바로 결과로: 60일 전이면 끝으로 건너뛰어 평가서를 받고, 이미 받았으면 평가서를 다시 올린다.
+    // 바로 결과로: 60일 전이면 끝으로 건너뛰어 평가서를 받는다. 받은 뒤에는 평가서가 책상 아래 띠로 남아 있으므로 버튼을 두지 않는다(2.1.1).
     r.finished
-      ? h("button", { class: "osd-btn end", type: "button", title: "생산실적 평가서를 다시 봅니다", onclick: showReport }, "평가서 보기")
+      ? null
       : h("button", { class: "osd-btn end", type: "button", title: "60일 끝으로 건너뛰고 평가서를 받습니다 (End)", onclick: finish }, "끝으로 ⏭"));
 }
 
@@ -922,27 +931,29 @@ function drawGanttScreen(): void {
       h("span", null, h("i", { class: "transport-mark" }), TRANSPORT_STATE.name),
       h("span", { class: "sep" }),
       sameColor.map((l) => h("span", null, h("i", { class: `thin${l.hatch ? " hatch-over" : ""}`, style: { background: l.color } }), l.name)),
+      // 나눠 하기(3.0)를 쓰는 분기에서만: 막대가 작업장 줄로 갈라지고 먼저 끝난 줄은 짝 대기
+      scenario.options?.split ? h("span", null, h("i", { class: "thin hatch-over", style: { background: PAIR_WAIT_STATE.color } }), "짝 대기(나눠 하기)") : null,
       h("span", { class: "sep" }),
       h("span", null, h("i", { class: "due-mark" }), "납기"),
       h("span", null, h("i", { class: "deliver-mark" }), "인도")),
     h("div", { class: "ship-detail zoom-only" }));
 }
 
-/** 오른쪽 모니터 위쪽: 기호도(작업장을 누르면 CCTV) 또는 CCTV. */
+/** 오른쪽 모니터 위쪽: 작업 현황 전경(공정을 누르면 확대) 또는 공정 확대. 그림은 tick이 채운다. */
 function drawRightTop(): void {
   const label = els.monitorRight.querySelector(".win-title");
-  if (state.cctv === null) {
-    mount(els.rightTop, h("div", { class: "schematic-host" }));
-    if (label) label.textContent = "기호도 · 작업장을 누르면 CCTV";
-    return;
-  }
+  const stations = state.data.scenario.stations;
   mount(els.rightTop,
-    els.cctvHost,
-    h("span", { class: "cam-label" }, camLabel(state.cctv)),
-    h("button", { class: "cam-back", type: "button", onclick: closeCctv }, "← 기호도"),
-    h("div", { class: "cam-switch", role: "group", "aria-label": "다른 CCTV" }, state.data.scenario.stations.map((st, i) =>
-      h("button", { type: "button", class: i === state.cctv ? "active" : "", onclick: () => openCctv(i) }, `${i + 1} ${st.name}`))));
-  if (label) label.textContent = `CCTV · ${state.data.scenario.stations[state.cctv].name}`;
+    h("div", { class: "cc-host" }),
+    h("span", { class: "cam-label" }, camLabel()),
+    h("span", { class: "cam-anon", title: "관제실 화면은 사람을 기호로만 보여 줍니다. 얼굴과 이름은 현장에 직접 나가야 보입니다." },
+      "익명 표시 · 개인을 구분하지 않습니다"),
+    state.cctv !== null ? h("button", { class: "cam-back", type: "button", onclick: closeCctv }, "← 전경") : null,
+    h("div", { class: "cam-switch", role: "group", "aria-label": "확대할 공정" },
+      h("button", { type: "button", class: state.cctv === null ? "active" : "", onclick: closeCctv }, "전경"),
+      stations.map((st, i) =>
+        h("button", { type: "button", class: i === state.cctv ? "active" : "", onclick: () => openCctv(i) }, st.name))));
+  if (label) label.textContent = state.cctv === null ? "작업 현황 전경 · 공정을 누르면 확대" : `작업 현황 · ${stations[state.cctv].name}`;
 }
 
 /** 책상 위: 생산계획서 클립보드(누르면 계획 고치기). 평가서를 보고 있으면 손은 보이지 않는다(CSS). */
@@ -978,6 +989,10 @@ function drawReportBoard(): void {
           ink: GRADE_TEXT[g.grade],
         },
       }),
+      r.safetyWarnings !== undefined
+        ? h("p", { class: "safety-line" }, `현장 안전 경고 ${r.safetyWarnings}회`,
+          h("small", null, r.safetyWarnings ? " · 현장에서 위험 설비 반경에 들어간 횟수입니다(등급과 무관)" : " · 현장에서 위험 반경에 들어가지 않았습니다"))
+        : null,
       renderReport(r.result, state.data.scenario, state.data.max_rate, openFinding)));
 }
 
@@ -1009,9 +1024,9 @@ function monitor(el: HTMLElement, which: "left" | "right", label: string, ...scr
       h("div", { class: "win-titlebar", ondblclick: toggle },
         h("span", { class: "win-title" }, label),
         h("div", { class: "win-buttons" },
-          h("button", { class: "win-btn max", type: "button", title: "최대화", "aria-label": "최대화", onclick: toggle }, "□"),
-          h("button", { class: "win-btn restore", type: "button", title: "이전 크기로 (Esc)", "aria-label": "이전 크기로", onclick: unzoom }, "❐"),
-          h("button", { class: "win-btn close", type: "button", title: "닫기 (Esc)", "aria-label": "닫기", onclick: unzoom }, "✕"))),
+          // 최대화 / 이전 크기로. 닫기(✕)는 이전 크기로와 같은 일이라 두지 않는다(2.1.1).
+          winButton("max", "최대화", toggle, WIN_MAX_SVG),
+          winButton("restore", "이전 크기로 (Esc)", unzoom, WIN_RESTORE_SVG))),
       h("div", { class: "screen" }, ...screen)));
 }
 
@@ -1021,11 +1036,13 @@ function monitor(el: HTMLElement, which: "left" | "right", label: string, ...scr
 
 const introSeen = new Set<number>();
 
-/** 작업모를 누르면 생산관리자가 안전모를 쓰고 현장으로 나간다. 회차마다 처음 한 번은 뛰어나가는 전환(누르면 건너뜀). */
+/** 작업모를 누르면 생산관리자가 작업모(고깔)를 쓰고 현장으로 나간다. 회차마다 처음 한 번은 뛰어나가는 전환(누르면 건너뜀). */
 function goField(): void {
   const r = currentRun();
   if (!r) return;
-  state.fieldFocus = state.cctv;   // CCTV로 보던 공정이 있으면 그 앞으로 나간다.
+  state.fieldFocus = state.cctv;   // 작업 현황에서 확대해 보던 공정이 있으면 그 앞으로 나간다.
+  pause();   // 현장에 나가면 시간이 멈춰 있다. 재생하면 1배속(하루 2초)으로 흐른다.
+  r.safetyWarnings ??= 0;
   setScreen("field");
   drawField();
   aimCamera();
@@ -1033,8 +1050,9 @@ function goField(): void {
   if (!introSeen.has(r.n) && !reduceMotion()) {
     introSeen.add(r.n);
     const overlay = h("div", { class: "field-intro", onclick: () => overlay.remove() },
-      h("div", { class: "intro-run" }, h("span", { class: "intro-man" }, "⛑️🏃"), h("span", { class: "intro-door" }, "🚪")),
-      h("p", null, h("b", null, "관리자가 안전모를 쓰고 현장으로 나갑니다")),
+      h("div", { class: "intro-run" }, h("span", { class: "intro-man" }, introHat(), "🏃"), h("span", { class: "intro-door" }, "🚪")),
+      h("p", null, h("b", null, "관리자가 작업모를 쓰고 현장으로 나갑니다")),
+      h("p", null, "관제실 화면에는 누구인지 보이지 않습니다. 직접 와야 사람이 보입니다."),
       h("p", { class: "hint" }, "누르면 건너뜁니다"));
     els.field.append(overlay);
     window.setTimeout(() => overlay.remove(), 1800);
@@ -1042,6 +1060,7 @@ function goField(): void {
 }
 
 function backToRoom(): void {
+  pause();   // 하루 길이가 달라지므로 멈춘 채로 돌아온다(관제실 배속으로 다시 재생).
   setScreen("room");
   drawRoom();
 }
@@ -1056,8 +1075,40 @@ function drawField(): void {
     h("div", { class: "field-cams", role: "group", "aria-label": "볼 곳" },
       h("button", { type: "button", class: state.fieldFocus === null ? "active" : "", onclick: () => { state.fieldFocus = null; drawField(); aimCamera(); } }, "전경"),
       scenario.stations.map((st, i) =>
-        h("button", { type: "button", class: state.fieldFocus === i ? "active" : "", onclick: () => { state.fieldFocus = i; drawField(); aimCamera(); } }, `${st.name} 가까이`))));
+        h("button", { type: "button", class: state.fieldFocus === i ? "active" : "", onclick: () => { state.fieldFocus = i; drawField(); aimCamera(); } }, `${st.name} 가까이`))),
+    // 관리자 순간이동(3.0 안전): 설비 옆으로 가면 위험 반경 경고. 1인칭 이동은 나중에(D35)
+    h("div", { class: "field-cams", role: "group", "aria-label": "관리자 이동" },
+      h("button", { type: "button", onclick: () => moveManager("crane") }, "골리앗 주변으로"),
+      h("button", { type: "button", onclick: () => moveManager("cart") }, "트랜스포터 주변으로")));
   drawOsd(els.fieldOsd);
+}
+
+function moveManager(spot: "safe" | "crane" | "cart"): void {
+  state.managerSpot = spot;
+  const hazard = yard?.setManagerSpot(spot, state.fieldFocus) ?? null;
+  if (hazard) warnHazard(hazard);
+}
+
+/** 위험 설비 옆으로 갔다: 재생을 멈추고 알린다. 횟수는 그 회차 평가서에 한 줄(등급과 무관). */
+function warnHazard(hazard: { id: string; label: string }): void {
+  const r = currentRun();
+  if (!r || state.screen !== "field") return;
+  const wasPlaying = state.playing;
+  pause();
+  r.safetyWarnings = (r.safetyWarnings ?? 0) + 1;
+  const overlay = h("div", { class: "safety-alert", role: "alertdialog", "aria-label": "현장 안전 경고" },
+    h("div", { class: "safety-card" },
+      h("b", null, "⚠ 위험 반경입니다"),
+      h("p", null, `${hazard.label}에 들어왔습니다.`),
+      h("p", { class: "hint" }, "움직이는 설비 반경 10m 안에는 들어가지 않습니다."),
+      h("div", { class: "safety-actions" },
+        h("button", { class: "btn primary", type: "button", onclick: () => {
+          overlay.remove();
+          moveManager("safe");
+          if (wasPlaying) play();
+        } }, "안전한 자리로 돌아가기"))));
+  els.field.append(overlay);
+  overlay.querySelector<HTMLButtonElement>("button")?.focus();
 }
 
 // ---------------------------------------------------------------------------
@@ -1130,7 +1181,24 @@ const HANDS_SVG = `<svg viewBox="0 0 720 130"><path d="M0 130 L 70 70 Q 90 56 11
 // 만년필: 먹색 몸통, 무광 금색 펜촉. 펜 끝은 왼쪽 아래(서명할 때 칸에 닿는 쪽).
 const PEN_SVG = `<svg viewBox="0 0 160 160" aria-hidden="true"><g transform="rotate(-38 80 80)"><rect x="22" y="72" width="96" height="16" rx="8" fill="#26302b"/><rect x="104" y="72" width="30" height="16" rx="7" fill="#33413a"/><rect x="96" y="70" width="4" height="20" fill="#b8a271"/><path d="M22 72 L 4 80 L 22 88 Z" fill="#b8a271"/><path d="M8 80 L 18 80" stroke="#26302b" stroke-width="1.2"/></g></svg>`;
 // 작업모: 관리자 색 #d9480f
-const HAT_SVG = `<svg viewBox="0 0 120 70" aria-hidden="true"><ellipse cx="60" cy="58" rx="50" ry="8" fill="#b23a0b"/><path d="M22 56 C 22 24, 98 24, 98 56 Z" fill="#d9480f"/><rect x="56" y="22" width="8" height="34" rx="3" fill="#e8662f"/></svg>`;
+function introHat(): HTMLElement {
+  const el = h("span", { class: "intro-hat" });
+  el.innerHTML = HAT_SVG;
+  return el;
+}
+
+// 생산관리자의 작업모: 소인국의 주황 고깔모자(끝이 휘고 아래에 어두운 테두리).
+// 창 단추 그림: 글자(□ ❐)는 글꼴마다 가늘고 작아서 잘 안 보인다. 굵은 선 그림으로 그린다.
+const WIN_MAX_SVG = `<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="1.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`;
+const WIN_RESTORE_SVG = `<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="3.5" width="7.5" height="7.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3.5 3.5 V1 H11 V8.5 H8.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`;
+
+function winButton(kind: string, title: string, onclick: () => void, svg: string): HTMLElement {
+  const btn = h("button", { class: `win-btn ${kind}`, type: "button", title, "aria-label": title.replace(/ \(.*\)$/, ""), onclick });
+  btn.innerHTML = svg;
+  return btn;
+}
+
+const HAT_SVG = `<svg viewBox="0 0 120 90" aria-hidden="true"><path d="M26 76 C 36 52, 50 26, 70 12 C 78 6, 90 8, 94 16 C 86 15, 80 20, 78 30 C 82 50, 90 64, 94 76 Z" fill="#d9480f"/><path d="M78 30 C 82 50, 90 64, 94 76 L 74 76 C 74 58, 74 42, 78 30 Z" fill="#b23a0b" opacity="0.55"/><ellipse cx="60" cy="77" rx="40" ry="6" fill="#2b2b2b"/></svg>`;
 
 async function start(): Promise<void> {
   const root = document.getElementById("app")!;
@@ -1164,6 +1232,7 @@ async function start(): Promise<void> {
     cctv: null,
     zoomed: null,
     fieldFocus: null,
+    managerSpot: "safe",
     signer: loadSigner(),
     classBest: {},
   };
@@ -1184,7 +1253,7 @@ async function start(): Promise<void> {
       h("aside", { class: "plan-notes", "aria-label": "메모" }, els.planNotes, els.goalNote)));
 
   monitor(els.monitorLeft, "left", "공정 간트", els.ganttScreen, els.osd);
-  monitor(els.monitorRight, "right", "기호도", els.rightTop, els.log, els.osdRight);
+  monitor(els.monitorRight, "right", "작업 현황 전경", els.rightTop, els.log, els.osdRight);
   els.hands.innerHTML = HANDS_SVG;
   els.hat.innerHTML = `${HAT_SVG}<span class="desk-label">작업모 · 현장으로</span>`;
   els.hat.addEventListener("click", goField);
