@@ -648,20 +648,6 @@ function restartTimer(): void {
   }, msPerDay());
 }
 
-/**
- * 휴대폰(터치 화면)에서 처음 누를 때 전체 화면으로 바꾸고 가로로 고정한다(3.0.4).
- * 브라우저는 사용자가 누른 직후 + 전체 화면일 때만 방향 고정을 허락한다. 안드로이드 Chrome은 되고,
- * 아이폰 Safari는 지원하지 않아 실패해도 그냥 둔다(세로면 index.html의 "가로로 돌려 주세요"가 맡는다).
- */
-function lockLandscape(): void {
-  if (!matchMedia("(hover: none) and (pointer: coarse)").matches) return;
-  const orientation = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
-  if (!document.fullscreenEnabled || !orientation?.lock) return;
-  document.documentElement.requestFullscreen()
-    .then(() => orientation.lock!("landscape"))
-    .catch(() => { /* 지원하지 않는 기기: 안내 화면으로 충분하다 */ });
-}
-
 function seek(day: number): void {
   const r = currentRun();
   if (!r) return;
@@ -1301,7 +1287,6 @@ async function start(): Promise<void> {
   mount(root, els.desk, els.plan, els.room, els.field);
 
   document.addEventListener("keydown", onKey);
-  document.addEventListener("pointerdown", lockLandscape, { once: true });
   drawForm();
   schedulePreview();
   showDesk();
