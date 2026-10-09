@@ -7,12 +7,12 @@
 //   field 현장. 작업모를 쓰고 직접 나간 생산관리자의 눈(3D 화면 전체). 전경·공정 가까이, 재생 막대, "관제실로".
 // 현장을 보는 길: 기호도 작업장, 간트 막대, 평가서의 "현장에서 보기" → 오른쪽 모니터의 CCTV(재생 중에도 오늘을 본다).
 
-import { api, ApiError, type Config, type Finding, type Preview, type Result, type ScenarioPayload } from "./api";
+import { api, ApiError, type ClassBest, type Config, type Finding, type Preview, type Result, type ScenarioPayload } from "./api";
 import { h, mount, num, pct } from "./dom";
 import { renderDesk } from "./desk";
 import { planLabel, renderForm, renderPlanBar, renderPlanNotes, renderPlanTabs, updatePreview, type FormContext } from "./form";
 import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
-import { docHead, REVIEWER } from "./paper";
+import { docHead } from "./paper";
 import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, STATION_COLOR, TRANSPORT_STATE } from "./labels";
 import { breakdownBar, breakdownLegend, eventText, renderReport } from "./report";
 import { renderSchematic } from "./schematic";
@@ -34,6 +34,13 @@ interface Run {
   config: Config;
   result: Result;
   finished: boolean;           // 60일 끝까지 본 적이 있다 → 평가서가 나온다.
+  /** 생산계획서에 서명한 사람(닉네임, 반 코드). 60일을 끝내면 이 이름으로 서버에 저장한다. */
+  signer: Signer | null;
+}
+
+interface Signer {
+  nickname: string;
+  classCode: string;
 }
 
 type Screen = "desk" | "plan" | "room" | "field";
@@ -63,6 +70,10 @@ interface State {
   zoomed: "left" | "right" | null;
   /** 현장에서 가까이 보는 공정. null이면 전경. */
   fieldFocus: number | null;
+  /** 마지막으로 서명한 사람(이 브라우저가 기억한다). */
+  signer: Signer | null;
+  /** 반 코드를 적었으면 그 반의 시나리오별 최고(서버). */
+  classBest: Record<string, ClassBest>;
 }
 
 let state: State;
@@ -279,7 +290,97 @@ function drawDesk(): void {
       const b = sessionBest(sc.id);
       return [sc.id, b ? { grade: b.result.grade.grade, score: b.result.grade.score } : undefined];
     })),
+    classCode: state.signer?.classCode ?? "",
+    classBest: state.classBest,
     onPick: (id, board) => void enterScenario(id, board),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 수업용 저장: 서명한 이름으로 60일을 끝낸 회차를 저장하고, 반 최고를 받아 온다
+// ---------------------------------------------------------------------------
+
+const SIGNER_KEY = "paper-shipyard.signer";
+
+/** 이 브라우저가 기억하는 마지막 서명자. 저장소를 못 쓰는 환경이면 없음. */
+function loadSigner(): Signer | null {
+  try {
+    const raw = window.localStorage.getItem(SIGNER_KEY);
+    const v = raw ? JSON.parse(raw) : null;
+    return v && typeof v.nickname === "string" ? { nickname: v.nickname, classCode: String(v.classCode ?? "") } : null;
+  } catch {
+    return null;
+  }
+}
+
+function rememberSigner(signer: Signer): void {
+  state.signer = signer;
+  try {
+    window.localStorage.setItem(SIGNER_KEY, JSON.stringify(signer));
+  } catch {
+    // 개인 정보 보호 모드 등: 이번 세션 동안만 기억한다.
+  }
+}
+
+async function refreshClassBest(): Promise<void> {
+  const code = state.signer?.classCode ?? "";
+  if (!code) {
+    state.classBest = {};
+    return;
+  }
+  try {
+    state.classBest = (await api.leaderboard(code)).best;
+  } catch {
+    // 서버에 저장소가 없거나 연결이 끊겨도 혼자 하는 연습은 그대로 된다.
+  }
+  if (state.screen === "desk") drawDesk();
+  drawTopbar();
+}
+
+/** 60일을 끝낸 회차를 서명한 이름으로 저장한다. 등급은 서버가 설정으로 다시 계산한다. */
+async function saveRun(r: Run): Promise<void> {
+  if (!r.signer) return;
+  try {
+    await api.saveRun(r.signer.nickname, r.signer.classCode, r.config);
+    notify(r.signer.classCode ? `${r.signer.nickname} · ${r.signer.classCode} 이름으로 저장했습니다` : `${r.signer.nickname} 이름으로 저장했습니다`);
+    await refreshClassBest();
+    if (state.screen === "room") drawPlates();
+  } catch (error) {
+    notify(`저장하지 못했습니다: ${error instanceof ApiError ? error.messages.join(" ") : String(error)}`);
+  }
+}
+
+/** 서명 카드: 닉네임(최대 10자)과 반 코드(선택)를 받는다. 취소하면 null. */
+function askSigner(): Promise<Signer | null> {
+  return new Promise((resolve) => {
+    const nickname = h("input", { type: "text", maxlength: 10, required: true, autocomplete: "nickname", value: state.signer?.nickname ?? "", "aria-label": "닉네임" });
+    const classCode = h("input", { type: "text", maxlength: 20, autocomplete: "off", value: state.signer?.classCode ?? "", placeholder: "예: 3반", "aria-label": "반 코드" });
+    const error = h("p", { class: "sign-error", role: "alert" });
+    const dialog = h("dialog", { class: "sign-card" },
+      h("form", {
+        method: "dialog",
+        onsubmit: (e: Event) => {
+          e.preventDefault();
+          const name = nickname.value.trim();
+          const code = classCode.value.trim();
+          if (!name) return void (error.textContent = "닉네임을 적어 주세요");
+          if (!/^[0-9A-Za-z가-힣_-]*$/.test(code)) return void (error.textContent = "반 코드는 한글·영문·숫자·-·_ 만 씁니다");
+          dialog.close();
+          resolve({ nickname: name, classCode: code });
+        },
+      },
+      h("h3", null, "결재란에 서명합니다"),
+      h("label", null, h("span", null, "닉네임 ", h("small", null, "최대 10자")), nickname),
+      h("label", null, h("span", null, "반 코드 ", h("small", null, "선택 · 적으면 같은 반 최고 등급을 함께 봅니다")), classCode),
+      error,
+      h("div", { class: "sign-card-buttons" },
+        h("button", { type: "button", class: "btn ghost", onclick: () => { dialog.close(); resolve(null); } }, "취소"),
+        h("button", { type: "submit", class: "btn primary" }, "서명"))));
+    dialog.addEventListener("cancel", () => resolve(null));   // Esc
+    dialog.addEventListener("close", () => dialog.remove());
+    document.body.append(dialog);
+    dialog.showModal();
+    nickname.select();
   });
 }
 
@@ -356,13 +457,19 @@ async function signAndRun(): Promise<void> {
   const box = els.form.querySelector<HTMLElement>('[data-sign="승인"]');
   if (!box) return void run();
   signing = true;
+  const signer = await askSigner();
+  if (!signer) {
+    signing = false;
+    return;
+  }
+  rememberSigner(signer);
   clearSignature();
   const reduce = reduceMotion();
   els.form.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
   if (!reduce) await wait(320);
 
   // 서명: 승인자 이름을 필기체로. 쓰는 모습은 왼쪽부터 드러내는 clip-path로 낸다.
-  const sig = h("span", { class: "sign-name signature", "aria-label": `${REVIEWER} 서명` }, REVIEWER);
+  const sig = h("span", { class: "sign-name signature", "aria-label": `${signer.nickname} 서명` }, signer.nickname);
   box.append(sig);
 
   if (!reduce) {
@@ -385,14 +492,14 @@ async function signAndRun(): Promise<void> {
     els.pen.classList.remove("writing");
   }
   signing = false;
-  await run();
+  await run(signer);
 }
 
 // ---------------------------------------------------------------------------
 // 실행: 서명하면 클립보드를 책상에 내려놓고 관제실로
 // ---------------------------------------------------------------------------
 
-async function run(): Promise<void> {
+async function run(signer: Signer | null = null): Promise<void> {
   state.busy = true;
   updateForm();
   let result: Result;
@@ -406,7 +513,7 @@ async function run(): Promise<void> {
     state.busy = false;
     updateForm();
   }
-  state.runs.push({ n: state.runs.length + 1, scenario: state.data.scenario.id, label: runLabel(), config, result, finished: false });
+  state.runs.push({ n: state.runs.length + 1, scenario: state.data.scenario.id, label: runLabel(), config, result, finished: false, signer });
   state.current = state.runs.length - 1;
   Object.assign(state, { day: 0, ganttShip: null, cctv: null, board: "none", playing: false });
 
@@ -489,6 +596,7 @@ function finish(): void {
   state.playing = false;
   window.clearInterval(timer);
   r.finished = true;
+  void saveRun(r);
   state.board = "up";
   if (state.screen !== "room") setScreen("room");   // 현장에서 끝으로 건너뛰면 관제실로 돌아와 받는다.
   drawRoom();
@@ -796,7 +904,7 @@ function drawReportBoard(): void {
         h("span", { class: "hint" }, state.board === "up" ? "바깥 어두운 곳을 누르면 내려 둡니다" : "생산실적 평가서 · 누르면 다시 올림"),
         h("button", { class: "btn primary small", type: "button", onclick: () => void backToPlan() }, "계획 고치기")),
       docHead({
-        title: "생산실적 평가서", code: `PE-${r.n}`,
+        title: "생산실적 평가서", code: `PE-${r.n}`, approver: r.signer?.nickname,
         fields: [["회차", `${r.n}회차`], ["설정", r.label], ["판정", `${g.grade} (${g.score.toFixed(1)}점)`]],
         stamp: {
           text: g.grade, sub: `${g.score.toFixed(1)}점`, strong: g.grade === "S" || g.grade === "F",
@@ -913,7 +1021,13 @@ function drawTopbar(): void {
     best
       ? h("p", { class: "postit-best" }, "이번 세션 최고 ", gradeChip(best.result.grade.grade, "best-grade"),
         ` ${best.result.grade.score.toFixed(1)}점 · ${best.n}회차 ${best.label}`)
-      : h("p", null, "S 105 · A 85 · B 70 · C 50"));
+      : h("p", null, "S 105 · A 85 · B 70 · C 50"),
+    state.signer?.classCode
+      ? h("p", { class: "postit-best" }, `우리 반(${state.signer.classCode}) 최고 `,
+        state.classBest[sc.id]
+          ? [gradeChip(state.classBest[sc.id].grade, "best-grade"), ` ${state.classBest[sc.id].score.toFixed(1)}점 · ${state.classBest[sc.id].nickname}`]
+          : "아직 없음")
+      : null);
 }
 
 function onKey(e: KeyboardEvent): void {
@@ -982,6 +1096,8 @@ async function start(): Promise<void> {
     cctv: null,
     zoomed: null,
     fieldFocus: null,
+    signer: loadSigner(),
+    classBest: {},
   };
 
   els.pen.innerHTML = PEN_SVG;
@@ -1035,6 +1151,7 @@ async function start(): Promise<void> {
   drawForm();
   schedulePreview();
   showDesk();
+  void refreshClassBest();
 }
 
 void start();

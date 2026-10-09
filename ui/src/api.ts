@@ -340,7 +340,39 @@ function post<T>(path: string, config: Config): Promise<T> {
   });
 }
 
+/** 수업용 저장(2.0 ⑤): 반의 시나리오별 최고 회차 */
+export interface ClassBest {
+  grade: string;
+  score: number;
+  profit: number;
+  nickname: string;
+  on_time: number;
+  ships: number;
+  players?: number;
+}
+
+export interface Leaderboard {
+  class_code: string;
+  best: Record<string, ClassBest>;
+}
+
+export interface SavedRun {
+  id: number;
+  nickname: string;
+  class_code: string;
+  scenario: string;
+  grade: string;
+  score: number;
+  profit: number;
+}
+
 export const api = {
+  saveRun: (nickname: string, classCode: string, config: Config) => request<SavedRun>("/api/runs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nickname, class_code: classCode, config }),
+  }),
+  leaderboard: (classCode: string) => request<Leaderboard>(`/api/leaderboard?class=${encodeURIComponent(classCode)}`),
   scenario: (id = "basic") => request<ScenarioPayload>(`/api/scenario?id=${encodeURIComponent(id)}`),
   simulate: (config: Config) => post<Result>("/api/simulate", config),
   preview: (config: Config) => post<Preview>("/api/preview", config),

@@ -23,6 +23,8 @@ export interface DocHead {
   author?: string;
   /** 승인을 받았는가. false면 "승인" 칸을 비워 둔다(생산계획서: 펜으로 서명할 자리). 없으면 받은 것으로 본다. */
   approved?: boolean;
+  /** "승인" 칸에 적힌 서명자(서명할 때 적은 닉네임). 없으면 REVIEWER. */
+  approver?: string;
   /** 결재란 평가 칸에 찍을 도장(생산실적 평가서의 등급). 없으면 빈 칸. */
   stamp?: { text: string; sub: string; color: string; strong?: boolean; fill?: string; ink?: string } | null;
 }
@@ -39,7 +41,7 @@ export function docHead(doc: DocHead): HTMLElement {
       doc.fields.map(([name, value]) => h("div", null, h("dt", null, name), h("dd", null, value)))),
     h("div", { class: "approval", "aria-label": "결재란" },
       sign("작성", h("span", { class: "sign-name" }, doc.author ?? AUTHOR)),
-      sign("승인", doc.approved === false ? null : h("span", { class: "sign-name" }, REVIEWER)),
+      sign("승인", doc.approved === false ? null : h("span", { class: "sign-name" }, doc.approver ?? REVIEWER)),
       sign("평가", doc.stamp
         ? h("span", {
           class: `stamp${doc.stamp.strong ? " strong" : ""}`,
