@@ -16,9 +16,25 @@ STATES = ["work", "rework", "material_wait", "station_wait", "labor_wait",
           "transport", "transport_wait", "accident_stop", "breakdown_stop"]
 
 
+def opened(scenario_id="basic"):
+    """분기의 옵션 잠금(D33)을 푼 시나리오. 규칙이 어떻게 계산되는지 보는 테스트는 잠긴 옵션도 돌려 본다."""
+    sc = load_scenario(scenario_id)
+    sc.pop("options", None)
+    return sc
+
+
+def open_sim(cfg, **kw):
+    """옵션 잠금을 푼 같은 분기로 실행한다(화면에서는 막힌 옵션의 계산 검증용)."""
+    return simulate(cfg, opened(cfg.get("scenario", "basic")), **kw)
+
+
+def open_preview(cfg):
+    return preview(cfg, opened(cfg.get("scenario", "basic")))
+
+
 def one_ship_scenario(stock, quality=0.99):
-    """손 계산 예시용: S1 한 척, 초기 재고 지정, 불량 없음(난수 0.99)."""
-    sc = load_scenario()
+    """손 계산 예시용: S1 한 척, 초기 재고 지정, 불량 없음(난수 0.99). 옵션 잠금은 없다."""
+    sc = opened()
     sc["orders"] = [o for o in sc["orders"] if o["id"] == "S1"]
     sc["initial_stock"] = stock
     sc["random"]["quality"] = {"S1": {s["id"]: quality for s in sc["stations"]}}
@@ -269,19 +285,19 @@ class GradeTable(unittest.TestCase):
     def test_rows(self):
         for name, cfg, profit, on_time, score, grade in self.ROWS:
             with self.subTest(name):
-                r = simulate(cfg)
+                r = open_sim(cfg)
                 self.assertAlmostEqual(r["profit"], profit, places=2)
                 self.assertEqual(r["qcd"]["delivery"]["on_time"], on_time)
                 self.assertEqual((r["grade"]["score"], r["grade"]["grade"]), (score, grade))
 
     def test_baseline_line(self):
-        g = simulate(variant("managed", 2, research=["automation"]))["grade"]
+        g = open_sim(variant("managed", 2, research=["automation"]))["grade"]
         self.assertEqual(g["baseline"]["name"], "전부 최대 투입")
         self.assertEqual((g["baseline"]["score"], g["baseline"]["grade"]), (56.2, "C"))
         self.assertEqual(g["vs_baseline"], {"profit": 6175.6, "pool": -6, "score": 52.6})
 
     def test_parts_add_up(self):
-        g = simulate(PRESETS["managed"])["grade"]
+        g = open_sim(PRESETS["managed"])["grade"]
         self.assertEqual([p["key"] for p in g["parts"]], ["revenue", "profit", "delivery", "quality"])
         self.assertAlmostEqual(sum(p["points"] for p in g["parts"]), g["score"], places=1)
 
@@ -427,10 +443,10 @@ class Expansion(unittest.TestCase):
     def test_one_unit_is_the_same_as_no_setting(self):
         # 1.x 설정(units 없음)과 모든 공정 1개는 결과가 같다.
         for pid in PRESETS:
-            self.assertEqual(simulate(expanded(pid, **{s: 1 for s in STATIONS})), simulate(PRESETS[pid]))
+            self.assertEqual(open_sim(expanded(pid, **{s: 1 for s in STATIONS})), open_sim(PRESETS[pid]))
 
     def test_two_units_work_on_two_ships_at_once(self):
-        r = simulate(expanded("all_in", block_assembly=2), baseline=False)
+        r = open_sim(expanded("all_in", block_assembly=2), baseline=False)
         block = next(st for st in r["stations"] if st["id"] == "block_assembly")
         self.assertEqual([u["unit"] for u in block["units"]], [1, 2])
         both = [d for d in range(r["days"]) if all(u["daily"][d]["ship"] for u in block["units"])]
@@ -440,22 +456,22 @@ class Expansion(unittest.TestCase):
 
     def test_expansion_cuts_station_wait_at_that_station(self):
         def waits(cfg):
-            r = simulate(cfg, baseline=False)
+            r = open_sim(cfg, baseline=False)
             return sum(1 for s in r["ships"] for d in s["daily"]
                        if d["state"] == "station_wait" and d["station"] == "block_assembly")
         self.assertLess(waits(expanded("all_in", block_assembly=2)), waits(PRESETS["all_in"]))
 
     def test_expansion_cost_and_maintenance_per_unit(self):
-        p = preview(expanded("all_in", block_assembly=2, erection=2))
+        p = open_preview(expanded("all_in", block_assembly=2, erection=2))
         self.assertEqual(p["fixed_costs"]["investment"], 300 + 800)
         self.assertEqual(p["fixed_costs"]["maintenance"], 6 * 100)
 
     def test_plan_overlap_only_when_more_ships_than_units(self):
-        plan = preview(expanded("managed", block_assembly=2))["plan"]
+        plan = open_preview(expanded("managed", block_assembly=2))["plan"]
         self.assertFalse([c for c in plan["conflicts"] if c["station"] == "block_assembly"])
 
     def test_unit_is_recorded_on_ships_and_events(self):
-        r = simulate(expanded("all_in", block_assembly=2), baseline=False)
+        r = open_sim(expanded("all_in", block_assembly=2), baseline=False)
         enters = [e for e in r["events"] if e["type"] == "enter" and e["station"] == "block_assembly"]
         self.assertEqual({e["unit"] for e in enters}, {1, 2})
         on_unit_2 = [d for s in r["ships"] for d in s["daily"] if d.get("unit") == 2]
@@ -464,7 +480,7 @@ class Expansion(unittest.TestCase):
     def test_too_many_units_is_rejected(self):
         # 3.0: 작업장은 공정마다 3개까지(D30)
         with self.assertRaises(ConfigError):
-            simulate(expanded("managed", block_assembly=4))
+            open_sim(expanded("managed", block_assembly=4))
 
 
 
@@ -475,13 +491,13 @@ class FourM(unittest.TestCase):
     """2.0 4M 선택지: 인력(일반·숙련공·로봇), 신공법(학습 곡선), 자재 등급(표준·저가)."""
 
     def test_skilled_crew_premium_is_per_worker_day(self):
-        r = simulate(PRESETS["managed"])
+        r = open_sim(PRESETS["managed"])
         erection = next(st for st in r["stations"] if st["id"] == "erection")
         worked = sum(d["workers"] for d in erection["daily"])
         self.assertEqual(r["costs"]["labor"], 6 * 10 * 60 + worked * 5)
 
     def test_robot_needs_nobody_and_costs_install(self):
-        r = simulate(crew("managed", block_assembly="robot"), baseline=False)
+        r = open_sim(crew("managed", block_assembly="robot"), baseline=False)
         block = next(st for st in r["stations"] if st["id"] == "block_assembly")
         self.assertTrue(all(d["workers"] == 0 for d in block["daily"]))
         self.assertEqual(block["labor_wait_days"], 0)
@@ -496,14 +512,14 @@ class FourM(unittest.TestCase):
                          [0.3, 0.2, 0.1, 0.05, 0.05])
 
     def test_cheap_material_halves_price_and_adds_defects(self):
-        cheap = simulate(mats("managed", paper="cheap", paint="cheap", flag="cheap"), baseline=False)
+        cheap = open_sim(mats("managed", paper="cheap", paint="cheap", flag="cheap"), baseline=False)
         self.assertEqual(cheap["costs"]["material"], 2040 / 2)
         st = next(s for s in cheap["stations"] if s["id"] == "sub_assembly")
         self.assertEqual(st["defect_rate"], 0.10 + 0.30)
 
     def test_robot_does_no_overtime(self):
         cfg = crew("unmanaged", sub_assembly="robot")
-        r = simulate(cfg, baseline=False)
+        r = open_sim(cfg, baseline=False)
         self.assertFalse([e for e in r["events"] if e["type"] == "accident" and e["station"] == "sub_assembly"])
 
     def test_old_senior_reads_as_skilled_crew(self):
@@ -511,7 +527,7 @@ class FourM(unittest.TestCase):
         old = copy.deepcopy(PRESETS["managed"])
         del old["stations"]["erection"]["crew"]
         old["skilled_station"] = "erection"
-        self.assertEqual(simulate(old)["profit"], simulate(PRESETS["managed"])["profit"])
+        self.assertEqual(open_sim(old)["profit"], open_sim(PRESETS["managed"])["profit"])
 
 
 class Scenarios(unittest.TestCase):
@@ -575,19 +591,19 @@ class AreasAndSplit(unittest.TestCase):
     def test_areas_form_gives_the_same_result(self):
         # 하위 호환: 같은 설정을 areas로 적어도 결과가 같다.
         for pid in ("unmanaged", "managed", "all_in"):
-            self.assertEqual(simulate(as_areas(PRESETS[pid]))["profit"], simulate(PRESETS[pid])["profit"], pid)
-        self.assertEqual(simulate(as_areas(GROWTH["managed"]))["profit"], simulate(GROWTH["managed"])["profit"])
+            self.assertEqual(open_sim(as_areas(PRESETS[pid]))["profit"], open_sim(PRESETS[pid])["profit"], pid)
+        self.assertEqual(open_sim(as_areas(GROWTH["managed"]))["profit"], open_sim(GROWTH["managed"])["profit"])
 
     def test_split_without_extra_station_changes_nothing(self):
         cfg = {**PRESETS["managed"], "pool": 4}
-        plain = simulate(as_areas(cfg), baseline=False)
-        split = simulate(as_areas(cfg, block_assembly={"split": True}), baseline=False)
+        plain = open_sim(as_areas(cfg), baseline=False)
+        split = open_sim(as_areas(cfg, block_assembly={"split": True}), baseline=False)
         self.assertEqual(split["profit"], plain["profit"])
 
     def test_split_divides_work_and_waits_for_the_pair(self):
         # 1차 시험 결과: 관리안 인원 4명(한 척 1일 지연)에 중조립 2곳 나눠 하기 → 지연 없음, 98.5점.
         cfg = as_areas({**PRESETS["managed"], "pool": 4}, block_assembly={"stations": 2, "split": True})
-        r = simulate(cfg)
+        r = open_sim(cfg)
         self.assertEqual((r["grade"]["grade"], r["grade"]["score"], r["qcd"]["delivery"]["on_time"]), ("A", 98.5, 4))
         # 들어갈 때 빈 작업장 수만큼 나눈다. 세 척은 2곳(투입 기록 2개), 한 척은 다른 배가 2호를 쓰는 중이라 1곳이다.
         # 검사는 배 한 척에 한 번이다.
@@ -600,27 +616,27 @@ class AreasAndSplit(unittest.TestCase):
 
     def test_expanding_without_split_does_not_fix_the_delay(self):
         cfg = as_areas({**PRESETS["managed"], "pool": 4}, block_assembly={"stations": 2})
-        r = simulate(cfg)
+        r = open_sim(cfg)
         self.assertEqual((r["grade"]["score"], r["qcd"]["delivery"]["on_time"]), (91.6, 3))
 
     def test_plan_bar_uses_part_work(self):
         # 계획 막대: 나눠 하기를 켠 공정은 작업장을 모두 쓴다고 보고 부분 작업량으로 잰다(S1 중조립 16 ÷ 2곳 ÷ 2/일 = 4일).
-        plan = preview(as_areas(PRESETS["managed"], block_assembly={"stations": 2, "split": True}))["plan"]
+        plan = open_preview(as_areas(PRESETS["managed"], block_assembly={"stations": 2, "split": True}))["plan"]
         span = plan["ships"]["S1"]["block_assembly"]
         self.assertEqual(span["end"] - span["start"] + 1, 4)
 
     def test_erection_is_never_split(self):
         cfg = as_areas(GROWTH["managed"], erection={"stations": 2, "split": True})
-        r = simulate(cfg, baseline=False)
+        r = open_sim(cfg, baseline=False)
         self.assertFalse([d for s in r["ships"] for d in s["daily"] if "parts" in d and d["station"] == "erection"])
 
     def test_limits(self):
         cfg = as_areas(PRESETS["managed"], block_assembly={"stations": 3, "split": True})
         cfg["pool"] = 12
-        simulate(cfg)   # 3곳, 12명까지는 된다
+        open_sim(cfg)   # 3곳, 12명까지는 된다
         cfg["areas"]["block_assembly"]["split"] = "yes"
         with self.assertRaises(ConfigError):
-            simulate(cfg)
+            open_sim(cfg)
 
 
 SURGE = {p["id"]: p["config"] for p in load_presets("surge")}
@@ -641,6 +657,50 @@ class Surge(unittest.TestCase):
         off["stations"]["block_assembly"]["split"] = False
         on = simulate(SURGE["managed"], baseline=False)
         self.assertGreater(on["qcd"]["delivery"]["on_time"], simulate(off, baseline=False)["qcd"]["delivery"]["on_time"])
+
+
+
+class LevelOptions(unittest.TestCase):
+    """분기(난이도)별 옵션(D33): 쉬운 분기는 옵션을 가리고, 엔진이 숨긴 옵션을 쓴 설정을 거절한다."""
+
+    def test_presets_use_only_open_options(self):
+        for sid in ("basic", "growth", "surge"):
+            for p in load_presets(sid):
+                simulate(p["config"], baseline=False)   # 거절되지 않는다
+
+    def test_basic_locks_robot_new_method_cheap_and_expansion(self):
+        cases = [
+            ("crew", lambda c: c["stations"]["block_assembly"].update(crew="robot"), "인력 '로봇'"),
+            ("method", lambda c: c["stations"]["block_assembly"].update(method="new"), "공법 '신공법'"),
+            ("cheap", lambda c: c.update(materials={"paper": "cheap"}), "자재 등급 '저가'"),
+            ("units", lambda c: c["stations"]["block_assembly"].update(units=2), "작업장을 1개까지"),
+            ("split", lambda c: c["stations"]["block_assembly"].update(split=True), "나눠 하기"),
+        ]
+        for name, change, words in cases:
+            cfg = copy.deepcopy(PRESETS["managed"])
+            change(cfg)
+            with self.assertRaises(ConfigError, msg=name) as ctx:
+                simulate(cfg)
+            self.assertIn(words, " ".join(ctx.exception.messages), name)
+        # 숙련공은 1단계에도 열려 있다(1.x 시니어, D33).
+        cfg = copy.deepcopy(PRESETS["managed"])
+        cfg["stations"]["block_assembly"]["crew"] = "skilled"
+        simulate(cfg, baseline=False)
+
+    def test_growth_allows_two_units_but_not_three_or_split(self):
+        cfg = copy.deepcopy(GROWTH["managed"])
+        cfg["stations"]["block_assembly"]["units"] = 3
+        with self.assertRaises(ConfigError):
+            simulate(cfg)
+        cfg["stations"]["block_assembly"].update(units=2, split=True)
+        with self.assertRaises(ConfigError):
+            simulate(cfg)
+
+    def test_surge_opens_everything(self):
+        cfg = copy.deepcopy(SURGE["managed"])
+        cfg["stations"]["block_assembly"].update(units=3, split=True, crew="robot", method="new")
+        cfg["materials"] = {"paint": "cheap"}
+        simulate(cfg, baseline=False)
 
 
 if __name__ == "__main__":
