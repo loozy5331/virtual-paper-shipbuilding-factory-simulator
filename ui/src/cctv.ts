@@ -326,6 +326,12 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     }
   }
 
+  // ----- 골리앗 크레인 위험 반경(3.0 안전, 현장 3D와 같은 반경 2.9): 점선 원, 탑재 중이면 진하게 -----
+  const craneBusy = frame.stations[3]?.units.some((u) => u.state === "work" || u.state === "rework");
+  add(-95, s("ellipse", { cx: px(STATION_X[3]), cy: py(0), rx: 2.9 * S, ry: 2.9 * S * DEPTH, fill: "none",
+    stroke: "#e0b43a", "stroke-width": craneBusy ? 2.2 : 1.2, "stroke-dasharray": "7 5", opacity: craneBusy ? 0.95 : 0.5 }));
+  add(-95, tag(px(STATION_X[3] - 2.9) + 4, py(2.6) + 4, "반경 10m 출입 금지", "cc-tag warn"));
+
   // ----- 골리앗 크레인(탑재 위, 틀만) -----
   const cx = STATION_X[3];
   const crane = s("g", { class: "cc-crane", opacity: 0.85 });

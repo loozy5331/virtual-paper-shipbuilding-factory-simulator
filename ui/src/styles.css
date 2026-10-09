@@ -937,3 +937,12 @@ body { background: var(--desk); }
 /* 분기에서 새로 열린 옵션(D33) */
 .postit-unlock { margin-top: 8px; padding-top: 6px; border-top: 1px dashed rgba(31, 42, 36, 0.25); }
 .postit-unlock b { display: inline; font-size: inherit; }
+
+/* 현장 안전 경고(3.0): 재생을 멈추고 가운데에 카드 */
+.safety-alert { position: absolute; inset: 0; z-index: 6; display: flex; align-items: center; justify-content: center; background: rgba(27, 34, 30, 0.45); }
+.safety-card { background: #fffaf0; color: var(--ink); border: 3px solid #e0b43a; border-radius: 10px; padding: 18px 22px; max-width: 420px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3); }
+.safety-card > b { font-size: 17px; color: #8a5a00; }
+.safety-actions { display: flex; gap: 8px; margin-top: 12px; }
+.warn-tag { background: #f6d77a !important; color: #3a2d00 !important; font-weight: 700; }
+.safety-line { margin: 0 0 10px; padding: 6px 10px; background: #fff4d6; border-left: 4px solid #e0b43a; border-radius: 4px; font-weight: 700; }
+.safety-line small { font-weight: 400; color: var(--ink-2); }
