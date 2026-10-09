@@ -20,8 +20,16 @@ import { renderCctv } from "./cctv";
 import { buildFrame } from "./scene/frame";
 import type { Yard } from "./scene/yard";
 
-const SPEEDS = [1, 4];   // 기본 4배속(사용자 결정). 1배속에서만 소인이 걸어서 옮긴다.
+const SPEEDS = [1, 4];   // 관제실 배속. 기본 4배속(사용자 결정). 현장은 따로 1배속 고정(FIELD_MS_PER_DAY).
 const BASE_MS_PER_DAY = 500;   // 1배속은 하루에 0.5초, 60일이 30초다.
+// 현장(3D)은 1배속 고정이고 하루가 더 길다: 소인이 걸어서 작업장에 닿고 일하는 모습이 보이게(2.1.4, D28).
+// 나가면 시간이 멈춰 있고, 재생을 누르면 이 속도로 흐른다.
+const FIELD_MS_PER_DAY = 3000;
+
+/** 지금 화면의 하루 길이(ms). */
+function msPerDay(): number {
+  return state.screen === "field" ? FIELD_MS_PER_DAY : BASE_MS_PER_DAY / state.speed;
+}
 // 사건 기록에 남기는 사건. 투입, 완료, 출고, 운반은 너무 잦아서 뺀다.
 const LOG_EVENTS = new Set(["arrival", "defect", "accident", "breakdown", "delivery", "research_done"]);
 // 배 탭(크게 보기)의 그 배 사건: 투입, 완료, 입고, 불량, 사고, 운반, 인도
@@ -633,7 +641,7 @@ function restartTimer(): void {
     if (state.day >= r.result.days && !r.finished) finish();
     else if (state.day >= r.result.days) pause();
     else tick(false);
-  }, BASE_MS_PER_DAY / state.speed);
+  }, msPerDay());
 }
 
 function seek(day: number): void {
@@ -789,9 +797,9 @@ function syncScene(jump: boolean): void {
   yard.setSource({
     frameAt: (frac) => buildFrame(r.result, scenario, r.config, day, frac),
     playing: state.playing,
-    msPerDay: BASE_MS_PER_DAY / state.speed,
+    msPerDay: msPerDay(),
     // 1배속 이하에서만 걷는 모습을 보여 준다. 빠르면 바로 옮긴다.
-    snap: jump || state.speed > 1,
+    snap: jump || (state.screen !== "field" && state.speed > 1),
   });
   yard.start();
 }
@@ -873,10 +881,13 @@ function drawOsd(target: HTMLElement = els.osd): void {
   mount(target,
     h("button", { class: "osd-btn", type: "button", title: "처음부터", onclick: () => { pause(); seek(0); } }, "⟲"),
     h("button", { class: "osd-btn play", type: "button", onclick: () => (state.playing ? pause() : play()) }, "▶ 재생"),
-    h("div", { class: "osd-speed", role: "radiogroup", "aria-label": "배속" }, SPEEDS.map((sp) =>
-      h("label", null,
-        h("input", { type: "radio", name: group, checked: state.speed === sp, onchange: () => { state.speed = sp; restartTimer(); allOsds().forEach((o) => drawOsd(o)); tick(true); } }),
-        h("span", null, `${sp}×`)))),
+    // 현장은 1배속 고정(하루 3초): 배속 대신 안내만
+    target === els.fieldOsd
+      ? h("span", { class: "osd-fixed", title: "현장은 소인이 걸어서 일하는 모습을 보도록 1배속으로만 흐릅니다" }, `1× · 하루 ${FIELD_MS_PER_DAY / 1000}초`)
+      : h("div", { class: "osd-speed", role: "radiogroup", "aria-label": "배속" }, SPEEDS.map((sp) =>
+        h("label", null,
+          h("input", { type: "radio", name: group, checked: state.speed === sp, onchange: () => { state.speed = sp; restartTimer(); allOsds().forEach((o) => drawOsd(o)); tick(true); } }),
+          h("span", null, `${sp}×`)))),
     h("input", {
       class: "scrub", type: "range", min: 0, max: r.result.days, step: 1, value: String(state.day), "aria-label": "날짜",
       oninput: (e: Event) => {
@@ -1017,6 +1028,7 @@ function goField(): void {
   const r = currentRun();
   if (!r) return;
   state.fieldFocus = state.cctv;   // 작업 현황에서 확대해 보던 공정이 있으면 그 앞으로 나간다.
+  pause();   // 현장에 나가면 시간이 멈춰 있다. 재생하면 1배속(하루 3초)으로 흐른다.
   setScreen("field");
   drawField();
   aimCamera();
@@ -1034,6 +1046,7 @@ function goField(): void {
 }
 
 function backToRoom(): void {
+  pause();   // 하루 길이가 달라지므로 멈춘 채로 돌아온다(관제실 배속으로 다시 재생).
   setScreen("room");
   drawRoom();
 }
