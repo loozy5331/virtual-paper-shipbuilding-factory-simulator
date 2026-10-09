@@ -14,11 +14,15 @@ import type { Frame, LotView } from "./scene/frame";
 
 // ----- 현장 3D와 같은 배치(yard.ts) -----
 const STATION_X = [-9, -3.5, 2, 8.5];
-const MAT_W = 3.2, MAT_D = 2.6, MAT2_D = 2.3, UNIT2_Z = -2.85;
+const MAT_W = 3.2, MAT_D = 2.6, MAT2_D = 2.3;
+const UNIT_Z = [0, -2.85, -5.65];   // 1호·2호·3호 작업장 줄(3.0)
 const QUEUE_Z = 2.2, LANE_Z = 3.7, DEPOT_X = -16;
 const LOUNGE = { x: -15.6, z: -4.4 };
-const SHELF_X = [-7.2, -4.7, -2.2], SHELF_Z = -6.6;
-const LAB = { x: 4.6, z: -7.2 };
+const SHELF_X = [-7.2, -4.7, -2.2], SHELF_Z = -9.6;
+const LAB = { x: 4.6, z: -10.4 };
+// 샛길: 큰길에서 공정 사이로 3호 뒤까지(yard.ts의 SPUR_X와 같은 자리)
+const SPUR_X = [STATION_X[0] - MAT_W / 2 - 1.45, (STATION_X[0] + STATION_X[1]) / 2,
+  (STATION_X[1] + STATION_X[2] - 0.05) / 2, (STATION_X[2] + MAT_W / 2 + 0.4 + STATION_X[3] - MAT_W / 2 - 0.6) / 2];
 // 해안(coast.ts): 야드 오른쪽 만, 곶 끝의 등대
 const SHORE_X = 11.2, MOUTH_X = 23.5, BAY_MOUTH = 3.5;
 
@@ -26,7 +30,7 @@ const SHORE_X = 11.2, MOUTH_X = 23.5, BAY_MOUTH = 3.5;
 const S = 30;                        // 1 단위 = 30px
 const DEPTH = Math.cos(Math.PI / 6); // 바닥 깊이는 0.87배로 줄고
 const RISE = Math.sin(Math.PI / 6);  // 높이는 0.5배로 보인다
-const X0 = -18.5, Z0 = -9.2, TOP = 34;
+const X0 = -18.5, Z0 = -12.2, TOP = 34;
 const VIEW_W = (26 - X0) * S;
 const VIEW_H = TOP + (5.6 - Z0) * S * DEPTH + 8;
 
@@ -187,6 +191,10 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   add(-98, tag(lx, ly + 14, "등대", "cc-tag mid"));
   add(-99, box((DEPOT_X - 1.5 + SHORE_X - 0.3) / 2, LANE_Z, SHORE_X - 0.3 - (DEPOT_X - 1.5), 1.0, 0.02, "#3a423d", "#3a423d"));
   add(-99, box(LOUNGE.x, LOUNGE.z, 3.2, 2.6, 0.02, "#2c3530", "#2c3530"));
+  for (const sx of SPUR_X) {
+    const back = UNIT_Z[2] - MAT2_D / 2 - 0.4, front = LANE_Z - 0.5;
+    add(-99, box(sx, (front + back) / 2, 0.8, front - back, 0.02, "#3a423d", "#3a423d"));
+  }
 
   // ----- 자재창고 선반 -----
   frame.shelves.forEach((sh, i) => {
@@ -230,8 +238,8 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     const view = frame.stations[p];
     const color = STATION_COLOR[st.id];
     view.units.forEach((unit, k) => {
-      const z = k === 1 ? UNIT2_Z : 0;
-      const d = k === 1 ? MAT2_D : MAT_D;
+      const z = UNIT_Z[k] ?? 0;
+      const d = k === 0 ? MAT_D : MAT2_D;
       // 작업장마다: 소조립·중조립은 벽(뒤·옆), 대조립은 노란 구획선, 탑재는 드라이 도크(바다 쪽 문)
       const z0 = z - d / 2 - 0.3, z1 = z + d / 2 + (k === 0 ? 0.35 : 0.05);
       if (p < 2) add(z0 - 0.01, walls(x - MAT_W / 2 - 0.45, x + MAT_W / 2 + 0.45, z0, z1, 1.0));
@@ -253,11 +261,16 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
       }
       if (view.units.length > 1) g.append(tag(px(x - MAT_W / 2) - 4, py(z) + 4, `${unit.unit}호`, "cc-unit end"));
       add(z - d / 2, g);
-      const here = frame.lots.find((l) => l.place === "bench" && l.station === p && l.ship === unit.ship);
+      // 나눠 하는 배는 부분이 든 작업장마다 작게 그린다. 먼저 끝난 부분은 비어 있는 정반에 남아 짝을 기다린다.
+      const here = frame.lots.find((l) => l.place === "bench" && l.station === p && l.ship === unit.ship)
+        ?? (unit.ship ? undefined : frame.lots.find((l) => l.place === "bench" && l.station === p
+          && l.parts?.some((pt) => pt.unit === k && pt.state === "pair_wait")));
+      const part = here?.parts?.find((pt) => pt.unit === k);
       if (here) {
-        add(z, lot(x, z, here.form, 1, here.type));
+        add(z, lot(x, z, here.form, here.parts && here.parts.length > 1 ? 0.75 : 1, here.type));
         // 배 이름표는 정반 뒤 가장자리 바로 위(정반 안의 글과 겹치지 않게)
         add(z + 0.02, chip(x, z - d / 2, 0, here, lateNow(here)));
+        if (part?.state === "pair_wait") add(z + 0.03, tag(px(x), py(z) + 4, "짝 대기", "cc-tag mid pair"));
       }
       if (view.crew === "robot") {
         if (here) { add(z + 0.1, robot(x - MAT_W / 2 + 0.35, z + 0.3)); add(z + 0.1, robot(x + MAT_W / 2 - 0.35, z + 0.3)); }
@@ -336,7 +349,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   let viewBox = `0 0 ${VIEW_W} ${VIEW_H}`;
   if (focus !== null) {
     // 공정 확대: 정반 둘(2호는 뒤)과 대기 줄이 세로로 들어가게. 가로는 화면 비율대로 이웃 공정까지 보인다.
-    const top = py(-4.3, 1), bottom = py(4.5);
+    const top = py(-7.2, 1), bottom = py(4.5);
     const w = 9 * S;
     viewBox = `${px(STATION_X[focus]) - w / 2} ${top} ${w} ${bottom - top}`;
   }

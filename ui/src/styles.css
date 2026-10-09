@@ -818,6 +818,7 @@ body { background: var(--desk); }
 .cc-feed .cc-tag.loss { fill: #f0b36a; font-weight: 700; }
 .cc-feed .warn { fill: #de9644; font-weight: 700; }
 .cc-feed .stop { fill: #ff8a95; font-weight: 800; }
+.cc-feed .cc-tag.pair { fill: #eef2ee; font-weight: 800; paint-order: stroke; stroke: #898781; stroke-width: 6px; stroke-linejoin: round; }
 .cc-feed .end { text-anchor: end; }
 .cc-feed .mid { text-anchor: middle; }
 .cc-feed .cc-chip rect { fill: #f3f1ea; }

@@ -9,6 +9,8 @@ export interface StationConfig {
   units?: number;
   /** 인력(2.0 4M): normal 일반, skilled 숙련공, robot 로봇. 없으면 일반. */
   crew?: Crew;
+  /** 나눠 하기(3.0): 배 한 척의 작업량을 빈 작업장 여러 곳에 나눈다. 없으면 끔. 탑재는 나누지 않는다. */
+  split?: boolean;
 }
 
 export type Crew = "normal" | "skilled" | "robot";
@@ -207,7 +209,8 @@ export interface ShipResult {
   lead_time_parts: Record<string, number>;
   spans: Record<string, { start: number; end: number }>;
   segments: Segment[];
-  daily: { state: ShipState; station: string | null; unit?: number | null }[];
+  /** parts: 나눠 하는 동안 부분(작업장)마다 상태(3.0). 먼저 끝난 부분은 pair_wait */
+  daily: { state: ShipState; station: string | null; unit?: number | null; parts?: { unit: number; state: string }[] }[];
 }
 
 export interface StationDay {
