@@ -412,8 +412,10 @@ select.priority { max-width: 84px; }
 /* ----- v3: 3D 장면 ----- */
 .scene-host { position: relative; height: clamp(420px, 62vh, 760px); border-radius: 12px; overflow: hidden; background: #e9e1d1; }
 .scene-host canvas { display: block; }
-.scene-labels { position: absolute; inset: 0; pointer-events: none; }
+.scene-labels { position: absolute; inset: 0; z-index: 1; pointer-events: none; }   /* 라벨의 z-index를 이 안에 가둔다(전환 막 아래로) */
 .scene-labels > div { font-family: inherit; }
+/* 현장 이름표(2.1, 가상의 이름): 작업복 가슴의 명찰처럼 흰 바탕에 작은 글자 */
+.name-tag { background: #fff; color: #33413a; border: 1px solid #33413a; border-radius: 2px; font-size: 10px; font-weight: 700; padding: 0 4px; line-height: 15px; white-space: nowrap; }
 .station-tag, .place-tag, .shelf-tag, .lot-tag {
   display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; white-space: nowrap;
   background: rgba(255, 255, 255, 0.93); font-size: 12px; font-weight: 700; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.14);
@@ -427,7 +429,8 @@ select.priority { max-width: 84px; }
 .field-panel { position: relative; }
 .finding-btns { display: flex; gap: 6px; }
 
-/* 현장 전환: 안전모를 쓴 관리자가 문으로 뛰어나간다 */
+/* 현장 전환: 작업모를 쓴 관리자가 문으로 뛰어나간다 */
+.intro-hat svg { width: 1.3em; height: 1em; vertical-align: -0.1em; }
 .field-intro {
   position: absolute; inset: 0; z-index: 5; border-radius: var(--radius); cursor: pointer;
   background: rgba(27, 34, 49, 0.88); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
@@ -835,6 +838,8 @@ body { background: var(--desk); }
 .cam-label { position: absolute; left: 10px; top: 8px; z-index: 2; background: rgba(20, 24, 20, 0.8); color: #f3f1ea; font-size: 12px; padding: 3px 8px; border-radius: 3px; font-weight: 700; }
 .cam-label::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #c0262d; margin-right: 6px; vertical-align: 1px; }
 .cam-back { position: absolute; right: 10px; top: 8px; z-index: 2; background: #fff; border: 1px solid #c9cfc9; font: inherit; font-size: 12px; padding: 3px 9px; border-radius: 4px; font-weight: 700; color: var(--accent); cursor: pointer; }
+/* 익명 표시(2.1): CCTV는 개인을 구분하지 않는다는 표시. 녹화 표시 바로 아래, 눈에 띄지만 조용하게. */
+.cam-anon { position: absolute; left: 10px; top: 34px; z-index: 2; background: rgba(243, 241, 234, 0.92); color: var(--ink-2); font-size: 11px; padding: 2px 7px; border-radius: 3px; border: 1px solid #c9cfc9; }
 .cam-switch { position: absolute; left: 10px; bottom: 8px; z-index: 2; display: flex; gap: 4px; }
 .cam-switch button { border: 0; background: rgba(20, 24, 20, 0.62); color: #f3f1ea; font: inherit; font-size: 11px; padding: 2px 7px; border-radius: 3px; cursor: pointer; }
 .cam-switch button.active { background: rgba(20, 24, 20, 0.9); font-weight: 700; }
