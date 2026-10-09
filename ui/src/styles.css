@@ -820,6 +820,8 @@ body { background: var(--desk); }
 .cc-feed .mid { text-anchor: middle; }
 .cc-feed .cc-chip rect { fill: #f3f1ea; }
 .cc-feed .cc-chip rect.late { stroke: #e0454c; stroke-width: 2; }
+.cc-feed .cc-sea-name { font-size: 10px; font-weight: 800; fill: #f3f1ea; text-anchor: middle; }
+.cc-feed .cc-sea-name.late { fill: #ff8a95; }
 .cc-feed .cc-chip text { font-size: 11px; font-weight: 800; fill: #1f2622; text-anchor: middle; }
 .cc-feed .pick { cursor: pointer; }
 .cc-feed .pick:hover > g > rect:first-child, .cc-feed .pick:focus-visible > g > rect:first-child { stroke: #f3f1ea; stroke-width: 2; }
