@@ -129,6 +129,8 @@ const els = {
   rightTop: h("div", { class: "right-top" }),
   /** 자재·블록 추적 상자 자리: 작업 현황 위(관제실) */
   trackRoom: h("div", { class: "track-host" }),
+  /** 자재·블록 추적 상자 자리: 현장 3D 위 */
+  trackField: h("div", { class: "track-host" }),
   log: h("ol", { class: "log", "aria-label": "사건 기록" }),
   deskClip: h("button", { class: "desk-clip", type: "button", title: "생산계획서로 돌아가 계획을 고칩니다" }),
   hat: h("button", { class: "desk-hat", type: "button", title: "작업모를 쓰고 현장으로 나갑니다" }),
@@ -760,20 +762,32 @@ function closeTrack(): void {
 
 function setTrack(ship: string | null): void {
   state.track = ship;
+  yard?.setTrack(ship);
   drawRightTop();
+  if (state.screen === "field") drawField();
   tick(true);
+}
+
+/** 추적할 배 고르기(작업 현황 전경 오른쪽 아래, 현장 머리줄) */
+function trackSelect(): HTMLElement {
+  return h("label", { class: "cam-track" }, "추적",
+    h("select", { onchange: (e: Event) => setTrack((e.target as HTMLSelectElement).value || null) },
+      h("option", { value: "" }, "없음"),
+      (currentRun()?.result.ships ?? []).map((sh) => h("option", { value: sh.id, selected: state.track === sh.id }, sh.id))));
 }
 
 function drawTrackCard(): void {
   const r = currentRun();
-  const host = els.trackRoom;
+  const field = state.screen === "field";
+  const host = field ? els.trackField : els.trackRoom;
+  mount(field ? els.trackRoom : els.trackField);
   if (!r || !state.pick) return mount(host);
   const frame = buildFrame(r.result, state.data.scenario, r.config, state.day, 1);
   mount(host, renderTrackCard(state.pick, r.result, state.data.scenario, frame, {
     track: setTrack,
     pick: openTrack,
     close: closeTrack,
-    gantt: (ship) => { state.ganttShip = ship; drawGanttScreen(); tick(true); },
+    gantt: field ? undefined : (ship) => { state.ganttShip = ship; drawGanttScreen(); tick(true); },
   }, state.track));
 }
 
@@ -831,6 +845,7 @@ function syncScene(jump: boolean): void {
   if (!yard) {
     yardLoading ??= import("./scene/yard").then((y) => {
       yard = new y.Yard();
+      yard.setPickHandler(openTrack);
     });
     void yardLoading.then(() => {
       aimCamera();
@@ -840,6 +855,7 @@ function syncScene(jump: boolean): void {
   }
   yard.attach(host);
   yard.setManagerName(r.signer?.nickname ?? "생산관리자");
+  yard.setTrack(state.track);
   if (yardRun !== r) {
     yard.load(r.result.ships.map((s) => ({ id: s.id, type: s.type })));
     yardRun = r;
@@ -997,10 +1013,7 @@ function drawRightTop(): void {
     state.cctv !== null ? h("button", { class: "cam-back", type: "button", onclick: closeCctv }, "← 전경") : null,
     els.trackRoom,
     // 추적할 배 고르기(3.1): 고른 배의 블록만 진하게, 선반에는 그 배 몫
-    h("label", { class: "cam-track" }, "추적",
-      h("select", { onchange: (e: Event) => setTrack((e.target as HTMLSelectElement).value || null) },
-        h("option", { value: "" }, "없음"),
-        (currentRun()?.result.ships ?? []).map((sh) => h("option", { value: sh.id, selected: state.track === sh.id }, sh.id)))),
+    trackSelect(),
     h("div", { class: "cam-switch", role: "group", "aria-label": "확대할 공정" },
       h("button", { type: "button", class: state.cctv === null ? "active" : "", onclick: closeCctv }, "전경"),
       stations.map((st, i) =>
@@ -1131,7 +1144,10 @@ function drawField(): void {
     // 관리자 순간이동(3.0 안전): 설비 옆으로 가면 위험 반경 경고. 1인칭 이동은 나중에(D35)
     h("div", { class: "field-cams", role: "group", "aria-label": "관리자 이동" },
       h("button", { type: "button", onclick: () => moveManager("crane") }, "골리앗 주변으로"),
-      h("button", { type: "button", onclick: () => moveManager("cart") }, "트랜스포터 주변으로")));
+      h("button", { type: "button", onclick: () => moveManager("cart") }, "트랜스포터 주변으로")),
+    // 자재·블록 추적(3.1): 블록이나 선반을 누르면 상자, 고른 배는 노란 고리
+    h("span", { class: "hint" }, "블록·선반을 누르면 추적"),
+    trackSelect());
   drawOsd(els.fieldOsd);
 }
 
@@ -1340,6 +1356,7 @@ async function start(): Promise<void> {
     h("div", { class: "room-desk" }, h("div", { class: "desk-top" }), els.deskClip, els.hands, els.hat),
     els.reportBoard, els.planBoard);
 
+  els.sceneField.append(els.trackField);
   mount(els.field, els.fieldHead, els.sceneField, els.fieldOsd);
   mount(root, els.desk, els.plan, els.room, els.field);
 

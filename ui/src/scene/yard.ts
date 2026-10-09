@@ -18,6 +18,7 @@ import { STOCK_D, STOCK_HALF, STOCK_STATIONS, STOCK_Z0, stockAssign, stockSpot }
 import { buildDock, buildLand, buildWalls, buildYardLines, GiantHand, SEA_Y, SHORE_X, type DockParts } from "./coast";
 import { clamp01, ease, flatOf, hullTris, type Tri } from "../proto/model";
 import { STATE_INFO, STATION_COLOR } from "../labels";
+import type { TrackPick } from "../track";
 
 // ----- 배치 (해안 조선소 야드 좌표, 단위는 대략 소인 키의 4배. 배경은 coast.ts) -----
 const STATION_X = [-9, -3.5, 2, 8.5];
@@ -345,6 +346,12 @@ export class Yard {
   }[] = [];
   private readonly carts: { group: THREE.Group; tag: CSS2DObject; smoke: THREE.Group }[] = [];
   private readonly shelves: { boxes: THREE.Mesh[]; tag: CSS2DObject }[] = [];
+  /** 자재·블록 추적(3.1): 누르면 상자를 띄울 곳(main.ts), 진하게 볼 배, 선반의 보이지 않는 누름 상자, 추적 중인 배 밑의 고리 */
+  private pickHandler: ((pick: TrackPick) => void) | null = null;
+  private track: string | null = null;
+  private readonly shelfHits: THREE.Mesh[] = [];
+  private readonly raycaster = new THREE.Raycaster();
+  private readonly trackRing: THREE.Mesh;
   private readonly lounge: CSS2DObject;
   private readonly labTag: CSS2DObject;
   private readonly labWindow: THREE.MeshStandardMaterial;
@@ -390,6 +397,18 @@ export class Yard {
     this.controls.minDistance = 4;
     this.controls.maxDistance = 60;
     this.controls.addEventListener("start", () => { this.camMoving = 0; });
+    // 누르기: 끌지 않고 떼면(카메라 돌리기와 구분) 그 자리의 블록이나 선반을 찾는다(자재·블록 추적, 3.1)
+    let down: { x: number; y: number } | null = null;
+    r.domElement.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY }; });
+    r.domElement.addEventListener("pointerup", (e) => {
+      if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 5) this.pickAt(e.clientX, e.clientY);
+      down = null;
+    });
+    this.trackRing = new THREE.Mesh(new THREE.RingGeometry(1.15, 1.3, 48),
+      new THREE.MeshBasicMaterial({ color: "#e0b43a", side: THREE.DoubleSide, transparent: true, opacity: 0.9 }));
+    this.trackRing.rotation.x = -Math.PI / 2;
+    this.trackRing.visible = false;
+    this.scene.add(this.trackRing);
 
     const { hemi, sun } = this;
     sun.position.set(-9, 17, 11);
@@ -756,8 +775,19 @@ export class Yard {
         this.scene.add(box);
         boxes.push(box);
       }
+      // 누름 상자: 선반 전체(보이지 않게). 선반을 누르면 자재 페깅 상자
+      const hit = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.8, 1.9), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
+      hit.position.set(x, 0.9, SHELF_Z + 0.45);
+      hit.userData.shelf = i;
+      this.scene.add(hit);
+      this.shelfHits.push(hit);
       const tag = label("", "shelf-tag");
       tag.position.set(x, 1.75, SHELF_Z + 0.2);
+      tag.element.classList.add("pickable");
+      tag.element.addEventListener("click", () => {
+        const material = this.source?.frameAt(1).shelves[i]?.material;
+        if (material) this.pickHandler?.({ kind: "material", material });
+      });
       this.scene.add(tag);
       this.shelves.push({ boxes, tag });
     });
@@ -806,10 +836,42 @@ export class Yard {
     ships.forEach(({ id, type }, i) => {
       const lot = new Lot(id, type);
       lot.floatPhase = i * 1.7;
+      lot.group.userData.pick = { kind: "ship", ship: id } satisfies TrackPick;
+      // 이름표(S3 칩)도 누를 수 있다(라벨 층은 원래 누름을 통과시킨다)
+      lot.tag.element.classList.add("pickable");
+      lot.tag.element.addEventListener("click", () => this.pickHandler?.({ kind: "ship", ship: id }));
       lot.group.visible = false;
       this.lots.set(id, lot);
       this.scene.add(lot.group);
     });
+  }
+
+  /** 블록이나 선반을 누르면 부를 함수(자재·블록 추적 상자) */
+  setPickHandler(fn: (pick: TrackPick) => void): void {
+    this.pickHandler = fn;
+  }
+
+  /** 추적 중인 배: 그 배 블록 밑에 노란 고리, 이름표를 진하게(나머지는 흐리게), 선반에 그 배 몫 */
+  setTrack(ship: string | null): void {
+    this.track = ship;
+  }
+
+  private pickAt(clientX: number, clientY: number): void {
+    if (!this.pickHandler) return;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    const targets: THREE.Object3D[] = [...[...this.lots.values()].filter((l) => l.group.visible).map((l) => l.group), ...this.shelfHits];
+    for (const hit of this.raycaster.intersectObjects(targets, true)) {
+      for (let o: THREE.Object3D | null = hit.object; o; o = o.parent) {
+        if (o.userData.pick) return this.pickHandler(o.userData.pick as TrackPick);
+        if (o.userData.shelf !== undefined) {
+          const material = this.source?.frameAt(1).shelves[o.userData.shelf as number]?.material;
+          if (material) return this.pickHandler({ kind: "material", material });
+          return;
+        }
+      }
+    }
   }
 
   setSource(source: DaySource): void {
@@ -877,6 +939,14 @@ export class Yard {
       if (lot.path.length && lot.group.position.distanceTo(goal) < 0.15) lot.path.shift();
     }
     this.animateProps(t);
+    // 추적: 그 배 블록 밑에 고리, 이름표는 그 배만 진하게
+    const tracked = this.track ? this.lots.get(this.track) : undefined;
+    this.trackRing.visible = !!tracked?.group.visible;
+    if (tracked) this.trackRing.position.set(tracked.group.position.x, Math.max(0.05, tracked.group.position.y) + 0.03, tracked.group.position.z);
+    for (const lot of this.lots.values()) {
+      lot.tag.element.classList.toggle("tracked", this.track === lot.ship);
+      lot.tag.element.classList.toggle("untracked", this.track !== null && this.track !== lot.ship);
+    }
     if (this.camMoving > 0) {
       const k = Math.min(1, dt * 3);
       this.camera.position.lerp(this.camGoal.pos, k);
@@ -1072,7 +1142,8 @@ export class Yard {
       const shown = Math.min(sh.qty, shelf.boxes.length);
       shelf.boxes.forEach((b, k) => { b.visible = k < shown; });
       const note = sh.qty > 0 ? `<b>${sh.qty}</b>` : sh.nextArrival ? chipHtml("material_wait", `입고 D-${sh.nextArrival - f.day}`) : "<b>0</b>";
-      setLabel(shelf.tag, `${sh.name} ${note}`);
+      const mine = this.track ? sh.pegs.find((pg) => pg.ship === this.track)?.quantity ?? 0 : null;
+      setLabel(shelf.tag, `${sh.name} ${note}${mine !== null ? `<br><small class="${mine ? "track" : ""}">${this.track} 몫 ${mine}</small>` : ""}`);
     });
 
     // 연구소
