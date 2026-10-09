@@ -102,6 +102,9 @@ class HandExamples(unittest.TestCase):
         self.assertEqual(spans(r, "S1")["block_assembly"], (6, 13))
         parts = [[p["state"] for p in d["parts"]] for d in r["ships"][0]["daily"][5:13]]
         self.assertEqual(parts, [["work", "labor_wait"]] * 4 + [["pair_wait", "work"]] * 4)
+        # 공정 결과의 짝 대기 일수: 1호가 4일 기다렸다(OEE에는 넣지 않는다).
+        block = next(s for s in r["stations"] if s["id"] == "block_assembly")
+        self.assertEqual((block["pair_wait_days"], [u["pair_wait_days"] for u in block["units"]]), (4, [4, 0]))
         # 3곳 + 6명이면 부분 5.33, 3일(6~8일), 인도 18일.
         cfg["pool"] = 6
         cfg["stations"]["block_assembly"]["units"] = 3

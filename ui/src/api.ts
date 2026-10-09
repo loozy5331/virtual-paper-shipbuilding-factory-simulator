@@ -245,6 +245,8 @@ export interface StationResult {
   breakdown_stop_days: number;
   material_wait_days: number;
   labor_wait_days: number;
+  /** 나눠 하기에서 먼저 끝난 부분이 나머지를 기다린 날(작업장마다 합). OEE에는 넣지 않는다(3.0) */
+  pair_wait_days?: number;
   breakdowns: number;
   inspections: number;
   passes: number;
