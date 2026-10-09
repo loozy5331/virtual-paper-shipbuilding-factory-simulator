@@ -32,6 +32,10 @@ cd ui && npm install && npm run build
 
 # 서버 (http://localhost:8000). 화면이 빌드되기 전에는 API만 응답한다.
 python server/app.py
+
+# 수업: 강사 노트북에서 띄우면 같은 와이파이 학생이 접속할 주소를 출력한다.
+# 회차는 server/data/shipyard.sqlite3에 저장된다(닉네임 + 반 코드).
+python server/app.py --host 0.0.0.0
 ```
 
 엔진만 직접 써 볼 수도 있다.

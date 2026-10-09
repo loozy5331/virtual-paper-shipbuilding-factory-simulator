@@ -909,3 +909,18 @@ body { background: var(--desk); }
 .desk-pen.writing .pen-label { visibility: hidden; }
 .desk-pen.blocked { cursor: not-allowed; opacity: 0.55; }
 .desk-pen.blocked:hover { transform: none; }
+
+/* 서명 카드(2.0 ⑤): 닉네임과 반 코드 */
+.sign-card { border: 1px solid var(--board-edge); border-radius: 6px; padding: 18px 20px; width: min(360px, calc(100vw - 32px)); background: var(--paper); color: var(--ink);
+  box-shadow: 0 12px 32px rgba(20, 24, 20, 0.3); }
+.sign-card::backdrop { background: rgba(30, 34, 30, 0.35); }
+.sign-card h3 { margin: 0 0 12px; font-size: 1rem; }
+.sign-card form { display: flex; flex-direction: column; gap: 10px; }
+.sign-card label { display: flex; flex-direction: column; gap: 4px; font-size: 0.84rem; font-weight: 600; }
+.sign-card label small { font-weight: 400; color: var(--ink-3); }
+.sign-card input { font: inherit; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.sign-card input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.sign-error { margin: 0; min-height: 1.1em; font-size: 0.8rem; color: var(--bad); }
+.sign-card-buttons { display: flex; justify-content: flex-end; gap: 8px; }
+.desk-class { margin: 0; font-size: 0.8rem; color: var(--ink-2); }
+.desk-class b { color: var(--ink); }

@@ -2,7 +2,7 @@
 // 맨 위 종이는 그 분기의 "생산계획" 표지다. 왼쪽부터 옛 분기 → 나중 분기 순이고, 나중일수록 어렵다.
 // 신입이 쉬운 분기부터 하나씩 맡으며 경험을 쌓는 흐름이다. 누르면 그 클립보드를 집어 들고 생산계획서가 열린다(main.ts).
 
-import type { ScenarioSummary } from "./api";
+import type { ClassBest, ScenarioSummary } from "./api";
 import { h, mount, num } from "./dom";
 import { GRADE_COLOR, GRADE_EDGE, GRADE_TEXT } from "./labels";
 
@@ -10,6 +10,9 @@ export interface DeskContext {
   scenarios: ScenarioSummary[];
   /** 이번 세션에서 분기마다 받은 최고 등급. 없으면 아직 맡지 않은 분기. */
   best: Record<string, { grade: string; score: number } | undefined>;
+  /** 반 코드를 적었으면 그 반의 시나리오별 최고(서버 저장). */
+  classCode: string;
+  classBest: Record<string, ClassBest>;
   onPick(id: string, board: HTMLElement): void;
 }
 
@@ -48,6 +51,12 @@ export function renderDesk(root: HTMLElement, ctx: DeskContext): void {
               title: `이번 세션 최고 ${best.score.toFixed(1)}점`,
             }, best.grade)
             : null),
+        ctx.classCode
+          ? h("p", { class: "desk-class" }, `우리 반(${ctx.classCode}) 최고 `,
+            ctx.classBest[sc.id]
+              ? [h("b", null, `${ctx.classBest[sc.id].grade} ${ctx.classBest[sc.id].score.toFixed(1)}`), ` · ${ctx.classBest[sc.id].nickname}`]
+              : "아직 없음")
+          : null,
         // 메모: 시나리오 이름은 종이에 붙인 쪽지처럼 둔다.
         h("p", { class: "desk-memo" }, h("b", null, sc.name), " ", sc.summary)));
       return board;
