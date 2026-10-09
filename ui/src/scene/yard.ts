@@ -39,7 +39,8 @@ const DOOR_OPEN = Math.PI * 0.47;   // 문이 거의 직각으로 열린다
 // 엔진 규칙이 아니라 현장 화면의 규칙이다. 반경은 팻말에 "반경 10m"로 적는다(소인국 척도라 화면 크기는 보기 좋게만).
 const CRANE_R = 2.9;        // 걸리버의 손(골리앗 크레인): 탑재 도크 둘레
 const CART_R = 1.4;         // 트랜스포터
-const SAFE_Z = 1.95;        // 안전한 자리: 1호 작업장 앞과 큰길 사이(크레인 반경 밖)
+// 안전한 자리: 도크의 큰길 맞은편 빈 땅. 크레인 반경(2.9)과 큰길 트랜스포터 반경(1.4) 밖이고, 샛길·적치장과도 겹치지 않는다.
+const SAFE_SPOT = new THREE.Vector3(8.5, 0, 3.7 + 2.1);   // STATION_X[3], LANE_Z + 2.1
 export type ManagerSpot = "safe" | "crane" | "cart";
 export interface Hazard { id: string; label: string }
 const WATER_TOP = 0.32;
@@ -461,7 +462,7 @@ export class Yard {
   }
 
   /**
-   * 관리자 자리. safe = 보고 있는 공정 앞쪽, 작업장에서 떨어진 안전한 자리(탑재는 크레인 반경 밖).
+   * 관리자 자리. safe = 도크의 큰길 맞은편(어느 공정을 보든 같은 자리).
    * crane·cart = 그 설비 옆으로 순간이동한다. 위험 반경에 들었으면 무엇인지 돌려준다(화면이 경고).
    */
   setManagerSpot(spot: ManagerSpot, station: number | null): Hazard | null {
@@ -482,8 +483,8 @@ export class Yard {
       const cart = this.carts.find((c) => c.group.visible)?.group.position ?? new THREE.Vector3(DEPOT.x, 0, LANE_Z);
       return new THREE.Vector3(cart.x + 0.5, 0, cart.z + 0.7);
     }
-    const x = i === null ? -1 : i === 3 ? STATION_X[3] - CRANE_R - 0.8 : STATION_X[i];
-    return new THREE.Vector3(x, 0, SAFE_Z);
+    void i;
+    return SAFE_SPOT.clone();
   }
 
   /** 위험 반경 표시(노랑·검정 점선 원)와 "반경 10m 출입 금지" 팻말 */
