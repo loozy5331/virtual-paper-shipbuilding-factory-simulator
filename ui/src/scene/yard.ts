@@ -32,6 +32,7 @@ const unitDepth = (unit: number) => (unit === 0 ? MAT_D : MAT2_D);
 // ④ 배가 나가고 ⑤ 문을 닫고 ⑥ 물을 뺀다. 그동안 다음 블록은 도크 앞에서 기다린다. 값은 하루 안의 비율(frac).
 const LAUNCH = { fill: [0.1, 0.28], open: [0.28, 0.4], sail: [0.4, 0.62], close: [0.62, 0.74], drain: [0.74, 0.86] } as const;
 const LAUNCH_END = 0.86;
+const DOOR_OPEN = Math.PI * 0.47;   // 문이 거의 직각으로 열린다
 const WATER_TOP = 0.32;
 const phase = (frac: number, [a, b]: readonly [number, number]) => clamp01((frac - a) / (b - a));
 // 샛길 자리: 소조립 왼쪽, 그리고 이웃한 공정의 작업장 사이 가운데(벽·구획선·도크를 피한다)
@@ -1011,7 +1012,7 @@ export class Yard {
       dock.water.scale.y = Math.max(0.01, level * WATER_TOP);
       dock.water.position.y = (level * WATER_TOP) / 2;
       const open = on ? phase(frac, [LAUNCH.open[0] + 0.05, LAUNCH.open[1]]) * (1 - phase(frac, [LAUNCH.close[0], LAUNCH.close[1] - 0.05])) : 0;
-      dock.hinge.rotation.z = ease(open) * 1.35;   // 아래쪽이 바다 쪽으로 들린다
+      dock.hinge.rotation.y = ease(open) * DOOR_OPEN;   // 오른쪽 끝이 바다 쪽으로 밀려 열린다(현관문)
     });
   }
 
@@ -1022,9 +1023,10 @@ export class Yard {
     const go = phase(frac, [LAUNCH.fill[1] - 0.06, LAUNCH.open[0] + 0.04]);
     const back = phase(frac, [LAUNCH.close[1] - 0.02, LAUNCH.close[1] + 0.08]);
     const k = ease(go) * (1 - ease(back));
-    const open = ease(phase(frac, [LAUNCH.open[0] + 0.05, LAUNCH.open[1]]) * (1 - phase(frac, [LAUNCH.close[0], LAUNCH.close[1] - 0.05]))) * 1.35;
-    // 문짝 아래 끝(열린 각도를 따라 바다 쪽으로 올라간다)의 뒤쪽 모서리를 손바닥 자석판이 잡는다(배가 나가는 길을 가리지 않게)
-    const at = new THREE.Vector3(dock.x1 + 0.2 + Math.sin(open) * 0.5, 0.45 - Math.cos(open) * 0.5 + 0.35, dock.zc - dock.zHalf + 0.35);
+    const open = ease(phase(frac, [LAUNCH.open[0] + 0.05, LAUNCH.open[1]]) * (1 - phase(frac, [LAUNCH.close[0], LAUNCH.close[1] - 0.05]))) * DOOR_OPEN;
+    // 문짝의 오른쪽(경첩 반대) 끝을 손바닥 자석판이 잡고 바다 쪽으로 돌려 연다. 열린 문은 배 왼쪽으로 비켜 있다.
+    const len = dock.zHalf * 2 - 0.3;
+    const at = new THREE.Vector3(dock.x1 + 0.25 + Math.sin(open) * len, 0.62, dock.zc - dock.zHalf + Math.cos(open) * len);
     return k > 0.001 ? { at, k } : null;
   }
 
