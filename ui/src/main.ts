@@ -478,6 +478,9 @@ async function openPlanBoard(): Promise<void> {
     config: structuredClone(r.config), presetId: null, edited: false, busy: true,
     onEdit: () => {}, onPreset: () => {}, onDesk: () => {}, onRun: () => {},
   });
+  // 라디오는 name이 같으면 문서 전체에서 한 묶음이다. 아래에서 생산계획서 화면의 양식을 다시 그리면
+  // 같은 name의 라디오가 이 펼친 계획서의 선택(대기소 인원, 공법 등)을 빼앗는다. 그리기 전에 name을 뗀다.
+  sheet.querySelectorAll<HTMLInputElement>("input[name]").forEach((el) => el.removeAttribute("name"));
   updatePreview(sheet, r.preview ?? null, [], true);
   // 읽기 전용: [공통 | 배별] 탭만 누를 수 있고, 입력·버튼·계획 간트 끌기는 막는다.
   sheet.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>("input, select, textarea, button:not([role=tab])")

@@ -869,6 +869,8 @@ body { background: var(--desk); }
 .room.board-up::before { content: ""; position: absolute; inset: 0; z-index: 15; background: rgba(30, 34, 30, 0.35); cursor: pointer; }
 .report-sheet { height: 100%; overflow-y: auto; background: var(--paper); border-radius: 3px; padding: 14px 20px 20px; }
 .room.board-down .report-sheet { overflow: hidden; }
+/* 내려 둔 평가서 띠에는 "계획 고치기"를 두지 않는다(펼친 생산계획서에 가려 잘렸다). 올리면 맨 위에 있다. */
+.room.board-down .report-board:not(.plan-board) .report-actions .btn { display: none; }
 .report-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
 @media (prefers-reduced-motion: reduce) { .report-board { transition: none; } }
 /* 펼친 생산계획서(2.0.1): 평가서와 같은 자리, 같은 어두운 막. 읽기 전용: 탭만 누를 수 있다. */

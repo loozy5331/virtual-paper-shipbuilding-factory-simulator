@@ -11,7 +11,7 @@
 - 규칙의 기준 문서: https://claude.ai/code/artifact/63f9424c-6a92-461b-8fb0-06a2820778d0
   (Claude Docs 문서다. Claude Docs 연결이 있으면 docs 도구로 직접 읽고 고친다. 2026-10-08에 컨셉 v3로 갱신했다.)
 - 컨셉 v3 인수인계: `docs/handoff-v3.md`, 구현 계획은 PR ① 엔진(#4) → ② 2D 화면 → ③ 3D 순서다.
-- 버전: `main`은 2.0.2(수업용, 태그 `v2.0.2`), `develop`은 2.1.2(2026-10-09, 태그 `v2.1.0`~`v2.1.2`: 작업 현황 전경, 노움 소인, 선종별 배, 해안 조선소). 결정 기록은 `docs/handoff-v2.0.md`(D10~D29), 다음은 `docs/roadmap.md`의 3.0. 발표 버전은 `v1.1.0`, 발표 후 등급 색 수정이 `v1.1.1`. 버전 규칙과 변경 기록은 `CHANGELOG.md`, 1.1 이후 방향은 `docs/roadmap.md`, 1.1 작업은 `docs/handoff-v1.1.md`.
+- 버전: `main`은 2.0.2(수업용, 태그 `v2.0.2`), `develop`은 2.1.3(2026-10-09, 태그 `v2.1.0`~`v2.1.3`: 작업 현황 전경, 노움 소인, 선종별 배, 해안 조선소). 결정 기록은 `docs/handoff-v2.0.md`(D10~D29), 다음은 `docs/roadmap.md`의 3.0. 발표 버전은 `v1.1.0`, 발표 후 등급 색 수정이 `v1.1.1`. 버전 규칙과 변경 기록은 `CHANGELOG.md`, 1.1 이후 방향은 `docs/roadmap.md`, 1.1 작업은 `docs/handoff-v1.1.md`.
 - 브랜치: `main`은 MAJOR 릴리스만, 작업은 `develop`에서 따서 `develop`으로 PR. 자세한 것은 `CHANGELOG.md`의 브랜치 규칙.
 - 다음: 3.0(구역과 작업장 1~3개·작업장별 4M, 블록 단위 병렬, 안전 반경, D26·D27), 2.x(인터넷 공개, 1인칭·3인칭 현장, 의장 공정 분리).
 
@@ -99,7 +99,7 @@ Node는 Homebrew로 설치했다(v26).
   안·분기 설명과 목표·이번 세션 최고는 생산계획서 오른쪽 포스트잇(`renderPlanNotes`, `main.ts`의 목표 포스트잇). 서식 안에는 계획 내용만.
   레포트 이름은 값과 맞춘다(QCD 카드: Q 직행률, C 이익, D 납기 준수).
   종이색 #FCFAF4는 검증 배경보다 밝아 모든 색의 대비가 조금씩 높다.
-  주의: 날아가는 복제(`fly-ghost`)는 라디오의 name을 떼야 원본 선택을 빼앗지 않는다. 클래스 이름 `.ghost`는 `.btn.ghost`와 겹치므로 쓰지 않는다.
+  주의: 날아가는 복제(`fly-ghost`)와 관제실에서 펼친 생산계획서(`openPlanBoard`)는 라디오의 name을 떼야 원본과 선택을 서로 빼앗지 않는다. 클래스 이름 `.ghost`는 `.btn.ghost`와 겹치므로 쓰지 않는다.
 - 헤드리스 Chrome 확인: playwright-core를 scratchpad에만 설치하고 `/Applications/Google Chrome.app`을 쓴다(저장소에 넣지 않는다).
   2026-10-08 확인: 프리셋 3개 등급, 탭 전환 중 입력 유지, S2 ⚠, 슬라이더, 1280×720 레포트.
 
