@@ -421,6 +421,8 @@ select.priority { max-width: 84px; }
   background: rgba(255, 255, 255, 0.93); font-size: 12px; font-weight: 700; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.14);
 }
 .station-tag i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.station-tag.small-tag { font-size: 11px; padding: 2px 7px; gap: 4px; }
+.station-tag.small-tag i { width: 8px; height: 8px; }
 .place-tag { display: inline-block; font-weight: 600; color: var(--ink-2); border-radius: 10px; text-align: center; }
 .place-tag.small { padding: 1px 7px; font-size: 11px; border-radius: 999px; }
 .lot-tag b { font-size: 12px; }
@@ -818,6 +820,7 @@ body { background: var(--desk); }
 .cc-feed .cc-tag.loss { fill: #f0b36a; font-weight: 700; }
 .cc-feed .warn { fill: #de9644; font-weight: 700; }
 .cc-feed .stop { fill: #ff8a95; font-weight: 800; }
+.cc-feed .cc-tag.pair { fill: #eef2ee; font-weight: 800; paint-order: stroke; stroke: #898781; stroke-width: 6px; stroke-linejoin: round; }
 .cc-feed .end { text-anchor: end; }
 .cc-feed .mid { text-anchor: middle; }
 .cc-feed .cc-chip rect { fill: #f3f1ea; }

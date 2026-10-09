@@ -21,6 +21,8 @@ export interface LotView {
   station: number;          // 자리의 공정 번호 (0 소조립 … 3 탑재)
   unit: number;             // 정반 위면 작업장 번호(0 = 1호, 1 = 2호). 그 밖에는 0
   slot: number;             // 같은 자리에서의 순서 (우선순위 순)
+  /** 나눠 하는 중이면 부분마다 작업장 번호(0 = 1호)와 상태. 먼저 끝난 부분은 pair_wait(짝 대기). 3.0 */
+  parts?: { unit: number; state: string }[];
   /** 운반 중이면 이번 운반의 진행률(0~1). 운반이 며칠 걸리면 그 날들을 이어서 센다. */
   travel?: number;
   /** 조립 단계. 0 부재, 1 소블록 12개, 2 중블록 6개, 3 대블록 3개(도장), 4 배. 정반 위에서는 진행률만큼 소수가 된다. */
@@ -121,13 +123,16 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
         return { ...base, place: "queue", station: p, form: p, state: rec.state };
       default: {
         // 작업, 재작업, 인력 대기, 중지: 정반 위에 있으면 진행률만큼 다음 단계로 바뀌는 중이다.
-        const unit = result.stations[p].units.findIndex((u) => u.daily[index].ship === ship.id);
+        // 나눠 하는 배는 부분이 든 작업장이 여럿이다. 아직 일하는 부분의 첫 작업장을 로트 자리로 삼는다.
+        const parts = rec.parts?.map((pt) => ({ unit: pt.unit - 1, state: pt.state }));
+        const active = parts?.find((pt) => pt.state !== "pair_wait");
+        const unit = active ? active.unit : result.stations[p].units.findIndex((u) => u.daily[index].ship === ship.id);
         if (unit < 0) return { ...base, place: "queue", station: p, form: p, state: rec.state };
         const span = ship.spans[stationIds[p]];
         // 첫날은 사람이 도착한 뒤(준비 시간 뒤)부터 진행한다.
         const into = span && day === span.start ? afterLead(frac) : frac;
         const progress = span ? clamp01((day - span.start + into) / (span.end - span.start + 1)) : 0;
-        return { ...base, place: "bench", station: p, unit, form: p + progress, state: rec.state };
+        return { ...base, place: "bench", station: p, unit, form: p + progress, state: rec.state, ...(parts ? { parts } : {}) };
       }
     }
   });

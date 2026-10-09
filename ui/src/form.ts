@@ -237,7 +237,11 @@ function commonPane(ctx: FormContext): HTMLElement {
           robot
             ? h("span", { class: "hint", title: scenario.rules.crews.robot.summary }, "로봇은 잔업 없음")
             : toggle("잔업", cfg.overtime, (on) => { cfg.overtime = on; ctx.onEdit(false); }),
-          toggle("정비", cfg.maintenance, (on) => { cfg.maintenance = on; ctx.onEdit(false); })),
+          toggle("정비", cfg.maintenance, (on) => { cfg.maintenance = on; ctx.onEdit(false); }),
+          // 나눠 하기(3.0): 탑재는 배 한 척이 도크 하나에 들어가야 해서 나누지 않는다.
+          st.id === scenario.stations[scenario.stations.length - 1].id
+            ? null
+            : toggle("나눠 하기", cfg.split ?? false, (on) => { if (on) cfg.split = true; else delete cfg.split; ctx.onEdit(false); })),
         h("span", { class: "field-label" }, "작업장"),
         segmented(`units-${st.id}`,
           Array.from({ length: scenario.expansion.max_units }, (_, k) => ({
