@@ -13,7 +13,7 @@ import { h, mount, num, pct } from "./dom";
 import { renderDesk } from "./desk";
 import { planLabel, renderForm, renderPlanBar, renderPlanNotes, renderPlanTabs, updatePreview, type FormContext } from "./form";
 import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
-import { docHead } from "./paper";
+import { docHead, REVIEWER } from "./paper";
 import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, STATION_COLOR, TRANSPORT_STATE } from "./labels";
 import { breakdownBar, breakdownLegend, eventText, renderReport } from "./report";
 import { renderCctv } from "./cctv";
@@ -37,6 +37,8 @@ interface Run {
   finished: boolean;           // 60일 끝까지 본 적이 있다 → 평가서가 나온다.
   /** 생산계획서에 서명한 사람(닉네임, 반 코드). 60일을 끝내면 이 이름으로 서버에 저장한다. */
   signer: Signer | null;
+  /** 그 회차 계획의 미리보기(책상의 생산계획서를 펼쳐 볼 때 계획 간트·숫자를 채운다). 처음 펼칠 때 받아 둔다. */
+  preview?: Preview;
 }
 
 interface Signer {
@@ -113,6 +115,8 @@ const els = {
   hat: h("button", { class: "desk-hat", type: "button", title: "작업모를 쓰고 현장으로 나갑니다" }),
   hands: h("div", { class: "hands", "aria-hidden": "true" }),
   reportBoard: h("div", { class: "report-board clipboard" }),
+  /** 책상의 생산계획서를 펼친 클립보드(실행한 회차의 계획, 읽기 전용). */
+  planBoard: h("div", { class: "report-board plan-board clipboard", hidden: true }),
 };
 
 // 3D(Three.js)는 처음 볼 때 불러온다. 간트만 쓰면 받지 않는다.
@@ -425,12 +429,67 @@ async function switchScenario(id: string): Promise<void> {
   schedulePreview();
 }
 
-/** 관제실 책상의 생산계획서(또는 평가서의 "계획 고치기"): 계획을 고치러 간다. */
+/** 평가서나 펼친 생산계획서의 "계획 고치기": 생산계획서 화면으로 계획을 고치러 간다. */
 async function backToPlan(): Promise<void> {
   pause();
-  const source = state.board === "up" ? els.reportBoard : els.deskClip;
+  const source = planUp ? els.planBoard : state.board === "up" ? els.reportBoard : els.deskClip;
+  closePlanBoard();
   await openPlan(source);
   drawTopbar();
+}
+
+// ---------------------------------------------------------------------------
+// 책상의 생산계획서 펼쳐 보기(2.0.1): 실행한 계획을 평가서처럼 관제실 위에 띄운다.
+// 화면을 옮기지 않으므로 평가서와 재생 위치가 그대로 남는다. 고치려면 "계획 고치기".
+// ---------------------------------------------------------------------------
+
+let planUp = false;
+
+async function openPlanBoard(): Promise<void> {
+  const r = currentRun();
+  if (!r) return void backToPlan();
+  pause();
+  if (state.board === "up") {
+    state.board = "down";
+    drawReportBoard();
+  }
+  planUp = true;
+  els.room.classList.add("plan-up");
+  els.planBoard.hidden = false;
+  const sheet = h("aside", { class: "form plan-readonly" });
+  mount(els.planBoard,
+    h("div", { class: "report-sheet" },
+      h("div", { class: "report-actions" },
+        h("span", { class: "hint" }, `${r.n}회차에 실행한 계획 · 바깥 어두운 곳을 누르면 내려 둡니다`),
+        h("button", { class: "btn primary small", type: "button", onclick: () => void backToPlan() }, "계획 고치기")),
+      sheet));
+  try {
+    r.preview ??= await api.preview(r.config);
+  } catch {
+    // 미리보기가 없어도 계획 내용은 보인다(계획 간트만 빈다).
+  }
+  if (!planUp) return;
+  // 같은 양식 그리기를 그 회차의 설정으로 한 번 더 쓴다. 양식 모듈은 마지막으로 그린 양식을 기억하므로
+  // 다 그린 뒤 생산계획서 화면의 양식을 다시 그려 되돌린다.
+  renderForm(sheet, {
+    scenario: state.data.scenario, scenarios: state.data.scenarios, presets: state.data.presets,
+    config: structuredClone(r.config), presetId: null, edited: false, busy: true,
+    onEdit: () => {}, onPreset: () => {}, onDesk: () => {}, onRun: () => {},
+  });
+  updatePreview(sheet, r.preview ?? null, [], true);
+  // 읽기 전용: [공통 | 배별] 탭만 누를 수 있고, 입력·버튼·계획 간트 끌기는 막는다.
+  sheet.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>("input, select, textarea, button:not([role=tab])")
+    .forEach((el) => { el.disabled = true; });
+  sheet.querySelector<HTMLElement>('[data-sign="승인"]')?.append(
+    h("span", { class: "sign-name" }, r.signer?.nickname ?? REVIEWER));
+  drawForm();
+}
+
+function closePlanBoard(): void {
+  planUp = false;
+  els.room.classList.remove("plan-up");
+  els.planBoard.hidden = true;
+  els.planBoard.replaceChildren();
 }
 
 // ---------------------------------------------------------------------------
@@ -885,7 +944,7 @@ function drawDeskItems(): void {
   const r = currentRun();
   mount(els.deskClip,
     h("span", { class: "clip-sheet" }, h("b", null, "생산계획서"), h("small", null, r?.label ?? ""), h("i"), h("i"), h("i")),
-    h("span", { class: "desk-label" }, "누르면 계획 고치기"));
+    h("span", { class: "desk-label" }, r ? "누르면 실행한 계획 보기" : "누르면 계획 고치기"));
 }
 
 /** 생산실적 평가서 클립보드: 60일이 끝나면 받는다. 내려 두면 아래 띠만 보이고, 누르면 다시 올라온다. */
@@ -1031,6 +1090,10 @@ function drawTopbar(): void {
 }
 
 function onKey(e: KeyboardEvent): void {
+  if (e.key === "Escape" && planUp) {
+    closePlanBoard();
+    return;
+  }
   if (e.key === "Escape" && state.zoomed) {
     unzoom();
     return;
@@ -1127,12 +1190,13 @@ async function start(): Promise<void> {
   els.hands.innerHTML = HANDS_SVG;
   els.hat.innerHTML = `${HAT_SVG}<span class="desk-label">작업모 · 현장으로</span>`;
   els.hat.addEventListener("click", goField);
-  els.deskClip.addEventListener("click", () => void backToPlan());
+  els.deskClip.addEventListener("click", () => void openPlanBoard());
   // 어두운 막(평가서를 올렸을 때, 모니터를 크게 볼 때)은 관제실 자체의 ::before/::after라 눌린 대상이 관제실이 된다.
   // 막을 누르면 크게 보던 모니터는 줄이고, 올라온 평가서는 내려 둔다.
   els.room.addEventListener("click", (e) => {
     if (e.target !== els.room) return;
-    if (state.zoomed) unzoom();
+    if (planUp) closePlanBoard();
+    else if (state.zoomed) unzoom();
     else if (state.board === "up") {
       state.board = "down";
       drawReportBoard();
@@ -1149,7 +1213,7 @@ async function start(): Promise<void> {
     els.plate, els.plateRight,
     h("div", { class: "monitors" }, els.monitorLeft, els.monitorRight),
     h("div", { class: "room-desk" }, h("div", { class: "desk-top" }), els.deskClip, els.hands, els.hat),
-    els.reportBoard);
+    els.reportBoard, els.planBoard);
 
   mount(els.field, els.fieldHead, els.sceneField, els.fieldOsd);
   mount(root, els.desk, els.plan, els.room, els.field);
