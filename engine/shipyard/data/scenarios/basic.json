@@ -13,6 +13,7 @@
   ],
   "initial_stock": {"paper": 0, "paint": 0, "flag": 0},
   "kpi": {"revenue": 11200, "profit": 4200, "on_time_rate": 1.0, "first_pass_yield": 0.9},
+  "unlocks": "일정·자재 발주·사람·정비 같은 기본 운영만 씁니다. 작업장 증설과 로봇·신공법·저가 자재는 다음 분기부터 열립니다.",
   "options": {"crews": ["normal", "skilled"], "methods": ["standard", "fast"], "material_grades": ["standard"], "max_units": 1, "split": false},
   "grade": {
     "weights": {"revenue": 30, "profit": 40, "delivery": 20, "quality": 10},

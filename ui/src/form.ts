@@ -84,7 +84,11 @@ export function renderPlanNotes(root: HTMLElement, ctx: FormContext): void {
         : [h("b", null, "직접 정한 계획"), h("p", null, "예시 안을 바탕으로 하지 않은 계획입니다.")]),
     h("div", { class: "postit blue" },
       h("b", null, `${scenario.period} · ${scenario.name}`),
-      h("p", null, scenario.summary)));
+      h("p", null, scenario.summary),
+      // 분기별 옵션(D33): 새로 열린 것이 곧 이 분기에서 배울 것
+      scenario.unlocks
+        ? h("p", { class: "postit-unlock" }, h("b", null, (scenario.level ?? 1) > 1 ? "새로 쓸 수 있는 것 " : "이 분기 "), scenario.unlocks)
+        : null));
 }
 
 /** 예시 계획의 이름: 프리셋 순서대로 A안, B안, C안. 회사 서류에서 대안을 비교할 때 쓰는 말이다. */

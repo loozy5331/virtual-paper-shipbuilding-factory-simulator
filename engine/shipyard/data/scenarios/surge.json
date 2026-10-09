@@ -74,6 +74,7 @@
     "on_time_rate": 1.0,
     "first_pass_yield": 0.9
   },
+  "unlocks": "작업장 3개, 나눠 하기(한 배를 작업장 여러 곳에서 동시에)",
   "options": {"crews": ["normal", "skilled", "robot"], "methods": ["standard", "fast", "new"], "material_grades": ["standard", "cheap"], "max_units": 3, "split": true},
   "grade": {
     "weights": {

@@ -933,3 +933,7 @@ body { background: var(--desk); }
 .sign-card-buttons { display: flex; justify-content: flex-end; gap: 8px; }
 .desk-class { margin: 0; font-size: 0.8rem; color: var(--ink-2); }
 .desk-class b { color: var(--ink); }
+
+/* 분기에서 새로 열린 옵션(D33) */
+.postit-unlock { margin-top: 8px; padding-top: 6px; border-top: 1px dashed rgba(31, 42, 36, 0.25); }
+.postit-unlock b { display: inline; font-size: inherit; }
