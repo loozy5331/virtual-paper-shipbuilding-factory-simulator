@@ -85,6 +85,8 @@ export class Person {
   private pose: Pose = "stand";
   private phase = Math.random() * 10;
   private speed = 0;
+  /** 이번 걸음의 최고 속도. 준비 시간 안에 도착하도록 거리에 맞춰 정한다(기본 3.2). */
+  private walkSpeed = 3.2;
   /** 오른손의 칼. 소조립(절단)에서 일할 때만 든다. */
   private readonly knife = new THREE.Group();
   /** 현장(일러스트)에서만 보이는 얼굴, 수염과 머리, 이름표 */
@@ -276,8 +278,16 @@ export class Person {
     this.knife.visible = on;
   }
 
-  /** 가야 할 자리와 자세. snap이면 걷지 않고 바로 옮긴다(배속이 빠르거나 날짜를 건너뛸 때). */
-  place(at: THREE.Vector3, facing: number, pose: Pose, snap: boolean): void {
+  /**
+   * 가야 할 자리와 자세. snap이면 걷지 않고 바로 옮긴다(배속이 빠르거나 날짜를 건너뛸 때).
+   * within(초)을 주면 새 자리까지 그 시간 안에 도착하도록 걸음을 빨리한다(작업이 시작되기 전에 도착).
+   */
+  place(at: THREE.Vector3, facing: number, pose: Pose, snap: boolean, within?: number): void {
+    if (within && this.target.distanceToSquared(at) > 1e-4) {
+      const dx = at.x - this.root.position.x, dz = at.z - this.root.position.z;
+      // 감속 구간까지 생각해 넉넉히(1.6배)
+      this.walkSpeed = Math.max(3.2, (Math.hypot(dx, dz) / within) * 1.6);
+    }
     this.target.copy(at);
     this.facing = facing;
     this.pose = pose;
@@ -296,8 +306,10 @@ export class Person {
     const dist = toTarget.length();
     const walking = dist > 0.05;
     // 걸음: 출발할 때 빨라지고 도착할 때 느려진다.
-    const want = walking ? Math.min(3.2, dist * 4) : 0;
-    this.speed = damp(this.speed, want, Math.min(1, dt * 6));
+    // 바쁜 걸음(준비 시간 안에 도착해야 할 때)은 빨리 출발하고 짧게 멈춘다. 1배속 하루 0.5초면 준비 0.15초 안에 닿는다.
+    const hurry = this.walkSpeed > 3.2;
+    const want = walking ? Math.min(this.walkSpeed, dist * (hurry ? 25 : 4)) : 0;
+    this.speed = damp(this.speed, want, Math.min(1, dt * (hurry ? 30 : 6)));
     if (walking) {
       pos.addScaledVector(toTarget.normalize(), Math.min(dist, this.speed * dt));
       pos.y = this.target.y;
@@ -312,6 +324,7 @@ export class Person {
     let legL = 0, legR = 0, armL = 0, armR = 0, lean = 0, sway = 0, lift = breath, look = 0;
     if (walking) {
       const stride = Math.min(1, this.speed / 2);
+      if (this.speed > 4) this.phase += dt * Math.min(2, this.speed / 4);   // 빨리 걸으면 발도 빨리
       const swing = Math.sin(p * 10) * 0.7 * stride;
       legL = swing;
       legR = -swing;

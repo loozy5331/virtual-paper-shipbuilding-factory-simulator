@@ -21,6 +21,8 @@ export interface LotView {
   station: number;          // 자리의 공정 번호 (0 소조립 … 3 탑재)
   unit: number;             // 정반 위면 작업장 번호(0 = 1호, 1 = 2호). 그 밖에는 0
   slot: number;             // 같은 자리에서의 순서 (우선순위 순)
+  /** 운반 중이면 이번 운반의 진행률(0~1). 운반이 며칠 걸리면 그 날들을 이어서 센다. */
+  travel?: number;
   /** 조립 단계. 0 부재, 1 소블록 12개, 2 중블록 6개, 3 대블록 3개(도장), 4 배. 정반 위에서는 진행률만큼 소수가 된다. */
   form: number;
   state: ShipState;
@@ -78,8 +80,15 @@ export interface Frame {
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
 
 /**
+ * 하루의 앞부분(이 비율)은 준비 시간이다: 사람이 작업장으로 걸어오고, 트랜스포터가 로트를 실으러 온다.
+ * 그날 시작한 작업이나 운반은 준비가 끝난 뒤부터 진행한다(도착 전에 일이 진행돼 보이지 않게, 2.1.2).
+ */
+export const LEAD_IN = 0.3;
+const afterLead = (frac: number) => clamp01((frac - LEAD_IN) / (1 - LEAD_IN));
+
+/**
  * day는 1~60(0이면 시작 전), frac은 그날 안에서 흐른 비율(0~1). 멈춰 있으면 1이다.
- * 정반 위 진행률 = 그 공정을 시작한 날부터 지난 날 ÷ 그 공정에 걸린 날(엔진의 spans).
+ * 정반 위 진행률 = 그 공정을 시작한 날부터 지난 날 ÷ 그 공정에 걸린 날(엔진의 spans). 첫날은 준비 시간(LEAD_IN) 뒤부터.
  */
 export function buildFrame(result: Result, scenario: Scenario, config: Config, day: number, frac: number): Frame {
   const index = day - 1;
@@ -96,8 +105,15 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
         return { ...base, place: "hidden", station: 0, form: 0, state: rec.state };
       case "done":
         return { ...base, place: "sea", station: 3, form: 4, state: rec.state };
-      case "transport":
-        return { ...base, place: "carried", station: p, form: p + 1, state: rec.state };
+      case "transport": {
+        // 이어진 운반 날들: 첫날은 준비(트랜스포터가 실으러 옴) 뒤부터 움직인다.
+        let first = index, last = index;
+        while (first > 0 && ship.daily[first - 1].state === "transport") first--;
+        while (last + 1 < ship.daily.length && ship.daily[last + 1].state === "transport") last++;
+        const into = index === first ? afterLead(frac) : frac;
+        const travel = clamp01((index - first + into) / (last - first + 1));
+        return { ...base, place: "carried", station: p, form: p + 1, state: rec.state, travel };
+      }
       case "transport_wait":
         return { ...base, place: "outbound", station: p, form: p + 1, state: rec.state };
       case "material_wait":
@@ -108,7 +124,9 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
         const unit = result.stations[p].units.findIndex((u) => u.daily[index].ship === ship.id);
         if (unit < 0) return { ...base, place: "queue", station: p, form: p, state: rec.state };
         const span = ship.spans[stationIds[p]];
-        const progress = span ? clamp01((day - span.start + frac) / (span.end - span.start + 1)) : 0;
+        // 첫날은 사람이 도착한 뒤(준비 시간 뒤)부터 진행한다.
+        const into = span && day === span.start ? afterLead(frac) : frac;
+        const progress = span ? clamp01((day - span.start + into) / (span.end - span.start + 1)) : 0;
         return { ...base, place: "bench", station: p, unit, form: p + progress, state: rec.state };
       }
     }
