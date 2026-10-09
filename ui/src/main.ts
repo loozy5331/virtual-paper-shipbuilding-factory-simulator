@@ -666,6 +666,7 @@ function finish(): void {
   r.finished = true;
   void saveRun(r);
   state.board = "up";
+  unzoom();   // 크게 보던 모니터가 평가서를 가리지 않게 줄인다(3.0.2). 재생 막대는 왼쪽 모니터에 남는다.
   if (state.screen !== "room") setScreen("room");   // 현장에서 끝으로 건너뛰면 관제실로 돌아와 받는다.
   drawRoom();
 }
