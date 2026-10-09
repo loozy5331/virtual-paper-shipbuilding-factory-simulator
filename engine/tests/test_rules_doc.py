@@ -605,10 +605,11 @@ class AreasAndSplit(unittest.TestCase):
         cfg = as_areas({**PRESETS["managed"], "pool": 4}, block_assembly={"stations": 2, "split": True})
         r = open_sim(cfg)
         self.assertEqual((r["grade"]["grade"], r["grade"]["score"], r["qcd"]["delivery"]["on_time"]), ("A", 98.5, 4))
-        # 들어갈 때 빈 작업장 수만큼 나눈다. 세 척은 2곳(투입 기록 2개), 한 척은 다른 배가 2호를 쓰는 중이라 1곳이다.
-        # 검사는 배 한 척에 한 번이다.
+        # 들어갈 때 빈 작업장 수만큼 나눈다. 세 척은 2곳, 한 척은 다른 배가 2호를 쓰는 중이라 1곳이다.
+        # 투입 기록은 배마다 하나(나눠 들어가면 units에 작업장 목록). 검사는 배 한 척에 한 번이다.
         enters = [e for e in r["events"] if e["type"] == "enter" and e["station"] == "block_assembly"]
-        self.assertEqual(len(enters), 7)
+        self.assertEqual([e.get("units") for e in enters].count([1, 2]), 3)
+        self.assertEqual(len(enters), 4)
         block = next(s for s in r["stations"] if s["id"] == "block_assembly")
         self.assertEqual(block["inspections"], 4)
         parts = [d["parts"] for s in r["ships"] for d in s["daily"] if "parts" in d]

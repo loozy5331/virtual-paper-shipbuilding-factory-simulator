@@ -14,7 +14,7 @@ import { renderDesk } from "./desk";
 import { planLabel, renderForm, renderPlanBar, renderPlanNotes, renderPlanTabs, updatePreview, type FormContext } from "./form";
 import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
 import { docHead, REVIEWER } from "./paper";
-import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, STATION_COLOR, TRANSPORT_STATE } from "./labels";
+import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, PAIR_WAIT_STATE, STATION_COLOR, TRANSPORT_STATE } from "./labels";
 import { breakdownBar, breakdownLegend, eventText, renderReport } from "./report";
 import { renderCctv } from "./cctv";
 import { buildFrame } from "./scene/frame";
@@ -924,6 +924,8 @@ function drawGanttScreen(): void {
       h("span", null, h("i", { class: "transport-mark" }), TRANSPORT_STATE.name),
       h("span", { class: "sep" }),
       sameColor.map((l) => h("span", null, h("i", { class: `thin${l.hatch ? " hatch-over" : ""}`, style: { background: l.color } }), l.name)),
+      // 나눠 하기(3.0)를 쓰는 분기에서만: 막대가 작업장 줄로 갈라지고 먼저 끝난 줄은 짝 대기
+      scenario.options?.split ? h("span", null, h("i", { class: "thin hatch-over", style: { background: PAIR_WAIT_STATE.color } }), "짝 대기(나눠 하기)") : null,
       h("span", { class: "sep" }),
       h("span", null, h("i", { class: "due-mark" }), "납기"),
       h("span", null, h("i", { class: "deliver-mark" }), "인도")),

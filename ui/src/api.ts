@@ -295,7 +295,7 @@ export interface Grade {
 export type SimEvent =
   | { day: number; type: "arrival"; material: string; quantity: number; ship: string }
   | { day: number; type: "issue"; material: string; quantity: number; ship: string; station: string }
-  | { day: number; type: "enter" | "complete" | "defect"; ship: string; station: string }
+  | { day: number; type: "enter" | "complete" | "defect"; ship: string; station: string; unit?: number; units?: number[] }
   | { day: number; type: "accident"; station: string; ship: string }
   | { day: number; type: "breakdown"; station?: string; transporter?: string; ship?: string }
   | { day: number; type: "transport_start" | "transport_end"; ship: string; from: string; to: string }

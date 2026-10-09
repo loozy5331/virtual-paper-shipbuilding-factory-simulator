@@ -699,7 +699,11 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                         for idx, v in enumerate(parts):
                             current[p][v] = {"ship": i, "remaining": work / k, "amount": work / k, "rework": False,
                                              "group": group, "part": idx}
-                            events.append({"day": day, "type": "enter", "ship": orders[i]["id"], "station": pid, "unit": v + 1})
+                        # 투입 기록은 배 한 척에 하나. 나눠 들어갔으면 작업장 목록(units)을 함께 싣는다(3.0).
+                        enter = {"day": day, "type": "enter", "ship": orders[i]["id"], "station": pid, "unit": parts[0] + 1}
+                        if k > 1:
+                            enter["units"] = [v + 1 for v in parts]
+                        events.append(enter)
                         cur = current[p][u]
                         entered.add(i)
                         spans[i][pid] = {"start": day, "end": day}

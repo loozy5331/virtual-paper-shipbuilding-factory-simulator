@@ -7,7 +7,7 @@
 
 import type { Result, Scenario, Segment } from "./api";
 import { s } from "./dom";
-import { STATE_INFO, STATION_COLOR, STATION_TEXT } from "./labels";
+import { PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, STATION_TEXT } from "./labels";
 
 const W = 1000;
 const LEFT = 116;
@@ -54,6 +54,48 @@ function barEl(x0: number, y: number, w: number, hgt: number, fill: string, titl
     g.append(s("text", { x: x0 + w / 2, y: y + hgt / 2 + 4, class: "bar-label small", fill: opts.textColor ?? "#fff" }, opts.label));
   }
   return g;
+}
+
+/**
+ * 나눠 하기(3.0): 배가 공정을 작업장 여러 곳에 나눠 한 날은 막대를 부분 수만큼 가로로 얇게 나눠 덧그린다.
+ * 줄마다 그 작업장의 상태: 작업은 공정 색, 짝 대기는 회색 빗금, 그 밖은 손실색. 줄 순서는 1호가 위.
+ */
+function drawParts(g: SVGElement, ship: Result["ships"][number], station: string | null, y: number, hgt: number,
+  x: (day: number) => number, width: (a: number, b: number) => number, today: number, stationName: Record<string, string>): void {
+  const days = ship.daily;
+  for (let day = 1; day <= Math.min(today, days.length); day++) {
+    const rec = days[day - 1];
+    if (!rec.parts || (station && rec.station !== station)) continue;
+    // 같은 공정·같은 부분 수로 이어진 날을 한 묶음으로
+    let end = day;
+    while (end < Math.min(today, days.length) && days[end].parts && days[end].station === rec.station
+      && days[end].parts!.length === rec.parts.length) end++;
+    const k = rec.parts.length;
+    const lane = hgt / k;
+    for (let j = 0; j < k; j++) {
+      const unit = rec.parts[j].unit;
+      const key = (d: number) => days[d - 1].parts?.[j]?.state ?? null;
+      for (let d0 = day; d0 <= end;) {
+        let d1 = d0;
+        while (d1 < end && key(d1 + 1) === key(d0)) d1++;
+        const st = key(d0)!;
+        const info = st === "work" ? null : st === "pair_wait" ? PAIR_WAIT_STATE : STATE_INFO[st];
+        const fill = info ? info.color : STATION_COLOR[rec.station!];
+        const what = st === "work" ? "작업" : info?.name ?? st;
+        g.append(barEl(x(d0), y + j * lane, width(d0, d1), lane - 1, fill,
+          `${ship.id} · ${stationName[rec.station!]} ${unit}호 · ${what} · ${d0}~${d1}일 (나눠 하기 ${k}곳)`,
+          { hatch: info?.hatch }));
+        d0 = d1 + 1;
+      }
+    }
+    day = end;
+  }
+}
+
+/** 이 구간에 나눠 한 날이 있는가 */
+function isSplit(ship: Result["ships"][number], seg: Segment): boolean {
+  for (let d = seg.start; d <= seg.end; d++) if (ship.daily[d - 1]?.parts) return true;
+  return false;
 }
 
 export function renderGantt(result: Result, scenario: Scenario, today: number, onPick?: OnPick): SVGElement {
@@ -112,10 +154,11 @@ export function renderGantt(result: Result, scenario: Scenario, today: number, o
       const span = `${seg.start}~${seg.end}일 (${seg.end - seg.start + 1}일)`;
       const pick = onPick && (() => onPick({ ship: ship.id, station: seg.station, start: seg.start, end: seg.end }));
       if (seg.state === "work" || seg.state === "rework") {
-        // 위 줄: 작업장을 차지한 구간
+        // 위 줄: 작업장을 차지한 구간. 나눠 한 구간은 작업장 줄(drawParts)이 덮으므로 글자를 쓰지 않는다.
         const label = seg.state === "rework" ? `${name} 재작업` : name;
+        const split = isSplit(ship, seg);
         g.append(bar(x0, y, w, BAR_H, STATION_COLOR[seg.station], `${ship.id} · ${label} · ${span}`,
-          { label: seg.state === "work" ? name : "재작업", textColor: STATION_TEXT[seg.station], hatch: seg.state === "rework", onPick: pick }));
+          { label: split ? undefined : seg.state === "work" ? name : "재작업", textColor: STATION_TEXT[seg.station], hatch: seg.state === "rework", onPick: pick }));
       } else if (seg.state === "transport") {
         // 운반은 손실이 아니다. 위 줄에 점선 틀로만 그린다.
         g.append(s("g", null,
@@ -128,6 +171,8 @@ export function renderGantt(result: Result, scenario: Scenario, today: number, o
           { hatch: info.hatch, onPick: pick }));
       }
     }
+
+    drawParts(g, ship, null, y, BAR_H, x, width, today, stationName);
 
     // 납기: 납기일이 끝나는 자리에 점선
     const dueX = x(ship.due_day + 1);
@@ -320,7 +365,7 @@ export function renderShipGantt(result: Result, scenario: Scenario, shipId: stri
       const pick = onPick && (() => onPick({ ship: ship.id, station: st.id, start: seg.start, end: seg.end }));
       if (seg.state === "work" || seg.state === "rework") {
         g.append(barEl(x0, y, w, BAR_H, STATION_COLOR[st.id], `${ship.id} · ${st.name}${seg.state === "rework" ? " 재작업" : ""} · ${span}`,
-          { label: seg.state === "rework" ? "재작업" : ship.id, textColor: STATION_TEXT[st.id], hatch: seg.state === "rework", onPick: pick }));
+          { label: isSplit(ship, seg) ? undefined : seg.state === "rework" ? "재작업" : ship.id, textColor: STATION_TEXT[st.id], hatch: seg.state === "rework", onPick: pick }));
       } else if (seg.state === "transport") {
         g.append(s("g", null,
           s("title", null, `${ship.id} · ${st.name} → 다음 공정 운반 · ${span}`),
@@ -331,6 +376,7 @@ export function renderShipGantt(result: Result, scenario: Scenario, shipId: stri
           { hatch: info.hatch, onPick: pick }));
       }
     }
+    drawParts(g, ship, st.id, y, BAR_H, x, width, today, Object.fromEntries(stations.map((v) => [v.id, v.name])));
     svg.append(g);
   });
 
