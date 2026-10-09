@@ -83,8 +83,8 @@ interface State {
   zoomed: "left" | "right" | null;
   /** 현장에서 가까이 보는 공정. null이면 전경. */
   fieldFocus: number | null;
-  /** 현장에서 관리자가 설 자리: 작업장 앞(위험 반경에 들 수 있음) 또는 보행 통로(3.0) */
-  managerSpot: "front" | "walkway";
+  /** 현장에서 관리자가 선 자리: 안전한 자리, 또는 버튼으로 순간이동한 설비 옆(3.0) */
+  managerSpot: "safe" | "crane" | "cart";
   /** 마지막으로 서명한 사람(이 브라우저가 기억한다). */
   signer: Signer | null;
   /** 반 코드를 적었으면 그 반의 시나리오별 최고(서버). */
@@ -753,7 +753,9 @@ function openCctv(station: number, day?: number): void {
 function aimCamera(): void {
   const apply = () => {
     yard?.setCamera("field", state.fieldFocus);
-    yard?.setManagerSpot(state.managerSpot, state.fieldFocus);
+    // 공정을 바꿔 보면 관리자는 그 공정 앞 안전한 자리로 간다
+    state.managerSpot = "safe";
+    yard?.setManagerSpot("safe", state.fieldFocus);
     // 이름표는 현장에서 공정을 가까이 볼 때만.
     yard?.showNameTags(state.screen === "field" && state.fieldFocus !== null);
   };
@@ -783,7 +785,6 @@ function syncScene(jump: boolean): void {
   if (!yard) {
     yardLoading ??= import("./scene/yard").then((y) => {
       yard = new y.Yard();
-      yard.onHazard = warnHazard;
     });
     void yardLoading.then(() => {
       aimCamera();
@@ -1075,38 +1076,37 @@ function drawField(): void {
       h("button", { type: "button", class: state.fieldFocus === null ? "active" : "", onclick: () => { state.fieldFocus = null; drawField(); aimCamera(); } }, "전경"),
       scenario.stations.map((st, i) =>
         h("button", { type: "button", class: state.fieldFocus === i ? "active" : "", onclick: () => { state.fieldFocus = i; drawField(); aimCamera(); } }, `${st.name} 가까이`))),
-    // 관리자가 설 자리(3.0 안전): 작업장 앞은 설비가 다가오면 위험 반경에 들 수 있다
-    h("div", { class: "field-cams", role: "group", "aria-label": "관리자 자리" },
-      (["front", "walkway"] as const).map((spot) =>
-        h("button", { type: "button", class: state.managerSpot === spot ? "active" : "", onclick: () => moveManager(spot) },
-          spot === "front" ? "작업장 앞에 서기" : "보행 통로로"))));
+    // 관리자 순간이동(3.0 안전): 설비 옆으로 가면 위험 반경 경고. 1인칭 이동은 나중에(D35)
+    h("div", { class: "field-cams", role: "group", "aria-label": "관리자 이동" },
+      h("button", { type: "button", onclick: () => moveManager("crane") }, "골리앗 주변으로"),
+      h("button", { type: "button", onclick: () => moveManager("cart") }, "트랜스포터 주변으로")));
   drawOsd(els.fieldOsd);
 }
 
-function moveManager(spot: "front" | "walkway"): void {
+function moveManager(spot: "safe" | "crane" | "cart"): void {
   state.managerSpot = spot;
-  yard?.setManagerSpot(spot, state.fieldFocus);
-  drawField();
+  const hazard = yard?.setManagerSpot(spot, state.fieldFocus) ?? null;
+  if (hazard) warnHazard(hazard);
 }
 
-/** 위험 설비의 반경이 관리자에게 닿았다: 재생을 멈추고 알린다. 횟수는 그 회차 평가서에 한 줄(등급과 무관). */
+/** 위험 설비 옆으로 갔다: 재생을 멈추고 알린다. 횟수는 그 회차 평가서에 한 줄(등급과 무관). */
 function warnHazard(hazard: { id: string; label: string }): void {
   const r = currentRun();
-  if (!r || state.screen !== "field" || !state.playing) return;
+  if (!r || state.screen !== "field") return;
+  const wasPlaying = state.playing;
   pause();
   r.safetyWarnings = (r.safetyWarnings ?? 0) + 1;
-  const close = (resume: boolean) => {
-    overlay.remove();
-    if (resume) play();
-  };
   const overlay = h("div", { class: "safety-alert", role: "alertdialog", "aria-label": "현장 안전 경고" },
     h("div", { class: "safety-card" },
       h("b", null, "⚠ 위험 반경입니다"),
-      h("p", null, `${hazard.label}에 들어왔습니다. 시간을 멈췄습니다.`),
-      h("p", { class: "hint" }, "현장에서는 움직이는 설비 주변을 피해 노란 보행 통로로 다닙니다."),
+      h("p", null, `${hazard.label}에 들어왔습니다.`),
+      h("p", { class: "hint" }, "움직이는 설비 반경 10m 안에는 들어가지 않습니다."),
       h("div", { class: "safety-actions" },
-        h("button", { class: "btn primary", type: "button", onclick: () => { moveManager("walkway"); close(true); } }, "보행 통로로 비키기"),
-        h("button", { class: "btn", type: "button", onclick: () => close(true) }, "그대로 계속"))));
+        h("button", { class: "btn primary", type: "button", onclick: () => {
+          overlay.remove();
+          moveManager("safe");
+          if (wasPlaying) play();
+        } }, "안전한 자리로 돌아가기"))));
   els.field.append(overlay);
   overlay.querySelector<HTMLButtonElement>("button")?.focus();
 }
@@ -1232,7 +1232,7 @@ async function start(): Promise<void> {
     cctv: null,
     zoomed: null,
     fieldFocus: null,
-    managerSpot: "front",
+    managerSpot: "safe",
     signer: loadSigner(),
     classBest: {},
   };
