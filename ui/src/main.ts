@@ -641,14 +641,6 @@ function seek(day: number): void {
   else tick(true);
 }
 
-/** 받은 평가서를 다시 올린다(현장이면 관제실로 돌아와서). */
-function showReport(): void {
-  pause();
-  if (state.screen !== "room") setScreen("room");
-  state.board = "up";
-  drawRoom();
-}
-
 /** 60일에 닿았다: 재생을 멈추고 생산실적 평가서 클립보드를 받는다. */
 function finish(): void {
   const r = currentRun();
@@ -892,9 +884,9 @@ function drawOsd(target: HTMLElement = els.osd): void {
       },
     }),
     h("b", { class: "day-now" }, ""),
-    // 바로 결과로: 60일 전이면 끝으로 건너뛰어 평가서를 받고, 이미 받았으면 평가서를 다시 올린다.
+    // 바로 결과로: 60일 전이면 끝으로 건너뛰어 평가서를 받는다. 받은 뒤에는 평가서가 책상 아래 띠로 남아 있으므로 버튼을 두지 않는다(2.1.1).
     r.finished
-      ? h("button", { class: "osd-btn end", type: "button", title: "생산실적 평가서를 다시 봅니다", onclick: showReport }, "평가서 보기")
+      ? null
       : h("button", { class: "osd-btn end", type: "button", title: "60일 끝으로 건너뛰고 평가서를 받습니다 (End)", onclick: finish }, "끝으로 ⏭"));
 }
 
@@ -1005,9 +997,9 @@ function monitor(el: HTMLElement, which: "left" | "right", label: string, ...scr
       h("div", { class: "win-titlebar", ondblclick: toggle },
         h("span", { class: "win-title" }, label),
         h("div", { class: "win-buttons" },
-          h("button", { class: "win-btn max", type: "button", title: "최대화", "aria-label": "최대화", onclick: toggle }, "□"),
-          h("button", { class: "win-btn restore", type: "button", title: "이전 크기로 (Esc)", "aria-label": "이전 크기로", onclick: unzoom }, "❐"),
-          h("button", { class: "win-btn close", type: "button", title: "닫기 (Esc)", "aria-label": "닫기", onclick: unzoom }, "✕"))),
+          // 최대화 / 이전 크기로. 닫기(✕)는 이전 크기로와 같은 일이라 두지 않는다(2.1.1).
+          winButton("max", "최대화", toggle, WIN_MAX_SVG),
+          winButton("restore", "이전 크기로 (Esc)", unzoom, WIN_RESTORE_SVG))),
       h("div", { class: "screen" }, ...screen)));
 }
 
@@ -1134,6 +1126,16 @@ function introHat(): HTMLElement {
 }
 
 // 생산관리자의 작업모: 소인국의 주황 고깔모자(끝이 휘고 아래에 어두운 테두리).
+// 창 단추 그림: 글자(□ ❐)는 글꼴마다 가늘고 작아서 잘 안 보인다. 굵은 선 그림으로 그린다.
+const WIN_MAX_SVG = `<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="1.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`;
+const WIN_RESTORE_SVG = `<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="3.5" width="7.5" height="7.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3.5 3.5 V1 H11 V8.5 H8.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`;
+
+function winButton(kind: string, title: string, onclick: () => void, svg: string): HTMLElement {
+  const btn = h("button", { class: `win-btn ${kind}`, type: "button", title, "aria-label": title.replace(/ \(.*\)$/, ""), onclick });
+  btn.innerHTML = svg;
+  return btn;
+}
+
 const HAT_SVG = `<svg viewBox="0 0 120 90" aria-hidden="true"><path d="M26 76 C 36 52, 50 26, 70 12 C 78 6, 90 8, 94 16 C 86 15, 80 20, 78 30 C 82 50, 90 64, 94 76 Z" fill="#d9480f"/><path d="M78 30 C 82 50, 90 64, 94 76 L 74 76 C 74 58, 74 42, 78 30 Z" fill="#b23a0b" opacity="0.55"/><ellipse cx="60" cy="77" rx="40" ry="6" fill="#2b2b2b"/></svg>`;
 
 async function start(): Promise<void> {
