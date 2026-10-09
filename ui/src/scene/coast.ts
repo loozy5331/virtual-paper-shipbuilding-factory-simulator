@@ -126,11 +126,13 @@ export function buildDock(x0: number, x1: number, z0: number, z1: number): THREE
   rim(x1 - x0, 0.3, (x0 + x1) / 2, z0);
   rim(x1 - x0, 0.3, (x0 + x1) / 2, z1);
   rim(0.3, z1 - z0, x0, (z0 + z1) / 2);
-  // 바다 쪽 문(캐슨): 어두운 강철 문짝. 위쪽 모서리를 축으로 아래쪽이 바다 쪽으로 열린다(진수, 그림만).
+  // 바다 쪽 문(캐슨): 어두운 강철 문짝. 현관문처럼 열린다(진수, 그림만): 나가는 배의 왼쪽(−z) 끝이 세로 경첩이고,
+  // 오른쪽(+z) 끝을 걸리버의 손이 잡아 바다 쪽(+x)으로 민다.
+  const span = z1 - z0 - 0.3;
   const hinge = new THREE.Group();
-  hinge.position.set(x1, 0.45, (z0 + z1) / 2);
-  const gate = mesh(new THREE.BoxGeometry(0.4, 0.5, z1 - z0 - 0.3), "#4e5a63", { metalness: 0.3, roughness: 0.6 });
-  gate.position.set(0, -0.25, 0);
+  hinge.position.set(x1, 0, (z0 + z1) / 2 - span / 2);
+  const gate = mesh(new THREE.BoxGeometry(0.4, 0.5, span), "#4e5a63", { metalness: 0.3, roughness: 0.6 });
+  gate.position.set(0, 0.2, span / 2);
   hinge.add(gate);
   g.add(hinge);
   // 도크 안 물: 진수 때만 차오른다
