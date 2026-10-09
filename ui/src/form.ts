@@ -180,7 +180,7 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
     h("div", { class: "errors", "data-preview": "errors" }));
 
   const head = docHead({
-    title: "생산계획서", period: scenario.period, code: "PP-01",
+    title: "생산계획서", period: scenario.period, code: "PP-01", approved: false,
     fields: [
       ["계획 기간", `${scenario.period} (작업일 ${scenario.days}일)`],
       ["수주", `${orderIds.length}척 (${orderIds[0]}~${orderIds[orderIds.length - 1]})`],
