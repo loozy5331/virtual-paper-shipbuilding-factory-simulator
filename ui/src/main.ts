@@ -22,9 +22,9 @@ import type { Yard } from "./scene/yard";
 
 const SPEEDS = [1, 4];   // 관제실 배속. 기본 4배속(사용자 결정). 현장은 따로 1배속 고정(FIELD_MS_PER_DAY).
 const BASE_MS_PER_DAY = 500;   // 1배속은 하루에 0.5초, 60일이 30초다.
-// 현장(3D)은 1배속 고정이고 하루가 더 길다: 소인이 걸어서 작업장에 닿고 일하는 모습이 보이게(2.1.4, D28).
+// 현장(3D)은 1배속 고정이고 하루가 더 길다(2초): 소인이 걸어서 작업장에 닿고 일하는 모습이 보이게(2.1.4, D28).
 // 나가면 시간이 멈춰 있고, 재생을 누르면 이 속도로 흐른다.
-const FIELD_MS_PER_DAY = 3000;
+const FIELD_MS_PER_DAY = 2000;   // 3초는 처음 자재를 기다리는 날들이 지루했다(2.1.5)
 
 /** 지금 화면의 하루 길이(ms). */
 function msPerDay(): number {
@@ -881,7 +881,7 @@ function drawOsd(target: HTMLElement = els.osd): void {
   mount(target,
     h("button", { class: "osd-btn", type: "button", title: "처음부터", onclick: () => { pause(); seek(0); } }, "⟲"),
     h("button", { class: "osd-btn play", type: "button", onclick: () => (state.playing ? pause() : play()) }, "▶ 재생"),
-    // 현장은 1배속 고정(하루 3초): 배속 대신 안내만
+    // 현장은 1배속 고정(하루 2초): 배속 대신 안내만
     target === els.fieldOsd
       ? h("span", { class: "osd-fixed", title: "현장은 소인이 걸어서 일하는 모습을 보도록 1배속으로만 흐릅니다" }, `1× · 하루 ${FIELD_MS_PER_DAY / 1000}초`)
       : h("div", { class: "osd-speed", role: "radiogroup", "aria-label": "배속" }, SPEEDS.map((sp) =>
@@ -1028,7 +1028,7 @@ function goField(): void {
   const r = currentRun();
   if (!r) return;
   state.fieldFocus = state.cctv;   // 작업 현황에서 확대해 보던 공정이 있으면 그 앞으로 나간다.
-  pause();   // 현장에 나가면 시간이 멈춰 있다. 재생하면 1배속(하루 3초)으로 흐른다.
+  pause();   // 현장에 나가면 시간이 멈춰 있다. 재생하면 1배속(하루 2초)으로 흐른다.
   setScreen("field");
   drawField();
   aimCamera();
