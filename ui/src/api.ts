@@ -136,7 +136,7 @@ export interface Scenario {
     overtime: { speed: number };
   };
   transporter: { max_count: number; capacity: number; lot_weight: number };
-  expansion: { name: string; max_units: number; summary: string; cost: Record<string, number> };
+  expansion: { name: string; max_units: number; max_units_by_station?: Record<string, number>; summary: string; cost: Record<string, number> };
   material_grades: Record<"standard" | "cheap", { name: string; price_factor: number; defect_add: number }>;
   research: Record<string, ResearchInfo>;
   ordering: Record<Ordering, { name: string; summary: string }>;

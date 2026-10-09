@@ -187,9 +187,11 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
         if not isinstance(st.get("split", False), bool):
             errors.append(f"{pid}: 나눠 하기(split)는 true 또는 false여야 합니다")
         units = st.get("units", 1)
-        max_units = scenario["expansion"]["max_units"]
+        # 탑재 도크는 골리앗 크레인(걸리버의 두 손)이 있어야 하므로 2곳까지(3.0)
+        max_units = scenario["expansion"].get("max_units_by_station", {}).get(pid, scenario["expansion"]["max_units"])
         if not _is_int(units) or not 1 <= units <= max_units:
-            errors.append(f"{pid}: 작업장 수는 1~{max_units}개여야 합니다")
+            why = " (도크마다 골리앗 크레인이 있어야 하는데, 크레인은 걸리버의 두 손뿐입니다)" if pid == scenario["stations"][-1]["id"] and max_units < scenario["expansion"]["max_units"] else ""
+            errors.append(f"{pid}: 작업장 수는 1~{max_units}개여야 합니다{why}")
 
     pool = config.get("pool")
     if not _is_int(pool) or not 1 <= pool <= rules["max_pool"]:

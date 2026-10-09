@@ -360,6 +360,8 @@ export class Yard {
   private stock: ReturnType<typeof stockAssign> = new Map();
   /** 골리앗 크레인 노릇을 하는 걸리버의 손(하늘에서 수직으로 내려온다). */
   private readonly gulliver = new GiantHand();
+  /** 2호 도크의 골리앗 크레인 = 걸리버의 왼손(도크를 증설했을 때만). 도크마다 크레인이 하나씩이다(3.0). */
+  private readonly gulliver2 = new GiantHand(true);
   /** 증설한 2호·3호 작업장의 벽·구획선·도크(있을 때만 보인다). [공정][작업장 번호 − 1] */
   private readonly unitAreas: THREE.Group[][] = [];
   private readonly camGoal = { pos: new THREE.Vector3(2, 17, 27), target: new THREE.Vector3(2, 0, -7) };
@@ -400,9 +402,14 @@ export class Yard {
     this.buildAreas();
     this.buildStations();
     this.scene.add(this.gulliver.root);
-    const craneTag = label("골리앗 크레인 · 걸리버의 손", "place-tag");
+    const craneTag = label("골리앗 크레인 1호 · 걸리버의 오른손", "place-tag");
     craneTag.position.set(0, 1.5, 0);
     this.gulliver.hand.add(craneTag);
+    this.scene.add(this.gulliver2.root);
+    const craneTag2 = label("골리앗 크레인 2호 · 걸리버의 왼손", "place-tag");
+    craneTag2.position.set(0, 1.5, 0);
+    this.gulliver2.hand.add(craneTag2);
+    this.gulliver2.root.visible = false;
     this.buildLane();
     this.lounge = this.buildLounge();
     this.buildShelves();
@@ -886,6 +893,7 @@ export class Yard {
     // 로트. 기다리는 블록의 적치장 자리를 먼저 정한다.
     this.stock = stockAssign(f);
     let hook: { x: number; y: number } | null = null;
+    let hook2: { x: number; y: number } | null = null;   // 2호 도크(왼손)
     // 진수: 재생 중 하루 안의 비율로 단계를 나눈다(멈춰 있으면 frac = 1이라 다 끝난 모습).
     const launching = src.playing && frac < LAUNCH_END ? f.launches : [];
     this.drawLaunchDocks(launching, frac);
@@ -933,19 +941,27 @@ export class Yard {
         lot.group.rotation.set(0, 0, 0);
       }
       // 골리앗 크레인 훅은 1호 탑재 정반의 블록을 따라간다(2호는 같은 크레인 아래 안쪽 자리).
-      if (!held && view.place === "bench" && view.station === 3 && view.unit === 0 && lot.hookX !== null) hook = { x: lot.hookX, y: lot.hookY };
+      if (!held && view.place === "bench" && view.station === 3 && lot.hookX !== null) {
+        if (view.unit === 0) hook = { x: lot.hookX, y: lot.hookY };
+        else if (view.unit === 1) hook2 = { x: lot.hookX, y: lot.hookY };
+      }
       setLabel(lot.tag, this.lotLabel(view));
       lot.tag.position.y = view.form >= 3 ? 1.9 : 1.0;
     }
 
     // 골리앗 크레인(걸리버의 손): 탑재 중이면 자석판이 블록을 따라간다. 쉴 때는 도크 위에 손을 띄워 둔다.
-    const hx = STATION_X[3] + (hook ? hook.x : 0);
-    const hy = hook ? hook.y + 0.15 : 3.0;
-    const handAt = new THREE.Vector3(hx, hy, 0);
-    // 진수 중이면 손이 도크 문으로 가서 열고 닫는다
-    const gateHand = launching.length ? this.gateHand(launching[0].unit, frac) : null;
-    this.craneActive = hook !== null || launching.length > 0;
-    this.gulliver.place(gateHand ? handAt.lerp(gateHand.at, gateHand.k) : handAt);
+    // 도크마다 손이 하나: 1호 = 오른손, 2호 = 왼손(2호가 있을 때만). 진수 중이면 그 도크의 손이 문을 열고 닫는다.
+    const docks = f.stations[3]?.units.length ?? 1;
+    const hands: [GiantHand, { x: number; y: number } | null, number][] = [[this.gulliver, hook, 0], [this.gulliver2, hook2, 1]];
+    for (const [hand, hk, u] of hands) {
+      if (u >= docks) { hand.root.visible = false; continue; }
+      hand.root.visible = true;
+      const at = new THREE.Vector3(STATION_X[3] + (hk ? hk.x : 0), hk ? hk.y + 0.15 : 3.0, unitZ(u));
+      const launch = launching.find((l) => l.unit === u);
+      const gate = launch ? this.gateHand(u, frac) : null;
+      hand.place(gate ? at.lerp(gate.at, gate.k) : at);
+    }
+    this.craneActive = hook !== null || hook2 !== null || launching.length > 0;
 
     // 정반: 작업장(1호, 증설하면 2호)마다 인원 또는 로봇, 시니어, 중지, 잔업
     let person = 0;
