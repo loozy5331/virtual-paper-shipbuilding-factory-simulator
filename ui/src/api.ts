@@ -296,7 +296,7 @@ export interface Grade {
 
 export type SimEvent =
   | { day: number; type: "arrival"; material: string; quantity: number; ship: string }
-  | { day: number; type: "issue"; material: string; quantity: number; ship: string; station: string }
+  | { day: number; type: "issue"; material: string; quantity: number; ship: string; station: string; from: Peg[] }
   | { day: number; type: "enter" | "complete" | "defect"; ship: string; station: string; unit?: number; units?: number[] }
   | { day: number; type: "accident"; station: string; ship: string }
   | { day: number; type: "breakdown"; station?: string; transporter?: string; ship?: string }
@@ -325,6 +325,8 @@ export interface Result {
   transporters: TransporterResult[];
   research: ResearchSlot[];
   inventory_daily: Record<string, number>[];
+  /** 그날 끝의 창고 재고를 몫(발주한 배)별로. 몫이 null이면 공용(처음 재고). 먼저 들어온 몫이 앞(자재 페깅, 3.1) */
+  pegging_daily: Record<string, Peg[]>[];
   inventory_value_daily: number[];
   events: SimEvent[];
   findings: Finding[];
@@ -396,3 +398,9 @@ export const api = {
   simulate: (config: Config) => post<Result>("/api/simulate", config),
   preview: (config: Config) => post<Preview>("/api/preview", config),
 };
+
+/** 자재 페깅(3.1): 어느 배 몫의 자재가 몇 개인가. ship이 null이면 공용 */
+export interface Peg {
+  ship: string | null;
+  quantity: number;
+}

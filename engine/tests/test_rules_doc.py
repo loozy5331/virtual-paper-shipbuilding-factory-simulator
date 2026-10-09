@@ -9,6 +9,7 @@ import copy
 import unittest
 
 from shipyard import ConfigError, list_scenarios, load_presets, load_scenario, preview, simulate, suggest_order_days
+from shipyard.sim import _take_pegged, resolve_order_days
 
 PRESETS = {p["id"]: p["config"] for p in load_presets()}
 STATIONS = ["sub_assembly", "block_assembly", "grand_assembly", "erection"]
@@ -712,6 +713,53 @@ class LevelOptions(unittest.TestCase):
         cfg["stations"]["block_assembly"].update(units=3, split=True, crew="robot", method="new")
         cfg["materials"] = {"paint": "cheap"}
         simulate(cfg, baseline=False)
+
+
+class Pegging(unittest.TestCase):
+    """자재 페깅(3.1, 기록만): 공용 재고를 몫(배)별로도 남긴다. 규칙과 숫자는 그대로다."""
+
+    def test_pegging_adds_up_to_stock_every_day(self):
+        for sid in ("basic", "growth", "surge"):
+            for preset in load_presets(sid):
+                r = simulate(preset["config"], baseline=False)
+                for day, stock in enumerate(r["inventory_daily"]):
+                    for mid, qty in stock.items():
+                        self.assertEqual(sum(x["quantity"] for x in r["pegging_daily"][day][mid]), qty, (sid, preset["id"], day, mid))
+
+    def test_presets_never_borrow(self):
+        # 발주 방식(일괄, JIT, 늦은 발주)은 배마다 자기 필요일에 맞춰 발주해서 남의 몫을 빌릴 일이 없다.
+        for sid in ("basic", "growth", "surge"):
+            for preset in load_presets(sid):
+                r = simulate(preset["config"], baseline=False)
+                for ev in (e for e in r["events"] if e["type"] == "issue"):
+                    self.assertEqual(ev["from"], [{"ship": ev["ship"], "quantity": ev["quantity"]}])
+
+    def test_own_first_then_borrow_oldest(self):
+        # 배별 발주일(1.0 방식): S3 종이를 1일에(3일 입고), S1 종이를 3일에(5일 입고) 발주한다.
+        # 3일에 S1은 자기 몫이 없어 S3 몫을 빌리고, 17일에 S3은 S1 몫을 빌린다. 11일의 S2는 S1 몫이 선반에 있어도 자기 몫을 쓴다.
+        base = PRESETS["managed"]
+        cfg = copy.deepcopy(base)
+        cfg.pop("ordering")
+        for sid, days in resolve_order_days(base).items():
+            cfg["ships"][sid]["order_days"] = dict(days)
+        cfg["ships"]["S3"]["order_days"]["paper"] = 1
+        cfg["ships"]["S1"]["order_days"]["paper"] = 3
+        r = simulate(cfg, baseline=False)
+        issues = {e["ship"]: e for e in r["events"] if e["type"] == "issue" and e["material"] == "paper"}
+        self.assertEqual((issues["S1"]["day"], issues["S1"]["from"]), (3, [{"ship": "S3", "quantity": 8}]))
+        self.assertEqual((issues["S2"]["day"], issues["S2"]["from"]), (11, [{"ship": "S2", "quantity": 6}]))
+        self.assertEqual((issues["S3"]["day"], issues["S3"]["from"]), (17, [{"ship": "S1", "quantity": 8}]))
+        self.assertEqual(r["pegging_daily"][9]["paper"], [{"ship": "S1", "quantity": 8}])   # 10일 끝: S1 몫 8장이 선반에
+        # 일정은 관리 프리셋과 같고, S3 종이가 14일 일찍 들어와 재고비만 19.2 늘었다.
+        self.assertEqual([s["daily"] for s in r["ships"]], [s["daily"] for s in simulate(base, baseline=False)["ships"]])
+        self.assertEqual((r["costs"]["holding"], r["profit"]), (19.2, 3130.8))
+
+    def test_take_order(self):
+        # 자기 몫 → 공용(처음 재고) → 남의 몫(먼저 들어온 것부터)
+        batches = [[0, None, 2], [1, "S2", 3], [2, "S3", 3], [4, "S1", 1]]
+        self.assertEqual(_take_pegged(batches, "S1", 6),
+                         [{"ship": "S1", "quantity": 1}, {"ship": None, "quantity": 2}, {"ship": "S2", "quantity": 3}])
+        self.assertEqual(batches, [[2, "S3", 3]])
 
 
 if __name__ == "__main__":
