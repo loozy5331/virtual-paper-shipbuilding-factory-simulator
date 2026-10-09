@@ -589,7 +589,7 @@ def as_areas(cfg, **over):
 
 
 class AreasAndSplit(unittest.TestCase):
-    """3.0(규칙 문서 "3.0 설계 초안"): 공정 = 구역, 작업장 1~3개, 공정마다 4M, 나눠 하기."""
+    """3.0(규칙 문서 3장 나눠 하기, 10장 예시 4): 공정 = 구역, 작업장 1~3개, 공정마다 4M, 나눠 하기."""
 
     def test_areas_form_gives_the_same_result(self):
         # 하위 호환: 같은 설정을 areas로 적어도 결과가 같다.
