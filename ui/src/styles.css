@@ -834,6 +834,33 @@ body { background: var(--desk); }
 .cc-feed .pick { cursor: pointer; }
 .cc-feed .pick:hover > g > rect:first-child, .cc-feed .pick:focus-visible > g > rect:first-child { stroke: #f3f1ea; stroke-width: 2; }
 .cc-feed .pick:focus { outline: none; }
+/* 자재·블록 추적(3.1): 블록·선반을 누르면 상자. 추적 중이면 그 배만 진하게, 나머지 블록은 흐리게 */
+.cc-feed .cc-pick { cursor: pointer; }
+.cc-feed .cc-pick:focus { outline: none; }
+.cc-feed .cc-pick:hover .cc-chip rect:first-of-type, .cc-feed .cc-pick:focus-visible .cc-chip rect:first-of-type { stroke: #e0b43a; stroke-width: 2; }
+.cc-feed .untracked { opacity: 0.25; }
+.cc-feed .tracked .cc-chip rect:first-of-type { stroke: #e0b43a; stroke-width: 2.5; }
+.cc-feed .tracked .cc-sea-name { fill: #e0b43a; }
+.cc-feed .cc-tag.track { fill: #e0b43a; font-weight: 800; }
+.cam-track { position: absolute; right: 10px; bottom: 8px; z-index: 2; display: flex; align-items: center; gap: 5px; background: rgba(20, 24, 20, 0.62); color: #f3f1ea; font-size: 11px; font-weight: 700; padding: 2px 4px 2px 8px; border-radius: 3px; }
+.cam-track select { font: inherit; font-size: 11px; color: #1f2622; background: #f3f1ea; border: 0; border-radius: 2px; padding: 1px 2px; }
+.track-host { position: absolute; right: 10px; top: 40px; z-index: 3; width: min(340px, calc(100% - 20px)); max-height: calc(100% - 80px); overflow-y: auto; }
+.track-host:empty { display: none; }
+.track-card { background: var(--paper); color: var(--ink); border: 1px solid #c9cfc9; border-radius: 4px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3); padding: 10px 12px; font-size: 12px; line-height: 1.45; }
+.track-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.track-head b { font-size: 13px; }
+.track-kind { color: var(--ink-3); font-size: 11px; }
+.track-x { margin-left: auto; border: 0; background: transparent; font: inherit; color: var(--ink-2); cursor: pointer; padding: 0 2px; }
+.track-card dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; }
+.track-card dt { color: var(--ink-3); font-weight: 700; white-space: nowrap; }
+.track-card dd { margin: 0; }
+.track-card dd.late { color: #c0262d; font-weight: 700; }
+.track-sub { margin-top: 8px; padding-top: 6px; border-top: 1px solid #e3e0d6; font-weight: 700; color: var(--ink-2); }
+.track-mats { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 2px; }
+.track-mats li { display: grid; grid-template-columns: 3em 1fr; gap: 6px; }
+.track-actions { display: flex; gap: 6px; margin-top: 9px; }
+.track-link { border: 0; background: transparent; padding: 0; font: inherit; color: var(--accent); font-weight: 700; text-decoration: underline; cursor: pointer; }
+.track-hint { margin: 7px 0 0; color: var(--ink-3); font-size: 11px; }
 .right-top .cam-anon { top: 34px; }
 .cam-back { position: absolute; right: 10px; top: 8px; z-index: 2; background: #fff; border: 1px solid #c9cfc9; font: inherit; font-size: 12px; padding: 3px 9px; border-radius: 4px; font-weight: 700; color: var(--accent); cursor: pointer; }
 /* 익명 표시(2.1): 관제실 화면은 개인을 구분하지 않는다는 표시. 화면 이름 바로 아래, 눈에 띄지만 조용하게. */

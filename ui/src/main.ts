@@ -17,6 +17,7 @@ import { docHead, REVIEWER } from "./paper";
 import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, PAIR_WAIT_STATE, STATION_COLOR, TRANSPORT_STATE } from "./labels";
 import { breakdownBar, breakdownLegend, eventText, renderReport } from "./report";
 import { renderCctv } from "./cctv";
+import { renderTrackCard, type TrackPick } from "./track";
 import { buildFrame } from "./scene/frame";
 import type { Yard } from "./scene/yard";
 
@@ -83,6 +84,10 @@ interface State {
   zoomed: "left" | "right" | null;
   /** 현장에서 가까이 보는 공정. null이면 전경. */
   fieldFocus: number | null;
+  /** 자재·블록 추적(3.1): 진하게 볼 배(나머지는 흐리게). null이면 끔 */
+  track: string | null;
+  /** 떠 있는 추적 상자(누른 블록이나 선반). 떠 있는 동안 재생은 멈춰 있다 */
+  pick: TrackPick | null;
   /** 현장에서 관리자가 선 자리: 안전한 자리, 또는 버튼으로 순간이동한 설비 옆(3.0) */
   managerSpot: "safe" | "crane" | "cart";
   /** 마지막으로 서명한 사람(이 브라우저가 기억한다). */
@@ -122,6 +127,8 @@ const els = {
   osdRight: h("div", { class: "osd osd-right", "data-group": "speed-right" }),
   ganttScreen: h("div", { class: "gantt-screen" }),
   rightTop: h("div", { class: "right-top" }),
+  /** 자재·블록 추적 상자 자리: 작업 현황 위(관제실) */
+  trackRoom: h("div", { class: "track-host" }),
   log: h("ol", { class: "log", "aria-label": "사건 기록" }),
   deskClip: h("button", { class: "desk-clip", type: "button", title: "생산계획서로 돌아가 계획을 고칩니다" }),
   hat: h("button", { class: "desk-hat", type: "button", title: "작업모를 쓰고 현장으로 나갑니다" }),
@@ -622,6 +629,8 @@ function currentRun(): Run | null {
 function play(): void {
   const r = currentRun();
   if (!r) return;
+  // 추적 상자는 떠 있는 동안 재생을 멈춰 둔다(읽기 쉽게, 사용자 결정). 재생하면 닫는다.
+  if (state.pick) { state.pick = null; drawTrackCard(); }
   if (state.day >= r.result.days) state.day = 0;
   state.playing = true;
   restartTimer();
@@ -714,7 +723,7 @@ function tick(jump: boolean): void {
   const feed = els.rightTop.querySelector(".cc-host");
   if (feed) {
     mount(feed, renderCctv(buildFrame(result, scenario, r.config, state.day, 1), scenario, {
-      focus: state.cctv, onStation: (p) => openCctv(p),
+      focus: state.cctv, onStation: (p) => openCctv(p), track: state.track, onPick: openTrack,
     }));
   }
   const cam = els.rightTop.querySelector(".cam-label");
@@ -729,7 +738,43 @@ function tick(jump: boolean): void {
     : h("li", { class: "quiet" }, state.day ? "아직 기록할 사건이 없습니다." : "재생하면 1일부터 사건이 여기에 쌓입니다."));
   els.log.scrollTop = keep;
 
+  drawTrackCard();
   syncScene(jump);
+}
+
+// ---------------------------------------------------------------------------
+// 자재·블록 추적 (3.1): 블록이나 선반을 누르면 상자, "이 배 전부 보기"면 그 배만 진하게
+// ---------------------------------------------------------------------------
+
+/** 블록이나 선반을 눌렀다: 재생을 멈추고 상자를 띄운다. */
+function openTrack(pick: TrackPick): void {
+  if (state.playing) pause();
+  state.pick = pick;
+  drawTrackCard();
+}
+
+function closeTrack(): void {
+  state.pick = null;
+  drawTrackCard();
+}
+
+function setTrack(ship: string | null): void {
+  state.track = ship;
+  drawRightTop();
+  tick(true);
+}
+
+function drawTrackCard(): void {
+  const r = currentRun();
+  const host = els.trackRoom;
+  if (!r || !state.pick) return mount(host);
+  const frame = buildFrame(r.result, state.data.scenario, r.config, state.day, 1);
+  mount(host, renderTrackCard(state.pick, r.result, state.data.scenario, frame, {
+    track: setTrack,
+    pick: openTrack,
+    close: closeTrack,
+    gantt: (ship) => { state.ganttShip = ship; drawGanttScreen(); tick(true); },
+  }, state.track));
 }
 
 // ---------------------------------------------------------------------------
@@ -950,6 +995,12 @@ function drawRightTop(): void {
     h("span", { class: "cam-anon", title: "관제실 화면은 사람을 기호로만 보여 줍니다. 얼굴과 이름은 현장에 직접 나가야 보입니다." },
       "익명 표시 · 개인을 구분하지 않습니다"),
     state.cctv !== null ? h("button", { class: "cam-back", type: "button", onclick: closeCctv }, "← 전경") : null,
+    els.trackRoom,
+    // 추적할 배 고르기(3.1): 고른 배의 블록만 진하게, 선반에는 그 배 몫
+    h("label", { class: "cam-track" }, "추적",
+      h("select", { onchange: (e: Event) => setTrack((e.target as HTMLSelectElement).value || null) },
+        h("option", { value: "" }, "없음"),
+        (currentRun()?.result.ships ?? []).map((sh) => h("option", { value: sh.id, selected: state.track === sh.id }, sh.id)))),
     h("div", { class: "cam-switch", role: "group", "aria-label": "확대할 공정" },
       h("button", { type: "button", class: state.cctv === null ? "active" : "", onclick: closeCctv }, "전경"),
       stations.map((st, i) =>
@@ -1151,6 +1202,10 @@ function onKey(e: KeyboardEvent): void {
     closePlanBoard();
     return;
   }
+  if (e.key === "Escape" && state.pick) {
+    closeTrack();
+    return;
+  }
   if (e.key === "Escape" && state.zoomed) {
     unzoom();
     return;
@@ -1233,6 +1288,8 @@ async function start(): Promise<void> {
     cctv: null,
     zoomed: null,
     fieldFocus: null,
+    track: null,
+    pick: null,
     managerSpot: "safe",
     signer: loadSigner(),
     classBest: {},
