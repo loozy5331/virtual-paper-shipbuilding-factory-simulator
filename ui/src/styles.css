@@ -846,6 +846,11 @@ body { background: var(--desk); }
 .cam-track select { font: inherit; font-size: 11px; color: #1f2622; background: #f3f1ea; border: 0; border-radius: 2px; padding: 1px 2px; }
 .track-host { position: absolute; right: 10px; top: 40px; z-index: 3; width: min(340px, calc(100% - 20px)); max-height: calc(100% - 80px); overflow-y: auto; }
 .track-host:empty { display: none; }
+.field-head .cam-track { position: static; }
+.scene-labels .pickable { pointer-events: auto; cursor: pointer; }
+.scene-labels .tracked { outline: 2px solid #e0b43a; outline-offset: 1px; }
+.scene-labels .untracked { opacity: 0.35; }
+.shelf-tag small.track { color: #9a6a00; font-weight: 800; }
 .track-card { background: var(--paper); color: var(--ink); border: 1px solid #c9cfc9; border-radius: 4px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3); padding: 10px 12px; font-size: 12px; line-height: 1.45; }
 .track-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
 .track-head b { font-size: 13px; }
