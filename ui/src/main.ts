@@ -1352,8 +1352,10 @@ async function start(): Promise<void> {
   });
   mount(els.room,
     els.plate, els.plateRight,
+    // 듀얼 모니터암(가운데 기둥 하나): 기둥은 모니터 뒤로 지나가 두 모니터 사이와 아래로만 보이고, 책상에 클램프로 물린다
+    h("div", { class: "monitor-arm", "aria-hidden": "true" }),
     h("div", { class: "monitors" }, els.monitorLeft, els.monitorRight),
-    h("div", { class: "room-desk" }, h("div", { class: "desk-top" }), els.deskClip, els.hands, els.hat),
+    h("div", { class: "room-desk" }, h("div", { class: "desk-top" }), h("div", { class: "arm-clamp", "aria-hidden": "true" }), els.deskClip, els.hands, els.hat),
     els.reportBoard, els.planBoard);
 
   els.sceneField.append(els.trackField);

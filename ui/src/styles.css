@@ -884,6 +884,11 @@ body { background: var(--desk); }
 /* 책상: 생산계획서, 두 손, 작업모 */
 .room-desk { position: absolute; left: 0; right: 0; bottom: 0; height: 185px; }
 .desk-top { position: absolute; inset: 0; background: var(--desk-top); border-top: 3px solid #b3a895; }
+/* 듀얼 모니터암: 기둥(모니터 뒤, 두 모니터 사이로 보임)과 책상 모서리의 클램프. 테두리와 같은 먹색 단색 */
+.monitor-arm { position: absolute; left: 50%; top: 120px; bottom: 185px; width: 12px; transform: translateX(-50%); background: #2b332e; border-radius: 3px 3px 0 0; }
+/* 기둥 위 마디: 양쪽 팔이 모니터 뒤로 들어가는 자리(두 모니터 사이로 보이는 만큼만) */
+.monitor-arm::before { content: ""; position: absolute; left: 50%; top: 0; width: 22px; height: 12px; transform: translateX(-50%); background: #2b332e; border-radius: 3px; }
+.arm-clamp { position: absolute; left: 50%; top: -5px; width: 40px; height: 16px; transform: translateX(-50%); background: #2b332e; border-radius: 2px 2px 4px 4px; }
 .desk-clip { position: absolute; left: 80px; top: 26px; width: 120px; height: 150px; padding: 13px 7px 0; cursor: pointer; font: inherit; text-align: left;
   background: var(--board); border: 1px solid var(--board-edge); border-radius: 5px; transition: transform 0.15s ease; }
 .desk-clip::before { content: ""; position: absolute; top: -5px; left: 50%; transform: translateX(-50%); width: 40px; height: 10px; background: #8c9195; border-radius: 2px; }
