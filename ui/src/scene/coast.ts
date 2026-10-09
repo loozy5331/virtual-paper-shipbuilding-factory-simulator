@@ -97,10 +97,10 @@ export function buildWalls(x0: number, x1: number, z0: number, z1: number, heigh
 }
 
 /** 바깥 정반: 바닥의 노란 구획선. */
-export function buildYardLines(x0: number, x1: number, z0: number, z1: number): THREE.Group {
+export function buildYardLines(x0: number, x1: number, z0: number, z1: number, color = "#e0b43a"): THREE.Group {
   const g = new THREE.Group();
   const line = (w: number, d: number, x: number, z: number) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.012, d), new THREE.MeshStandardMaterial({ color: "#e0b43a", roughness: 0.8 }));
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.012, d), new THREE.MeshStandardMaterial({ color, roughness: 0.8 }));
     m.position.set(x, 0.006, z);
     m.receiveShadow = true;
     g.add(m);

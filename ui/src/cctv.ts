@@ -11,6 +11,7 @@ import type { Scenario } from "./api";
 import { s } from "./dom";
 import { HAT, STATE_INFO, STATION_COLOR } from "./labels";
 import type { Frame, LotView } from "./scene/frame";
+import { STOCK_D, STOCK_HALF, STOCK_STATIONS, STOCK_Z0, stockAssign, stockSpot } from "./scene/stock";
 
 // ----- 현장 3D와 같은 배치(yard.ts) -----
 const STATION_X = [-9, -3.5, 2, 8.5];
@@ -32,7 +33,7 @@ const DEPTH = Math.cos(Math.PI / 6); // 바닥 깊이는 0.87배로 줄고
 const RISE = Math.sin(Math.PI / 6);  // 높이는 0.5배로 보인다
 const X0 = -18.5, Z0 = -12.2, TOP = 34;
 const VIEW_W = (26 - X0) * S;
-const VIEW_H = TOP + (5.6 - Z0) * S * DEPTH + 8;
+const VIEW_H = TOP + (STOCK_Z0 + STOCK_D + 1.1 - Z0) * S * DEPTH + 8;   // 공용 적치장(큰길 건너편)까지
 
 const px = (x: number) => (x - X0) * S;
 const py = (z: number, h = 0) => TOP + (z - Z0) * S * DEPTH - h * S * RISE;
@@ -261,16 +262,12 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
       }
       if (view.units.length > 1) g.append(tag(px(x - MAT_W / 2) - 4, py(z) + 4, `${unit.unit}호`, "cc-unit end"));
       add(z - d / 2, g);
-      // 나눠 하는 배는 부분이 든 작업장마다 작게 그린다. 먼저 끝난 부분은 비어 있는 정반에 남아 짝을 기다린다.
-      const here = frame.lots.find((l) => l.place === "bench" && l.station === p && l.ship === unit.ship)
-        ?? (unit.ship ? undefined : frame.lots.find((l) => l.place === "bench" && l.station === p
-          && l.parts?.some((pt) => pt.unit === k && pt.state === "pair_wait")));
-      const part = here?.parts?.find((pt) => pt.unit === k);
+      // 나눠 하는 배는 부분이 든 작업장마다 작게 그린다. 먼저 끝난 부분은 공용 적치장에서 짝을 기다린다(아래).
+      const here = frame.lots.find((l) => l.place === "bench" && l.station === p && l.ship === unit.ship);
       if (here) {
         add(z, lot(x, z, here.form, here.parts && here.parts.length > 1 ? 0.75 : 1, here.type));
         // 배 이름표는 정반 뒤 가장자리 바로 위(정반 안의 글과 겹치지 않게)
         add(z + 0.02, chip(x, z - d / 2, 0, here, lateNow(here)));
-        if (part?.state === "pair_wait") add(z + 0.03, tag(px(x), py(z) + 4, "짝 대기", "cc-tag mid pair"));
       }
       if (view.crew === "robot") {
         if (here) { add(z + 0.1, robot(x - MAT_W / 2 + 0.35, z + 0.3)); add(z + 0.1, robot(x + MAT_W / 2 - 0.35, z + 0.3)); }
@@ -295,19 +292,39 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
       tag(px(x - MAT_W / 2) + 5, ty, st.name, "cc-name"),
       tag(px(x + MAT_W / 2) - 5, ty, status, info ? "cc-tag end loss" : "cc-tag end"),
       extra ? tag(px(x + MAT_W / 2) - 5, py(-MAT_D / 2) + 14, extra, "cc-tag end") : s("g")));
-    // 공정 앞 대기 줄
-    frame.lots.filter((l) => l.place === "queue" && l.station === p).sort((a, b) => a.slot - b.slot).slice(0, 3).forEach((l, i) => {
-      const qx = x - 1 + i * 1.0;
-      add(QUEUE_Z, lot(qx, QUEUE_Z, l.form, 0.55));
-      add(QUEUE_Z + 0.01, chip(qx, QUEUE_Z - 0.2, 0.4, l, lateNow(l)));
-    });
-    // 끝내고 운반을 기다리는 로트: 다음 공정 쪽 길가
-    frame.lots.filter((l) => l.place === "outbound" && l.station === p).slice(0, 2).forEach((l, i) => {
-      const ox = x + MAT_W / 2 + 0.6 + i * 0.9;
-      add(QUEUE_Z, lot(ox, QUEUE_Z, l.form, 0.55));
-      add(QUEUE_Z + 0.01, chip(ox, QUEUE_Z - 0.2, 0.4, l, lateNow(l)));
-    });
+    // 탑재 앞 대기 줄(탑재는 적치장 예외: 도크 앞에서 기다린다)
+    if (p >= STOCK_STATIONS) {
+      frame.lots.filter((l) => l.place === "queue" && l.station === p).sort((a, b) => a.slot - b.slot).slice(0, 3).forEach((l, i) => {
+        const qx = x - 1 + i * 1.0;
+        add(QUEUE_Z, lot(qx, QUEUE_Z, l.form, 0.55));
+        add(QUEUE_Z + 0.01, chip(qx, QUEUE_Z - 0.2, 0.4, l, lateNow(l)));
+      });
+    }
   });
+
+  // ----- 공용 적치장: 큰길 건너편, 공정마다 맞은편 칸 -----
+  for (let p = 0; p < STOCK_STATIONS; p++) {
+    const x = STATION_X[p];
+    add(-97, s("rect", { x: px(x - STOCK_HALF), y: py(STOCK_Z0), width: STOCK_HALF * 2 * S, height: STOCK_D * S * DEPTH,
+      fill: "#2a332e", stroke: "#8f9a93", "stroke-width": 1.2, "stroke-dasharray": "5 4" }));
+    add(-96, s("g", { class: "cc-mat-text" },
+      s("rect", { x: px(x - STOCK_HALF) + 6, y: py(STOCK_Z0 + STOCK_D) - 17, width: 9, height: 9, rx: 2, fill: STATION_COLOR[scenario.stations[p].id] }),
+      tag(px(x - STOCK_HALF) + 19, py(STOCK_Z0 + STOCK_D) - 8, "적치장", "cc-tag")));
+  }
+  add(-96, tag(px(STATION_X[1]), py(STOCK_Z0 + STOCK_D) + 16, "공용 적치장", "cc-place"));
+  const stock = stockAssign(frame);
+  for (const l of frame.lots) {
+    const keys = [`q:${l.ship}`, `o:${l.ship}`, ...(l.parts ?? []).map((pt) => `w:${l.ship}:${pt.unit}`)];
+    for (const key of keys) {
+      const spot = stock.get(key);
+      if (!spot) continue;
+      const at = stockSpot(spot.station, spot.index);
+      add(at.z, lot(at.x, at.z, l.form, 0.55, l.type));
+      add(at.z + 0.01, chip(at.x, at.z - 0.2, 0.4, l, lateNow(l)));
+      const why = spot.reason === "pair" ? "짝 대기" : spot.reason === "outbound" ? "운반 대기" : null;
+      if (why) add(at.z + 0.02, tag(px(at.x), py(at.z) + 13, why, "cc-tag mid pair"));
+    }
+  }
 
   // ----- 골리앗 크레인(탑재 위, 틀만) -----
   const cx = STATION_X[3];
@@ -349,7 +366,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   let viewBox = `0 0 ${VIEW_W} ${VIEW_H}`;
   if (focus !== null) {
     // 공정 확대: 정반 둘(2호는 뒤)과 대기 줄이 세로로 들어가게. 가로는 화면 비율대로 이웃 공정까지 보인다.
-    const top = py(-7.2, 1), bottom = py(4.5);
+    const top = py(-7.2, 1), bottom = py(STOCK_Z0 + STOCK_D + 0.3);
     const w = 9 * S;
     viewBox = `${px(STATION_X[focus]) - w / 2} ${top} ${w} ${bottom - top}`;
   }

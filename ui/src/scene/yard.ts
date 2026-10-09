@@ -14,6 +14,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { LEAD_IN, type Frame, type LotView } from "./frame";
 import { mesh, Person, SENIOR_NAME, WORKER_NAMES } from "./people";
 import { shipLook } from "./ships";
+import { STOCK_D, STOCK_HALF, STOCK_STATIONS, STOCK_Z0, stockAssign, stockSpot } from "./stock";
 import { buildDock, buildLand, buildWalls, buildYardLines, GiantHand, SEA_Y, SHORE_X } from "./coast";
 import { clamp01, ease, flatOf, hullTris, type Tri } from "../proto/model";
 import { STATE_INFO, STATION_COLOR } from "../labels";
@@ -329,11 +330,13 @@ export class Yard {
   private readonly lounge: CSS2DObject;
   private readonly labTag: CSS2DObject;
   private readonly labWindow: THREE.MeshStandardMaterial;
+  /** 오늘 적치장에 놓인 블록과 그 자리(stock.ts) */
+  private stock: ReturnType<typeof stockAssign> = new Map();
   /** 골리앗 크레인 노릇을 하는 걸리버의 손(하늘에서 수직으로 내려온다). */
   private readonly gulliver = new GiantHand();
   /** 증설한 2호·3호 작업장의 벽·구획선·도크(있을 때만 보인다). [공정][작업장 번호 − 1] */
   private readonly unitAreas: THREE.Group[][] = [];
-  private readonly camGoal = { pos: new THREE.Vector3(2, 15, 25), target: new THREE.Vector3(2, 1, -10) };
+  private readonly camGoal = { pos: new THREE.Vector3(2, 17, 27), target: new THREE.Vector3(2, 0, -7) };
   private camMoving = 0;
 
   private readonly hemi = new THREE.HemisphereLight("#fff8ec", "#8a6a4a", 1.5);
@@ -535,6 +538,22 @@ export class Yard {
       }
     });
     this.scene.add(buildWalls(SHELF_X[0] - 1.5, SHELF_X[2] + 1.5, SHELF_Z - 0.9, SHELF_Z + 1.0, 1.9));
+
+    // 공용 적치장: 큰길 건너편, 공정(탑재 제외)마다 맞은편 칸. 기다리는 블록은 정반 대신 여기에 둔다.
+    for (let p = 0; p < STOCK_STATIONS; p++) {
+      const x = STATION_X[p], zc = STOCK_Z0 + STOCK_D / 2;
+      const floor = mesh(new THREE.BoxGeometry(STOCK_HALF * 2, 0.02, STOCK_D), "#b7b2a6", { roughness: 1 });
+      floor.position.set(x, 0.011, zc);
+      floor.castShadow = false;
+      this.scene.add(floor, buildYardLines(x - STOCK_HALF, x + STOCK_HALF, STOCK_Z0, STOCK_Z0 + STOCK_D, "#f4f1ea"));
+      const ids = Object.keys(STATION_COLOR);
+      const tag = label(`<i style="background:${STATION_COLOR[ids[p]]}"></i>적치장`, "station-tag small-tag");
+      tag.position.set(x - STOCK_HALF + 0.9, 0.05, STOCK_Z0 + STOCK_D - 0.25);
+      this.scene.add(tag);
+    }
+    const sign = label("공용 적치장", "place-tag");
+    sign.position.set(STATION_X[1], 0.05, STOCK_Z0 + STOCK_D + 0.5);
+    this.scene.add(sign);
   }
 
   private buildLane(): void {
@@ -700,13 +719,13 @@ export class Yard {
   setCamera(mode: CameraMode, station: number | null = null): void {
     if (mode === "control" || station === null) {
       // 전경: 조금 낮게 비스듬히 봐서 능선 너머 걸리버의 상반신과 만 입구의 등대가 함께 들어오게.
-      this.camGoal.pos.set(2, 15, 25);
-      this.camGoal.target.set(2, 1, -10);
+      this.camGoal.pos.set(2, 17, 27);
+      this.camGoal.target.set(2, 0, -7);
     } else {
       // 1호 뒤의 2호·3호 줄까지 벽 너머로 보이게 높이 내려다본다(3.0).
       const x = STATION_X[station];
-      this.camGoal.pos.set(x + 2.0, 9.5, 7.5);
-      this.camGoal.target.set(x, 0, -2.4);
+      this.camGoal.pos.set(x + 2.0, 11.5, 11.5);
+      this.camGoal.target.set(x, 0, -0.6);   // 3호 줄부터 큰길 건너 적치장 칸까지
     }
     this.camMoving = 1;
   }
@@ -775,7 +794,8 @@ export class Yard {
     // 사람은 하루의 준비 시간 안에 새 자리에 도착한다(작업은 그 뒤에 진행, frame.ts의 LEAD_IN).
     const within = (src.msPerDay / 1000) * LEAD_IN;
 
-    // 로트
+    // 로트. 기다리는 블록의 적치장 자리를 먼저 정한다.
+    this.stock = stockAssign(f);
     let hook: { x: number; y: number } | null = null;
     for (const view of f.lots) {
       const lot = this.lots.get(view.ship);
@@ -786,15 +806,15 @@ export class Yard {
       lot.target.copy(pos);
       this.planPath(lot, view, jump);
       if (jump || view.place === "carried" || view.place === "sea") lot.group.position.copy(pos);
-      // 나눠 하기: 부분마다 자기 작업장 자리. 먼저 끝난 부분은 정반에 남아 짝을 기다리고,
-      // 그 작업장에 다른 배가 들어왔으면 정반 앞으로 비켜 기다린다.
+      // 나눠 하기: 부분마다 자기 작업장 자리. 먼저 끝난 부분은 공용 적치장으로 나가 짝을 기다린다.
       if (view.place === "bench" && view.parts && view.parts.length > 1) {
         const x = STATION_X[view.station];
-        const st = f.stations[view.station];
         lot.split = view.parts.map((pt) => {
+          // 먼저 끝난 부분은 공용 적치장 칸에서 짝을 기다린다(작업장은 비워 둔다).
           const waiting = pt.state === "pair_wait";
-          const taken = waiting && st.units[pt.unit]?.ship && st.units[pt.unit].ship !== view.ship;
-          const world = taken ? new THREE.Vector3(x - MAT_W / 2 + 0.6, MAT_TOP, QUEUE_Z - 0.5) : new THREE.Vector3(x, MAT_TOP, unitZ(pt.unit));
+          const spot = waiting ? this.stock.get(`w:${view.ship}:${pt.unit}`) : undefined;
+          const at = spot ? stockSpot(spot.station, spot.index) : null;
+          const world = at ? new THREE.Vector3(at.x, 0, at.z) : new THREE.Vector3(x, MAT_TOP, unitZ(pt.unit));
           return { offset: world.sub(pos), waiting };
         });
       } else {
@@ -938,10 +958,10 @@ export class Yard {
     const y = MAT_TOP;
     if (now.place === "bench" && now.unit > 0 && before.place !== "bench") {
       const sx = SPUR_X[now.station];
-      lot.path = [new THREE.Vector3(sx, y, QUEUE_Z), new THREE.Vector3(sx, y, unitZ(now.unit))];
+      lot.path = [new THREE.Vector3(sx, y, LANE_Z), new THREE.Vector3(sx, y, unitZ(now.unit))];
     } else if (before.place === "bench" && before.unit > 0 && now.place !== "bench" && before.station < STATION_X.length - 1) {
       const sx = SPUR_X[before.station + 1];
-      lot.path = [new THREE.Vector3(sx, y, unitZ(before.unit)), new THREE.Vector3(sx, y, QUEUE_Z)];
+      lot.path = [new THREE.Vector3(sx, y, unitZ(before.unit)), new THREE.Vector3(sx, y, LANE_Z)];
     } else {
       lot.path = [];
     }
@@ -951,8 +971,16 @@ export class Yard {
     const x = STATION_X[view.station];
     switch (view.place) {
       case "bench": return new THREE.Vector3(x, MAT_TOP, unitZ(view.unit));
-      case "queue": return new THREE.Vector3(x - 0.9 - view.slot * 1.9, 0, QUEUE_Z);
-      case "outbound": return new THREE.Vector3(x + 1.2 + view.slot * 1.9, 0, QUEUE_Z);
+      case "queue":
+      case "outbound": {
+        // 공용 적치장 칸(탑재 앞 대기는 예외: 도크 앞)
+        const spot = this.stock.get(`${view.place === "queue" ? "q" : "o"}:${view.ship}`);
+        if (spot) {
+          const at = stockSpot(spot.station, spot.index);
+          return new THREE.Vector3(at.x, 0, at.z);
+        }
+        return new THREE.Vector3(x - 0.9 - view.slot * 1.9, 0, QUEUE_Z);
+      }
       case "carried": {
         const from = x + 1.2, to = STATION_X[view.station + 1] - 0.9;
         return new THREE.Vector3(from + (to - from) * ease(view.travel ?? frac), 0.32, LANE_Z);
