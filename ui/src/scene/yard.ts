@@ -11,7 +11,7 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import type { Frame, LotView } from "./frame";
+import { LEAD_IN, type Frame, type LotView } from "./frame";
 import { mesh, Person, SENIOR_NAME, WORKER_NAMES } from "./people";
 import { shipLook } from "./ships";
 import { buildDock, buildLand, buildWalls, buildYardLines, GiantHand, SEA_Y, SHORE_X } from "./coast";
@@ -698,7 +698,8 @@ export class Yard {
     for (const p of [...this.people, this.senior, this.manager]) p.update(dt);
     for (const lot of this.lots.values()) {
       if (!lot.group.visible) continue;
-      lot.group.position.lerp(lot.target, Math.min(1, dt * 10));
+      // 대기 줄 → 정반처럼 자리를 옮기는 로트도 준비 시간(1배속 0.15초) 안에 닿게 빨리 옮긴다.
+      lot.group.position.lerp(lot.target, Math.min(1, dt * 22));
     }
     this.animateProps(t);
     if (this.camMoving > 0) {
@@ -718,6 +719,8 @@ export class Yard {
     const frac = src.playing ? clamp01((performance.now() - this.sourceAt) / src.msPerDay) : 1;
     const f = src.frameAt(frac);
     const jump = snap || src.snap;
+    // 사람은 하루의 준비 시간 안에 새 자리에 도착한다(작업은 그 뒤에 진행, frame.ts의 LEAD_IN).
+    const within = (src.msPerDay / 1000) * LEAD_IN;
 
     // 로트
     let hook: { x: number; y: number } | null = null;
@@ -768,14 +771,14 @@ export class Yard {
             const side = k % 2 === 0 ? 1 : -1;
             const at = new THREE.Vector3(x - 0.9 * side, MAT_TOP, unitZ(u) + side * 1.0);
             const p = this.people[person++];
-            p?.place(at, side > 0 ? Math.PI : 0, unitWorking ? "work" : "stand", jump);
+            p?.place(at, side > 0 ? Math.PI : 0, unitWorking ? "work" : "stand", jump, within);
             p?.holdKnife(i === 0 && unitWorking);
           }
         });
       }
       if (st.senior) {
         this.senior.setVisible(true);
-        this.senior.place(new THREE.Vector3(x + 1.3, MAT_TOP, -0.2), -Math.PI / 2, working ? "work" : "stand", jump);
+        this.senior.place(new THREE.Vector3(x + 1.3, MAT_TOP, -0.2), -Math.PI / 2, working ? "work" : "stand", jump, within);
         this.senior.holdKnife(i === 0 && working);
       }
       // 멈춘 작업장에 연기(고장)나 통제 테이프(사고). 둘 다 멈췄으면 1호에 표시한다.
@@ -800,7 +803,7 @@ export class Yard {
     // 작업대기소: 오늘 배정되지 않은 사람은 앉아서 기다린다(인원 과다가 보인다).
     for (let k = 0; k < f.idleWorkers && person < this.people.length; k++) {
       this.people[person].holdKnife(false);
-      this.people[person++].place(this.loungeSeat(k), 0, "sit", jump);
+      this.people[person++].place(this.loungeSeat(k), 0, "sit", jump, within);
     }
     const used = person;
     this.people.forEach((p, i) => p.setVisible(i < used));
@@ -822,6 +825,12 @@ export class Yard {
         at = new THREE.Vector3(DEPOT.x, 0, LANE_Z + k * 1.15);
       }
       cart.group.position.lerp(at, jump ? 1 : 0.2);
+      // 운반 중인 로트는 트랜스포터가 실으러 온 뒤에야 함께 움직인다(수레보다 앞서 가지 않게).
+      // 수레가 아직 멀면 로트는 실을 자리에서 기다린다.
+      if (tr.state === "move" && lot?.place === "carried") {
+        const lotObj = this.lots.get(lot.ship);
+        if (lotObj && cart.group.position.distanceTo(at) < 0.8) lotObj.group.position.copy(cart.group.position).setY(0.32);
+      }
       cart.smoke.visible = tr.state === "breakdown_stop";
       setLabel(cart.tag, tr.state === "breakdown_stop" ? `${tr.id} ${chipHtml("breakdown_stop", "고장")}` : tr.id);
     });
@@ -853,7 +862,7 @@ export class Yard {
       case "outbound": return new THREE.Vector3(x + 1.2 + view.slot * 1.9, 0, QUEUE_Z);
       case "carried": {
         const from = x + 1.2, to = STATION_X[view.station + 1] - 0.9;
-        return new THREE.Vector3(from + (to - from) * ease(frac), 0.32, LANE_Z);
+        return new THREE.Vector3(from + (to - from) * ease(view.travel ?? frac), 0.32, LANE_Z);
       }
       case "sea": {
         const lot = this.lots.get(view.ship)!;
