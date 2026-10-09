@@ -1,12 +1,14 @@
 // 걸리버의 책상 위 스마트야드. 소인들이 블록을 조립해 종이배를 만든다.
 // 관제실(전경)과 현장(가까운 눈높이)이 같은 장면을 카메라만 바꿔 쓴다.
+// 그림 스타일 둘(2.1): CCTV는 익명(지금의 단순한 소인), 현장은 셀 셰이딩 일러스트(외곽선, 얼굴, 이름표). setStyle로 바꾼다.
 // 그리는 내용은 frame.ts의 Frame뿐이다. 이 파일은 규칙을 모른다.
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DObject, CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer.js";
+import { OutlineEffect } from "three/addons/effects/OutlineEffect.js";
 import type { Frame, LotView } from "./frame";
-import { mesh, Person } from "./people";
+import { mesh, Person, SENIOR_NAME, WORKER_NAMES, type SceneStyle } from "./people";
 import { clamp01, ease, flatOf, hullTris, sailTris, type Tri } from "../proto/model";
 import { STATE_INFO, STATION_COLOR } from "../labels";
 
@@ -159,7 +161,7 @@ class Lot {
       this.scraps.push(scrap);
       this.group.add(scrap);
     }
-    const stick = mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.55, 6), "#6b4a2b");
+    const stick = mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.55, 12), "#6b4a2b");
     stick.position.y = 0.27;
     const shape = new THREE.Shape([new THREE.Vector2(0, 0), new THREE.Vector2(0.32, -0.09), new THREE.Vector2(0, -0.18)]);
     const cloth = mesh(new THREE.ShapeGeometry(shape), "#c0392b", { side: THREE.DoubleSide });
@@ -266,7 +268,7 @@ export class Yard {
   private sourceAt = 0;
   private lots = new Map<string, Lot>();
   private readonly people: Person[] = [];
-  private readonly senior = new Person("senior");
+  private readonly senior = new Person("senior", 5, SENIOR_NAME);
   private readonly manager = new Person("manager");
   private readonly stationProps: {
     tag: CSS2DObject; smoke: THREE.Group; tape: THREE.Group; candle: THREE.PointLight; flame: THREE.Mesh;
@@ -281,7 +283,7 @@ export class Yard {
   private readonly labTag: CSS2DObject;
   private readonly labWindow: THREE.MeshStandardMaterial;
   private readonly trolley = new THREE.Group();
-  private readonly hook = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1, 6), new THREE.MeshStandardMaterial({ color: "#333" }));
+  private readonly hook = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1, 12), new THREE.MeshStandardMaterial({ color: "#333" }));
   private readonly camGoal = { pos: new THREE.Vector3(1, 22, 16.5), target: new THREE.Vector3(1, 0, -1.8) };
   private camMoving = 0;
 
@@ -331,12 +333,69 @@ export class Yard {
     this.buildGiant();
 
     for (let i = 0; i < 8; i++) {
-      const p = new Person("worker");
+      const p = new Person("worker", i, WORKER_NAMES[i]);
       this.people.push(p);
       this.scene.add(p.root);
     }
     this.scene.add(this.senior.root, this.manager.root);
     this.manager.place(new THREE.Vector3(-1, 0, 5.4), Math.PI, "stand", true);
+  }
+
+  // ----- 그림 스타일 -----
+
+  private style: SceneStyle = "cctv";
+  private outline: OutlineEffect | null = null;
+  private toonGradient: THREE.DataTexture | null = null;
+
+  /** CCTV(익명) 또는 현장(셀 셰이딩 일러스트). 재질과 소인의 생김새, 외곽선을 바꾼다. */
+  setStyle(style: SceneStyle): void {
+    if (this.style === style) return;
+    this.style = style;
+    for (const p of [...this.people, this.senior, this.manager]) p.setStyle(style);
+    this.scene.traverse((obj) => {
+      const m = obj as THREE.Mesh;
+      if (!m.isMesh) return;
+      const std = (m.userData.std ?? m.material) as THREE.Material;
+      if (!(std instanceof THREE.MeshStandardMaterial)) return;
+      m.userData.std = std;
+      if (style === "cctv") {
+        m.material = std;
+        return;
+      }
+      // 셀 셰이딩: 같은 색과 무늬를 3단 명암으로. 색은 바꿀 때마다 원래 재질에서 다시 읽는다(피부색 등).
+      const toon = (m.userData.toon as THREE.MeshToonMaterial | undefined) ?? new THREE.MeshToonMaterial({ gradientMap: this.gradient() });
+      toon.color.copy(std.color);
+      toon.map = std.map;
+      toon.transparent = std.transparent;
+      toon.opacity = std.opacity;
+      toon.side = std.side;
+      toon.emissive.copy(std.emissive);
+      m.userData.toon = toon;
+      m.material = toon;
+    });
+    this.people.forEach((p) => p.setVisible(p.root.visible));
+    this.senior.setVisible(this.senior.root.visible);
+    this.manager.setVisible(this.manager.root.visible);
+  }
+
+  /** 현장 이름표를 보일지(가까이 볼 때만). */
+  showNameTags(on: boolean): void {
+    for (const p of [...this.people, this.senior, this.manager]) p.showTag(on);
+  }
+
+  /** 생산관리자 소인의 이름표: 서명한 닉네임. */
+  setManagerName(name: string): void {
+    this.manager.setName(name);
+  }
+
+  private gradient(): THREE.DataTexture {
+    if (!this.toonGradient) {
+      const steps = new Uint8Array([110, 165, 215, 255]);   // 그늘에서 밝음까지 4단: 띠가 덜 도드라진다
+      this.toonGradient = new THREE.DataTexture(steps, steps.length, 1, THREE.RedFormat);
+      this.toonGradient.minFilter = this.toonGradient.magFilter = THREE.NearestFilter;
+      this.toonGradient.needsUpdate = true;
+    }
+    return this.toonGradient;
   }
 
   // ----- 구성 -----
@@ -356,7 +415,7 @@ export class Yard {
       // 고장: 연기 / 사고: 통제 테이프
       const smoke = new THREE.Group();
       for (let k = 0; k < 6; k++) {
-        const puff = mesh(new THREE.SphereGeometry(0.22, 10, 8), "#6e6e6e", { transparent: true, opacity: 0.55 });
+        const puff = mesh(new THREE.SphereGeometry(0.22, 20, 14), "#6e6e6e", { transparent: true, opacity: 0.55 });
         puff.castShadow = false;
         smoke.add(puff);
       }
@@ -368,7 +427,7 @@ export class Yard {
       const hw = MAT_W / 2 + 0.35, hd = MAT_D / 2 + 0.35;
       const corners = [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]];
       corners.forEach(([cx, cz], k) => {
-        const post = mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.6, 8), "#2b2b2b");
+        const post = mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.6, 16), "#2b2b2b");
         post.position.set(cx, 0.3, cz);
         tape.add(post);
         const [nx, nz] = corners[(k + 1) % 4];
@@ -384,7 +443,7 @@ export class Yard {
 
       // 잔업: 촛불
       const candle = new THREE.Group();
-      const wax = mesh(new THREE.CylinderGeometry(0.11, 0.12, 0.5, 12), "#f3e6c8");
+      const wax = mesh(new THREE.CylinderGeometry(0.11, 0.12, 0.5, 24), "#f3e6c8");
       wax.position.y = 0.25;
       const flame = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 8), new THREE.MeshBasicMaterial({ color: "#ffb347" }));
       flame.position.y = 0.6;
@@ -460,7 +519,7 @@ export class Yard {
       group.add(deck, cab);
       for (const wx of [-0.6, 0.6]) {
         for (const wz of [-0.42, 0.42]) {
-          const wheel = mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.08, 12), "#222");
+          const wheel = mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.08, 24), "#222");
           wheel.rotation.x = Math.PI / 2;
           wheel.position.set(wx, 0.12, wz);
           group.add(wheel);
@@ -468,7 +527,7 @@ export class Yard {
       }
       const smoke = new THREE.Group();
       for (let s = 0; s < 4; s++) {
-        const puff = mesh(new THREE.SphereGeometry(0.16, 8, 6), "#6e6e6e", { transparent: true, opacity: 0.55 });
+        const puff = mesh(new THREE.SphereGeometry(0.16, 16, 12), "#6e6e6e", { transparent: true, opacity: 0.55 });
         puff.castShadow = false;
         smoke.add(puff);
       }
@@ -688,7 +747,12 @@ export class Yard {
       if (this.camera.position.distanceTo(this.camGoal.pos) < 0.05) this.camMoving = 0;
     }
     this.controls.update();
-    this.renderer.render(this.scene, this.camera);
+    if (this.style === "field") {
+      this.outline ??= new OutlineEffect(this.renderer, { defaultThickness: 0.003, defaultColor: [0.2, 0.25, 0.23] });
+      this.outline.render(this.scene, this.camera);
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
     this.labels.render(this.scene, this.camera);
   }
 
@@ -756,7 +820,7 @@ export class Yard {
         });
       }
       if (st.senior) {
-        this.senior.root.visible = true;
+        this.senior.setVisible(true);
         this.senior.place(new THREE.Vector3(x + 1.3, MAT_TOP, -0.2), -Math.PI / 2, working ? "work" : "stand", jump);
         this.senior.holdKnife(i === 0 && working);
       }
@@ -777,7 +841,7 @@ export class Yard {
       const crewNote = robot ? " · 로봇" : st.crew === "skilled" ? " · 숙련공" : "";
       setLabel(props.tag, `<i style="background:${STATION_COLOR[st.id]}"></i>${st.name}${st.units.length > 1 ? " 1호" : ""}${crewNote}${st.overtime && !robot ? " · 잔업" : ""}${chip}`);
     });
-    if (!f.stations.some((st) => st.senior)) this.senior.root.visible = false;
+    if (!f.stations.some((st) => st.senior)) this.senior.setVisible(false);
 
     // 작업대기소: 오늘 배정되지 않은 사람은 앉아서 기다린다(인원 과다가 보인다).
     for (let k = 0; k < f.idleWorkers && person < this.people.length; k++) {
@@ -785,7 +849,7 @@ export class Yard {
       this.people[person++].place(this.loungeSeat(k), 0, "sit", jump);
     }
     const used = person;
-    this.people.forEach((p, i) => { p.root.visible = i < used; });
+    this.people.forEach((p, i) => p.setVisible(i < used));
     setLabel(this.lounge, `작업대기소 · 쉬는 사람 <b>${f.idleWorkers}</b>명`);
 
     // 트랜스포터
@@ -886,11 +950,11 @@ export class Yard {
 /** 로봇 팔: 받침, 돌아가는 기둥, 위팔, 아래팔, 집게. 무광 회색(장식은 절제). */
 function buildRobot(): THREE.Group {
   const robot = new THREE.Group();
-  const base = mesh(new THREE.CylinderGeometry(0.34, 0.4, 0.22, 16), "#7c858a");
+  const base = mesh(new THREE.CylinderGeometry(0.34, 0.4, 0.22, 32), "#7c858a");
   base.position.y = 0.11;
   const arm = new THREE.Group();                    // 기둥 위에서 좌우로 돈다
   arm.position.y = 0.22;
-  const post = mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.9, 12), "#9aa3a8");
+  const post = mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.9, 24), "#9aa3a8");
   post.position.y = 0.45;
   const fore = new THREE.Group();                   // 어깨에서 정반 쪽으로 뻗는다
   fore.position.y = 0.9;

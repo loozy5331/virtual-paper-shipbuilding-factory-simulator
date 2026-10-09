@@ -686,7 +686,11 @@ function openCctv(station: number, day?: number): void {
 
 /** 카메라: 현장이면 전경 또는 고른 공정, CCTV면 그 공정. */
 function aimCamera(): void {
-  const apply = () => yard?.setCamera("field", state.screen === "field" ? state.fieldFocus : state.cctv);
+  const apply = () => {
+    yard?.setCamera("field", state.screen === "field" ? state.fieldFocus : state.cctv);
+    // 이름표는 현장에서 공정을 가까이 볼 때만.
+    yard?.showNameTags(state.screen === "field" && state.fieldFocus !== null);
+  };
   if (yard) apply();
   else void yardLoading?.then(apply);
 }
@@ -724,6 +728,9 @@ function syncScene(jump: boolean): void {
     return;
   }
   yard.attach(host);
+  // CCTV는 익명 그림, 현장에 직접 나가야 얼굴과 이름표가 보인다(2.1).
+  yard.setStyle(state.screen === "field" ? "field" : "cctv");
+  yard.setManagerName(r.signer?.nickname ?? "생산관리자");
   if (yardRun !== r) {
     yard.load(r.result.ships.map((s) => s.id));
     yardRun = r;
@@ -875,6 +882,8 @@ function drawRightTop(): void {
   mount(els.rightTop,
     els.cctvHost,
     h("span", { class: "cam-label" }, camLabel(state.cctv)),
+    h("span", { class: "cam-anon", title: "관제실 CCTV는 작업자를 알아볼 수 없게 단순한 모습으로만 보여 줍니다. 얼굴과 이름은 현장에 직접 나가야 보입니다." },
+      "익명 표시 · 개인을 구분하지 않습니다"),
     h("button", { class: "cam-back", type: "button", onclick: closeCctv }, "← 기호도"),
     h("div", { class: "cam-switch", role: "group", "aria-label": "다른 CCTV" }, state.data.scenario.stations.map((st, i) =>
       h("button", { type: "button", class: i === state.cctv ? "active" : "", onclick: () => openCctv(i) }, `${i + 1} ${st.name}`))));
@@ -957,7 +966,7 @@ function monitor(el: HTMLElement, which: "left" | "right", label: string, ...scr
 
 const introSeen = new Set<number>();
 
-/** 작업모를 누르면 생산관리자가 안전모를 쓰고 현장으로 나간다. 회차마다 처음 한 번은 뛰어나가는 전환(누르면 건너뜀). */
+/** 작업모를 누르면 생산관리자가 작업모(고깔)를 쓰고 현장으로 나간다. 회차마다 처음 한 번은 뛰어나가는 전환(누르면 건너뜀). */
 function goField(): void {
   const r = currentRun();
   if (!r) return;
@@ -969,8 +978,9 @@ function goField(): void {
   if (!introSeen.has(r.n) && !reduceMotion()) {
     introSeen.add(r.n);
     const overlay = h("div", { class: "field-intro", onclick: () => overlay.remove() },
-      h("div", { class: "intro-run" }, h("span", { class: "intro-man" }, "⛑️🏃"), h("span", { class: "intro-door" }, "🚪")),
-      h("p", null, h("b", null, "관리자가 안전모를 쓰고 현장으로 나갑니다")),
+      h("div", { class: "intro-run" }, h("span", { class: "intro-man" }, introHat(), "🏃"), h("span", { class: "intro-door" }, "🚪")),
+      h("p", null, h("b", null, "관리자가 작업모를 쓰고 현장으로 나갑니다")),
+      h("p", null, "CCTV에는 누구인지 보이지 않습니다. 직접 와야 사람이 보입니다."),
       h("p", { class: "hint" }, "누르면 건너뜁니다"));
     els.field.append(overlay);
     window.setTimeout(() => overlay.remove(), 1800);
@@ -1062,7 +1072,14 @@ const HANDS_SVG = `<svg viewBox="0 0 720 130"><path d="M0 130 L 70 70 Q 90 56 11
 // 만년필: 먹색 몸통, 무광 금색 펜촉. 펜 끝은 왼쪽 아래(서명할 때 칸에 닿는 쪽).
 const PEN_SVG = `<svg viewBox="0 0 160 160" aria-hidden="true"><g transform="rotate(-38 80 80)"><rect x="22" y="72" width="96" height="16" rx="8" fill="#26302b"/><rect x="104" y="72" width="30" height="16" rx="7" fill="#33413a"/><rect x="96" y="70" width="4" height="20" fill="#b8a271"/><path d="M22 72 L 4 80 L 22 88 Z" fill="#b8a271"/><path d="M8 80 L 18 80" stroke="#26302b" stroke-width="1.2"/></g></svg>`;
 // 작업모: 관리자 색 #d9480f
-const HAT_SVG = `<svg viewBox="0 0 120 70" aria-hidden="true"><ellipse cx="60" cy="58" rx="50" ry="8" fill="#b23a0b"/><path d="M22 56 C 22 24, 98 24, 98 56 Z" fill="#d9480f"/><rect x="56" y="22" width="8" height="34" rx="3" fill="#e8662f"/></svg>`;
+function introHat(): HTMLElement {
+  const el = h("span", { class: "intro-hat" });
+  el.innerHTML = HAT_SVG;
+  return el;
+}
+
+// 생산관리자의 작업모: 소인국의 주황 고깔모자(끝이 휘고 아래에 어두운 테두리).
+const HAT_SVG = `<svg viewBox="0 0 120 90" aria-hidden="true"><path d="M26 76 C 36 52, 50 26, 70 12 C 78 6, 90 8, 94 16 C 86 15, 80 20, 78 30 C 82 50, 90 64, 94 76 Z" fill="#d9480f"/><path d="M78 30 C 82 50, 90 64, 94 76 L 74 76 C 74 58, 74 42, 78 30 Z" fill="#b23a0b" opacity="0.55"/><ellipse cx="60" cy="77" rx="40" ry="6" fill="#2b2b2b"/></svg>`;
 
 async function start(): Promise<void> {
   const root = document.getElementById("app")!;
