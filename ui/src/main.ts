@@ -2,10 +2,11 @@
 // 화면은 셋이다(2.0):
 //   desk  첫 화면. 책상 위 분기별 클립보드에서 분기를 고른다.
 //   plan  생산계획서 클립보드가 가운데. 왼쪽 인덱스 탭 A안·B안·C안, 맨 아래 펜으로 결재란 "승인" 칸에 서명하고 실행.
-//   room  관제실(생산관리자 1인칭). 정면 벽 모니터 두 대: 왼쪽 = 재생 막대 + 간트, 오른쪽 = 기호도(또는 CCTV) + 사건 기록.
+//   room  관제실(생산관리자 1인칭). 정면 벽 모니터 두 대: 왼쪽 = 재생 막대 + 간트, 오른쪽 = 작업 현황 전경(2D, 공정 확대) + 사건 기록.
 //         책상 위에 생산계획서 클립보드(누르면 계획 고치기)와 작업모. 60일이 끝나면 생산실적 평가서 클립보드를 받는다.
 //   field 현장. 작업모를 쓰고 직접 나간 생산관리자의 눈(3D 화면 전체). 전경·공정 가까이, 재생 막대, "관제실로".
-// 현장을 보는 길: 기호도 작업장, 간트 막대, 평가서의 "현장에서 보기" → 오른쪽 모니터의 CCTV(재생 중에도 오늘을 본다).
+// 공정을 들여다보는 길: 전경의 정반, 간트 막대, 평가서의 "작업 현황에서 보기" → 오른쪽 모니터의 공정 확대(재생 중에도 오늘을 본다).
+// 사람의 얼굴과 이름은 작업모를 쓰고 현장(3D)에 직접 나가야 보인다(D24). 화면에는 "CCTV"라는 말을 쓰지 않는다(감시처럼 느껴져서).
 
 import { api, ApiError, type ClassBest, type Config, type Finding, type Preview, type Result, type ScenarioPayload } from "./api";
 import { h, mount, num, pct } from "./dom";
@@ -15,7 +16,7 @@ import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
 import { docHead } from "./paper";
 import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, STATION_COLOR, TRANSPORT_STATE } from "./labels";
 import { breakdownBar, breakdownLegend, eventText, renderReport } from "./report";
-import { renderSchematic } from "./schematic";
+import { renderCctv } from "./cctv";
 import { buildFrame } from "./scene/frame";
 import type { Yard } from "./scene/yard";
 
@@ -64,7 +65,7 @@ interface State {
   playing: boolean;
   speed: number;
   board: BoardState;
-  /** 오른쪽 모니터 위쪽이 CCTV면 비추는 공정 번호. null이면 기호도. */
+  /** 오른쪽 모니터 위쪽 작업 현황에서 확대한 공정 번호. null이면 전경. (이름은 옛 CCTV에서 왔다) */
   cctv: number | null;
   /** 크게 보고 있는 모니터 */
   zoomed: "left" | "right" | null;
@@ -107,7 +108,6 @@ const els = {
   osdRight: h("div", { class: "osd osd-right", "data-group": "speed-right" }),
   ganttScreen: h("div", { class: "gantt-screen" }),
   rightTop: h("div", { class: "right-top" }),
-  cctvHost: h("div", { class: "scene-host cctv-host" }),
   log: h("ol", { class: "log", "aria-label": "사건 기록" }),
   deskClip: h("button", { class: "desk-clip", type: "button", title: "생산계획서로 돌아가 계획을 고칩니다" }),
   hat: h("button", { class: "desk-hat", type: "button", title: "작업모를 쓰고 현장으로 나갑니다" }),
@@ -602,7 +602,7 @@ function finish(): void {
   drawRoom();
 }
 
-/** 날짜가 바뀔 때마다 모니터(간트, 기호도·CCTV, 사건 기록)와 재생 막대를 갱신한다. jump면 3D 소인이 걷지 않고 바로 옮긴다. */
+/** 날짜가 바뀔 때마다 모니터(간트, 작업 현황, 사건 기록)와 재생 막대를 갱신한다. jump면 3D 소인이 걷지 않고 바로 옮긴다. */
 function tick(jump: boolean): void {
   const r = currentRun();
   if (!state || !r || (state.screen !== "room" && state.screen !== "field")) {
@@ -641,18 +641,15 @@ function tick(jump: boolean): void {
     if (playBtn) playBtn.textContent = state.playing ? "❚❚ 멈춤" : "▶ 재생";
   }
 
-  // 오른쪽 모니터 위: 기호도 또는 CCTV
-  if (state.cctv === null) {
-    const host = els.rightTop.querySelector(".schematic-host");
-    if (host) {
-      mount(host, renderSchematic(buildFrame(result, scenario, r.config, state.day, 1), scenario, {
-        onStation: (p) => openCctv(p),
-      }));
-    }
-  } else {
-    const cam = els.rightTop.querySelector(".cam-label");
-    if (cam) cam.textContent = camLabel(state.cctv);
+  // 오른쪽 모니터 위: 작업 현황(위에서 비스듬히 내려다본 2D 정지 화면). 전경 또는 고른 공정 확대.
+  const feed = els.rightTop.querySelector(".cc-host");
+  if (feed) {
+    mount(feed, renderCctv(buildFrame(result, scenario, r.config, state.day, 1), scenario, {
+      focus: state.cctv, onStation: (p) => openCctv(p),
+    }));
   }
+  const cam = els.rightTop.querySelector(".cam-label");
+  if (cam) cam.textContent = camLabel();
 
   // 오른쪽 모니터 아래: 사건 기록(오늘까지, 최근이 위). 스크롤해서 보던 자리는 지킨다.
   const keep = els.log.scrollTop;
@@ -667,27 +664,27 @@ function tick(jump: boolean): void {
 }
 
 // ---------------------------------------------------------------------------
-// CCTV (오른쪽 모니터 위쪽의 3D)
+// 작업 현황 전경 (오른쪽 모니터 위쪽, 2D)
 // ---------------------------------------------------------------------------
 
-function camLabel(station: number): string {
-  return `CAM ${station + 1} · ${state.data.scenario.stations[station].name} · ${state.day}일`;
+function camLabel(): string {
+  const where = state.cctv === null ? "작업 현황 전경" : `작업 현황 · ${state.data.scenario.stations[state.cctv].name}`;
+  return `${where} · ${state.day}일`;
 }
 
-/** 오른쪽 모니터를 그 공정의 CCTV로 바꾼다. 재생 중에도 오늘을 본다(결과를 미리 알려 주지 않는다). */
+/** 오른쪽 모니터 작업 현황을 그 공정으로 확대한다. 재생 중에도 오늘을 본다(결과를 미리 알려 주지 않는다). */
 function openCctv(station: number, day?: number): void {
   if (!currentRun()) return;
   state.cctv = station;
   drawRightTop();
   if (day !== undefined) seek(day);
   else tick(true);
-  aimCamera();
 }
 
-/** 카메라: 현장이면 전경 또는 고른 공정, CCTV면 그 공정. */
+/** 현장 카메라: 전경 또는 고른 공정. */
 function aimCamera(): void {
   const apply = () => {
-    yard?.setCamera("field", state.screen === "field" ? state.fieldFocus : state.cctv);
+    yard?.setCamera("field", state.fieldFocus);
     // 이름표는 현장에서 공정을 가까이 볼 때만.
     yard?.showNameTags(state.screen === "field" && state.fieldFocus !== null);
   };
@@ -697,16 +694,13 @@ function aimCamera(): void {
 
 function closeCctv(): void {
   state.cctv = null;
-  yard?.stop();
   drawRightTop();
   tick(true);
 }
 
-/** 3D를 그릴 자리: 현장이면 화면 전체, 관제실에서 CCTV를 보고 있으면 오른쪽 모니터. 아니면 없음. */
+/** 3D를 그릴 자리: 현장이면 화면 전체. 관제실은 2D라 3D가 없다. */
 function sceneHost(): HTMLElement | null {
-  if (state.screen === "field") return els.sceneField;
-  if (state.screen === "room" && state.cctv !== null) return els.cctvHost;
-  return null;
+  return state.screen === "field" ? els.sceneField : null;
 }
 
 /** 3D를 보는 중이면 장면을 오늘 날짜로 맞추고, 아니면 그리기를 멈춘다. */
@@ -728,8 +722,6 @@ function syncScene(jump: boolean): void {
     return;
   }
   yard.attach(host);
-  // CCTV는 익명 그림, 현장에 직접 나가야 얼굴과 이름표가 보인다(2.1).
-  yard.setStyle(state.screen === "field" ? "field" : "cctv");
   yard.setManagerName(r.signer?.nickname ?? "생산관리자");
   if (yardRun !== r) {
     yard.load(r.result.ships.map((s) => s.id));
@@ -754,7 +746,7 @@ function pickBar(pick: GanttPick): void {
   openCctv(station, pick.start);
 }
 
-/** 평가서의 의문점 카드: 간트는 왼쪽 모니터를 그 배·날짜로, 현장은 오른쪽 모니터를 그 공정의 CCTV로. 보드는 내려 둔다. */
+/** 평가서의 의문점 카드: 간트는 왼쪽 모니터를 그 배·날짜로, 작업 현황은 오른쪽 모니터를 그 공정 확대로. 보드는 내려 둔다. */
 function openFinding(f: Finding, where: "field" | "gantt"): void {
   pause();
   state.board = "down";
@@ -871,23 +863,21 @@ function drawGanttScreen(): void {
     h("div", { class: "ship-detail zoom-only" }));
 }
 
-/** 오른쪽 모니터 위쪽: 기호도(작업장을 누르면 CCTV) 또는 CCTV. */
+/** 오른쪽 모니터 위쪽: 작업 현황 전경(공정을 누르면 확대) 또는 공정 확대. 그림은 tick이 채운다. */
 function drawRightTop(): void {
   const label = els.monitorRight.querySelector(".win-title");
-  if (state.cctv === null) {
-    mount(els.rightTop, h("div", { class: "schematic-host" }));
-    if (label) label.textContent = "기호도 · 작업장을 누르면 CCTV";
-    return;
-  }
+  const stations = state.data.scenario.stations;
   mount(els.rightTop,
-    els.cctvHost,
-    h("span", { class: "cam-label" }, camLabel(state.cctv)),
-    h("span", { class: "cam-anon", title: "관제실 CCTV는 작업자를 알아볼 수 없게 단순한 모습으로만 보여 줍니다. 얼굴과 이름은 현장에 직접 나가야 보입니다." },
+    h("div", { class: "cc-host" }),
+    h("span", { class: "cam-label" }, camLabel()),
+    h("span", { class: "cam-anon", title: "관제실 화면은 사람을 기호로만 보여 줍니다. 얼굴과 이름은 현장에 직접 나가야 보입니다." },
       "익명 표시 · 개인을 구분하지 않습니다"),
-    h("button", { class: "cam-back", type: "button", onclick: closeCctv }, "← 기호도"),
-    h("div", { class: "cam-switch", role: "group", "aria-label": "다른 CCTV" }, state.data.scenario.stations.map((st, i) =>
-      h("button", { type: "button", class: i === state.cctv ? "active" : "", onclick: () => openCctv(i) }, `${i + 1} ${st.name}`))));
-  if (label) label.textContent = `CCTV · ${state.data.scenario.stations[state.cctv].name}`;
+    state.cctv !== null ? h("button", { class: "cam-back", type: "button", onclick: closeCctv }, "← 전경") : null,
+    h("div", { class: "cam-switch", role: "group", "aria-label": "확대할 공정" },
+      h("button", { type: "button", class: state.cctv === null ? "active" : "", onclick: closeCctv }, "전경"),
+      stations.map((st, i) =>
+        h("button", { type: "button", class: i === state.cctv ? "active" : "", onclick: () => openCctv(i) }, st.name))));
+  if (label) label.textContent = state.cctv === null ? "작업 현황 전경 · 공정을 누르면 확대" : `작업 현황 · ${stations[state.cctv].name}`;
 }
 
 /** 책상 위: 생산계획서 클립보드(누르면 계획 고치기). 평가서를 보고 있으면 손은 보이지 않는다(CSS). */
@@ -970,7 +960,7 @@ const introSeen = new Set<number>();
 function goField(): void {
   const r = currentRun();
   if (!r) return;
-  state.fieldFocus = state.cctv;   // CCTV로 보던 공정이 있으면 그 앞으로 나간다.
+  state.fieldFocus = state.cctv;   // 작업 현황에서 확대해 보던 공정이 있으면 그 앞으로 나간다.
   setScreen("field");
   drawField();
   aimCamera();
@@ -980,7 +970,7 @@ function goField(): void {
     const overlay = h("div", { class: "field-intro", onclick: () => overlay.remove() },
       h("div", { class: "intro-run" }, h("span", { class: "intro-man" }, introHat(), "🏃"), h("span", { class: "intro-door" }, "🚪")),
       h("p", null, h("b", null, "관리자가 작업모를 쓰고 현장으로 나갑니다")),
-      h("p", null, "CCTV에는 누구인지 보이지 않습니다. 직접 와야 사람이 보입니다."),
+      h("p", null, "관제실 화면에는 누구인지 보이지 않습니다. 직접 와야 사람이 보입니다."),
       h("p", { class: "hint" }, "누르면 건너뜁니다"));
     els.field.append(overlay);
     window.setTimeout(() => overlay.remove(), 1800);
@@ -1133,7 +1123,7 @@ async function start(): Promise<void> {
       h("aside", { class: "plan-notes", "aria-label": "메모" }, els.planNotes, els.goalNote)));
 
   monitor(els.monitorLeft, "left", "공정 간트", els.ganttScreen, els.osd);
-  monitor(els.monitorRight, "right", "기호도", els.rightTop, els.log, els.osdRight);
+  monitor(els.monitorRight, "right", "작업 현황 전경", els.rightTop, els.log, els.osdRight);
   els.hands.innerHTML = HANDS_SVG;
   els.hat.innerHTML = `${HAT_SVG}<span class="desk-label">작업모 · 현장으로</span>`;
   els.hat.addEventListener("click", goField);

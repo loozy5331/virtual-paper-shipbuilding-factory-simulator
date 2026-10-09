@@ -1,14 +1,18 @@
 // 걸리버의 책상 위 스마트야드. 소인들이 블록을 조립해 종이배를 만든다.
-// 관제실(전경)과 현장(가까운 눈높이)이 같은 장면을 카메라만 바꿔 쓴다.
-// 그림 스타일 둘(2.1): CCTV는 익명(지금의 단순한 소인), 현장은 셀 셰이딩 일러스트(외곽선, 얼굴, 이름표). setStyle로 바꾼다.
+// 현장 화면이 전경과 공정 가까이를 카메라만 바꿔 쓴다.
+// 2.1: 현장 전용. 실사에 가깝게(환경광, AO, 사람마다 얼굴과 이름표). 관제실의 작업 현황 전경은 2D(cctv.ts).
 // 그리는 내용은 frame.ts의 Frame뿐이다. 이 파일은 규칙을 모른다.
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DObject, CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer.js";
-import { OutlineEffect } from "three/addons/effects/OutlineEffect.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import type { Frame, LotView } from "./frame";
-import { mesh, Person, SENIOR_NAME, WORKER_NAMES, type SceneStyle } from "./people";
+import { mesh, Person, SENIOR_NAME, WORKER_NAMES } from "./people";
 import { clamp01, ease, flatOf, hullTris, sailTris, type Tri } from "../proto/model";
 import { STATE_INFO, STATION_COLOR } from "../labels";
 
@@ -287,6 +291,9 @@ export class Yard {
   private readonly camGoal = { pos: new THREE.Vector3(1, 22, 16.5), target: new THREE.Vector3(1, 0, -1.8) };
   private camMoving = 0;
 
+  private readonly hemi = new THREE.HemisphereLight("#fff8ec", "#8a6a4a", 1.5);
+  private readonly sun = new THREE.DirectionalLight("#fff1da", 2.6);
+
   constructor() {
     const r = this.renderer;
     r.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -306,8 +313,7 @@ export class Yard {
     this.controls.maxDistance = 45;
     this.controls.addEventListener("start", () => { this.camMoving = 0; });
 
-    const hemi = new THREE.HemisphereLight("#fff8ec", "#8a6a4a", 1.5);
-    const sun = new THREE.DirectionalLight("#fff1da", 2.6);
+    const { hemi, sun } = this;
     sun.position.set(-9, 17, 11);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
@@ -339,43 +345,39 @@ export class Yard {
     }
     this.scene.add(this.senior.root, this.manager.root);
     this.manager.place(new THREE.Vector3(-1, 0, 5.4), Math.PI, "stand", true);
+    this.setupLighting();
   }
 
-  // ----- 그림 스타일 -----
+  // ----- 실사에 가까운 그림 -----
+  // 현장은 실사 쪽(환경광 반사, 구석의 그늘 AO, 사람마다 얼굴과 이름표): 직접 와야 진짜가 보인다.
+  // 관제실은 3D를 쓰지 않는다(작업 현황 전경은 2D, cctv.ts).
 
-  private style: SceneStyle = "cctv";
-  private outline: OutlineEffect | null = null;
-  private toonGradient: THREE.DataTexture | null = null;
+  private composer: EffectComposer | null = null;
 
-  /** CCTV(익명) 또는 현장(셀 셰이딩 일러스트). 재질과 소인의 생김새, 외곽선을 바꾼다. */
-  setStyle(style: SceneStyle): void {
-    if (this.style === style) return;
-    this.style = style;
-    for (const p of [...this.people, this.senior, this.manager]) p.setStyle(style);
-    this.scene.traverse((obj) => {
-      const m = obj as THREE.Mesh;
-      if (!m.isMesh) return;
-      const std = (m.userData.std ?? m.material) as THREE.Material;
-      if (!(std instanceof THREE.MeshStandardMaterial)) return;
-      m.userData.std = std;
-      if (style === "cctv") {
-        m.material = std;
-        return;
-      }
-      // 셀 셰이딩: 같은 색과 무늬를 3단 명암으로. 색은 바꿀 때마다 원래 재질에서 다시 읽는다(피부색 등).
-      const toon = (m.userData.toon as THREE.MeshToonMaterial | undefined) ?? new THREE.MeshToonMaterial({ gradientMap: this.gradient() });
-      toon.color.copy(std.color);
-      toon.map = std.map;
-      toon.transparent = std.transparent;
-      toon.opacity = std.opacity;
-      toon.side = std.side;
-      toon.emissive.copy(std.emissive);
-      m.userData.toon = toon;
-      m.material = toon;
-    });
-    this.people.forEach((p) => p.setVisible(p.root.visible));
-    this.senior.setVisible(this.senior.root.visible);
-    this.manager.setVisible(this.manager.root.visible);
+  /** 반사는 환경광이 맡고, 고른 빛(반구광)은 줄여 그림자와 명암이 살아나게 한다. */
+  private setupLighting(): void {
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    pmrem.dispose();
+    this.scene.environmentIntensity = 0.35;
+    this.hemi.intensity = 0.35;
+    this.sun.intensity = 3.2;
+    this.renderer.toneMappingExposure = 0.95;
+  }
+
+  private render(): void {
+    if (!this.composer) {
+      const { width, height } = this.renderer.getSize(new THREE.Vector2());
+      this.composer = new EffectComposer(this.renderer);
+      this.composer.setPixelRatio(this.renderer.getPixelRatio());
+      this.composer.addPass(new RenderPass(this.scene, this.camera));
+      const ao = new GTAOPass(this.scene, this.camera, width, height);
+      ao.updateGtaoMaterial({ radius: 0.5, distanceFallOff: 1, thickness: 1 });
+      ao.blendIntensity = 0.8;
+      this.composer.addPass(ao);
+      this.composer.addPass(new OutputPass());
+    }
+    this.composer.render();
   }
 
   /** 현장 이름표를 보일지(가까이 볼 때만). */
@@ -386,16 +388,6 @@ export class Yard {
   /** 생산관리자 소인의 이름표: 서명한 닉네임. */
   setManagerName(name: string): void {
     this.manager.setName(name);
-  }
-
-  private gradient(): THREE.DataTexture {
-    if (!this.toonGradient) {
-      const steps = new Uint8Array([110, 165, 215, 255]);   // 그늘에서 밝음까지 4단: 띠가 덜 도드라진다
-      this.toonGradient = new THREE.DataTexture(steps, steps.length, 1, THREE.RedFormat);
-      this.toonGradient.minFilter = this.toonGradient.magFilter = THREE.NearestFilter;
-      this.toonGradient.needsUpdate = true;
-    }
-    return this.toonGradient;
   }
 
   // ----- 구성 -----
@@ -725,6 +717,8 @@ export class Yard {
     const { clientWidth: w, clientHeight: h } = this.host;
     if (!w || !h) return;
     this.renderer.setSize(w, h);
+    this.composer?.setPixelRatio(this.renderer.getPixelRatio());
+    this.composer?.setSize(w, h);
     this.labels.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
@@ -747,12 +741,7 @@ export class Yard {
       if (this.camera.position.distanceTo(this.camGoal.pos) < 0.05) this.camMoving = 0;
     }
     this.controls.update();
-    if (this.style === "field") {
-      this.outline ??= new OutlineEffect(this.renderer, { defaultThickness: 0.003, defaultColor: [0.2, 0.25, 0.23] });
-      this.outline.render(this.scene, this.camera);
-    } else {
-      this.renderer.render(this.scene, this.camera);
-    }
+    this.render();
     this.labels.render(this.scene, this.camera);
   }
 

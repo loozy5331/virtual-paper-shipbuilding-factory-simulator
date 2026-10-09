@@ -615,39 +615,6 @@ body { background: var(--desk); }
 .doc-title h2 { white-space: nowrap; }
 .doc-title .doc-period { display: block; font-size: 0.95rem; letter-spacing: 0.06em; font-weight: 700; line-height: 1.3; }
 
-/* =====================================================================
-   1.2 관제실 기호도 (D6) 와 현장 들어가는 길 (D7)
-   기호도는 간트와 같은 색을 쓴다. 손실 색에는 항상 글(상태 이름)을 함께 둔다.
-   ===================================================================== */
-.schematic-host { margin-bottom: 14px; }
-.schematic { width: 100%; height: auto; display: block; }
-.schematic .box { fill: #fff; stroke: var(--line); stroke-width: 1; }
-.schematic .sch-box.store .box, .schematic .sch-box.deliver .box, .schematic .sch-box.small .box { fill: var(--panel-2); }
-.schematic .box-title { font-size: 13px; font-weight: 800; fill: var(--ink); }
-.schematic .box-tag { font-size: 11px; font-weight: 700; fill: var(--ink-2); text-anchor: end; }
-.schematic .box-tag.senior { fill: #6f42c1; }
-.schematic .unit { fill: rgba(31, 42, 36, 0.035); }
-.schematic .unit-name { font-size: 11px; font-weight: 700; fill: var(--ink-3); }
-.schematic .unit-status { font-size: 12px; font-weight: 700; fill: var(--ink-2); }
-.schematic .unit-status.stop { fill: #8e2e42; }
-.schematic .unit-status.small { font-size: 11px; }
-.schematic .worker { fill: #d6a400; stroke: #8a6a00; stroke-width: 1; }
-.schematic .queue-label { font-size: 11px; font-weight: 700; fill: var(--ink-3); }
-.schematic .queue-label.end { text-anchor: end; }
-.schematic .chip-box { fill: #fff; stroke: var(--ink-2); stroke-width: 1; }
-.schematic .chip-box.late { stroke: var(--bad); stroke-width: 1.6; }
-.schematic .chip-text { font-size: 11px; font-weight: 800; fill: var(--ink); text-anchor: middle; }
-.schematic .shelf-name { font-size: 12px; fill: var(--ink-2); }
-.schematic .shelf-qty { font-size: 12px; font-weight: 700; fill: var(--ink); text-anchor: end; font-variant-numeric: tabular-nums; }
-.schematic .shelf-qty.empty { fill: #9a5a10; }
-.schematic .deliver-note { font-size: 11px; font-weight: 700; fill: var(--good); }
-.schematic .deliver-note.late { fill: var(--bad); }
-.schematic .cell-text { font-size: 12px; fill: var(--ink-2); }
-.schematic .sch-flow { stroke: var(--ink-3); stroke-width: 1.3; }
-.schematic .sch-arrowhead { fill: var(--ink-3); }
-.schematic .pick { cursor: pointer; }
-.schematic .pick:hover .box, .schematic .pick:focus-visible .box { stroke: var(--accent); stroke-width: 2; }
-.schematic .pick:focus { outline: none; }
 .gantt .pick { cursor: pointer; }
 .gantt .pick:hover rect:first-of-type { filter: brightness(0.92); }
 
@@ -831,14 +798,35 @@ body { background: var(--desk); }
 .screen-tab.active { background: var(--ink); color: #fff; }
 .gantt-screen .legend { font-size: 0.74rem; }
 
-/* 오른쪽 모니터: 위 3/4 기호도 또는 CCTV, 아래 1/4 사건 기록 */
+/* 오른쪽 모니터: 위 3/4 작업 현황 전경(2D), 아래 1/4 사건 기록 */
 .right-top { position: relative; flex: 3; min-height: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: center; }
-.right-top .schematic-host { margin: 0; padding: 6px 8px; }
-.cctv-host { position: absolute; inset: 0; height: auto; border-radius: 0; }
 .cam-label { position: absolute; left: 10px; top: 8px; z-index: 2; background: rgba(20, 24, 20, 0.8); color: #f3f1ea; font-size: 12px; padding: 3px 8px; border-radius: 3px; font-weight: 700; }
-.cam-label::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #c0262d; margin-right: 6px; vertical-align: 1px; }
+/* 작업 현황 전경(2.1): 기호도를 대신하는 2D 정지 화면. 위에서 비스듬히 내려다본 조선소, 사람은 기호뿐. */
+.cc-host { position: absolute; inset: 0; background: #1f2622; }
+.cc-feed { width: 100%; height: 100%; display: block; }
+.cc-feed .cc-bg { fill: #1f2622; }
+.cc-feed text { font-family: inherit; fill: #c9d3cc; }
+.cc-feed .cc-place { font-size: 13px; font-weight: 700; fill: #eef2ee; text-anchor: middle; }
+.cc-feed .cc-name { font-size: 14px; font-weight: 800; fill: #fff; }
+/* 정반(공정 색) 위 글: 바탕색이 제각각이라 어두운 테두리로 읽히게 */
+.cc-feed .cc-mat-text text { fill: #fff; paint-order: stroke; stroke: rgba(20, 26, 22, 0.75); stroke-width: 3px; stroke-linejoin: round; }
+.cc-feed .cc-mat-text .loss { fill: #ffd29a; }
+.cc-feed .cc-tag { font-size: 12px; fill: #b5c0b9; }
+.cc-feed .cc-unit { font-size: 11px; font-weight: 700; fill: rgba(255, 255, 255, 0.85); }
+.cc-feed .cc-tag.loss { fill: #f0b36a; font-weight: 700; }
+.cc-feed .warn { fill: #de9644; font-weight: 700; }
+.cc-feed .stop { fill: #ff8a95; font-weight: 800; }
+.cc-feed .end { text-anchor: end; }
+.cc-feed .mid { text-anchor: middle; }
+.cc-feed .cc-chip rect { fill: #f3f1ea; }
+.cc-feed .cc-chip rect.late { stroke: #e0454c; stroke-width: 2; }
+.cc-feed .cc-chip text { font-size: 11px; font-weight: 800; fill: #1f2622; text-anchor: middle; }
+.cc-feed .pick { cursor: pointer; }
+.cc-feed .pick:hover > g > rect:first-child, .cc-feed .pick:focus-visible > g > rect:first-child { stroke: #f3f1ea; stroke-width: 2; }
+.cc-feed .pick:focus { outline: none; }
+.right-top .cam-anon { top: 34px; }
 .cam-back { position: absolute; right: 10px; top: 8px; z-index: 2; background: #fff; border: 1px solid #c9cfc9; font: inherit; font-size: 12px; padding: 3px 9px; border-radius: 4px; font-weight: 700; color: var(--accent); cursor: pointer; }
-/* 익명 표시(2.1): CCTV는 개인을 구분하지 않는다는 표시. 녹화 표시 바로 아래, 눈에 띄지만 조용하게. */
+/* 익명 표시(2.1): 관제실 화면은 개인을 구분하지 않는다는 표시. 화면 이름 바로 아래, 눈에 띄지만 조용하게. */
 .cam-anon { position: absolute; left: 10px; top: 34px; z-index: 2; background: rgba(243, 241, 234, 0.92); color: var(--ink-2); font-size: 11px; padding: 2px 7px; border-radius: 3px; border: 1px solid #c9cfc9; }
 .cam-switch { position: absolute; left: 10px; bottom: 8px; z-index: 2; display: flex; gap: 4px; }
 .cam-switch button { border: 0; background: rgba(20, 24, 20, 0.62); color: #f3f1ea; font: inherit; font-size: 11px; padding: 2px 7px; border-radius: 3px; cursor: pointer; }
