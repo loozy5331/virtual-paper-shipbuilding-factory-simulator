@@ -77,6 +77,8 @@ export interface Frame {
   idleWorkers: number;
   shelves: ShelfView[];
   research: ResearchView;
+  /** 오늘 진수하는 배: 어제 탑재를 끝내 오늘 인도된 배와 그 도크(0 = 1호). 현장 3D의 진수 장면용(그림만) */
+  launches: { ship: string; unit: number }[];
 }
 
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
@@ -188,9 +190,18 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
     finished: result.research.filter((r) => r.end < day).map((r) => r.name),
   };
 
+  // 진수: 어제가 탑재의 마지막 날이고 오늘 인도 상태인 배
+  const last = scenario.stations[scenario.stations.length - 1].id;
+  const launches = day >= 2 ? result.ships.flatMap((ship) => {
+    const today = ship.daily[index], before = ship.daily[index - 1];
+    return today?.state === "done" && before?.station === last && (before.state === "work" || before.state === "rework")
+      ? [{ ship: ship.id, unit: (before.unit ?? 1) - 1 }] : [];
+  }) : [];
+
   return {
     day,
     lots,
+    launches,
     stations,
     transporters,
     idleWorkers: day > 0 ? result.workforce.daily[index].idle : result.workforce.pool,

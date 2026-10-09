@@ -113,6 +113,9 @@ export function buildYardLines(x0: number, x1: number, z0: number, z1: number, c
 }
 
 /** 드라이 도크: 콘크리트 테두리와 바다 쪽 문(캐슨). */
+/** 진수 장면에 쓰는 도크 부품 */
+export interface DockParts { hinge: THREE.Group; water: THREE.Mesh; x0: number; x1: number; zc: number; zHalf: number }
+
 export function buildDock(x0: number, x1: number, z0: number, z1: number): THREE.Group {
   const g = new THREE.Group();
   const rim = (w: number, d: number, x: number, z: number, color = CONCRETE) => {
@@ -123,10 +126,20 @@ export function buildDock(x0: number, x1: number, z0: number, z1: number): THREE
   rim(x1 - x0, 0.3, (x0 + x1) / 2, z0);
   rim(x1 - x0, 0.3, (x0 + x1) / 2, z1);
   rim(0.3, z1 - z0, x0, (z0 + z1) / 2);
-  // 바다 쪽 문: 어두운 강철 문짝
+  // 바다 쪽 문(캐슨): 어두운 강철 문짝. 위쪽 모서리를 축으로 아래쪽이 바다 쪽으로 열린다(진수, 그림만).
+  const hinge = new THREE.Group();
+  hinge.position.set(x1, 0.45, (z0 + z1) / 2);
   const gate = mesh(new THREE.BoxGeometry(0.4, 0.5, z1 - z0 - 0.3), "#4e5a63", { metalness: 0.3, roughness: 0.6 });
-  gate.position.set(x1, 0.2, (z0 + z1) / 2);
-  g.add(gate);
+  gate.position.set(0, -0.25, 0);
+  hinge.add(gate);
+  g.add(hinge);
+  // 도크 안 물: 진수 때만 차오른다
+  const water = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0 - 0.3, 1, z1 - z0 - 0.3),
+    new THREE.MeshStandardMaterial({ color: "#4f86a8", roughness: 0.2, transparent: true, opacity: 0.7 }));
+  water.position.set((x0 + x1) / 2, 0, (z0 + z1) / 2);
+  water.visible = false;
+  g.add(water);
+  g.userData.dock = { hinge, water, x0, x1, zc: (z0 + z1) / 2, zHalf: (z1 - z0 - 0.3) / 2 };
   return g;
 }
 
