@@ -17,6 +17,7 @@ export interface LotView {
   ship: string;
   place: Place;
   station: number;          // 자리의 공정 번호 (0 소조립 … 3 탑재)
+  unit: number;             // 정반 위면 작업장 번호(0 = 1호, 1 = 2호). 그 밖에는 0
   slot: number;             // 같은 자리에서의 순서 (우선순위 순)
   /** 조립 단계. 0 부재, 1 소블록 12개, 2 중블록 6개, 3 대블록 3개(도장), 4 배. 정반 위에서는 진행률만큼 소수가 된다. */
   form: number;
@@ -84,7 +85,7 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
   const stationAt = (id: string | null) => (id === null ? -1 : stationIds.indexOf(id));
 
   const lots: LotView[] = result.ships.map((ship) => {
-    const base = { ship: ship.id, slot: 0, late: ship.late_days > 0 };
+    const base = { ship: ship.id, slot: 0, unit: 0, late: ship.late_days > 0 };
     if (day <= 0) return { ...base, place: "hidden", station: 0, form: 0, state: "not_started" };
     const rec = ship.daily[index];
     const p = stationAt(rec.station);
@@ -102,11 +103,11 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
         return { ...base, place: "queue", station: p, form: p, state: rec.state };
       default: {
         // 작업, 재작업, 인력 대기, 중지: 정반 위에 있으면 진행률만큼 다음 단계로 바뀌는 중이다.
-        const onBench = result.stations[p].units.some((u) => u.daily[index].ship === ship.id);
-        if (!onBench) return { ...base, place: "queue", station: p, form: p, state: rec.state };
+        const unit = result.stations[p].units.findIndex((u) => u.daily[index].ship === ship.id);
+        if (unit < 0) return { ...base, place: "queue", station: p, form: p, state: rec.state };
         const span = ship.spans[stationIds[p]];
         const progress = span ? clamp01((day - span.start + frac) / (span.end - span.start + 1)) : 0;
-        return { ...base, place: "bench", station: p, form: p + progress, state: rec.state };
+        return { ...base, place: "bench", station: p, unit, form: p + progress, state: rec.state };
       }
     }
   });
