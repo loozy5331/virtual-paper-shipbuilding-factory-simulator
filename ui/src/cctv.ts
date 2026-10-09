@@ -11,6 +11,7 @@ import type { Scenario } from "./api";
 import { s } from "./dom";
 import { HAT, STATE_INFO, STATION_COLOR } from "./labels";
 import type { Frame, LotView } from "./scene/frame";
+import type { TrackPick } from "./track";
 import { STOCK_D, STOCK_HALF, STOCK_STATIONS, STOCK_Z0, stockAssign, stockSpot } from "./scene/stock";
 
 // ----- 현장 3D와 같은 배치(yard.ts) -----
@@ -116,6 +117,9 @@ function ship(x: number, z: number, kind: string, scale = 1): SVGElement {
 function lot(x: number, z: number, form: number, scale = 1, kind = "VLCC"): SVGElement {
   const stage = Math.min(4, Math.floor(form + 1e-6));
   const g = s("g", { class: "cc-lot" });
+  // 보이지 않는 누름 영역: 블록 조각 사이를 눌러도 정반(확대)이 아니라 블록(추적 상자)이 잡히게(3.1)
+  const hw = (stage === 4 ? 1.5 : 0.85) * scale, hd = 0.6 * scale;
+  g.append(s("rect", { x: px(x - hw), y: py(z - hd, 0.7 * scale), width: hw * 2 * S, height: py(z + hd) - py(z - hd, 0.7 * scale), fill: "transparent" }));
   const b = (bx: number, bz: number, w: number, d: number, h: number) =>
     g.append(box(x + bx * scale, z + bz * scale, w * scale, d * scale, h * scale, PAPER, PAPER_SIDE));
   if (stage === 0) {
@@ -169,6 +173,10 @@ export interface CctvOptions {
   /** 확대해서 볼 공정. null이면 전경. */
   focus: number | null;
   onStation: (station: number) => void;
+  /** 추적 중인 배(3.1). 그 배의 블록만 진하게, 나머지 블록은 흐리게, 선반에는 그 배 몫 수량 */
+  track: string | null;
+  /** 블록이나 선반을 눌렀다(자재·블록 추적 상자) */
+  onPick: (pick: TrackPick) => void;
 }
 
 export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions): SVGElement {
@@ -177,6 +185,21 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   const lateNow = (l: LotView) => (l.place === "sea" ? l.late : frame.day > due[l.ship]);
   const items: Item[] = [];
   const add = (z: number, el: SVGElement) => items.push({ z, el });
+  // 누를 수 있는 것(자재·블록 추적, 3.1): 정반을 누르면 확대지만, 블록이나 선반을 누르면 정보 상자다.
+  const pickable = (el: SVGElement, pick: TrackPick, label: string): SVGElement => {
+    el.classList.add("cc-pick");
+    el.setAttribute("role", "button");
+    el.setAttribute("tabindex", "0");
+    el.setAttribute("aria-label", label);
+    el.addEventListener("click", (e) => { e.stopPropagation(); opts.onPick(pick); });
+    el.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") { e.stopPropagation(); opts.onPick(pick); } });
+    return el;
+  };
+  // 블록 하나(그림 + 이름표 등)를 묶어 누를 수 있게 하고, 추적 중이면 그 배만 진하게
+  const block = (l: LotView, ...els: SVGElement[]): SVGElement => {
+    const g = s("g", { class: opts.track === null ? "" : opts.track === l.ship ? "tracked" : "untracked" }, ...els);
+    return pickable(g, { kind: "ship", ship: l.ship }, `${l.ship} 블록. 눌러서 위치 보기`);
+  };
 
   // ----- 바닥: 만(바다), 곶과 등대, 운반로, 작업대기소 -----
   add(-100, s("rect", { x: px(SHORE_X), y: -2000, width: 4000, height: 6000, fill: "#2f4a5a" }));
@@ -202,6 +225,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     const x = SHELF_X[i];
     if (x === undefined) return;
     const g = s("g", { class: "cc-shelf" }, box(x, SHELF_Z, 2.1, 0.5, 1.6, "#4d4238", "#5c4f42"));
+    pickable(g, { kind: "material", material: sh.material }, `${sh.name} 선반. 눌러서 어느 배 몫인지 보기`);
     const shown = Math.min(sh.qty, 8);
     for (let k = 0; k < shown; k++) {
       const bx = px(x - 0.85 + (k % 4) * 0.45), by = py(SHELF_Z + 0.25, 1.35 - Math.floor(k / 4) * 0.6);
@@ -210,6 +234,11 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     const empty = sh.qty <= 0;
     g.append(tag(px(x), py(SHELF_Z + 0.25) + 14, `${sh.name} ${empty ? (sh.nextArrival ? `입고 D-${sh.nextArrival - frame.day}` : "없음") : sh.qty}`,
       empty ? "cc-tag mid warn" : "cc-tag mid"));
+    // 추적 중이면 그 배 몫 수량을 한 줄 더(자재 페깅)
+    if (opts.track !== null) {
+      const mine = sh.pegs.find((pg) => pg.ship === opts.track)?.quantity ?? 0;
+      g.append(tag(px(x), py(SHELF_Z + 0.25) + 28, `${opts.track} 몫 ${mine}`, mine ? "cc-tag mid track" : "cc-tag mid"));
+    }
     add(SHELF_Z, g);
   });
   // 물류창고 구역: 선반 셋을 벽으로 묶는다(앞은 열림)
@@ -265,9 +294,8 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
       // 나눠 하는 배는 부분이 든 작업장마다 작게 그린다. 먼저 끝난 부분은 공용 적치장에서 짝을 기다린다(아래).
       const here = frame.lots.find((l) => l.place === "bench" && l.station === p && l.ship === unit.ship);
       if (here) {
-        add(z, lot(x, z, here.form, here.parts && here.parts.length > 1 ? 0.75 : 1, here.type));
         // 배 이름표는 정반 뒤 가장자리 바로 위(정반 안의 글과 겹치지 않게)
-        add(z + 0.02, chip(x, z - d / 2, 0, here, lateNow(here)));
+        add(z + 0.02, block(here, lot(x, z, here.form, here.parts && here.parts.length > 1 ? 0.75 : 1, here.type), chip(x, z - d / 2, 0, here, lateNow(here))));
       }
       if (view.crew === "robot") {
         if (here) { add(z + 0.1, robot(x - MAT_W / 2 + 0.35, z + 0.3)); add(z + 0.1, robot(x + MAT_W / 2 - 0.35, z + 0.3)); }
@@ -296,8 +324,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     if (p >= STOCK_STATIONS) {
       frame.lots.filter((l) => l.place === "queue" && l.station === p).sort((a, b) => a.slot - b.slot).slice(0, 3).forEach((l, i) => {
         const qx = x - 1 + i * 1.0;
-        add(QUEUE_Z, lot(qx, QUEUE_Z, l.form, 0.55));
-        add(QUEUE_Z + 0.01, chip(qx, QUEUE_Z - 0.2, 0.4, l, lateNow(l)));
+        add(QUEUE_Z + 0.01, block(l, lot(qx, QUEUE_Z, l.form, 0.55), chip(qx, QUEUE_Z - 0.2, 0.4, l, lateNow(l))));
       });
     }
   });
@@ -319,10 +346,9 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
       const spot = stock.get(key);
       if (!spot) continue;
       const at = stockSpot(spot.station, spot.index);
-      add(at.z, lot(at.x, at.z, l.form, 0.55, l.type));
-      add(at.z + 0.01, chip(at.x, at.z - 0.2, 0.4, l, lateNow(l)));
       const why = spot.reason === "pair" ? "짝 대기" : spot.reason === "outbound" ? "운반 대기" : null;
-      if (why) add(at.z + 0.02, tag(px(at.x), py(at.z) + 13, why, "cc-tag mid pair"));
+      add(at.z + 0.01, block(l, lot(at.x, at.z, l.form, 0.55, l.type), chip(at.x, at.z - 0.2, 0.4, l, lateNow(l)),
+        why ? tag(px(at.x), py(at.z) + 13, why, "cc-tag mid pair") : s("g")));
     }
   }
 
@@ -361,8 +387,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     const body = tr.state === "breakdown_stop" ? (STATE_INFO.breakdown_stop?.color ?? "#8e2e42") : "#5f6b73";
     add(z, box(x, z, 2.0, 0.8, 0.3, body, "#3f474d"));
     if (carried) {
-      add(z + 0.01, lot(x, z, carried.form, 0.7));
-      add(z + 0.02, chip(x, z - 0.3, 0.9, carried, lateNow(carried)));
+      add(z + 0.02, block(carried, lot(x, z, carried.form, 0.7), chip(x, z - 0.3, 0.9, carried, lateNow(carried))));
     }
     add(z + 0.5, tag(px(x), py(z + 0.4) + 13, tr.state === "breakdown_stop" ? `${tr.id} 고장` : tr.id, tr.state === "breakdown_stop" ? "cc-tag mid stop" : "cc-tag mid"));
   });
@@ -371,7 +396,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   const sea = frame.lots.filter((l) => l.place === "sea").sort((a, b) => a.slot - b.slot);
   sea.slice(0, 6).forEach((l, i) => {
     const bx = SHORE_X + 1.9 + (i % 3) * 2.9, bz = -1.6 + Math.floor(i / 3) * 2.1;
-    add(bz, s("g", null, lot(bx, bz, 4, 0.75, l.type),
+    add(bz, block(l, lot(bx, bz, 4, 0.75, l.type),
       s("text", { x: px(bx), y: py(bz) + 12, class: l.late ? "cc-sea-name late" : "cc-sea-name" }, l.ship)));
   });
   const waiting = frame.lots.filter((l) => l.place === "hidden").map((l) => l.ship);

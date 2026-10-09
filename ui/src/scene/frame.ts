@@ -2,7 +2,7 @@
 // 엔진 결과의 일자별 기록(ships[].daily, stations[].daily, transporters[].daily, workforce, inventory)을 읽어 옮기기만 한다.
 // 규칙을 다시 계산하지 않는다. 3D 코드(Three.js)도 모른다.
 
-import type { Config, Result, Scenario, ShipState } from "../api";
+import type { Config, Peg, Result, Scenario, ShipState } from "../api";
 
 /** 로트가 있는 자리. */
 export type Place =
@@ -62,6 +62,8 @@ export interface ShelfView {
   name: string;
   qty: number;
   nextArrival: number | null;   // 다음 입고일 (오늘 뒤)
+  /** 재고를 몫(발주한 배)별로(자재 페깅, 3.1). 합 = qty */
+  pegs: Peg[];
 }
 
 export interface ResearchView {
@@ -181,7 +183,8 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
   const stock = day > 0 ? result.inventory_daily[index] : {};
   const shelves: ShelfView[] = scenario.materials.map((m) => {
     const next = result.events.find((ev) => ev.type === "arrival" && ev.material === m.id && ev.day > day);
-    return { material: m.id, name: m.name, qty: stock[m.id] ?? 0, nextArrival: next ? next.day : null };
+    const pegs = day > 0 ? result.pegging_daily?.[index]?.[m.id] ?? [] : [];
+    return { material: m.id, name: m.name, qty: stock[m.id] ?? 0, nextArrival: next ? next.day : null, pegs };
   });
 
   const running = result.research.find((r) => r.start <= day && day <= r.end);
