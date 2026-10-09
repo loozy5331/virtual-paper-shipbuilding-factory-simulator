@@ -9,6 +9,17 @@
   </head>
   <body>
     <div id="app"></div>
+    <!-- 휴대폰을 세로로 들었을 때만 보이는 안내(styles.css의 .rotate-hint, 3.0.4) -->
+    <div class="rotate-hint" role="alert">
+      <svg viewBox="0 0 64 64" width="72" height="72" aria-hidden="true">
+        <rect x="22" y="8" width="20" height="36" rx="3" fill="none" stroke="currentColor" stroke-width="2.5" />
+        <rect x="14" y="36" width="36" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2.5" opacity="0.45" />
+        <path d="M50 18 a14 14 0 0 1 2 14" fill="none" stroke="currentColor" stroke-width="2.5" />
+        <path d="M48 30 l4 3 l2-5" fill="none" stroke="currentColor" stroke-width="2.5" />
+      </svg>
+      <b>가로로 돌려 주세요</b>
+      <span>종이배 조선소는 가로 화면에서 봅니다.</span>
+    </div>
     <script type="module" src="app.js"></script>
   </body>
 </html>
