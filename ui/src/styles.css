@@ -781,8 +781,9 @@ body { background: var(--desk); }
 .monitor.zoomed .ship-detail.zoom-only { display: flex; }
 /* 크게 보기: 그 모니터가 화면 가득. 나머지는 흐리게. */
 .monitor.zoomed { position: fixed; inset: 14px; z-index: 50; display: flex; flex-direction: column; }
-.monitor.zoomed .bezel { flex: 1; display: flex; flex-direction: column; }
-.monitor.zoomed .screen { flex: 1; height: auto; }
+.monitor.zoomed .bezel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* min-height: 0이 없으면 화면이 내용(배 8척 간트)만큼 늘어나 창 밖으로 밀리고 안쪽 스크롤이 생기지 않는다(3.0.2) */
+.monitor.zoomed .screen { flex: 1; min-height: 0; height: auto; }
 .room.zooming::after { content: ""; position: fixed; inset: 0; z-index: 40; background: rgba(20, 24, 20, 0.55); cursor: zoom-out; }
 
 /* 재생 막대는 모니터 화면 맨 아래(왼쪽은 늘, 오른쪽은 크게 볼 때만) */

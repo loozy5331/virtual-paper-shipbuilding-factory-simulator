@@ -1,7 +1,7 @@
 {
   "name": "paper-shipyard-ui",
   "private": true,
-  "version": "3.0.1",
+  "version": "3.0.2",
   "type": "module",
   "description": "종이배 조선소 시뮬레이터 화면. 엔진이 준 결과를 그리기만 한다.",
   "scripts": {
