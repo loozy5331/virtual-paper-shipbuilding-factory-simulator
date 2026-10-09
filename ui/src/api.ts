@@ -116,6 +116,10 @@ export interface Scenario {
   name: string;
   summary: string;
   options?: ScenarioOptions;
+  /** 이 분기에서 새로 열린 옵션(D33 포스트잇). 첫 분기는 안내 문장 */
+  unlocks?: string;
+  /** 난이도 1~3(옛 분기가 쉽다) */
+  level?: number;
   /** 계획 기간의 이름. 60일은 이 분기의 작업일로 본다. */
   period: string;
   days: number;
