@@ -817,6 +817,7 @@ body { background: var(--desk); }
 .cc-feed .cc-bg { fill: #1f2622; }
 .cc-feed text { font-family: inherit; fill: #c9d3cc; }
 .cc-feed .cc-place { font-size: 13px; font-weight: 700; fill: #eef2ee; text-anchor: middle; }
+.cc-feed .cc-place.start { text-anchor: start; }
 .cc-feed .cc-name { font-size: 14px; font-weight: 800; fill: #fff; }
 /* 정반(공정 색) 위 글: 바탕색이 제각각이라 어두운 테두리로 읽히게 */
 .cc-feed .cc-mat-text text { fill: #fff; paint-order: stroke; stroke: rgba(20, 26, 22, 0.75); stroke-width: 3px; stroke-linejoin: round; }
