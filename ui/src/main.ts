@@ -18,7 +18,7 @@ import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, PAIR_WAIT
 import { breakdownBar, breakdownLegend, eventText, renderReport } from "./report";
 import { renderCctv } from "./cctv";
 import { renderTrackCard, type TrackPick } from "./track";
-import { buildFrame } from "./scene/frame";
+import { buildFrame, type Frame } from "./scene/frame";
 import type { Yard } from "./scene/yard";
 import { sector, sectorOf, SECTORS, ST, type SectorId } from "./scene/layout";
 
@@ -132,6 +132,9 @@ const els = {
   trackRoom: h("div", { class: "track-host" }),
   /** 자재·블록 추적 상자 자리: 현장 3D 위 */
   trackField: h("div", { class: "track-host" }),
+  /** 인도 완료 로그: 작업 현황(관제실)과 현장 3D의 오른쪽 위. 인도한 배는 조선소를 떠나 그림에 없다 */
+  deliveredRoom: h("ol", { class: "delivered-log", "aria-label": "인도 완료" }),
+  deliveredField: h("ol", { class: "delivered-log", "aria-label": "인도 완료" }),
   log: h("ol", { class: "log", "aria-label": "사건 기록" }),
   deskClip: h("button", { class: "desk-clip", type: "button", title: "생산계획서로 돌아가 계획을 고칩니다" }),
   hat: h("button", { class: "desk-hat", type: "button", title: "작업모를 쓰고 현장으로 나갑니다" }),
@@ -742,6 +745,7 @@ function tick(jump: boolean): void {
   els.log.scrollTop = keep;
 
   drawTrackCard();
+  drawDelivered(buildFrame(result, scenario, r.config, state.day, 1));
   syncScene(jump);
 }
 
@@ -777,7 +781,23 @@ function trackSelect(): HTMLElement {
       (currentRun()?.result.ships ?? []).map((sh) => h("option", { value: sh.id, selected: state.track === sh.id }, sh.id))));
 }
 
+/** 인도 완료 로그: 오늘까지 인도한 배를 최근 것부터. 추적 상자가 떠 있으면 그 자리를 비켜 감춘다 */
+function drawDelivered(frame: Frame): void {
+  const { scenario } = state.data;
+  const rows = frame.delivered.map((d) => h("li", { class: d.late ? "late" : "" },
+    h("b", null, d.ship),
+    h("span", null, scenario.ship_types[d.type]?.name ?? d.type),
+    h("span", null, `${d.day}일 인도`),
+    h("em", null, d.late ? `${d.late}일 지연` : "납기 준수")));
+  for (const host of [els.deliveredRoom, els.deliveredField]) {
+    host.hidden = !!state.pick || rows.length === 0;
+    mount(host, rows.length ? [h("li", { class: "head" }, `인도 완료 ${rows.length}척`), ...rows.map((r) => r.cloneNode(true) as HTMLElement)] : []);
+  }
+}
+
 function drawTrackCard(): void {
+  // 추적 상자는 인도 완료 로그 자리(오른쪽 위)에 겹쳐 뜨므로, 떠 있는 동안 로그를 감춘다
+  for (const log of [els.deliveredRoom, els.deliveredField]) log.hidden = !!state.pick || log.childElementCount === 0;
   const r = currentRun();
   const field = state.screen === "field";
   const host = field ? els.trackField : els.trackRoom;
@@ -1015,6 +1035,7 @@ function drawRightTop(): void {
     h("span", { class: "cam-anon", title: "관제실 화면은 사람을 기호로만 보여 줍니다. 얼굴과 이름은 현장에 직접 나가야 보입니다." },
       "익명 표시 · 개인을 구분하지 않습니다"),
     els.trackRoom,
+    els.deliveredRoom,
     // 추적할 배 고르기(3.1): 고른 배의 블록만 진하게, 선반에는 그 배 몫
     trackSelect(),
     h("div", { class: "cam-switch", role: "group", "aria-label": "볼 구획" },
@@ -1359,7 +1380,7 @@ async function start(): Promise<void> {
     h("div", { class: "room-desk" }, h("div", { class: "desk-top" }), h("div", { class: "arm-clamp", "aria-hidden": "true" }), els.deskClip, els.hands, els.hat),
     els.reportBoard, els.planBoard);
 
-  els.sceneField.append(els.trackField);
+  els.sceneField.append(els.trackField, els.deliveredField);
   mount(els.field, els.fieldHead, els.sceneField, els.fieldOsd);
   mount(root, els.desk, els.plan, els.room, els.field);
 

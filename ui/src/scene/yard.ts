@@ -1065,7 +1065,8 @@ export class Yard {
     for (const view of f.lots) {
       const lot = this.lots.get(view.ship);
       if (!lot) continue;
-      lot.group.visible = view.place !== "hidden";
+      // 인도한 배(sea)는 선주에게 넘어가 조선소를 떠났다(화면 오른쪽 위 인도 완료 로그에 남는다)
+      lot.group.visible = view.place !== "hidden" && view.place !== "sea";
       if (!lot.group.visible) continue;
       const launch = launching.find((l) => l.ship === view.ship);
       if (launch) {
