@@ -27,14 +27,14 @@
     {
       "id": "sub_assembly",
       "name": "소조립",
-      "real": "소조립 정반: 굽힌 부재를 붙여 작은 블록 8개(가공 공장에서 컨베이어벨트로 받는다)",
+      "real": "소조립 정반: 굽힌 부재를 붙여 작은 블록 8개(가공 공장에서 부재 팔레트를 지게차로 받는다)",
       "material": null,
       "trade": "assembly",
       "after": [
         "processing"
       ],
       "site": "sub",
-      "arrive": "conveyor",
+      "arrive": "forklift",
       "split": true
     },
     {
@@ -350,7 +350,7 @@
     "threshold_maintained": 0.1,
     "stop_days": 2,
     "repair_cost": 150,
-    "_arrive_note": "공정 사이 이동(4.0): 같은 자리(site)면 다음 날, 공정의 arrive가 crane(탑재)·tow(안벽의장·시운전)·conveyor(소조립, 가공 공장에서 컨베이어벨트)면 다음 날, 그 밖은 T2 블록 운반"
+    "_arrive_note": "공정 사이 이동(4.0): 같은 자리(site)면 다음 날, 공정의 arrive가 crane(탑재)·tow(안벽의장·시운전)·conveyor(가공, 절단에서 벨트)·forklift(소조립, 부재 팔레트를 지게차로)면 다음 날, 그 밖은 T2 블록 운반"
   },
   "research": {
     "automation": {
