@@ -11,14 +11,14 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { LEAD_IN, type Frame, type LotView } from "./frame";
+import { LEAD_IN, type Delivery, type Frame, type LotView } from "./frame";
 import { mesh, Person, SENIOR_NAME, WORKER_NAMES } from "./people";
 import { shipLook } from "./ships";
 import { STOCK_STATIONS, stockAssign, stockSpot } from "./stock";
 import { buildDock, buildLand, buildRoof, buildSectorOutline, buildWalls, buildYardLines, GiantHand, SEA_Y, type DockParts } from "./coast";
 import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_TOP, MAT_W, MAT2_D,
   nearLane, QUEUE_Z, SAFE_SPOT, seaSpot, SECTORS, sectorBounds, SHELF_X, SHELF_Z, SHORE_X, SPUR_IN, SPUR_OUT, SPUR_X, STATION_X,
-  STOCK_AT, STOCK_D, STOCK_HALF, along, groundY, kitRoutes, LAB_TREES, route, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
+  STOCK_AT, STOCK_D, STOCK_HALF, along, groundY, kitRoutes, LAB_TREES, LAND_ROUTE, route, SHIP_ROUTE, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
 import { clamp01, ease, flatOf, hullTris, type Tri } from "../proto/model";
 import { STATE_INFO, STATION_COLOR } from "../labels";
 import type { TrackPick } from "../track";
@@ -331,8 +331,12 @@ export class Yard {
   /** 트랜스포터(4.0): T1 자재 키트, T2 블록. crate = T1이 실은 키트 상자 */
   private readonly carts: { group: THREE.Group; tag: CSS2DObject; smoke: THREE.Group; crate: THREE.Mesh }[] = [];
   /** 납품 마차(3.2): 입고일마다 한 대. 사흘 전 등대 곶을 떠나 입고일 아침 창고 뒤에 닿는다(그림만). 여러 대가 함께 길 위에 있을 수 있다 */
-  private readonly supply = [0, 1, 2, 3, 4].map(() => buildSupplyCart());
+  private readonly supply = [0, 1, 2, 3, 4, 5, 6, 7].map(() => buildSupplyCart());
+  /** 해상 납품 배(종이 = 철판): 먼바다 → 등대 부두 */
+  private readonly ships = [0, 1].map(() => buildSupplyShip());
   private readonly supplyRoute: Route = route(SUPPLY_ROUTE);
+  private readonly landRoute: Route = route(LAND_ROUTE);
+  private readonly shipRoute: Route = route(SHIP_ROUTE, 1);
   private readonly supplyExit: Route = route(SUPPLY_EXIT);
   private readonly shelves: { boxes: THREE.Mesh[]; tag: CSS2DObject }[] = [];
   /** 자재·블록 추적(3.1): 누르면 상자를 띄울 곳(main.ts), 진하게 볼 배, 선반의 보이지 않는 누름 상자, 추적 중인 배 밑의 고리 */
@@ -439,7 +443,7 @@ export class Yard {
     this.labWindow = lab.window;
     this.buildSectors();
     this.placeStations(1);
-    for (const cart of this.supply) {
+    for (const cart of [...this.supply, ...this.ships]) {
       cart.root.visible = false;
       this.scene.add(cart.root);
     }
@@ -1256,32 +1260,59 @@ export class Yard {
    * 입고일 마차는 멈춰 있으면 창고 뒤에 선 채로, 무엇이 몇 개 들어왔는지 이름표를 단다. 길 위 마차는 "입고 D-n"만.
    */
   private drawSupply(f: Frame, playing: boolean, frac: number): void {
+    // 해상(종이): d−3일에 배가 먼바다에서 부두로(그날 안에 닿음), d−2일 아침(0~0.3) 마차에 옮겨 싣고 배는 돌아간다.
+    //   마차는 d−2일 0.3부터 d−1일 끝까지 해상 길을 달린다. 육로(물감·깃발): 마차가 d−3~d−1일 산길을 달린다.
+    // d일에는 창고 뒤에서 상자를 내리고(0~0.3) 왼쪽 길로 나간다(~0.75). 멈춰 있으면 그날 끝(frac = 1) 자리.
+    const t = playing ? frac : 1;
+    let ship = 0;
+    for (const s of this.ships) s.root.visible = false;
     this.supply.forEach((cart, k) => {
       const dv = f.deliveries[k];
-      const today = dv?.day === f.day;
-      const on = !!dv && (!today || !playing || frac < 0.75);
-      cart.root.visible = on;
-      if (!dv || !on) return;
-      let at: { x: number; z: number; angle: number }, unloaded = 0;
-      if (!today) {
-        at = along(this.supplyRoute, (f.day + frac - (dv.day - SUPPLY_DAYS)) / SUPPLY_DAYS);
-      } else if (!playing || frac < 0.3) {
-        at = along(this.supplyExit, 0);
-        unloaded = playing ? Math.min(1, frac / 0.25) : 1;
-      } else {
-        at = along(this.supplyExit, ease((frac - 0.3) / 0.45));
-        unloaded = 1;
+      const left = dv ? dv.day - f.day : 0;   // 입고까지 남은 날
+      const today = !!dv && left === 0;
+      let at: { x: number; z: number; angle: number } | null = null, unloaded = 0;
+      if (dv && today) {
+        if (t < 0.3) { at = along(this.supplyExit, 0); unloaded = playing ? Math.min(1, t / 0.25) : 1; }
+        else if (t < 0.75 || !playing) { at = along(this.supplyExit, playing ? ease((t - 0.3) / 0.45) : 0); unloaded = 1; }
+      } else if (dv && dv.route === "land") {
+        at = along(this.landRoute, (SUPPLY_DAYS - left + t) / SUPPLY_DAYS);
+      } else if (dv) {
+        // 해상: 배와 부두, 그다음 마차
+        const shipObj = this.ships[ship++];
+        if (left === 3 || (left === 2 && t < 0.3)) {
+          const u = left === 3 ? t : 1;
+          if (shipObj) this.placeShip(shipObj, along(this.shipRoute, u), dv, f, left === 3 ? 1 : 1 - t / 0.3);
+        } else if (left === 2 && shipObj && playing) {
+          // 짐을 넘기고 먼바다로 돌아간다
+          this.placeShip(shipObj, along(this.shipRoute, 1 - ease((t - 0.3) / 0.7)), dv, f, 0, true);
+        }
+        if (left <= 2) {
+          const u = left === 2 ? Math.max(0, (t - 0.3) / 1.7) : (0.7 + t) / 1.7;
+          at = along(this.supplyRoute, u);
+          // 배에서 마차로 옮겨 싣는 중(상자가 하나씩 생긴다)
+          unloaded = left === 2 && t < 0.3 ? 1 - Math.min(1, t / 0.25) : 0;
+        }
       }
+      cart.root.visible = !!at;
+      if (!dv || !at) return;
       cart.root.position.set(at.x, groundY(at.x, at.z), at.z);
       cart.root.rotation.y = -at.angle;
-      // 상자: 실은 자재마다 하나(선반 상자와 같은 색), 내리는 동안 하나씩 사라진다
       cart.crates.forEach((c, i) => {
         const a = dv.items[i];
         c.visible = !!a && i >= Math.floor(unloaded * dv.items.length + 1e-9);
         if (a) (c.userData.top as THREE.Mesh).material = crateTop(f.shelves.findIndex((sh) => sh.material === a.material));
       });
-      setLabel(cart.tag, today ? `입고 · ${dv.items.map((a) => `${a.name} <b>${a.quantity}</b>`).join(" · ")}` : `입고 D-${dv.day - f.day}`);
+      setLabel(cart.tag, today ? `입고 · ${dv.items.map((a) => `${a.name} <b>${a.quantity}</b>`).join(" · ")}` : `입고 D-${left} · ${dv.route === "sea" ? "해상" : "육로"}`);
     });
+  }
+
+  /** 납품 배: 물길 위 자리, 실은 상자(cargo 0~1 비율만큼), 돌아가면 뱃머리를 돌린다 */
+  private placeShip(ship: SupplyShip, at: { x: number; z: number; angle: number }, dv: Delivery, f: Frame, cargo: number, back = false): void {
+    ship.root.visible = true;
+    ship.root.position.set(at.x, SEA_Y, at.z);
+    ship.root.rotation.y = -at.angle + (back ? Math.PI : 0);   // 뱃머리(+x)가 나아가는 쪽, 돌아갈 때는 반대
+    ship.crates.forEach((c, i) => { c.visible = i < Math.ceil(cargo * 3) && cargo > 0; });
+    setLabel(ship.tag, `입고 D-${dv.day - f.day} · ${dv.items.map((a) => `${a.name} ${a.quantity}`).join(" · ")}`);
   }
 
   /**
@@ -1419,6 +1450,32 @@ export class Yard {
 const CRATE_COLORS = ["#f7f3ea", "#c8553d", "#c0392b"];   // 선반 상자 뚜껑과 같은 색(종이, 물감, 깃발)
 const crateTops = CRATE_COLORS.map((c) => new THREE.MeshStandardMaterial({ color: c }));
 const crateTop = (i: number) => crateTops[i] ?? crateTops[0];
+
+interface SupplyShip { root: THREE.Group; crates: THREE.Mesh[]; tag: CSS2DObject }
+
+/** 해상 납품 배: 낮은 화물선(선체, 선미 조타실), 갑판에 철판(종이) 묶음 셋. 앞이 +x */
+function buildSupplyShip(): SupplyShip {
+  const root = new THREE.Group();
+  const hull = mesh(new THREE.BoxGeometry(3.2, 0.5, 1.1), "#3f4f5a", { roughness: 0.7 });
+  hull.position.y = 0.25;
+  const bow = mesh(new THREE.ConeGeometry(0.55, 0.9, 4), "#3f4f5a", { roughness: 0.7 });
+  bow.rotation.set(0, Math.PI / 4, -Math.PI / 2);
+  bow.scale.set(1, 1, 0.7);
+  bow.position.set(2.0, 0.25, 0);
+  const cabin = mesh(new THREE.BoxGeometry(0.7, 0.6, 0.8), "#e9e4d8");
+  cabin.position.set(-1.2, 0.8, 0);
+  root.add(hull, bow, cabin);
+  const crates = [0, 1, 2].map((k) => {
+    const c = mesh(new THREE.BoxGeometry(0.6, 0.18, 0.7), "#f7f3ea");
+    c.position.set(-0.3 + k * 0.7, 0.6, 0);
+    root.add(c);
+    return c;
+  });
+  const tag = label("", "place-tag small");
+  tag.position.set(0, 1.6, 0);
+  root.add(tag);
+  return { root, crates, tag };
+}
 
 /** 납품 마차: 말 한 마리와 짐수레, 자재 상자 셋. 무광 단색(장식은 절제). 앞이 +x */
 function buildSupplyCart(): { root: THREE.Group; crates: THREE.Mesh[]; tag: CSS2DObject } {

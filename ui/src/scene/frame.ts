@@ -3,7 +3,7 @@
 // 규칙을 다시 계산하지 않는다. 3D 코드(Three.js)도 모른다.
 
 import type { Config, Peg, Result, Scenario, ShipState } from "../api";
-import { SUPPLY_DAYS } from "./layout";
+import { SEA_MATERIALS, SUPPLY_DAYS } from "./layout";
 
 /** 로트가 있는 자리. */
 export type Place =
@@ -74,6 +74,8 @@ export interface ShelfView {
 export interface Delivery {
   /** 입고일(마차가 창고에 닿는 날) */
   day: number;
+  /** sea = 종이(철판): 배 → 등대 부두 → 마차, land = 물감·깃발: 산길 마차 */
+  route: "sea" | "land";
   items: { material: string; name: string; quantity: number }[];
 }
 
@@ -94,7 +96,7 @@ export interface Frame {
   launches: { ship: string; unit: number }[];
   /** 오늘 입고(하루의 맨 처음): 자재마다 들어온 양. 납품 마차 장면용(그림만, 3.2) */
   arrivals: Delivery["items"];
-  /** 납품 마차: 오늘부터 사흘 뒤까지의 입고(입고일마다 마차 한 대, 사흘 전부터 길 위에 보인다) */
+  /** 납품: 오늘부터 사흘 뒤까지의 입고. 입고일·길(해상·육로)마다 한 대, 사흘 전부터 보인다 */
   deliveries: Delivery[];
 }
 
@@ -228,7 +230,9 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
   const deliveries: Delivery[] = [];
   for (let d = Math.max(1, day); d <= Math.min(result.days, day + SUPPLY_DAYS); d++) {
     const items = itemsOn(d);
-    if (items.length) deliveries.push({ day: d, items });
+    const sea = items.filter((it) => SEA_MATERIALS.includes(it.material)), land = items.filter((it) => !SEA_MATERIALS.includes(it.material));
+    if (sea.length) deliveries.push({ day: d, route: "sea", items: sea });
+    if (land.length) deliveries.push({ day: d, route: "land", items: land });
   }
 
   return {
