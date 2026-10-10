@@ -24,6 +24,8 @@ const S = 30;                        // 1 단위 = 30px
 const DEPTH = Math.cos(Math.PI / 6); // 바닥 깊이는 0.87배로 줄고
 const RISE = Math.sin(Math.PI / 6);  // 높이는 0.5배로 보인다
 const X0 = -34.5, Z0 = -12.2, TOP = 34;
+/** 작업 현황 한 화면의 깊이(야드 단위). 모든 구획이 같은 배율이다(3.2.1) */
+const VIEW_D = 22;
 
 const px = (x: number) => (x - X0) * S;
 const py = (z: number, h = 0) => TOP + (z - Z0) * S * DEPTH - h * S * RISE;
@@ -296,9 +298,10 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   const r = frame.research;
   add(LAB.z, box(LAB.x, LAB.z, 2.2, 2.0, 1.6, "#55636b", "#6c7a82"));
   // 이름과 상태는 건물 바로 앞, 앞줄 나무보다 위에(뒤쪽 나무 줄은 큰길·차고와 가깝다)
+  // 이름과 상태는 나무 바깥 오른쪽(화면 아래쪽이 잘려도 보이게)
   add(LAB.z + 3, s("g", null,
-    tag(px(LAB.x), py(LAB.z + 1) + 13, "연구소", "cc-place"),
-    tag(px(LAB.x), py(LAB.z + 1) + 27, r.current ? `${r.current.name} ${r.current.done}/${r.current.total}일` : r.finished.length ? `완료 ${r.finished.length}개` : "쉬는 중", "cc-tag mid")));
+    tag(px(LAB.x + 3.6), py(LAB.z) - 4, "연구소", "cc-place start"),
+    tag(px(LAB.x + 3.6), py(LAB.z) + 11, r.current ? `${r.current.name} ${r.current.done}/${r.current.total}일` : r.finished.length ? `완료 ${r.finished.length}개` : "쉬는 중", "cc-tag")));
 
   // ----- 작업대기소: 벤치 둘과 쉬는 사람 -----
   for (const row of [0, 1]) add(LOUNGE.z - 0.6 + row * 1.2 - 0.01, box(LOUNGE.x, LOUNGE.z - 0.6 + row * 1.2, 2.6, 0.3, 0.3, "#6b5a48", "#5a4a3a"));
@@ -455,10 +458,11 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
 
   // ----- 그리기: 고른 구획을 화면 가득 -----
   const sec = sectorBounds(opts.focus, docks);
-  // 작은 구획(안벽, 도크)도 최소 크기로 그려 구획마다 글자 크기가 너무 달라지지 않게 한다(가운데 맞춤, 이웃이 조금 보인다).
-  const pad = 0.6, MIN_W = 18, MIN_D = 12;
-  const w = Math.max(sec.x1 - sec.x0 + 2 * pad, MIN_W), d = Math.max(sec.z1 - sec.z0 + 2 * pad, MIN_D);
-  const vx = (sec.x0 + sec.x1) / 2, vz = (sec.z0 + sec.z1) / 2;
+  // 모든 구획을 같은 배율로 그린다(구획 크기에 맞춰 확대하면 큰 내업은 멀고 작은 도크는 너무 가깝다).
+  // 화면은 구획 가운데에 맞추고, 구획보다 넓으면 이웃(큰길, 마주 보는 도크)이 함께 보인다.
+  const d = VIEW_D, w = VIEW_D * 1.8;
+  // 내업은 깊이가 화면보다 길어(창고 뒤 길 ~ 연구소 앞 나무) 가운데를 창고와 연구소 사이에 맞춘다
+  const vx = (sec.x0 + sec.x1) / 2, vz = opts.focus === "shop" ? -0.6 : (sec.z0 + sec.z1) / 2;
   const top = py(vz - d / 2, 2.8), bottom = py(vz + d / 2);
   const viewBox = `${px(vx - w / 2)} ${top} ${w * S} ${bottom - top}`;
   const svg = s("svg", {
