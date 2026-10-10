@@ -31,7 +31,8 @@ export interface Config {
   ships: Record<string, ShipConfig>;
   stations: Record<string, StationConfig>;
   pool: number;
-  transporters: { count: number; maintenance: boolean };
+  /** 4.0(D39): 역할마다 한 대로 고정(T1 자재, T2 블록). count는 옛 설정에서만 읽고 엔진이 쓰지 않는다 */
+  transporters: { count?: number; maintenance: boolean };
   research: string[];
   /** 1.x 설정의 시니어. 2.0부터는 공정의 crew = "skilled"로 쓴다(엔진이 둘 다 읽는다). */
   skilled_station?: string | null;
@@ -135,7 +136,7 @@ export interface Scenario {
     crews: Record<Crew, CrewInfo>;
     overtime: { speed: number };
   };
-  transporter: { max_count: number; capacity: number; lot_weight: number };
+  transporter: { max_count: number; capacity: number; lot_weight: number; roles: ("material" | "block")[]; kits_per_day: number; crane_fed: string[] };
   expansion: { name: string; max_units: number; max_units_by_station?: Record<string, number>; summary: string; cost: Record<string, number> };
   material_grades: Record<"standard" | "cheap", { name: string; price_factor: number; defect_add: number }>;
   research: Record<string, ResearchInfo>;
@@ -263,9 +264,12 @@ export interface StationResult {
 
 export interface TransporterResult {
   id: string;
+  /** 4.0: material = T1 자재 키트(물류창고 → 작업장), block = T2 블록(공정 사이) */
+  role: "material" | "block";
   moves: number;
   breakdowns: number;
-  daily: { state: "move" | "idle" | "breakdown_stop"; ships: string[] }[];
+  /** kits: T1이 그날 실은 키트(배, 그 자재를 쓰는 공정, 자재) */
+  daily: { state: "move" | "idle" | "breakdown_stop"; ships: string[]; kits?: { ship: string; station: string; material: string }[] }[];
 }
 
 export interface Finding {
@@ -296,7 +300,7 @@ export interface Grade {
 
 export type SimEvent =
   | { day: number; type: "arrival"; material: string; quantity: number; ship: string }
-  | { day: number; type: "issue"; material: string; quantity: number; ship: string; station: string; from: Peg[] }
+  | { day: number; type: "issue"; material: string; quantity: number; ship: string; station: string; from: Peg[]; transporter?: string }
   | { day: number; type: "enter" | "complete" | "defect"; ship: string; station: string; unit?: number; units?: number[] }
   | { day: number; type: "accident"; station: string; ship: string }
   | { day: number; type: "breakdown"; station?: string; transporter?: string; ship?: string }

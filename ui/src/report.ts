@@ -10,7 +10,7 @@ export function eventText(ev: SimEvent, scenario: Scenario): string {
   const material = (id: string) => scenario.materials.find((m) => m.id === id)?.name ?? id;
   switch (ev.type) {
     case "arrival": return `${material(ev.material)} ${ev.quantity}개 입고 (${ev.ship}용)`;
-    case "issue": return `${material(ev.material)} ${ev.quantity}개 출고 → ${ev.ship} ${station(ev.station)}`;
+    case "issue": return `${material(ev.material)} ${ev.quantity}개 출고 → ${ev.ship} ${station(ev.station)}${ev.transporter ? ` (${ev.transporter} 자재 키트)` : ""}`;
     case "enter": return `${ev.ship} ${station(ev.station)} 투입${ev.units ? ` (${ev.units.join("·")}호에 나눠)` : ""}`;
     case "complete": return `${ev.ship} ${station(ev.station)} 완료`;
     case "defect": return `${ev.ship} ${station(ev.station)} 검사 불량 → 재작업`;

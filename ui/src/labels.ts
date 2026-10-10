@@ -61,7 +61,7 @@ export const COST_ITEMS: { key: string; name: string; note: string }[] = [
   { key: "rework", name: "재작업비", note: "불량 1건에 200" },
   { key: "accident", name: "사고", note: "사고 1건에 300" },
   { key: "breakdown", name: "고장 수리비", note: "고장 1건에 150 (작업장, 트랜스포터)" },
-  { key: "transporter", name: "트랜스포터", note: "대당 5/일, 정비하면 대당 50" },
+  { key: "transporter", name: "트랜스포터", note: "T1 자재·T2 블록 2대, 대당 5/일, 정비하면 대당 50" },
   { key: "investment", name: "설비 투자비", note: "증설(정반 300, 크레인 800), 로봇 도입(작업장마다 700), 신공법 도입(공정마다 150)" },
   { key: "research", name: "연구비", note: "대기열에 넣은 연구 비용" },
   { key: "late_penalty", name: "지연 배상", note: "계약금의 3%/일" },

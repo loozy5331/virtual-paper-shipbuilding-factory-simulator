@@ -225,9 +225,10 @@ export function renderGantt(result: Result, scenario: Scenario, today: number, o
     }
   });
 
-  // 트랜스포터: 나른 날은 실은 배 이름으로, 고장은 중지 색으로
+  // 트랜스포터: 나른 날은 실은 배 이름으로, 고장은 중지 색으로. T1 자재 키트, T2 블록(4.0, D39)
   for (const tr of result.transporters) {
-    eqRow(`트랜스포터 ${tr.id}`, ended ? `운행 ${tr.moves}일 · 고장 ${tr.breakdowns}건` : "공정 사이 운반", (g, y) => {
+    const kit = tr.role === "material";
+    eqRow(`트랜스포터 ${tr.id} · ${kit ? "자재" : "블록"}`, ended ? `운행 ${tr.moves}일 · 고장 ${tr.breakdowns}건` : kit ? "물류창고 → 작업장" : "공정 사이 블록", (g, y) => {
       const key = (day: number) => {
         const rec = tr.daily[day - 1];
         if (rec.state === "move") return `move:${rec.ships.join("+")}`;
@@ -241,7 +242,7 @@ export function renderGantt(result: Result, scenario: Scenario, today: number, o
           g.append(bar(x(run.start), y, w, EQ_BAR, STOP_COLOR, `${tr.id} 고장 중지 · ${span}`, { label: "고장", hatch: true }));
         } else {
           const ships = run.key.slice(5);
-          g.append(bar(x(run.start), y, w, EQ_BAR, "#6d7a72", `${tr.id} · ${ships} 운반 · ${span}`, { label: ships }));
+          g.append(bar(x(run.start), y, w, EQ_BAR, "#6d7a72", `${tr.id} · ${ships} ${kit ? "자재 키트" : "블록"} 운반 · ${span}`, { label: ships }));
         }
       }
     });

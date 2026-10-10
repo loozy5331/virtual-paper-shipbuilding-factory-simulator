@@ -145,6 +145,26 @@ export function route(points: { x: number; z: number }[], step = 0.4): Route {
   for (let i = 1; i < pts.length; i++) len.push(len[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z));
   return { pts, len };
 }
+/** 꺾인 길(직선 구간만): 샛길·큰길처럼 직각으로 도는 길 */
+export function polyline(points: { x: number; z: number }[]): Route {
+  const len = [0];
+  for (let i = 1; i < points.length; i++) len.push(len[i - 1] + Math.hypot(points[i].x - points[i - 1].x, points[i].z - points[i - 1].z));
+  return { pts: points, len };
+}
+
+/**
+ * T1 자재 키트(4.0, D39): 차고 → 샛길로 물류창고 앞(키트 싣는 자리) → 다시 샛길로 큰길 → 그 공정 앞(큰길 위).
+ * 앞 구간(pick)은 하루의 준비 시간 안에, 뒤 구간(drop)은 그 뒤에 달린다. 하루 끝에는 그 공정 앞에 서 있다.
+ */
+export const KIT_PICK = { x: SHELF_X[1], z: SHELF_Z + 1.5 };
+export function kitRoutes(station: number): { pick: Route; drop: Route } {
+  const spur = SPUR_X[1];
+  return {
+    pick: polyline([{ x: DEPOT.x, z: LANE_Z }, { x: spur, z: LANE_Z }, { x: spur, z: KIT_PICK.z }, KIT_PICK]),
+    drop: polyline([KIT_PICK, { x: spur, z: KIT_PICK.z }, { x: spur, z: LANE_Z }, { x: STATION_X[station] - 1.4, z: LANE_Z }]),
+  };
+}
+
 /** 길 위 u(0~1) 자리와 나아가는 방향(xz 평면 각도, +x가 0) */
 export function along(r: Route, u: number): { x: number; z: number; angle: number } {
   const total = r.len[r.len.length - 1], d = Math.max(0, Math.min(1, u)) * total;
