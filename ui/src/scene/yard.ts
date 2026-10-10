@@ -18,7 +18,7 @@ import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot } from "./stock"
 import { buildDock, buildLand, buildRoof, buildSectorOutline, buildWalls, buildYardLines, GiantHand, SEA_Y, type DockParts } from "./coast";
 import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_TOP, MAT_W, MAT2_D,
   nearLane, QUEUE_Z, SAFE_SPOT, seaSpot, SECTORS, sectorBounds, SHELF_X, SHELF_Z, SHORE_X, SPUR_IN, SPUR_OUT, SPUR_X, STATION_X,
-  STOCK_AT, STOCK_D, STOCK_HALF, STOCK_NAME, CONVEYOR, ST, isShop, quayQueueSpot, QUAY, along, groundY, kitRoutes, LAB_TREES, LAND_ROUTE, route, SHIP_ROUTE, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
+  STOCK_AT, STOCK_D, STOCK_HALF, STOCK_NAME, CONVEYOR, QUAY_WORK_Z, ST, isShop, quayQueueSpot, along, groundY, kitRoutes, LAB_TREES, LAND_ROUTE, route, SHIP_ROUTE, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
 import { clamp01, ease, flatOf, hullTris, type Tri } from "../proto/model";
 import { STATE_INFO, STATION_COLOR, STATION_TRADE, TRADE_HAT } from "../labels";
 import type { TrackPick } from "../track";
@@ -734,6 +734,7 @@ export class Yard {
         // 안벽의장·시운전은 물 위라 구역 그림이 없다(빈 묶음)
         const area = isShop(p) ? buildWalls(x0, x1, z0, z1, 1.0)
           : p === ST.pe ? buildYardLines(x0, x1, z0, z1)
+          : p === ST.quay ? buildYardLines(x0, x1, z0, z1)   // 안벽 위 작업 구역
           : p > ST.dock ? new THREE.Group()
           : buildDock(x0, x1, z0, z1);
         area.visible = unit === 0;
@@ -1219,7 +1220,7 @@ export class Yard {
             const side = k % 2 === 0 ? 1 : -1;
             // 안벽의장 작업자는 배 옆 안벽 위에 선다
             const at = out ? new THREE.Vector3(b.x - 2.6 - k * 0.6, 0, b.z + (b.z <= LANE_Z ? 1.9 : -1.9))
-              : i === ST.quay ? new THREE.Vector3(b.x - 0.7 * side, 0, QUAY.z0 + 0.6)
+              : i === ST.quay ? new THREE.Vector3(b.x - 0.9 * side, 0, QUAY_WORK_Z + (k >> 1) * 0.7)
               : new THREE.Vector3(b.x - 0.9 * side, MAT_TOP, b.z + side * 1.0);
             const p = this.people[person++];
             p?.setHat(TRADE_HAT[STATION_TRADE[st.id]] ?? TRADE_HAT.assembly);

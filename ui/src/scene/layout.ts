@@ -33,11 +33,11 @@ export const isShop = (station: number) => station <= ST.preout;
  * 공정의 가운데 x: 가공 공장의 절단·가공(같은 건물, D43), 소조립·중조립, 블록 마감동의 도장·선행의장(같은 건물, 4.0), PE장, 탑재(도크),
  * 안벽의장(매립 안벽 1번 정박 자리), 시운전(만 밖 바다)
  */
-export const STATION_X = [-35.6, -30.8, -24, -18.5, -12.6, -7.9, 3.4, 8.5, 13.1, 36];
+export const STATION_X = [-35.6, -30.8, -24, -18.5, -12.6, -7.9, 3.4, 8.5, 14.4, 36];
 /** 컨베이어벨트(D43): 가공 공장 오른쪽 벽에서 소조립 왼쪽 벽까지, 1호 줄 뒤쪽 높이(z). 샛길 위를 지나도록 다리 위에 놓는다 */
 export const CONVEYOR = { x0: STATION_X[1] + MAT_W / 2 + 0.45, x1: STATION_X[2] - MAT_W / 2 - 0.45, z: -0.7, y: 0.55, w: 0.55 };
 /** 안벽의장 정박 자리 사이 간격, 안벽 앞 물 위 줄(z) */
-const BERTH_GAP = 2.7, BERTH_Z = 10.6;
+const BERTH_GAP = 3.6, BERTH_Z = 10.6;
 /** 도크 줄: 1도크는 큰길 뒤, 2도크는 큰길 앞(큰길을 사이에 두고 마주 본다) */
 export const DOCK_Z = [0, 2 * LANE_Z];
 export const dockZ = (unit: number) => DOCK_Z[unit] ?? 0;
@@ -63,6 +63,7 @@ export const nearLane = (z: number) => Math.abs(z - LANE_Z) < 4.5;
 
 /** 작업장의 구역(벽·구획선·도크)이 차지하는 바닥. 소조립·중조립은 벽, PE장은 노란 구획선, 탑재는 드라이 도크. */
 export function areaBounds(station: number, unit: number, docks: number): { x0: number; x1: number; z0: number; z1: number } {
+  if (station === ST.quay) return quayWorkArea(unit);
   const { x, z, d } = benchAt(station, unit, docks);
   const pad = isShop(station) ? 0.45 : station === ST.pe ? 0.4 : 0.6;
   // 큰길 쪽 가장자리를 조금 더 넓힌다(첫 줄 앞의 공정 이름 자리)
@@ -132,6 +133,17 @@ export const SAFE_SPOT = { x: -1.5, z: LANE_Z + 1.9 };
  * 4.0 안벽의장·시운전이 여기서 한다. 지금은 인도한 배를 대 두는 곳(그림만).
  */
 export const QUAY = { x0: SHORE_X, x1: 23, z0: 11.4, z1: 15.7 };
+
+/**
+ * 안벽의장 작업 구역(4.0): 정박 자리마다 안벽 위에 노란 구획선. 작업자는 이 안에 서서 배에 의장품을 단다(그림만).
+ * 정박 자리는 2도크 모서리에서 떼어 안벽을 따라 넉넉히 둔다(BERTH_GAP).
+ */
+export function quayWorkArea(unit: number): { x0: number; x1: number; z0: number; z1: number } {
+  const x = STATION_X[ST.quay] + unit * BERTH_GAP;
+  return { x0: x - MAT_W / 2 - 0.3, x1: x + MAT_W / 2 + 0.3, z0: QUAY.z0 + 0.3, z1: QUAY.z0 + 3.1 };
+}
+/** 안벽의장 작업자가 서는 줄(z): 작업 구역 안, 안벽 가장자리 가까이 */
+export const QUAY_WORK_Z = QUAY.z0 + 1.0;
 
 /** 인도한 배: 안벽의장 정박 자리 바깥에 네 척씩 두 줄(겹대기). 안쪽 줄(안벽 바로 앞)은 안벽의장이 쓴다(4.0) */
 export function seaSpot(i: number): { x: number; z: number } {
