@@ -4,6 +4,7 @@
 // 엔진 결과와 그날 장면(Frame)을 읽어 글로 옮기기만 한다(계산하지 않는다). 오늘 뒤의 일(언제 끝날지)은 적지 않는다.
 // 블록 ID가 생기면(다음 개발) TrackPick의 ship에 block을 더한다.
 
+import { ST } from "./scene/layout";
 import type { Peg, Result, Scenario, SimEvent } from "./api";
 import { h } from "./dom";
 import { STATE_INFO } from "./labels";
@@ -38,9 +39,11 @@ function whereNow(l: LotView, frame: Frame, scenario: Scenario): string {
     }
     case "outbound": return `${name}을 끝내고 공용 적치장에서 운반 대기`;
     case "queue":
-      return l.station >= 3 ? `${name} 도크 앞에서 ${loss ?? "대기"}` : `${name} 앞 공용 적치장에서 ${loss ?? "대기"}`;
+      return l.station === ST.dock ? `${name} 도크 앞에서 ${loss ?? "대기"}`
+        : l.station >= ST.quay ? `${name} 차례를 안벽 앞 물 위에서 ${loss ?? "대기"}`
+        : `${name} 앞 공용 적치장에서 ${loss ?? "대기"}`;
     case "bench": {
-      const place = l.station >= 3 ? "도크" : "작업장";
+      const place = l.station === ST.dock ? "도크" : l.station === ST.quay ? "정박 자리" : l.station === ST.trial ? "시운전 해역" : "작업장";
       if (l.parts && l.parts.length > 1) {
         const parts = l.parts.map((pt) => `${pt.unit + 1}호 ${pt.state === "pair_wait" ? "짝 대기(적치장)" : STATE_INFO[pt.state]?.name ?? "작업"}`);
         return `${name} 나눠 하기 · ${parts.join(", ")}`;

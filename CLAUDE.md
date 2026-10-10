@@ -50,7 +50,8 @@
 
 ## 규칙 요약 (자세한 것은 sim.py와 rules.json, scenarios/)
 
-- 공정: 소조립(sub_assembly) → 중조립(block_assembly) → PE장(grand_assembly, 3.1까지 이름 "대조립", D38) → 탑재(erection, 골리앗 크레인).
+- 공정(4.0, D41, 8개): 소조립(sub_assembly) → 중조립(block_assembly) → (도장 painting ∥ 선행의장 pre_outfitting) → PE장(grand_assembly, 3.1까지 이름 "대조립", D38) → 탑재(erection, 골리앗 크레인) → 안벽의장(quay_outfitting) → 시운전(sea_trial). rules.json의 공정마다 after·trade·site·arrive·split. 배의 진행은 마친 공정 집합(`candidates`), 같은 배는 하루 한 공정. 이동은 `move_days_between`. 화면은 공정 번호 대신 `layout.ts`의 `ST`.
+- 직종(4.0, D42): 설정 `pools`(조립·탑재·도장·의장), 사람은 자기 직종 공정만. 시운전은 외부팀(crew "external"). 옛 설정은 `complete_config`(엔진)·`completeConfig`(화면)가 채운다. 작업모 색 `TRADE_HAT`.
   블록은 12 → 6 → 3 → 1척으로 합쳐지지만 엔진은 배 한 척의 로트 단위로 계산한다. 작업장은 한 번에 한 로트, 설비 1대에 2명까지.
 - 시나리오(2.0): 기본 분기 = 수주 4척(S1~S4), 2026년 4분기. 수주 증가 = 6척(S1~S4 + LNG선 S5·S6), 2027년 1분기, 목표 매출 20,200·이익 8,300.
   수주일과 납기가 분기 안인 배가 KPI 대상(지금은 모두).

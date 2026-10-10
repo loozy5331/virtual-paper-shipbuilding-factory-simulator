@@ -20,7 +20,7 @@ import { renderCctv } from "./cctv";
 import { renderTrackCard, type TrackPick } from "./track";
 import { buildFrame } from "./scene/frame";
 import type { Yard } from "./scene/yard";
-import { sector, sectorOf, SECTORS, type SectorId } from "./scene/layout";
+import { sector, sectorOf, SECTORS, ST, type SectorId } from "./scene/layout";
 
 const SPEEDS = [1, 4];   // 관제실 배속. 기본 4배속(사용자 결정). 현장은 따로 1배속 고정(FIELD_MS_PER_DAY).
 const BASE_MS_PER_DAY = 500;   // 1배속은 하루에 0.5초, 60일이 30초다.
@@ -814,7 +814,7 @@ function openCctv(station: number, day: number, ship: string | null): void {
   const r = currentRun();
   if (!r) return;
   const frame = buildFrame(r.result, state.data.scenario, r.config, day, 1);
-  const docks = frame.stations[3]?.units.length ?? 1;
+  const docks = frame.stations[ST.dock]?.units.length ?? 1;
   const lot = ship ? frame.lots.find((l) => l.ship === ship && l.place === "bench" && l.station === station) : undefined;
   openSector(sectorOf(station, lot?.unit ?? 0, docks), day);
 }

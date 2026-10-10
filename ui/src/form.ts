@@ -4,7 +4,7 @@
 // 탭 전환도 hidden만 바꾼다. 처리량, 불량률, 고정비, 연구 일정, 발주일, 계획 막대는
 // 서버의 /api/preview 결과를 data-preview 자리에 채운다.
 
-import type { Config, Crew, Ordering, Preset, Preview, Scenario, ScenarioOptions, ScenarioSummary } from "./api";
+import { completeConfig, staffTrades, type Config, type Crew, type Ordering, type Preset, type Preview, type Scenario, type ScenarioOptions, type ScenarioSummary } from "./api";
 import { h, mount, money, num, pct } from "./dom";
 import { STATION_COLOR } from "./labels";
 import { docHead } from "./paper";
@@ -124,6 +124,7 @@ export function renderPlanTabs(root: HTMLElement, ctx: FormContext): void {
 export function renderForm(root: HTMLElement, ctx: FormContext): void {
   current = ctx;
   const { scenario, config } = ctx;
+  completeConfig(config, scenario);   // 3.x 프리셋·회차에 없는 공정과 직종 인원을 기본값으로(4.0)
   const orderIds = scenario.orders.map((o) => o.id);
 
   // ① 수주와 계획: 4척 요약 줄과 계획 간트. 우선순위는 겹치면 맞바꾸고, 착수 예정일은 간트에서 끌어 정한다.
@@ -209,12 +210,15 @@ function commonPane(ctx: FormContext): HTMLElement {
   // 쉬운 분기에서는 가린 옵션을 아예 그리지 않는다(D33).
   const methods = Object.entries(scenario.rules.methods).filter(([id]) => opts.methods.includes(id));
 
-  const pool = h("div", { class: "field-row" },
-    h("span", { class: "field-label" }, "작업대기소"),
-    segmented("pool",
-      Array.from({ length: scenario.rules.max_pool }, (_, k) => ({ value: k + 1, label: String(k + 1) })),
-      config.pool, (v) => { config.pool = v; ctx.onEdit(false); }),
-    h("small", null, "명"));
+  // 작업대기소는 하나, 사람마다 직종이 있다(4.0, D42). 사람은 자기 직종 공정에만 간다. 시운전은 외부팀이라 칸이 없다.
+  const pools = config.pools!;
+  const pool = h("div", { class: "pools" },
+    staffTrades(scenario).map(([t, info]) => h("div", { class: "field-row" },
+      h("span", { class: "field-label" }, `${info.name} 인원`),
+      segmented(`pool-${t}`,
+        Array.from({ length: info.max ?? 6 }, (_, k) => ({ value: k + 1, label: String(k + 1) })),
+        pools[t], (v) => { pools[t] = v; config.pool = Object.values(pools).reduce((a, b) => a + b, 0); ctx.onEdit(false); }),
+      h("small", null, `명 · ${scenario.stations.filter((st) => st.trade === t).map((st) => st.name).join("·")}`))));
 
   // 트랜스포터는 역할마다 한 대로 고정(4.0, D39): 대수는 고르지 않고 정비만 고른다.
   const transporter = h("div", { class: "field-row" },
@@ -233,8 +237,10 @@ function commonPane(ctx: FormContext): HTMLElement {
       config.stations[config.skilled_station].crew ??= "skilled";
       config.skilled_station = null;
     }
+    const external = st.trade === "trial";   // 시운전: 외부 전문팀(인력·잔업 고르지 않음)
     const crew = cfg.crew ?? "normal";
     const robot = crew === "robot";
+    const trial = scenario.trades.trial;
     return h("div", { class: "station", style: { "--station": STATION_COLOR[st.id] } as Record<string, string> },
       h("div", { class: "station-head" },
         h("span", { class: "swatch" }),
@@ -242,20 +248,23 @@ function commonPane(ctx: FormContext): HTMLElement {
         h("small", null, st.real.split(":")[0])),
       h("div", { class: "station-grid" },
         h("span", { class: "field-label" }, "인력"),
-        segmented(`crew-${st.id}`, crews.map(([id, c]) => ({
-          value: id, label: c.install_cost ? `${c.name} (+${num(c.install_cost * (cfg.units ?? 1))})` : c.name,
-        })), crew, (v) => { if (v === "normal") delete cfg.crew; else cfg.crew = v; ctx.onEdit(true); }),
+        external
+          ? h("span", { class: "hint" }, `외부 시운전팀 · 일한 날마다 팀당 ${typeof trial === "object" ? trial.cost_per_team_day ?? 0 : 0}`)
+          : segmented(`crew-${st.id}`, crews.map(([id, c]) => ({
+            value: id, label: c.install_cost ? `${c.name} (+${num(c.install_cost * (cfg.units ?? 1))})` : c.name,
+          })), crew, (v) => { if (v === "normal") delete cfg.crew; else cfg.crew = v; ctx.onEdit(true); }),
         h("span", { class: "field-label" }, "공법"),
         segmented(`method-${st.id}`, methods.map(([id, m]) => ({ value: id, label: m.name })),
           cfg.method, (v) => { cfg.method = v; ctx.onEdit(false); }),
         h("span", { class: "field-label" }, "운영"),
         h("div", { class: "toggles" },
-          robot
-            ? h("span", { class: "hint", title: scenario.rules.crews.robot.summary }, "로봇은 잔업 없음")
-            : toggle("잔업", cfg.overtime, (on) => { cfg.overtime = on; ctx.onEdit(false); }),
+          external ? null
+            : robot
+              ? h("span", { class: "hint", title: scenario.rules.crews.robot.summary }, "로봇은 잔업 없음")
+              : toggle("잔업", cfg.overtime, (on) => { cfg.overtime = on; ctx.onEdit(false); }),
           toggle("정비", cfg.maintenance, (on) => { cfg.maintenance = on; ctx.onEdit(false); }),
-          // 나눠 하기(3.0): 탑재는 배 한 척이 도크 하나에 들어가야 해서 나누지 않는다.
-          st.id === scenario.stations[scenario.stations.length - 1].id || !opts.split
+          // 나눠 하기(3.0): 탑재·안벽의장·시운전은 배 한 척이 통째로 들어가서 나누지 않는다(공정의 split).
+          st.split === false || !opts.split
             ? null
             : toggle("나눠 하기", cfg.split ?? false, (on) => { if (on) cfg.split = true; else delete cfg.split; ctx.onEdit(false); })),
         unitCap(st.id) > 1 ? h("span", { class: "field-label" }, "작업장") : null,

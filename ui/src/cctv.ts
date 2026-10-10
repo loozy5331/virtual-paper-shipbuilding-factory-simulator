@@ -10,13 +10,13 @@
 
 import type { Scenario } from "./api";
 import { s } from "./dom";
-import { HAT, STATE_INFO, STATION_COLOR } from "./labels";
+import { HAT, STATE_INFO, STATION_COLOR, STATION_TRADE, TRADE_HAT } from "./labels";
 import type { Frame, LotView } from "./scene/frame";
 import type { TrackPick } from "./track";
-import { STOCK_STATIONS, stockAssign, stockSpot } from "./scene/stock";
+import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot } from "./scene/stock";
 // 배치는 현장 3D와 같은 scene/layout.ts
 import { areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
-  along, LAB_TREES, LAND_ROUTE, PIER, QUAY, route, SHIP_ROUTE, seaSpot, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_X, SHELF_Z, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
+  along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, quayQueueSpot, route, ST, SHIP_ROUTE, seaSpot, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_X, SHELF_Z, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
   type SectorId } from "./scene/layout";
 
 // ----- 투영: 위에서 30도 기운 정사영 -----
@@ -175,7 +175,7 @@ export interface CctvOptions {
 }
 
 export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions): SVGElement {
-  const docks = frame.stations[3]?.units.length ?? 1;
+  const docks = frame.stations[ST.dock]?.units.length ?? 1;
   const due = Object.fromEntries(scenario.orders.map((o) => [o.id, o.due_day]));
   // 지연 표시는 오늘 기준(최종 결과를 미리 알려 주지 않게).
   const lateNow = (l: LotView) => (l.place === "sea" ? l.late : frame.day > due[l.ship]);
@@ -227,8 +227,8 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     const back = UNIT_Z[2] - MAT2_D / 2 - 0.4, front = LANE_Z - 0.5;
     add(-99, box(sx, (front + back) / 2, 0.8, front - back, 0.02, "#3a423d", "#3a423d"));
     // PE장 양옆 샛길은 큰길 앞(2도크 구획)으로도
-    const far = benchAt(2, 2, 2).z + MAT2_D / 2 + 0.4;
-    if (k >= 3) add(-99, box(sx, (LANE_Z + 0.5 + far) / 2, 0.8, far - LANE_Z - 0.5, 0.02, "#3a423d", "#3a423d"));
+    const far = benchAt(ST.pe, 2, 2).z + MAT2_D / 2 + 0.4;
+    if (k >= 4) add(-99, box(sx, (LANE_Z + 0.5 + far) / 2, 0.8, far - LANE_Z - 0.5, 0.02, "#3a423d", "#3a423d"));
   });
   // 구획 윤곽(점선)과 이름: 이웃 구획이 가장자리에 걸쳐 보일 때 어디까지인지. 2도크 구획은 도크가 하나면 증설 예정지
   for (const sec of SECTORS.map((sc) => sectorBounds(sc.id, docks))) {
@@ -319,10 +319,12 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
 
   // ----- 작업대기소: 벤치 둘과 쉬는 사람 -----
   for (const row of [0, 1]) add(LOUNGE.z - 0.6 + row * 1.2 - 0.01, box(LOUNGE.x, LOUNGE.z - 0.6 + row * 1.2, 2.6, 0.3, 0.3, "#6b5a48", "#5a4a3a"));
-  for (let i = 0; i < Math.min(frame.idleWorkers, 8); i++) {
+  // 직종마다 모자 색(4.0, D42). 많으면 12명까지만 그린다
+  const idleHats = Object.entries(frame.idleByTrade).flatMap(([t, n]) => Array.from({ length: n }, () => TRADE_HAT[t] ?? HAT.worker));
+  for (let i = 0; i < Math.min(idleHats.length, 12); i++) {
     const row = Math.floor(i / 4), col = i % 4;
     const z = LOUNGE.z - 0.6 + row * 1.2;
-    add(z + 0.01, person(LOUNGE.x - 1.2 + col * 0.8, z, HAT.worker, true));
+    add(z + 0.01, person(LOUNGE.x - 1.2 + col * 0.8, z, idleHats[i], true));
   }
   add(LOUNGE.z + 2, tag(px(LOUNGE.x), py(LOUNGE.z + 1.3) + 16, "작업대기소", "cc-place"));
   add(LOUNGE.z + 2, tag(px(LOUNGE.x), py(LOUNGE.z + 1.3) + 31, `쉬는 인원 ${frame.idleWorkers}명`, "cc-tag mid"));
@@ -337,15 +339,18 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
       const { z, d } = benchAt(p, k, docks);
       // 작업장마다: 소조립·중조립은 벽(뒤·옆), PE장은 노란 구획선, 탑재는 드라이 도크(바다 쪽 문)
       const { x0, x1, z0, z1 } = areaBounds(p, k, docks);
-      if (p < 2) add(z0 - 0.01, walls(x0, x1, z0, z1, 1.0));
-      else if (p === 2) add(z0 - 0.01, s("rect", { x: px(x0), y: py(z0), width: (x1 - x0) * S, height: (z1 - z0) * S * DEPTH, fill: "none", stroke: "#e0b43a", "stroke-width": 1.5, "stroke-dasharray": "6 4" }));
-      else add(z0 - 0.01, dock(x0, x1, z0, z1));
+      const water = p >= ST.quay;   // 안벽의장(정박 자리)·시운전(만 밖 바다): 물 위라 정반 대신 점선 테두리
+      if (isShop(p)) add(z0 - 0.01, walls(x0, x1, z0, z1, 1.0));
+      else if (p === ST.pe) add(z0 - 0.01, s("rect", { x: px(x0), y: py(z0), width: (x1 - x0) * S, height: (z1 - z0) * S * DEPTH, fill: "none", stroke: "#e0b43a", "stroke-width": 1.5, "stroke-dasharray": "6 4" }));
+      else if (p === ST.dock) add(z0 - 0.01, dock(x0, x1, z0, z1));
       const g = s("g", {
         class: "cc-station pick", role: "button", tabindex: 0,
         "aria-label": `${st.name} ${unit.unit}호. 눌러서 그 구획 보기`,
         onclick: () => opts.onSector(sectorOf(p, k, docks)),
         onkeydown: (e: KeyboardEvent) => { if (e.key === "Enter") opts.onSector(sectorOf(p, k, docks)); },
-      }, box(x, z, MAT_W, d, 0.08, color, color));
+      }, water
+        ? s("rect", { x: px(x - MAT_W / 2), y: py(z - d / 2), width: MAT_W * S, height: d * S * DEPTH, fill: "none", stroke: color, "stroke-width": 2, "stroke-dasharray": "5 4" })
+        : box(x, z, MAT_W, d, 0.08, color, color));
       if (unit.stop) {
         // 중지: 통제선(빗금 테두리). 정지 화면이라 연기·깜빡임 없이.
         const info = STATE_INFO[unit.state];
@@ -365,10 +370,12 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
       if (view.crew === "robot") {
         if (here) { add(z + 0.1, robot(x - MAT_W / 2 + 0.35, z + 0.3)); add(z + 0.1, robot(x + MAT_W / 2 - 0.35, z + 0.3)); }
       } else {
-        const hat = view.senior ? HAT.senior : HAT.worker;
+        // 모자 색은 직종(숙련공은 원래대로 보라). 안벽의장 작업자는 배 옆 안벽 위
+        const hat = view.senior ? HAT.senior : TRADE_HAT[STATION_TRADE[st.id]] ?? HAT.worker;
         for (let i = 0; i < unit.workers; i++) {
           const wx = x + (i === 0 ? -1 : 1) * (MAT_W / 2 - 0.4);
-          add(z + 0.4, person(wx, z + 0.4, hat));
+          const wz = p === ST.quay ? QUAY.z0 + 0.6 : z + 0.4;
+          add(wz, person(wx, wz, hat));
         }
       }
       if (unit.stop) {
@@ -379,14 +386,20 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     const first = view.units.find((u) => u.state !== "idle") ?? view.units[0];
     const info = first.state === "work" || first.state === "idle" ? null : STATE_INFO[first.state];
     const status = first.state === "work" ? "작업 중" : first.state === "idle" ? "비어 있음" : info?.name ?? first.state;
-    const extra = [view.overtime && view.crew !== "robot" ? "잔업" : "", { normal: "", skilled: "숙련공", robot: "로봇" }[view.crew]].filter(Boolean).join(" · ");
+    const extra = [view.overtime && view.crew !== "robot" ? "잔업" : "", { normal: "", skilled: "숙련공", robot: "로봇", external: "외부팀" }[view.crew]].filter(Boolean).join(" · ");
     const ty = py(b0.z + MAT_D / 2) - 6;
     add(b0.z + MAT_D / 2 + 0.05, s("g", { class: "cc-mat-text" },
       tag(px(x - MAT_W / 2) + 5, ty, st.name, "cc-name"),
       tag(px(x + MAT_W / 2) - 5, ty, status, info ? "cc-tag end loss" : "cc-tag end"),
       extra ? tag(px(x + MAT_W / 2) - 5, py(b0.z - MAT_D / 2) + 14, extra, "cc-tag end") : s("g")));
     // 탑재 앞 대기 줄(탑재는 적치장 예외: 도크 앞에서 기다린다)
-    if (p >= STOCK_STATIONS) {
+    if (p >= ST.quay) {
+      frame.lots.filter((l) => l.place === "queue" && l.station === p).sort((a, b) => a.slot - b.slot).slice(0, 3).forEach((l) => {
+        const q = quayQueueSpot(l.slot);
+        add(q.z + 0.01, block(l, lot(q.x, q.z, l.form, 0.55, l.type), chip(q.x, q.z - 0.2, 0.4, l, lateNow(l))));
+      });
+    }
+    if (p === ST.dock) {
       frame.lots.filter((l) => l.place === "queue" && l.station === p).sort((a, b) => a.slot - b.slot).slice(0, 3).forEach((l, i) => {
         const qx = x - 1 + i * 1.0;
         add(QUEUE_Z + 0.01, block(l, lot(qx, QUEUE_Z, l.form, 0.55), chip(qx, QUEUE_Z - 0.2, 0.4, l, lateNow(l))));
@@ -401,8 +414,8 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     add(-97, s("rect", { x: px(at.x - STOCK_HALF), y: py(zTop), width: STOCK_HALF * 2 * S, height: STOCK_D * S * DEPTH,
       fill: "#2a332e", stroke: "#8f9a93", "stroke-width": 1.2, "stroke-dasharray": "5 4" }));
     add(-96, s("g", { class: "cc-mat-text" },
-      s("rect", { x: px(at.x - STOCK_HALF) + 6, y: py(zTop + STOCK_D) - 17, width: 9, height: 9, rx: 2, fill: STATION_COLOR[scenario.stations[p].id] }),
-      tag(px(at.x - STOCK_HALF) + 19, py(zTop + STOCK_D) - 8, "적치장", "cc-tag")));
+      s("rect", { x: px(at.x - STOCK_HALF) + 6, y: py(zTop + STOCK_D) - 17, width: 9, height: 9, rx: 2, fill: STATION_COLOR[scenario.stations[STOCK_COLOR_OF[p]].id] }),
+      tag(px(at.x - STOCK_HALF) + 19, py(zTop + STOCK_D) - 8, p === 2 ? "마감동 적치장" : "적치장", "cc-tag")));
   }
   const stock = stockAssign(frame);
   for (const l of frame.lots) {
@@ -419,17 +432,17 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
 
   // ----- 골리앗 크레인 위험 반경(3.0 안전, 현장 3D와 같은 CRANE_R): 도크마다 점선 원, 그 도크가 탑재 중이면 진하게 -----
   // 도크마다 크레인이 하나다(D36): 2호 도크가 있으면 2호 크레인의 틀과 반경도 그린다.
-  const dockUnits = frame.stations[3]?.units ?? [];
+  const dockUnits = frame.stations[ST.dock]?.units ?? [];
   dockUnits.forEach((dock, u) => {
     const busy = dock.state === "work" || dock.state === "rework";
     const zc = dockZ(u);
-    add(-95, s("ellipse", { cx: px(STATION_X[3]), cy: py(zc), rx: CRANE_R * S, ry: CRANE_R * S * DEPTH, fill: "none",
+    add(-95, s("ellipse", { cx: px(STATION_X[ST.dock]), cy: py(zc), rx: CRANE_R * S, ry: CRANE_R * S * DEPTH, fill: "none",
       stroke: "#e0b43a", "stroke-width": busy ? 2.2 : 1.2, "stroke-dasharray": "7 5", opacity: busy ? 0.95 : 0.5 }));
   });
-  add(-95, tag(px(STATION_X[3] - CRANE_R) + 4, py(2.6) + 4, "반경 10m 출입 금지", "cc-tag warn"));
+  add(-95, tag(px(STATION_X[ST.dock] - CRANE_R) + 4, py(2.6) + 4, "반경 10m 출입 금지", "cc-tag warn"));
 
   // ----- 골리앗 크레인(탑재 위, 틀만): 도크마다 하나 -----
-  const cx = STATION_X[3];
+  const cx = STATION_X[ST.dock];
   dockUnits.forEach((_, u) => {
     const zc = dockZ(u);
     const crane = s("g", { class: "cc-crane", opacity: 0.85 });

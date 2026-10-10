@@ -4,6 +4,12 @@
 /** 고깔모자(작업모) 색: 역할. 3D 소인과 2D 작업 현황 기호가 함께 쓴다. */
 export const HAT = { worker: "#d6a400", manager: "#d9480f", senior: "#6f42c1" } as const;
 
+/** 공정의 직종(rules.json의 trade와 같다). 시운전은 외부팀이라 없다 */
+export const STATION_TRADE: Record<string, string> = {
+  sub_assembly: "assembly", block_assembly: "assembly", painting: "painting", pre_outfitting: "outfitting",
+  grand_assembly: "assembly", erection: "erection", quay_outfitting: "outfitting",
+};
+
 /** 직종별 작업모 색(4.0, D42). 조립은 원래 작업자 색. 모자 색만으로 구분하지 않게 현장 이름표와 대기소 글에 직종을 적는다 */
 export const TRADE_HAT: Record<string, string> = {
   assembly: "#d6a400",
