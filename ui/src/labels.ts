@@ -82,7 +82,7 @@ export const LEAD_TIME_STATES: StateInfo[] = [WORK_STATE, TRANSPORT_STATE, ...LO
 export const STATE_INFO: Record<string, StateInfo> = Object.fromEntries(LEAD_TIME_STATES.map((s) => [s.state, s]));
 
 export const COST_ITEMS: { key: string; name: string; note: string }[] = [
-  { key: "labor", name: "인건비", note: "대기소 인원 일당 × 60일, 숙련공 할증(배정 인원 일당 +5) 포함" },
+  { key: "labor", name: "인건비", note: "대기소 인원 일당 × 작업일, 숙련공 할증(배정 인원 일당 +5) 포함" },
   { key: "overtime", name: "잔업수당", note: "잔업한 날마다 배정 인원 일당의 50%" },
   { key: "maintenance", name: "정비비", note: "정비한 공정의 작업장마다 100" },
   { key: "material", name: "자재비", note: "BOM 수량 × 단가" },

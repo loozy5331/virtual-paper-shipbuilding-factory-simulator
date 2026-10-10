@@ -103,7 +103,7 @@ let previewSeq = 0;
 let previewTimer: number | undefined;
 
 const els = {
-  desk: h("section", { class: "desk", "aria-label": "분기 고르기" }),
+  desk: h("section", { class: "desk", "aria-label": "반기 고르기" }),
   plan: h("section", { class: "plan-screen", "aria-label": "생산계획서" }),
   room: h("section", { class: "room", "aria-label": "관제실" }),
   field: h("section", { class: "field-screen", "aria-label": "현장" }),

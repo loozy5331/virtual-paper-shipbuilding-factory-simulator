@@ -115,7 +115,8 @@ function inventoryChart(values: number[]): SVGElement {
     s("text", { x: L - 6, y: py(0) + 4, class: "tick end" }, "0"),
     s("path", { d: area, class: "inv-area" }),
     s("path", { d: line, class: "inv-line" }));
-  for (const d of [1, 10, 20, 30, 40, 50, 60]) {
+  const step = values.length > 60 ? 20 : 10;
+  for (const d of [1, ...Array.from({ length: Math.floor(values.length / step) }, (_, k) => (k + 1) * step)]) {
     if (d <= values.length) svg.append(s("text", { x: px(d - 1), y: H - 6, class: "tick" }, `${d}일`));
   }
   // 마우스를 올릴 자리: 점보다 넓은 세로 띠
