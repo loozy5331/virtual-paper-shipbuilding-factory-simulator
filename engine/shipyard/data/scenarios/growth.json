@@ -70,7 +70,7 @@
   },
   "kpi": {
     "revenue": 51600,
-    "profit": 25000,
+    "profit": 23000,
     "on_time_rate": 1.0,
     "first_pass_yield": 0.9
   },
@@ -213,40 +213,40 @@
     {
       "id": "unmanaged",
       "name": "무관리",
-      "summary": "전부 한꺼번에 착수하고(우선순위도 납기순이 아니다), 자재는 필요한 날에야 발주하고, 24명을 꽉 채워 속성 공법과 잔업으로 밀어붙인다. 증설과 정비는 하지 않는다.",
+      "summary": "전부 한꺼번에 착수하고(우선순위도 납기 반대로, 마지막 배부터), 자재는 필요한 날에야 발주하고, 24명을 꽉 채워 속성 공법과 잔업으로 밀어붙인다. 증설과 정비는 하지 않는다.",
       "config": {
         "ordering": "late",
         "ships": {
           "S1": {
-            "priority": 1,
+            "priority": 8,
             "start_day": 1
           },
           "S2": {
-            "priority": 3,
-            "start_day": 1
-          },
-          "S3": {
-            "priority": 2,
-            "start_day": 1
-          },
-          "S4": {
-            "priority": 4,
-            "start_day": 1
-          },
-          "S5": {
-            "priority": 6,
-            "start_day": 1
-          },
-          "S6": {
-            "priority": 5,
-            "start_day": 1
-          },
-          "S7": {
             "priority": 7,
             "start_day": 1
           },
+          "S3": {
+            "priority": 6,
+            "start_day": 1
+          },
+          "S4": {
+            "priority": 5,
+            "start_day": 1
+          },
+          "S5": {
+            "priority": 4,
+            "start_day": 1
+          },
+          "S6": {
+            "priority": 3,
+            "start_day": 1
+          },
+          "S7": {
+            "priority": 2,
+            "start_day": 1
+          },
           "S8": {
-            "priority": 8,
+            "priority": 1,
             "start_day": 1
           }
         },
@@ -319,7 +319,7 @@
     {
       "id": "managed",
       "name": "관리",
-      "summary": "병목인 소조립·중조립만 증설하고, 납기에서 역산해 착수를 나누고(납기 − 42일, VLCC 2일·LNG선 5일 먼저), 자재는 역산 발주, 15명(조립 6, 의장 3)으로 표준 공법에 정비를 한다.",
+      "summary": "병목인 중조립과 도크(탑재)만 증설하고 탑재 인원도 4명으로 늘린다. 납기에서 역산해 착수를 나누고(VLCC 2일·LNG선 5일 먼저), 자재는 역산 발주, 17명(조립 6, 탑재 4, 의장 3)으로 표준 공법에 정비를 한다.",
       "config": {
         "ordering": "jit",
         "ships": {
@@ -329,37 +329,37 @@
           },
           "S2": {
             "priority": 2,
-            "start_day": 7
+            "start_day": 5
           },
           "S3": {
             "priority": 3,
-            "start_day": 14
+            "start_day": 12
           },
           "S4": {
             "priority": 4,
-            "start_day": 20
+            "start_day": 18
           },
           "S5": {
             "priority": 5,
-            "start_day": 34
+            "start_day": 32
           },
           "S6": {
             "priority": 6,
-            "start_day": 41
+            "start_day": 39
           },
           "S7": {
             "priority": 7,
-            "start_day": 47
+            "start_day": 45
           },
           "S8": {
             "priority": 8,
-            "start_day": 61
+            "start_day": 59
           }
         },
         "pools": {
           "processing": 2,
           "assembly": 6,
-          "erection": 2,
+          "erection": 4,
           "painting": 2,
           "outfitting": 3
         },
@@ -381,8 +381,7 @@
           "sub_assembly": {
             "method": "standard",
             "overtime": false,
-            "maintenance": true,
-            "units": 2
+            "maintenance": true
           },
           "block_assembly": {
             "method": "standard",
@@ -409,7 +408,8 @@
             "method": "standard",
             "overtime": false,
             "maintenance": true,
-            "crew": "skilled"
+            "crew": "skilled",
+            "units": 2
           },
           "quay_outfitting": {
             "method": "standard",

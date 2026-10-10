@@ -986,12 +986,37 @@ const gradeChip = (grade: string, cls: string) =>
   h("b", { class: `${cls} grade-${grade}`, style: { background: GRADE_COLOR[grade], color: GRADE_TEXT[grade] } }, grade);
 
 /** 벽의 명판: 왼쪽은 관제실·분기·회차, 오른쪽은 목표와 이번 세션 최고, 회차 목록. */
+/** 관제실 명판의 반기 목록이 열려 있나(4.2: 관제실에서 바로 다른 반기로) */
+let plateMenuOpen = false;
+
+/** 관제실에서 다른 반기로: 책상으로 돌아가지 않고 그 반기의 생산계획서로 바로 간다. 같은 반기면 계획 고치기와 같다 */
+async function switchFromRoom(id: string): Promise<void> {
+  plateMenuOpen = false;
+  if (id === state.data.scenario.id) { await backToPlan(); return; }
+  pause();
+  closePlanBoard();
+  await switchScenario(id);
+  await openPlan(els.deskClip);
+  drawTopbar();
+}
+
 function drawPlates(): void {
   const r = currentRun();
   const sc = state.data.scenario;
   mount(els.plate,
     h("b", null, "종이배 조선소 관제실"),
-    h("span", null, `${sc.period} · ${sc.name}${r ? ` · ${r.n}회차 ${r.label}` : ""}`));
+    h("span", { class: "plate-switch" },
+      h("button", {
+        type: "button", class: "plate-period", "aria-haspopup": "menu", "aria-expanded": String(plateMenuOpen),
+        title: "다른 반기로 바꾸기(그 반기의 생산계획서로 바로 갑니다)",
+        onclick: () => { plateMenuOpen = !plateMenuOpen; drawPlates(); },
+      }, `${sc.period} · ${sc.name} ▾`),
+      plateMenuOpen ? h("div", { class: "plate-menu", role: "menu" },
+        state.data.scenarios.map((x) => h("button", {
+          type: "button", role: "menuitem", class: x.id === sc.id ? "current" : "",
+          onclick: () => void switchFromRoom(x.id),
+        }, h("b", null, x.period), ` ${x.name} · ${x.ships}척${x.id === sc.id ? " (지금, 계획 고치기)" : ""}`))) : null),
+    r ? h("span", null, `${r.n}회차 ${r.label}`) : null);
   const k = sc.kpi;
   const best = sessionBest(sc.id);
   const runs = state.runs.map((run, i) => ({ run, i })).filter(({ run }) => run.scenario === sc.id);

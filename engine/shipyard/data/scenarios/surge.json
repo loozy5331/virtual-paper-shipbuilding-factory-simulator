@@ -84,7 +84,7 @@
   },
   "kpi": {
     "revenue": 66600,
-    "profit": 35000,
+    "profit": 32000,
     "on_time_rate": 1.0,
     "first_pass_yield": 0.9
   },
@@ -251,24 +251,24 @@
     {
       "id": "unmanaged",
       "name": "무관리",
-      "summary": "전부 한꺼번에 착수하고(우선순위도 납기순이 아니다), 자재는 필요한 날에야 발주하고, 24명을 꽉 채워 속성 공법과 잔업으로 밀어붙인다. 증설과 정비는 하지 않는다.",
+      "summary": "전부 한꺼번에 착수하고(우선순위도 납기 반대로, 마지막 배부터), 자재는 필요한 날에야 발주하고, 24명을 꽉 채워 속성 공법과 잔업으로 밀어붙인다. 증설과 정비는 하지 않는다.",
       "config": {
         "ordering": "late",
         "ships": {
           "S1": {
-            "priority": 1,
+            "priority": 10,
             "start_day": 1
           },
           "S2": {
-            "priority": 3,
+            "priority": 9,
             "start_day": 1
           },
           "S3": {
-            "priority": 2,
+            "priority": 8,
             "start_day": 1
           },
           "S4": {
-            "priority": 4,
+            "priority": 7,
             "start_day": 1
           },
           "S5": {
@@ -280,19 +280,19 @@
             "start_day": 1
           },
           "S7": {
-            "priority": 7,
+            "priority": 4,
             "start_day": 1
           },
           "S8": {
-            "priority": 9,
+            "priority": 3,
             "start_day": 1
           },
           "S9": {
-            "priority": 8,
+            "priority": 2,
             "start_day": 1
           },
           "S10": {
-            "priority": 10,
+            "priority": 1,
             "start_day": 1
           }
         },
@@ -365,7 +365,7 @@
     {
       "id": "managed",
       "name": "관리",
-      "summary": "병목인 소조립·중조립을 2곳으로 늘려 배를 나눠 만들고(나눠 하기), 절단·선행의장·PE장도 2곳으로 뒤를 받친다. 납기에서 역산해 착수(납기 − 42일, VLCC 2일·LNG선 5일 먼저), 자재는 역산 발주, 19명으로 표준 공법에 정비를 한다.",
+      "summary": "병목인 도크를 2곳으로 늘리고 탑재 인원도 4명으로(도크와 사람을 함께), 소조립·중조립을 2곳으로 늘려 나눠 만든다(나눠 하기). 절단·선행의장·PE장도 2곳. 납기에서 역산해 착수, 자재는 역산 발주, 21명으로 표준 공법에 정비를 한다.",
       "config": {
         "ordering": "jit",
         "ships": {
@@ -379,41 +379,41 @@
           },
           "S3": {
             "priority": 3,
-            "start_day": 9
+            "start_day": 6
           },
           "S4": {
             "priority": 4,
-            "start_day": 12
+            "start_day": 9
           },
           "S5": {
             "priority": 5,
-            "start_day": 30
+            "start_day": 27
           },
           "S6": {
             "priority": 6,
-            "start_day": 25
+            "start_day": 22
           },
           "S7": {
             "priority": 7,
-            "start_day": 44
+            "start_day": 41
           },
           "S8": {
             "priority": 8,
-            "start_day": 46
+            "start_day": 43
           },
           "S9": {
             "priority": 9,
-            "start_day": 57
+            "start_day": 54
           },
           "S10": {
             "priority": 10,
-            "start_day": 60
+            "start_day": 57
           }
         },
         "pools": {
           "processing": 3,
           "assembly": 8,
-          "erection": 2,
+          "erection": 4,
           "painting": 2,
           "outfitting": 4
         },
@@ -468,7 +468,8 @@
             "method": "standard",
             "overtime": false,
             "maintenance": true,
-            "crew": "skilled"
+            "crew": "skilled",
+            "units": 2
           },
           "quay_outfitting": {
             "method": "standard",

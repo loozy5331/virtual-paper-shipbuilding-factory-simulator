@@ -17,7 +17,7 @@ import { shipLook } from "./ships";
 import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot } from "./stock";
 import { buildDock, buildLand, buildRoof, buildSectorOutline, buildWalls, buildYardLines, GiantHand, Gulliver, SEA_Y, type DockParts } from "./coast";
 import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_TOP, MAT_W, MAT2_D,
-  nearLane, QUEUE_Z, SAFE_SPOT, seaSpot, SECTORS, sector, sectorBounds, DOCK2_AREA, SHELF_X, SHELF_Z, SHORE_X, SPUR_IN, SPUR_OUT, SPUR_X, STATION_X,
+  nearLane, QUEUE_Z, SAFE_SPOT, seaSpot, SECTORS, sector, sectorBounds, DOCK2_AREA, SHELF_X, SHELF_Z, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_IN, SPUR_OUT, SPUR_X, STATION_X,
   STOCK_AT, STOCK_D, STOCK_HALF, STOCK_NAME, CONVEYORS, FORKLIFT_HOME, BACK_LANE_Z, polyline, QUAY_WORK_Z, ST, isShop, quayQueueSpot, along, groundY, kitRoutes, LAB_TREES, LAND_ROUTE, route, SHIP_ROUTE, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
 import { clamp01, ease, flatOf, hullTris, type Tri } from "../proto/model";
 import { STATE_INFO, STATION_COLOR, STATION_TRADE, TRADE_HAT } from "../labels";
@@ -397,6 +397,10 @@ export class Yard {
   private readonly landRoute: Route = route(LAND_ROUTE);
   private readonly shipRoute: Route = route(SHIP_ROUTE, 1);
   private readonly supplyExit: Route = route(SUPPLY_EXIT);
+  private readonly seaExit: Route = route(SEA_EXIT);
+  /** 강재 롤러 컨베이어 위 철판(절단이 일하는 날 흐른다) */
+  private readonly steelPlates: THREE.Mesh[] = [];
+  private steelOn = false;
   private readonly shelves: { boxes: THREE.Mesh[]; tag: CSS2DObject }[] = [];
   /** 자재·블록 추적(3.1): 누르면 상자를 띄울 곳(main.ts), 진하게 볼 배, 선반의 보이지 않는 누름 상자, 추적 중인 배 밑의 고리 */
   private pickHandler: ((pick: TrackPick) => void) | null = null;
@@ -703,7 +707,7 @@ export class Yard {
       this.roofs[p] = [];
     });
     // 물류창고: 뒷벽에 문(납품 마차가 뒤에서 상자를 내린다)
-    this.scene.add(buildWalls(SHELF_X[0] - 1.5, SHELF_X[2] + 1.5, SHELF_Z - 0.9, SHELF_Z + 1.0, 1.9, { x: SHELF_X[1], w: 1.3 }));
+    this.scene.add(buildWalls(WAREHOUSE.x0, WAREHOUSE.x1, SHELF_Z - 0.9, SHELF_Z + 1.0, 1.9, { x: WAREHOUSE.door, w: 1.3 }));
 
     // 적치장: 공정(탑재 제외)마다 칸. 기다리는 블록은 정반 대신 여기에 둔다(내업 두 공정은 큰길 건너편, PE장은 1도크 구획).
     STOCK_AT.slice(0, STOCK_STATIONS).forEach((at, p) => {
@@ -874,7 +878,57 @@ export class Yard {
 
   private buildShelves(): void {
     const colors = ["#f7f3ea", "#c8553d", "#c0392b"];
+    // 강재 적치장(4.2): 야외 자갈 바닥, 철판 더미 셋(종이 한 장 = 철판 한 장), 롤러 컨베이어로 절단에
+    const yard = mesh(new THREE.BoxGeometry(STEEL_YARD.x1 - STEEL_YARD.x0, 0.03, STEEL_YARD.z1 - STEEL_YARD.z0), "#9d978a", { roughness: 1 });
+    yard.position.set((STEEL_YARD.x0 + STEEL_YARD.x1) / 2, 0.015, (STEEL_YARD.z0 + STEEL_YARD.z1) / 2);
+    yard.castShadow = false;
+    this.scene.add(yard);
+    const steelSign = label("강재 적치장", "place-tag");
+    steelSign.position.set(STEEL_YARD.x, 1.6, STEEL_YARD.z0);
+    this.scene.add(steelSign);
+    const c = STEEL_CONVEYOR, clen = c.z1 - c.z0;
+    const roller = mesh(new THREE.BoxGeometry(c.w, 0.06, clen), "#5d6661", { roughness: 0.9 });
+    roller.position.set(c.x, c.y, (c.z0 + c.z1) / 2);
+    this.scene.add(roller);
+    for (let z = c.z0 + 0.4; z < c.z1; z += 2.4) {
+      const leg = mesh(new THREE.BoxGeometry(0.05, c.y, 0.05), "#7d878c");
+      leg.position.set(c.x, c.y / 2, z);
+      this.scene.add(leg);
+    }
+    for (let k = 0; k < 3; k++) {
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.03, 0.4), paperMaterial());
+      plate.visible = false;
+      this.steelPlates.push(plate);
+      this.scene.add(plate);
+    }
     SHELF_X.forEach((x, i) => {
+      if (i === 0) {
+        // 철판 더미: 3무더기 × 8장 = 24장까지
+        const plates: THREE.Mesh[] = [];
+        for (let k = 0; k < 24; k++) {
+          const pile = k % 3, level = Math.floor(k / 3);
+          const pl = mesh(new THREE.BoxGeometry(1.9, 0.07, 1.4), k % 2 ? "#ece6d8" : "#f4f0e6");
+          pl.position.set(STEEL_YARD.x - 2.4 + pile * 2.4, 0.06 + level * 0.08, STEEL_YARD.z + 0.1);
+          pl.visible = false;
+          this.scene.add(pl);
+          plates.push(pl);
+        }
+        const hit = new THREE.Mesh(new THREE.BoxGeometry(7.4, 1.2, 2.4), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
+        hit.position.set(STEEL_YARD.x, 0.6, STEEL_YARD.z);
+        hit.userData.shelf = i;
+        this.scene.add(hit);
+        this.shelfHits.push(hit);
+        const tag = label("", "shelf-tag");
+        tag.position.set(STEEL_YARD.x, 1.1, STEEL_YARD.z + 0.4);
+        tag.element.classList.add("pickable");
+        tag.element.addEventListener("click", () => {
+          const material = this.source?.frameAt(1).shelves[i]?.material;
+          if (material) this.pickHandler?.({ kind: "material", material });
+        });
+        this.scene.add(tag);
+        this.shelves.push({ boxes: plates, tag });
+        return;
+      }
       for (const sx of [-1, 1]) {
         const side = mesh(new THREE.BoxGeometry(0.08, 1.6, 0.9), "#8a6a4a");
         side.position.set(x + sx * 1.0, 0.8, SHELF_Z);
@@ -920,7 +974,7 @@ export class Yard {
       this.shelves.push({ boxes, tag });
     });
     const sign = label("물류창고 구역", "place-tag");
-    sign.position.set(SHELF_X[1], 2.6, SHELF_Z - 0.9);
+    sign.position.set(WAREHOUSE.door, 2.6, SHELF_Z - 0.9);
     this.scene.add(sign);
   }
 
@@ -1329,6 +1383,8 @@ export class Yard {
     for (let k = f.transporters.length; k < this.carts.length; k++) this.carts[k].group.visible = false;
 
     this.driveForklift(f, src.playing && !jump ? frac : 1);
+    const cutSt = f.stations[ST.cut];
+    this.steelOn = !!cutSt && (cutSt.state === "work" || cutSt.state === "rework");
 
     // 자재창고: 선반이 비면 "입고 D-n" 팻말
     f.shelves.forEach((sh, i) => {
@@ -1369,8 +1425,10 @@ export class Yard {
       const today = !!dv && left === 0;
       let at: { x: number; z: number; angle: number } | null = null, unloaded = 0;
       if (dv && today) {
-        if (t < 0.3) { at = along(this.supplyExit, 0); unloaded = playing ? Math.min(1, t / 0.25) : 1; }
-        else if (t < 0.75 || !playing) { at = along(this.supplyExit, playing ? ease((t - 0.3) / 0.45) : 0); unloaded = 1; }
+        // 종이(해상)는 강재 적치장 뒤, 물감·깃발(육로)은 창고 뒷문에서 내린다(4.2)
+        const out = dv.route === "sea" ? this.seaExit : this.supplyExit;
+        if (t < 0.3) { at = along(out, 0); unloaded = playing ? Math.min(1, t / 0.25) : 1; }
+        else if (t < 0.75 || !playing) { at = along(out, playing ? ease((t - 0.3) / 0.45) : 0); unloaded = 1; }
       } else if (dv && dv.route === "land") {
         at = along(this.landRoute, (SUPPLY_DAYS - left + t) / SUPPLY_DAYS);
       } else if (dv) {
@@ -1631,6 +1689,13 @@ export class Yard {
   }
 
   private animateProps(t: number): void {
+    const sc = STEEL_CONVEYOR;
+    this.steelPlates.forEach((plate, k, all) => {
+      plate.visible = this.steelOn;
+      if (!this.steelOn) return;
+      const u = (t * 0.12 + k / all.length) % 1;
+      plate.position.set(sc.x, sc.y + 0.05, sc.z0 + (sc.z1 - sc.z0) * u);
+    });
     CONVEYORS.forEach((c, n) => this.beltPlates[n]?.forEach((plate, k, all) => {
       const on = !!this.beltOn[n];
       plate.visible = on;

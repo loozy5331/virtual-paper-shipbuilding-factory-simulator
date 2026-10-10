@@ -132,21 +132,24 @@
       "name": "종이",
       "price": 20,
       "lead_days": 2,
-      "cheap_name": "휴지"
+      "cheap_name": "휴지",
+      "store": "steel_yard"
     },
     {
       "id": "paint",
       "name": "물감",
       "price": 40,
       "lead_days": 5,
-      "cheap_name": "저가 물감"
+      "cheap_name": "저가 물감",
+      "store": "warehouse"
     },
     {
       "id": "flag",
       "name": "깃발",
       "price": 100,
       "lead_days": 10,
-      "cheap_name": "저가 깃발"
+      "cheap_name": "저가 깃발",
+      "store": "warehouse"
     }
   ],
   "ship_types": {
@@ -160,7 +163,7 @@
         "painting": 4,
         "pre_outfitting": 4,
         "grand_assembly": 8,
-        "erection": 8,
+        "erection": 14,
         "quay_outfitting": 4,
         "sea_trial": 3
       },
@@ -180,7 +183,7 @@
         "painting": 3,
         "pre_outfitting": 4,
         "grand_assembly": 4,
-        "erection": 10,
+        "erection": 16,
         "quay_outfitting": 4,
         "sea_trial": 3
       },
@@ -200,7 +203,7 @@
         "painting": 4,
         "pre_outfitting": 6,
         "grand_assembly": 8,
-        "erection": 10,
+        "erection": 16,
         "quay_outfitting": 10,
         "sea_trial": 5
       },
@@ -350,7 +353,8 @@
     "threshold_maintained": 0.1,
     "stop_days": 2,
     "repair_cost": 150,
-    "_arrive_note": "공정 사이 이동(4.0): 같은 자리(site)면 다음 날, 공정의 arrive가 crane(탑재)·tow(안벽의장·시운전)·conveyor(가공, 절단에서 벨트)·forklift(소조립, 부재 팔레트를 지게차로)면 다음 날, 그 밖은 T2 블록 운반"
+    "_arrive_note": "공정 사이 이동(4.0): 같은 자리(site)면 다음 날, 공정의 arrive가 crane(탑재)·tow(안벽의장·시운전)·conveyor(가공, 절단에서 벨트)·forklift(소조립, 부재 팔레트를 지게차로)면 다음 날, 그 밖은 T2 블록 운반",
+    "_kit_note": "T1 키트는 물류창고(store warehouse) 자재만(물감·깃발). 강재 적치장(store steel_yard) 자재(종이 = 철판)는 절단에 들어가는 날 롤러 컨베이어로 바로 출고한다(4.2)"
   },
   "research": {
     "automation": {

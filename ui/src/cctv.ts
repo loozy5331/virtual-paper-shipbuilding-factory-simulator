@@ -16,7 +16,7 @@ import type { TrackPick } from "./track";
 import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot } from "./scene/stock";
 // 배치는 현장 3D와 같은 scene/layout.ts
 import { areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
-  along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, quayQueueSpot, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_X, SHELF_Z, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
+  along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, quayQueueSpot, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_Z, shelfAt, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
   BACK_LANE_Z, CONVEYORS, DOCK2_AREA, FORKLIFT_HOME, kitDrop, QUAY_WORK_Z, STOCK_NAME, type SectorId } from "./scene/layout";
 
 // ----- 투영: 위에서 30도 기운 정사영 -----
@@ -253,30 +253,47 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   }
 
   // ----- 자재창고 선반 -----
+  // 강재 적치장(4.2): 야외 바닥과 철판 더미, 절단까지 롤러 컨베이어(절단이 일하는 날 철판이 실려 있다)
+  add(STEEL_YARD.z0 - 0.5, box(STEEL_YARD.x, STEEL_YARD.z, STEEL_YARD.x1 - STEEL_YARD.x0, STEEL_YARD.z1 - STEEL_YARD.z0, 0.02, "#3d3a34", "#3d3a34"));
+  add(STEEL_YARD.z0 - 0.4, tag(px(STEEL_YARD.x), py(STEEL_YARD.z0) - 4, "강재 적치장", "cc-place"));
+  {
+    const c = STEEL_CONVEYOR;
+    add(c.z0, box(c.x, (c.z0 + c.z1) / 2, c.w + 0.1, c.z1 - c.z0, c.y, "#5d6661", "#3a3f3c"));
+    const cut = frame.stations[ST.cut];
+    if (cut && (cut.state === "work" || cut.state === "rework")) {
+      for (let k = 0; k < 3; k++) add(c.z0 + 0.1, box(c.x, c.z0 + (k + 0.5) * (c.z1 - c.z0) / 3, 0.3, 0.4, c.y + 0.04, PAPER, PAPER_SIDE));
+    }
+  }
   frame.shelves.forEach((sh, i) => {
-    const x = SHELF_X[i];
+    const { x, z } = shelfAt(i);
     if (x === undefined) return;
-    const g = s("g", { class: "cc-shelf" }, box(x, SHELF_Z, 2.1, 0.5, 1.6, "#4d4238", "#5c4f42"));
-    pickable(g, { kind: "material", material: sh.material }, `${sh.name} 선반. 눌러서 어느 배 몫인지 보기`);
-    const shown = Math.min(sh.qty, 8);
+    const steel = i === 0;
+    const g = s("g", { class: "cc-shelf" }, steel ? s("g") : box(x, SHELF_Z, 2.1, 0.5, 1.6, "#4d4238", "#5c4f42"));
+    pickable(g, { kind: "material", material: sh.material }, `${sh.name} ${steel ? "더미" : "선반"}. 눌러서 어느 배 몫인지 보기`);
+    if (steel) {
+      // 철판 더미 셋, 한 장 = 종이 한 장(최대 24장까지 그린다)
+      const shown = Math.min(sh.qty, 24);
+      for (let k = 0; k < shown; k++) g.append(box(x - 2.4 + (k % 3) * 2.4, z, 1.9, 1.4, 0.07 * (1 + Math.floor(k / 3)), PAPER, PAPER_SIDE));
+    }
+    const shown = steel ? 0 : Math.min(sh.qty, 8);
     for (let k = 0; k < shown; k++) {
       const bx = px(x - 0.85 + (k % 4) * 0.45), by = py(SHELF_Z + 0.25, 1.35 - Math.floor(k / 4) * 0.6);
       g.append(s("rect", { x: bx, y: by, width: 11, height: 8, fill: PAPER }));
     }
     const empty = sh.qty <= 0;
-    g.append(tag(px(x), py(SHELF_Z + 0.25) + 14, `${sh.name} ${empty ? (sh.nextArrival ? `입고 D-${sh.nextArrival - frame.day}` : "없음") : sh.qty}`,
+    g.append(tag(px(x), py(z + 0.25) + 14, `${sh.name} ${empty ? (sh.nextArrival ? `입고 D-${sh.nextArrival - frame.day}` : "없음") : sh.qty}`,
       empty ? "cc-tag mid warn" : "cc-tag mid"));
     // 추적 중이면 그 배 몫 수량을 한 줄 더(자재 페깅)
     if (opts.track !== null) {
       const mine = sh.pegs.find((pg) => pg.ship === opts.track)?.quantity ?? 0;
-      g.append(tag(px(x), py(SHELF_Z + 0.25) + 28, `${opts.track} 몫 ${mine}`, mine ? "cc-tag mid track" : "cc-tag mid"));
+      g.append(tag(px(x), py(z + 0.25) + 28, `${opts.track} 몫 ${mine}`, mine ? "cc-tag mid track" : "cc-tag mid"));
     }
-    add(SHELF_Z, g);
+    add(z, g);
   });
   // 납품 마차(3.2): 정지 화면이라 그날 끝 자리. 입고일 마차는 창고 뒤(뒷문)에, 사흘 안의 입고는 납품 길 위에.
   // 상자 색은 선반 상자 뚜껑과 같다. 창고 뒤 마차만 무엇이 몇 개인지 적고, 길 위 마차는 "입고 D-n"만.
   // 해상(종이): 입고 사흘 전 날 끝에는 배가 부두에, 이틀·하루 전 날 끝에는 마차가 해상 길 위에. 육로(물감·깃발): 산길 위에.
-  const roadSea = route(SUPPLY_ROUTE), roadLand = route(LAND_ROUTE), roadOut = route(SUPPLY_EXIT), shipLane = route(SHIP_ROUTE, 1);
+  const roadSea = route(SUPPLY_ROUTE), roadLand = route(LAND_ROUTE), roadOut = route(SUPPLY_EXIT), roadSeaOut = route(SEA_EXIT), shipLane = route(SHIP_ROUTE, 1);
   const crateColor = (m: string) => ["#f7f3ea", "#c8553d", "#c0392b"][frame.shelves.findIndex((sh) => sh.material === m)] ?? PAPER;
   for (const dv of frame.deliveries) {
     const left = dv.day - frame.day, today = left === 0;
@@ -291,7 +308,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
       add(at.z + 0.5, tag(cx, cy - 28, label, "cc-tag mid"));
       continue;
     }
-    const at = today ? along(roadOut, 0)
+    const at = today ? along(dv.route === "sea" ? roadSeaOut : roadOut, 0)
       : dv.route === "sea" ? along(roadSea, left === 2 ? 0.7 / 1.7 : 1)
       : along(roadLand, (SUPPLY_DAYS - left + 1) / SUPPLY_DAYS);
     const cx = px(at.x), cy = py(at.z);
@@ -313,8 +330,8 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   }
 
   // 물류창고 구역: 선반 셋을 벽으로 묶는다(앞은 열림)
-  add(SHELF_Z - 2, walls(SHELF_X[0] - 1.5, SHELF_X[2] + 1.5, SHELF_Z - 0.9, SHELF_Z + 1.0, 1.9, { x: SHELF_X[1], w: 1.3 }));
-  add(SHELF_Z - 1, tag(px(SHELF_X[1]), py(SHELF_Z - 0.9, 1.9) - 8, "물류창고 구역", "cc-place"));
+  add(SHELF_Z - 2, walls(WAREHOUSE.x0, WAREHOUSE.x1, SHELF_Z - 0.9, SHELF_Z + 1.0, 1.9, { x: WAREHOUSE.door, w: 1.3 }));
+  add(SHELF_Z - 1, tag(px(WAREHOUSE.door), py(SHELF_Z - 0.9, 1.9) - 8, "물류창고 구역", "cc-place"));
 
   // ----- 연구소: 둘레의 나무(보안, 큰길 쪽 출입구만) -----
   for (const t of LAB_TREES) {
