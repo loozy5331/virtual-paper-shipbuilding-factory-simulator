@@ -17,7 +17,7 @@ import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot } from "./scene/
 // 배치는 현장 3D와 같은 scene/layout.ts
 import { areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
   along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, quayQueueSpot, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_X, SHELF_Z, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
-  BACK_LANE_Z, CONVEYORS, QUAY_WORK_Z, STOCK_NAME, type SectorId } from "./scene/layout";
+  BACK_LANE_Z, CONVEYORS, FORKLIFT_HOME, QUAY_WORK_Z, STOCK_NAME, type SectorId } from "./scene/layout";
 
 // ----- 투영: 위에서 30도 기운 정사영 -----
 const S = 30;                        // 1 단위 = 30px
@@ -421,7 +421,13 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     }
   });
 
-  // ----- 컨베이어벨트(D43, 4.0.1): 절단 → 가공, 가공 → 소조립. 판을 올리는 공정이 일하는 날은 판이 실려 있다 -----
+  // ----- 지게차(4.0.2): 가공 → 소조립 부재 팔레트. 정지 화면이라 두 공장 사이에 서 있는 기호만 -----
+  add(FORKLIFT_HOME.z, s("g", { class: "cc-forklift" },
+    box(FORKLIFT_HOME.x, FORKLIFT_HOME.z, 0.5, 0.75, 0.3, "#e0b43a", "#b8902c"),
+    box(FORKLIFT_HOME.x, FORKLIFT_HOME.z + 0.5, 0.42, 0.25, 0.05, "#5d6661", "#3a3f3c"),
+    tag(px(FORKLIFT_HOME.x), py(FORKLIFT_HOME.z - 0.4, 0.3) - 4, "지게차", "cc-tag mid")));
+
+  // ----- 컨베이어벨트(D43): 가공 공장 안 절단 → 가공. 절단이 일하는 날은 판이 실려 있다 -----
   for (const c of CONVEYORS) {
     add(c.z - 0.05, box((c.x0 + c.x1) / 2, c.z, c.x1 - c.x0 + 0.6, c.w, c.y, "#5d6661", "#3a3f3c"));
     const st = frame.stations[c.from];

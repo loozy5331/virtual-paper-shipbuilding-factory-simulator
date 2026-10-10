@@ -35,14 +35,15 @@ export const isShop = (station: number) => station <= ST.preout;
  */
 export const STATION_X = [-36.6, -30.8, -24, -18.5, -12.6, -7.9, 3.4, 8.5, 14.4, 36];
 /**
- * 컨베이어벨트(D43, 4.0.1): 둘이다. 가공 공장 안 절단 → 가공(잘라 낸 판), 가공 공장 → 소조립 공장(굽힌 판, 샛길 위를 다리로 지난다).
- * from = 벨트에 판을 올리는 공정(그 공정이 일하는 날 판이 흐른다). 그림만이고 엔진은 둘 다 다음 날 들어간다.
+ * 컨베이어벨트(D43): 가공 공장 안 절단 → 가공(잘라 낸 판). from = 벨트에 판을 올리는 공정(그 공정이 일하는 날 판이 흐른다).
+ * 가공 → 소조립은 실제 조선소처럼 부재를 배 몫 팔레트에 담아 지게차로 옮긴다(4.0.2, FORKLIFT_HOME). 그림만이고 엔진은 둘 다 다음 날.
  */
 export interface Conveyor { from: number; x0: number; x1: number; z: number; y: number; w: number }
 export const CONVEYORS: Conveyor[] = [
   { from: 0, x0: STATION_X[0] + MAT_W / 2 + 0.05, x1: STATION_X[1] - MAT_W / 2 - 0.05, z: -0.7, y: 0.55, w: 0.55 },
-  { from: 1, x0: STATION_X[1] + MAT_W / 2 + 0.45, x1: STATION_X[2] - MAT_W / 2 - 0.45, z: -0.7, y: 0.55, w: 0.55 },
 ];
+/** 지게차가 서 있는 자리: 가공 공장과 소조립 공장 사이 샛길 입구(큰길 쪽). 부재 팔레트를 큰길로 날라 소조립에 내린다 */
+export const FORKLIFT_HOME = { x: (STATION_X[1] + MAT_W / 2 + STATION_X[2] - MAT_W / 2) / 2, z: LANE_Z - 1.6 };
 /** 안벽의장 정박 자리 사이 간격, 안벽 앞 물 위 줄(z) */
 const BERTH_GAP = 3.6, BERTH_Z = 10.6;
 /** 도크 줄: 1도크는 큰길 뒤, 2도크는 큰길 앞(큰길을 사이에 두고 마주 본다) */

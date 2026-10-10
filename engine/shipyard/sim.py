@@ -464,11 +464,11 @@ def preview(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> d
 def move_days_between(scenario: dict[str, Any], a: int, b: int) -> int:
     """공정 a를 끝내고 공정 b에 들어갈 수 있게 되기까지(4.0, D41). 끝난 다음 날이 1.
 
-    같은 자리(site)면 운반 없이 다음 날, b가 크레인(탑재)·예인(안벽의장·시운전)·컨베이어벨트(소조립)로 받는 공정이면 다음 날,
+    같은 자리(site)면 운반 없이 다음 날, b가 크레인(탑재)·예인(안벽의장·시운전)·컨베이어벨트(가공)·지게차(소조립, 부재 팔레트)로 받는 공정이면 다음 날,
     그 밖은 T2가 로트 무게를 하루 용량씩 나른다(다 나른 날 들어간다).
     """
     sa, sb = scenario["stations"][a], scenario["stations"][b]
-    if sa.get("site") == sb.get("site") or sb.get("arrive") in ("crane", "tow", "conveyor"):
+    if sa.get("site") == sb.get("site") or sb.get("arrive") in ("crane", "tow", "conveyor", "forklift"):
         return 1
     tr = scenario["transporter"]
     return math.ceil(tr["lot_weight"] / tr["capacity"] - EPS)
