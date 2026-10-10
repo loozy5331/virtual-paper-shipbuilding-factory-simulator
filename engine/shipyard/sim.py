@@ -659,9 +659,12 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     kit_since: dict[tuple[int, int], int] = {}
     kit_ready: set[tuple[int, int]] = set()
 
+    # 강재 적치장 자재(종이 = 철판, 4.2)는 키트가 아니라 들어가는 날 컨베이어로 받는다
+    steel = {m["id"] for m in scenario["materials"] if m.get("store") == "steel_yard"}
+
     def request_kit(i: int, p: int, day: int) -> None:
         mid = stations[p]["material"] if p < n_st else None
-        if mid and bom_of(i, mid) > 0 and (i, p) not in kit_since:
+        if mid and mid not in steel and bom_of(i, mid) > 0 and (i, p) not in kit_since:
             kit_since[(i, p)] = day
 
     # 앞 공정이 없는 공정(소조립)의 키트는 착수 예정일 하루 전에 요청한다
@@ -826,6 +829,17 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                         if (i, p) in kit_since and (i, p) not in kit_ready:
                             ship_state[i] = (MATERIAL_WAIT, p, None)
                             continue
+                        # 강재 적치장 자재(4.2): 들어가는 날 롤러 컨베이어로 출고. 모자라면 자재 대기
+                        smid = stations[p]["material"]
+                        if smid in steel and bom_of(i, smid) > 0:
+                            need = bom_of(i, smid)
+                            if stock[smid] < need:
+                                ship_state[i] = (MATERIAL_WAIT, p, None)
+                                continue
+                            stock[smid] -= need
+                            events.append({"day": day, "type": "issue", "material": smid, "quantity": need,
+                                           "ship": orders[i]["id"], "station": pid, "transporter": None, "via": "conveyor",
+                                           "from": _take_pegged(batches[smid], orders[i]["id"], need)})
                         # 나눠 하기: 지금 비어 있고 멈추지 않은 작업장(이 작업장 + 뒤 번호)에 작업량을 똑같이 나눈다.
                         work = work_of(i, p)
                         parts = [u] + [v for v in range(u + 1, n_units[p])

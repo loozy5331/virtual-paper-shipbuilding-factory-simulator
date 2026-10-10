@@ -10,42 +10,42 @@
       "id": "S1",
       "type": "VLCC",
       "order_day": 1,
-      "due_day": 39,
+      "due_day": 42,
       "price": 6000
     },
     {
       "id": "S2",
       "type": "CONT",
       "order_day": 1,
-      "due_day": 52,
+      "due_day": 56,
       "price": 5200
     },
     {
       "id": "S3",
       "type": "VLCC",
       "order_day": 1,
-      "due_day": 66,
+      "due_day": 70,
       "price": 6000
     },
     {
       "id": "S4",
       "type": "CONT",
       "order_day": 1,
-      "due_day": 80,
+      "due_day": 84,
       "price": 5200
     },
     {
       "id": "S5",
       "type": "VLCC",
       "order_day": 1,
-      "due_day": 95,
+      "due_day": 98,
       "price": 6000
     },
     {
       "id": "S6",
       "type": "CONT",
       "order_day": 1,
-      "due_day": 113,
+      "due_day": 114,
       "price": 5200
     }
   ],
@@ -172,32 +172,32 @@
     {
       "id": "unmanaged",
       "name": "무관리",
-      "summary": "전부 한꺼번에 착수하고(우선순위도 납기순이 아니다), 자재는 필요한 날에야 발주하고, 24명을 꽉 채워 속성 공법과 잔업으로 밀어붙인다. 정비는 하지 않는다.",
+      "summary": "전부 한꺼번에 착수하고(우선순위도 납기 반대로, 마지막 배부터), 자재는 필요한 날에야 발주하고, 24명을 꽉 채워 속성 공법과 잔업으로 밀어붙인다. 정비는 하지 않는다.",
       "config": {
         "ordering": "late",
         "ships": {
           "S1": {
-            "priority": 1,
-            "start_day": 1
-          },
-          "S2": {
-            "priority": 3,
-            "start_day": 1
-          },
-          "S3": {
-            "priority": 2,
-            "start_day": 1
-          },
-          "S4": {
-            "priority": 4,
-            "start_day": 1
-          },
-          "S5": {
             "priority": 6,
             "start_day": 1
           },
-          "S6": {
+          "S2": {
             "priority": 5,
+            "start_day": 1
+          },
+          "S3": {
+            "priority": 4,
+            "start_day": 1
+          },
+          "S4": {
+            "priority": 3,
+            "start_day": 1
+          },
+          "S5": {
+            "priority": 2,
+            "start_day": 1
+          },
+          "S6": {
+            "priority": 1,
             "start_day": 1
           }
         },
@@ -270,7 +270,7 @@
     {
       "id": "managed",
       "name": "관리",
-      "summary": "납기에서 역산해 착수를 나누고(납기 − 46일, VLCC는 2일·LNG선은 5일 먼저), 자재는 필요일에서 역산해 발주하고, 직종마다 2명(10명)으로 표준 공법에 정비를 한다.",
+      "summary": "납기에서 역산해 착수를 나누고(VLCC는 2일·LNG선은 5일 먼저), 자재는 필요일에서 역산해 발주하고, 11명(조립 3, 나머지 직종 2명씩)으로 표준 공법에 정비를 한다.",
       "config": {
         "ordering": "jit",
         "ships": {
@@ -280,28 +280,28 @@
           },
           "S2": {
             "priority": 2,
-            "start_day": 6
+            "start_day": 12
           },
           "S3": {
             "priority": 3,
-            "start_day": 18
+            "start_day": 24
           },
           "S4": {
             "priority": 4,
-            "start_day": 34
+            "start_day": 40
           },
           "S5": {
             "priority": 5,
-            "start_day": 47
+            "start_day": 52
           },
           "S6": {
             "priority": 6,
-            "start_day": 67
+            "start_day": 70
           }
         },
         "pools": {
           "processing": 2,
-          "assembly": 2,
+          "assembly": 3,
           "erection": 2,
           "painting": 2,
           "outfitting": 2

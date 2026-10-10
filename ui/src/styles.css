@@ -756,6 +756,15 @@ body { background: var(--desk); }
 .room { --wall: #cfd3cb; --desk-top: #a39784; position: relative; height: 100vh; min-height: 640px; overflow: hidden; background: var(--wall); }
 .room .plate { position: absolute; left: 26px; top: 6px; z-index: 2; font-size: 12px; color: var(--ink-2); display: flex; gap: 10px; align-items: center; }
 .room .plate b { color: var(--ink); font-size: 13px; }
+/* 명판의 반기 이름을 누르면 반기 목록(4.2): 고르면 그 반기의 생산계획서로 바로 */
+.plate-switch { position: relative; }
+.plate-period { border: 1px solid transparent; background: transparent; font: inherit; color: var(--ink-2); padding: 1px 6px; border-radius: 4px; cursor: pointer; }
+.plate-period:hover, .plate-period[aria-expanded="true"] { border-color: #c9cfc9; background: var(--paper); color: var(--ink); }
+.plate-menu { position: absolute; left: 0; top: calc(100% + 4px); z-index: 20; display: flex; flex-direction: column; min-width: 260px;
+  background: var(--paper); border: 1px solid #c9cfc9; border-radius: 6px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18); padding: 4px; }
+.plate-menu button { border: 0; background: transparent; text-align: left; font: inherit; font-size: 12px; color: var(--ink); padding: 6px 8px; border-radius: 4px; cursor: pointer; }
+.plate-menu button:hover { background: #eef1ec; }
+.plate-menu button.current { color: var(--ink-2); }
 .room .plate.right { left: auto; right: 26px; gap: 14px; }
 .plate-best { display: inline-flex; align-items: center; gap: 4px; }
 .plate-best .best-grade { width: 20px; height: 20px; font-size: 11px; }

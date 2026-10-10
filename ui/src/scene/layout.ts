@@ -100,7 +100,17 @@ export const SPUR_IN = [0, 0, 1, 2, 3, 3, 5, 5, -1, -1], SPUR_OUT = [1, 1, 2, 3,
 /** 트랜스포터 차고(큰길 왼쪽 끝), 작업대기소, 물류창고 선반 셋, 연구소: 모두 내업 구획 */
 export const DEPOT = { x: -42.6, z: LANE_Z };
 export const LOUNGE = { x: -42.2, z: -4.4 };
-export const SHELF_X = [-22.2, -19.7, -17.2], SHELF_Z = -9.6;
+/**
+ * 자재 자리(재료 순서 = rules.json: 종이, 물감, 깃발). 4.2: 종이(철판)는 물류창고가 아니라 그 왼쪽 강재 적치장(야외)에 쌓고,
+ * 롤러 컨베이어로 절단에 보낸다. 물류창고에는 물감·깃발 선반 둘.
+ */
+export const SHELF_X = [-35, -21.0, -18.4], SHELF_Z = -9.6;
+export const WAREHOUSE = { x0: -22.5, x1: -16.9, door: -19.7 };
+export const STEEL_YARD = { x: -35, z: -10.6, x0: -39, x1: -31, z0: -11.9, z1: -9.3 };
+/** 자재 자리(0 = 종이는 강재 적치장) */
+export const shelfAt = (i: number) => (i === 0 ? { x: STEEL_YARD.x, z: STEEL_YARD.z } : { x: SHELF_X[i], z: SHELF_Z });
+/** 강재 적치장 → 절단 롤러 컨베이어: 가공 공장 왼쪽 벽을 따라 z 방향으로(샛길과 벽 사이) */
+export const STEEL_CONVEYOR = { x: -38.95, z0: STEEL_YARD.z1 - 0.1, z1: 0.3, y: 0.45, w: 0.32 };
 /** 연구소(3.2): 내업 구획 왼쪽 아래(큰길 앞, 차고 옆). 둘레에 나무를 심어 가리고 큰길 쪽 출입구 하나만 둔다(보안). */
 export const LAB = { x: -40.4, z: 8.7 };
 /** 연구소를 둘러싼 나무 자리: 직사각형 둘레를 따라, 큰길 쪽 가운데는 출입구로 비운다 */
@@ -176,8 +186,10 @@ export const PIER = { x0: 28.4, x1: 31.4, z: -5.0 };
 export const SHIP_ROUTE = [{ x: 78, z: -2.5 }, { x: 52, z: -3.6 }, { x: 38, z: -4.6 }, { x: PIER.x1 + 0.9, z: PIER.z + 0.05 }];
 export const SUPPLY_ROUTE = [
   { x: PIER.x0 + 0.8, z: PIER.z }, { x: 26.6, z: -5.4 }, { x: 25.2, z: -8.6 }, { x: 20, z: -9.4 }, { x: 13, z: -9.2 }, { x: 6, z: -10.8 },
-  { x: -2, z: -13.0 }, { x: -9, z: -12.9 }, { x: -14.5, z: -12.7 }, { x: -19.7, z: -12.6 },
+  { x: -2, z: -13.0 }, { x: -9, z: -12.9 }, { x: -14.5, z: -12.7 }, { x: -19.7, z: -12.6 }, { x: -27, z: -12.6 }, { x: -35, z: -12.6 },
 ];
+/** 해상 납품(종이)은 강재 적치장 뒤에서 내리고 왼쪽으로 빠져나간다(4.2) */
+export const SEA_EXIT = [{ x: -35, z: -12.6 }, { x: -46, z: -12.4 }, { x: -54, z: -12.2 }];
 /** 산길: 뒷산 능선(높이 약 7)을 굽이굽이 넘어 야드 뒤로 내려와 창고 뒷문에 닿는다 */
 export const LAND_ROUTE = [
   { x: -11, z: -54 }, { x: -15, z: -45 }, { x: -12, z: -38 }, { x: -15.5, z: -30 }, { x: -13, z: -22 },
@@ -219,7 +231,7 @@ export function polyline(points: { x: number; z: number }[]): Route {
  * T1 자재 키트(4.0, D39): 차고 → 샛길로 물류창고 앞(키트 싣는 자리) → 다시 샛길로 큰길 → 그 공정 앞(큰길 위).
  * 앞 구간(pick)은 하루의 준비 시간 안에, 뒤 구간(drop)은 그 뒤에 달린다. 하루 끝에는 그 공정 앞에 서 있다.
  */
-export const KIT_PICK = { x: SHELF_X[1], z: SHELF_Z + 1.5 };
+export const KIT_PICK = { x: WAREHOUSE.door, z: SHELF_Z + 1.5 };
 /** 뒷길(4.0.1): 물류창고 앞, 공장 뒷벽과 창고 사이의 가로 도로. 샛길이 모두 여기까지 이어진다. T1이 창고와 공장 사이를 이 길로 다닌다 */
 export const BACK_LANE_Z = KIT_PICK.z;
 /**
