@@ -850,6 +850,15 @@ body { background: var(--desk); }
 .cam-track select { font: inherit; font-size: 11px; color: #1f2622; background: #f3f1ea; border: 0; border-radius: 2px; padding: 1px 2px; }
 .track-host { position: absolute; right: 10px; top: 40px; z-index: 3; width: min(340px, calc(100% - 20px)); max-height: calc(100% - 80px); overflow-y: auto; }
 .track-host:empty { display: none; }
+/* 인도 완료 로그(4.0): 오른쪽 위, 최근 것부터. 지연은 빨간 글 */
+.delivered-log { position: absolute; right: 10px; top: 8px; z-index: 2; margin: 0; padding: 4px 8px; list-style: none; max-height: 40%; overflow-y: auto;
+  background: rgba(20, 24, 20, 0.78); color: #f3f1ea; font-size: 11px; border-radius: 3px; min-width: 190px; }
+.delivered-log[hidden] { display: none; }
+.delivered-log li { display: grid; grid-template-columns: 2.4em 1fr auto auto; gap: 6px; padding: 1px 0; align-items: baseline; }
+.delivered-log li.head { display: block; font-weight: 700; color: #cfd8d2; padding-bottom: 2px; border-bottom: 1px solid rgba(243, 241, 234, 0.2); margin-bottom: 2px; }
+.delivered-log em { font-style: normal; color: #9fd8b4; }
+.delivered-log li.late em { color: #ff8a95; }
+.field-screen .delivered-log { top: 10px; }
 .field-head .cam-track { position: static; }
 .scene-labels .pickable { pointer-events: auto; cursor: pointer; }
 .scene-labels .tracked { outline: 2px solid #e0b43a; outline-offset: 1px; }

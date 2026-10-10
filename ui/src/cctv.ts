@@ -16,7 +16,7 @@ import type { TrackPick } from "./track";
 import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot } from "./scene/stock";
 // 배치는 현장 3D와 같은 scene/layout.ts
 import { areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
-  along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, quayQueueSpot, route, ST, SHIP_ROUTE, seaSpot, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_X, SHELF_Z, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
+  along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, quayQueueSpot, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_X, SHELF_Z, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
   type SectorId } from "./scene/layout";
 
 // ----- 투영: 위에서 30도 기운 정사영 -----
@@ -473,15 +473,9 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     add(z + 0.5, tag(px(x), py(z + 0.4) + 13, tr.state === "breakdown_stop" ? `${name} 고장` : name, tr.state === "breakdown_stop" ? "cc-tag mid stop" : "cc-tag mid"));
   });
 
-  // ----- 안벽 앞 바다(인도): 현장 3D와 같은 자리, 세 척씩 두 줄 -----
-  const sea = frame.lots.filter((l) => l.place === "sea").sort((a, b) => a.slot - b.slot);
-  sea.slice(0, 8).forEach((l, i) => {
-    const { x: bx, z: bz } = seaSpot(i);
-    add(bz, block(l, lot(bx, bz, 4, 0.75, l.type),
-      s("text", { x: px(bx), y: py(bz) + 12, class: l.late ? "cc-sea-name late" : "cc-sea-name" }, l.ship)));
-  });
+  // 인도한 배는 조선소를 떠난다(관제실 모니터 오른쪽 위 인도 완료 로그). 착수 전 배만 안벽에 적어 둔다
   const waiting = frame.lots.filter((l) => l.place === "hidden").map((l) => l.ship);
-  add(9, tag(px((QUAY.x0 + QUAY.x1) / 2), py(QUAY.z0 + 1.8), `안벽 · 인도 ${sea.length}척${waiting.length ? ` · 착수 전 ${waiting.join(" ")}` : ""}`, "cc-tag mid"));
+  if (waiting.length) add(9, tag(px((QUAY.x0 + QUAY.x1) / 2), py(QUAY.z0 + 1.8), `착수 전 ${waiting.join(" ")}`, "cc-tag mid"));
 
   // ----- 그리기: 고른 구획을 화면 가득 -----
   const sec = sectorBounds(opts.focus, docks);

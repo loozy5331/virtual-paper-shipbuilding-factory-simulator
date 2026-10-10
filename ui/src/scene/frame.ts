@@ -92,6 +92,8 @@ export interface Frame {
   stations: StationView[];
   transporters: TransporterView[];
   idleWorkers: number;
+  /** 오늘까지 인도한 배(시운전을 마치고 선주에게 넘김). 조선소를 떠나 그림에는 없고 화면 오른쪽 위 인도 완료 로그에 남는다 */
+  delivered: { ship: string; type: string; day: number; late: number }[];
   /** 직종별 쉬는 인원(4.0, D42). 대기소의 모자 색 */
   idleByTrade: Record<string, number>;
   shelves: ShelfView[];
@@ -265,6 +267,9 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
     stations,
     transporters,
     idleWorkers: day > 0 ? result.workforce.daily[index].idle : result.workforce.pool,
+    delivered: result.ships.filter((s) => s.delivered_day !== null && s.delivered_day <= day)
+      .map((s) => ({ ship: s.id, type: s.type, day: s.delivered_day!, late: s.late_days }))
+      .sort((a, b) => b.day - a.day || a.ship.localeCompare(b.ship)),
     idleByTrade: Object.fromEntries(Object.entries(result.workforce.pools ?? { assembly: result.workforce.pool })
       .map(([t, n]) => [t, day > 0 ? result.workforce.daily[index].trades?.[t]?.idle ?? 0 : n])),
     shelves,
