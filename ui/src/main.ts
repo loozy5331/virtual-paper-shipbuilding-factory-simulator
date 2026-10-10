@@ -9,7 +9,7 @@
 // 사람의 얼굴과 이름은 작업모를 쓰고 현장(3D)에 직접 나가야 보인다(D24). 화면에는 "CCTV"라는 말을 쓰지 않는다(감시처럼 느껴져서).
 
 import { api, ApiError, type ClassBest, type Config, type Finding, type Preview, type Result, type ScenarioPayload } from "./api";
-import { h, mount, num, pct } from "./dom";
+import { h, mount, num, pct, s as svgEl } from "./dom";
 import { renderDesk } from "./desk";
 import { planLabel, renderForm, renderPlanBar, renderPlanNotes, renderPlanTabs, updatePreview, type FormContext } from "./form";
 import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
@@ -801,20 +801,46 @@ function drawDelivered(frame: Frame): void {
 
 /** 시운전 말풍선: 시운전은 먼바다라 그림 밖이다. 시운전 중인 배가 있을 때만 오른쪽 아래에 뜬다 */
 function drawSeaTrial(frame: Frame): void {
-  const { scenario } = state.data;
-  const rows = frame.seaTrial.map((t) => {
-    const loss = t.state === "work" ? "" : STATE_INFO[t.state]?.name ?? "";
-    return h("li", null,
-      h("b", null, t.ship),
-      h("span", null, scenario.ship_types[t.type]?.name ?? t.type),
-      h("span", null, `${t.day}/${t.days}일째`),
-      loss ? h("em", null, loss) : null);
-  });
+  // 글 목록이 아니라 그림: 먼바다(수평선과 물결) 위에 시운전 중인 배가 동동 떠 있다. 배 아래에 이름과 며칠째
+  const ships = frame.seaTrial;
   for (const host of [els.trialRoom, els.trialField]) {
-    host.hidden = rows.length === 0;
-    mount(host, rows.length ? [h("div", { class: "trial-head" }, "시운전 중 · 먼바다"),
-      h("ul", null, rows.map((r) => r.cloneNode(true) as HTMLElement))] : []);
+    host.hidden = ships.length === 0;
+    if (!ships.length) { mount(host); continue; }
+    const W = Math.max(150, 96 * ships.length + 24), H = 92, sea = 52;
+    const svg = svgEl("svg", { class: "trial-sea", viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: "img",
+      "aria-label": `시운전 중: ${ships.map((t) => `${t.ship} ${t.day}/${t.days}일째`).join(", ")}` },
+      svgEl("rect", { x: 0, y: 0, width: W, height: sea, class: "sky" }),
+      svgEl("rect", { x: 0, y: sea, width: W, height: H - sea, class: "water" }),
+      ...[0, 1, 2].map((k) => svgEl("path", { class: "wave", d: Array.from({ length: Math.ceil(W / 16) + 1 }, (_, i) =>
+        `${i ? "" : `M${-8 + k * 5} ${sea + 7 + k * 9}`} q4 -3 8 0 t8 0`).join(" ") })));
+    ships.forEach((t, k) => {
+      const cx = 12 + 48 + k * 96;
+      const g = svgEl("g", { class: "trial-ship", style: `animation-delay: ${-k * 0.9}s` }, trialShip(t.type, cx, sea + 2));
+      svg.append(g, svgEl("text", { x: cx, y: H - 6, class: t.state === "work" ? "name" : "name loss" },
+        `${t.ship} · ${t.day}/${t.days}일${t.state === "work" ? "" : ` · ${STATE_INFO[t.state]?.name ?? ""}`}`));
+    });
+    mount(host, h("div", { class: "trial-head" }, "시운전 · 먼바다"), svg);
   }
+}
+
+/** 시운전 중인 배의 옆모습(선종마다 갑판 위가 다르다). 물높이 y에 흘수선이 온다 */
+function trialShip(type: string, cx: number, y: number): SVGElement {
+  const L = type === "VLCC" ? 42 : type === "LNG" ? 40 : 38;
+  const g = svgEl("g", null,
+    // 선체: 위는 종이색, 물에 잠긴 아래는 칠한 색(3D와 같은 붉은 주황)
+    svgEl("path", { class: "hull", d: `M${cx - L} ${y - 9} L${cx + L + 6} ${y - 9} L${cx + L - 2} ${y + 3} L${cx - L + 4} ${y + 3} Z` }),
+    svgEl("path", { class: "bottom", d: `M${cx - L + 2} ${y} L${cx + L} ${y} L${cx + L - 2} ${y + 3} L${cx - L + 4} ${y + 3} Z` }),
+    // 선미 선실과 연돌
+    svgEl("rect", { class: "deck", x: cx - L + 3, y: y - 20, width: 11, height: 11 }),
+    svgEl("rect", { class: "funnel", x: cx - L + 6, y: y - 25, width: 4, height: 5 }));
+  if (type === "CONT") {
+    for (let i = 0; i < 4; i++) g.append(svgEl("rect", { class: `box b${i % 3}`, x: cx - L + 18 + i * 13, y: y - 16, width: 12, height: 7 }));
+  } else if (type === "LNG") {
+    for (let i = 0; i < 4; i++) g.append(svgEl("path", { class: "deck", d: `M${cx - L + 18 + i * 14} ${y - 9} a6 6 0 0 1 12 0 Z` }));
+  } else {
+    g.append(svgEl("path", { class: "pipe", d: `M${cx - L + 16} ${y - 11} L${cx + L} ${y - 11}` }));
+  }
+  return g;
 }
 
 function drawTrackCard(): void {
@@ -1151,7 +1177,7 @@ const introSeen = new Set<number>();
 function goField(): void {
   const r = currentRun();
   if (!r) return;
-  state.fieldFocus = state.cctv;   // 작업 현황에서 보던 구획으로 나간다.
+  state.fieldFocus = null;   // 현장은 처음에 전경으로 본다(4.0.1, 사용자). 구획은 위 단추로 고른다.
   pause();   // 현장에 나가면 시간이 멈춰 있다. 재생하면 1배속(하루 2초)으로 흐른다.
   r.safetyWarnings ??= 0;
   setScreen("field");

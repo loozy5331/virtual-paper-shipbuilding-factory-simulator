@@ -14,13 +14,14 @@
     {
       "id": "processing",
       "name": "가공",
-      "real": "가공 공장 곡가공장: 부재를 선체 곡면에 맞게 굽힌다",
+      "real": "가공 공장 곡가공장: 절단에서 컨베이어벨트로 받은 부재를 선체 곡면에 맞게 굽힌다",
       "material": null,
       "trade": "processing",
       "after": [
         "cutting"
       ],
       "site": "fab",
+      "arrive": "conveyor",
       "split": true
     },
     {

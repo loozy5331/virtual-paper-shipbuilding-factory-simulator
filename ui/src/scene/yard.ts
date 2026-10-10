@@ -18,7 +18,7 @@ import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot } from "./stock"
 import { buildDock, buildLand, buildRoof, buildSectorOutline, buildWalls, buildYardLines, GiantHand, SEA_Y, type DockParts } from "./coast";
 import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_TOP, MAT_W, MAT2_D,
   nearLane, QUEUE_Z, SAFE_SPOT, seaSpot, SECTORS, sectorBounds, SHELF_X, SHELF_Z, SHORE_X, SPUR_IN, SPUR_OUT, SPUR_X, STATION_X,
-  STOCK_AT, STOCK_D, STOCK_HALF, STOCK_NAME, CONVEYOR, QUAY_WORK_Z, ST, isShop, quayQueueSpot, along, groundY, kitRoutes, LAB_TREES, LAND_ROUTE, route, SHIP_ROUTE, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
+  STOCK_AT, STOCK_D, STOCK_HALF, STOCK_NAME, CONVEYORS, BACK_LANE_Z, QUAY_WORK_Z, ST, isShop, quayQueueSpot, along, groundY, kitRoutes, LAB_TREES, LAND_ROUTE, route, SHIP_ROUTE, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
 import { clamp01, ease, flatOf, hullTris, type Tri } from "../proto/model";
 import { STATE_INFO, STATION_COLOR, STATION_TRADE, TRADE_HAT } from "../labels";
 import type { TrackPick } from "../track";
@@ -793,8 +793,13 @@ export class Yard {
       m.castShadow = false;
       this.scene.add(m);
     };
+    // 뒷길(4.0.1): 물류창고 앞 가로 도로. 샛길은 뒷길까지 이어진다
+    const back = mesh(new THREE.BoxGeometry(SPUR_X[5] - SPUR_X[0] + 0.8, 0.02, 0.9), "#9f9a8f", { roughness: 1 });
+    back.position.set((SPUR_X[0] + SPUR_X[5]) / 2, 0.011, BACK_LANE_Z);
+    back.castShadow = false;
+    this.scene.add(back);
     SPUR_X.forEach((sx, k) => {
-      spur(sx, unitZ(2) - MAT2_D / 2 - 0.4, LANE_Z - 0.5);
+      spur(sx, k <= 5 ? BACK_LANE_Z : unitZ(2) - MAT2_D / 2 - 0.4, LANE_Z - 0.5);
       if (k >= 4) spur(sx, LANE_Z + 0.5, benchAt(ST.pe, 2, 2).z + MAT2_D / 2 + 0.4);
     });
     for (let k = 0; k < 2; k++) {
@@ -1185,9 +1190,8 @@ export class Yard {
       const gate = launch ? this.gateHand(u, frac) : null;
       hand.place(gate ? at.lerp(gate.at, gate.k) : at);
     }
-    // 컨베이어벨트: 가공이 일하는 날 판이 흘러간다
-    const proc = f.stations[ST.proc];
-    this.beltOn = !!proc && (proc.state === "work" || proc.state === "rework");
+    // 컨베이어벨트: 판을 올리는 공정(절단, 가공)이 일하는 날 판이 흘러간다
+    this.beltOn = CONVEYORS.map((c) => { const st = f.stations[c.from]; return !!st && (st.state === "work" || st.state === "rework"); });
     this.craneActive = [0, 1].map((u) => (u === 0 ? hook : hook2) !== null || launching.some((l) => l.unit === u));
 
     // 정반: 작업장(1호, 증설하면 2호)마다 인원 또는 로봇, 시니어, 중지, 잔업
@@ -1405,9 +1409,10 @@ export class Yard {
     if (before.place === now.place && before.station === now.station && before.unit === now.unit) return;
     const y = MAT_TOP;
     const to = benchAt(now.station, now.unit, docks), from = benchAt(before.station, before.unit, docks);
-    if (before.station === ST.proc && before.place === "bench" && now.station === ST.sub) {
-      // 가공 → 소조립: 컨베이어벨트 위로 올라 벨트를 따라 간다(D43)
-      const c = CONVEYOR;
+    const belt = CONVEYORS.find((c) => c.from === before.station && now.station === before.station + 1);
+    if (belt && before.place === "bench") {
+      // 절단 → 가공, 가공 → 소조립: 컨베이어벨트 위로 올라 벨트를 따라 간다(D43, 4.0.1)
+      const c = belt;
       lot.path = [new THREE.Vector3(c.x0 - 0.3, c.y, c.z), new THREE.Vector3(c.x1 + 0.3, c.y, c.z)];
       return;
     }
@@ -1509,43 +1514,46 @@ export class Yard {
     return `<b>${view.ship}</b>${chip}`;
   }
 
-  /** 컨베이어벨트 위 판(가공이 일하는 동안 벨트를 따라 흘러간다) */
-  private readonly beltPlates: THREE.Mesh[] = [];
-  private beltOn = false;
+  /** 컨베이어벨트 위 판(절단이 일하는 동안 벨트를 따라 가공 쪽으로 흘러간다) */
+  private readonly beltPlates: THREE.Mesh[][] = [];
+  private beltOn: boolean[] = [];
 
-  /** 컨베이어벨트(D43): 가공 공장에서 소조립 공장까지. 샛길 위를 지나도록 다리 위에 놓는다 */
+  /** 컨베이어벨트(D43): 가공 공장 안, 절단 정반에서 가공 정반까지 */
   private buildConveyor(): void {
-    const c = CONVEYOR, len = c.x1 - c.x0 + 1.2, cx = (c.x0 + c.x1) / 2;
-    const belt = mesh(new THREE.BoxGeometry(len, 0.08, c.w), "#3a3f3c", { roughness: 0.9 });
-    belt.position.set(cx, c.y, c.z);
-    const rails = [-1, 1].map((side) => {
-      const r = mesh(new THREE.BoxGeometry(len, 0.12, 0.05), "#9aa3a8");
-      r.position.set(cx, c.y + 0.04, c.z + side * (c.w / 2 + 0.02));
-      return r;
+    CONVEYORS.forEach((c, n) => {
+      const len = c.x1 - c.x0 + 0.6, cx = (c.x0 + c.x1) / 2;
+      const belt = mesh(new THREE.BoxGeometry(len, 0.08, c.w), "#3a3f3c", { roughness: 0.9 });
+      belt.position.set(cx, c.y, c.z);
+      const rails = [-1, 1].map((side) => {
+        const r = mesh(new THREE.BoxGeometry(len, 0.12, 0.05), "#9aa3a8");
+        r.position.set(cx, c.y + 0.04, c.z + side * (c.w / 2 + 0.02));
+        return r;
+      });
+      this.scene.add(belt, ...rails);
+      for (const x of [c.x0 - 0.2, cx, c.x1 + 0.2]) for (const side of [-1, 1]) {
+        const leg = mesh(new THREE.BoxGeometry(0.06, c.y, 0.06), "#7d878c");
+        leg.position.set(x, c.y / 2, c.z + side * c.w / 2);
+        this.scene.add(leg);
+      }
+      this.beltPlates[n] = [];
+      for (let k = 0; k < 3; k++) {
+        const plate = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 0.24), paperMaterial());
+        plate.castShadow = true;
+        plate.visible = false;
+        this.beltPlates[n].push(plate);
+        this.scene.add(plate);
+      }
     });
-    this.scene.add(belt, ...rails);
-    for (const x of [c.x0 - 0.4, cx, c.x1 + 0.4]) for (const side of [-1, 1]) {
-      const leg = mesh(new THREE.BoxGeometry(0.06, c.y, 0.06), "#7d878c");
-      leg.position.set(x, c.y / 2, c.z + side * c.w / 2);
-      this.scene.add(leg);
-    }
-    for (let k = 0; k < 4; k++) {
-      const plate = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.03, 0.26), paperMaterial());
-      plate.castShadow = true;
-      plate.visible = false;
-      this.beltPlates.push(plate);
-      this.scene.add(plate);
-    }
   }
 
   private animateProps(t: number): void {
-    const c = CONVEYOR;
-    this.beltPlates.forEach((plate, k) => {
-      plate.visible = this.beltOn;
-      if (!this.beltOn) return;
-      const u = (t * 0.25 + k / this.beltPlates.length) % 1;
-      plate.position.set(c.x0 - 0.5 + (c.x1 - c.x0 + 1) * u, c.y + 0.06, c.z);
-    });
+    CONVEYORS.forEach((c, n) => this.beltPlates[n]?.forEach((plate, k, all) => {
+      const on = !!this.beltOn[n];
+      plate.visible = on;
+      if (!on) return;
+      const u = (t * 0.3 + k / all.length) % 1;
+      plate.position.set(c.x0 - 0.2 + (c.x1 - c.x0 + 0.4) * u, c.y + 0.06, c.z);
+    }));
     const puffs = (g: THREE.Group, height: number) => {
       if (!g.visible) return;
       g.children.forEach((c, k) => {

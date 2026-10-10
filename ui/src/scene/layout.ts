@@ -33,9 +33,16 @@ export const isShop = (station: number) => station <= ST.preout;
  * 공정의 가운데 x: 가공 공장의 절단·가공(같은 건물, D43), 소조립·중조립, 블록 마감동의 도장·선행의장(같은 건물, 4.0), PE장, 탑재(도크),
  * 안벽의장(매립 안벽 1번 정박 자리), 시운전(만 밖 바다)
  */
-export const STATION_X = [-35.6, -30.8, -24, -18.5, -12.6, -7.9, 3.4, 8.5, 14.4, 36];
-/** 컨베이어벨트(D43): 가공 공장 오른쪽 벽에서 소조립 왼쪽 벽까지, 1호 줄 뒤쪽 높이(z). 샛길 위를 지나도록 다리 위에 놓는다 */
-export const CONVEYOR = { x0: STATION_X[1] + MAT_W / 2 + 0.45, x1: STATION_X[2] - MAT_W / 2 - 0.45, z: -0.7, y: 0.55, w: 0.55 };
+export const STATION_X = [-36.6, -30.8, -24, -18.5, -12.6, -7.9, 3.4, 8.5, 14.4, 36];
+/**
+ * 컨베이어벨트(D43, 4.0.1): 둘이다. 가공 공장 안 절단 → 가공(잘라 낸 판), 가공 공장 → 소조립 공장(굽힌 판, 샛길 위를 다리로 지난다).
+ * from = 벨트에 판을 올리는 공정(그 공정이 일하는 날 판이 흐른다). 그림만이고 엔진은 둘 다 다음 날 들어간다.
+ */
+export interface Conveyor { from: number; x0: number; x1: number; z: number; y: number; w: number }
+export const CONVEYORS: Conveyor[] = [
+  { from: 0, x0: STATION_X[0] + MAT_W / 2 + 0.05, x1: STATION_X[1] - MAT_W / 2 - 0.05, z: -0.7, y: 0.55, w: 0.55 },
+  { from: 1, x0: STATION_X[1] + MAT_W / 2 + 0.45, x1: STATION_X[2] - MAT_W / 2 - 0.45, z: -0.7, y: 0.55, w: 0.55 },
+];
 /** 안벽의장 정박 자리 사이 간격, 안벽 앞 물 위 줄(z) */
 const BERTH_GAP = 3.6, BERTH_Z = 10.6;
 /** 도크 줄: 1도크는 큰길 뒤, 2도크는 큰길 앞(큰길을 사이에 두고 마주 본다) */
@@ -213,11 +220,14 @@ export function polyline(points: { x: number; z: number }[]): Route {
  * 앞 구간(pick)은 하루의 준비 시간 안에, 뒤 구간(drop)은 그 뒤에 달린다. 하루 끝에는 그 공정 앞에 서 있다.
  */
 export const KIT_PICK = { x: SHELF_X[1], z: SHELF_Z + 1.5 };
+/** 뒷길(4.0.1): 물류창고 앞, 공장 뒷벽과 창고 사이의 가로 도로. 샛길이 모두 여기까지 이어진다. T1이 창고와 공장 사이를 이 길로 다닌다 */
+export const BACK_LANE_Z = KIT_PICK.z;
 export function kitRoutes(station: number): { pick: Route; drop: Route } {
-  const spur = SPUR_X[1];
+  // 차고(큰길 왼쪽 끝) → 가공 공장 왼쪽 샛길 → 뒷길 → 창고 앞. 내릴 때는 뒷길에서 그 공정의 들어가는 샛길로 내려와 큰길로
+  const first = SPUR_X[0], down = SPUR_X[Math.max(0, SPUR_IN[station] ?? 0)];
   return {
-    pick: polyline([{ x: DEPOT.x, z: LANE_Z }, { x: spur, z: LANE_Z }, { x: spur, z: KIT_PICK.z }, KIT_PICK]),
-    drop: polyline([KIT_PICK, { x: spur, z: KIT_PICK.z }, { x: spur, z: LANE_Z }, { x: STATION_X[station] - 1.4, z: LANE_Z }]),
+    pick: polyline([{ x: DEPOT.x, z: LANE_Z }, { x: first, z: LANE_Z }, { x: first, z: BACK_LANE_Z }, KIT_PICK]),
+    drop: polyline([KIT_PICK, { x: down, z: BACK_LANE_Z }, { x: down, z: LANE_Z }, { x: STATION_X[station] - 1.4, z: LANE_Z }]),
   };
 }
 
