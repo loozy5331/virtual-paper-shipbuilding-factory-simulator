@@ -36,14 +36,12 @@ export const isShop = (station: number) => station <= ST.preout;
 export const STATION_X = [-36.6, -30.8, -24, -18.5, -12.6, -7.9, 3.4, 8.5, 14.4, 36];
 /**
  * 컨베이어벨트(D43): 가공 공장 안 절단 → 가공(잘라 낸 판). from = 벨트에 판을 올리는 공정(그 공정이 일하는 날 판이 흐른다).
- * 가공 → 소조립은 실제 조선소처럼 부재를 배 몫 팔레트에 담아 지게차로 옮긴다(4.0.2, FORKLIFT_HOME). 그림만이고 엔진은 둘 다 다음 날.
+ * 가공 → 소조립은 실제 조선소처럼 부재를 배 몫 팔레트에 담아 공용 지게차로 옮긴다(4.0.2, 4.3부터 엔진의 지게차 일감).
  */
 export interface Conveyor { from: number; x0: number; x1: number; z: number; y: number; w: number }
 export const CONVEYORS: Conveyor[] = [
   { from: 0, x0: STATION_X[0] + MAT_W / 2 + 0.05, x1: STATION_X[1] - MAT_W / 2 - 0.05, z: -0.7, y: 0.55, w: 0.55 },
 ];
-/** 지게차가 서 있는 자리: 가공 공장과 소조립 공장 사이 샛길 입구(큰길 쪽). 부재 팔레트를 큰길로 날라 소조립에 내린다 */
-export const FORKLIFT_HOME = { x: (STATION_X[1] + MAT_W / 2 + STATION_X[2] - MAT_W / 2) / 2, z: LANE_Z - 1.6 };
 /** 안벽의장 정박 자리 사이 간격, 안벽 앞 물 위 줄(z) */
 const BERTH_GAP = 3.6, BERTH_Z = 10.6;
 /** 도크 줄: 1도크는 큰길 뒤, 2도크는 큰길 앞(큰길을 사이에 두고 마주 본다) */
@@ -97,8 +95,16 @@ export const SPUR_X = [STATION_X[ST.cut] - MAT_W / 2 - 1.45, (STATION_X[ST.proc]
 /** 공정마다 들어가는 샛길(왼쪽)과 나오는 샛길(오른쪽): SPUR_X 번호. 절단·가공, 도장·선행의장은 같은 건물이라 안에서 옮긴다. −1은 샛길 없음 */
 export const SPUR_IN = [0, 0, 1, 2, 3, 3, 5, 5, -1, -1], SPUR_OUT = [1, 1, 2, 3, 4, 4, 6, 6, -1, -1];
 
-/** 트랜스포터 차고(큰길 왼쪽 끝), 작업대기소, 물류창고 선반 셋, 연구소: 모두 내업 구획 */
-export const DEPOT = { x: -42.6, z: LANE_Z };
+/** 큰길의 왼쪽 끝(작업대기소·연구소 앞) */
+export const LANE_X0 = -42.6;
+/**
+ * 트랜스포터 차고(4.3, D46): 트랜스포터는 소조립 이후 블록만 나르므로 첫 운반 구간(소조립 → 중조립) 옆,
+ * 두 공장 사이 샛길 입구의 큰길 건너편(적치장 두 칸 사이). 트랜스포터는 큰길과 직각으로 선다.
+ */
+export const DEPOT = { x: SPUR_X[2], z: LANE_Z + 1.45 };
+/** 지게차 차고(4.3, D46): 물류창고 왼쪽 뒷길 가(창고 쪽). 키트를 싣는 창고 앞이 가깝다. 대마다 한 칸씩 오른쪽으로 */
+export const FORKLIFT_GARAGE = { x: -26.6, z: -9.0, gap: 0.95 };
+export const garageSpot = (k: number) => ({ x: FORKLIFT_GARAGE.x + k * FORKLIFT_GARAGE.gap, z: FORKLIFT_GARAGE.z });
 export const LOUNGE = { x: -42.2, z: -4.4 };
 /**
  * 자재 자리(재료 순서 = rules.json: 종이, 물감, 깃발). 4.2: 종이(철판)는 물류창고가 아니라 그 왼쪽 강재 적치장(야외)에 쌓고,
@@ -228,32 +234,39 @@ export function polyline(points: { x: number; z: number }[]): Route {
 }
 
 /**
- * T1 자재 키트(4.0, D39): 차고 → 샛길로 물류창고 앞(키트 싣는 자리) → 다시 샛길로 큰길 → 그 공정 앞(큰길 위).
- * 앞 구간(pick)은 하루의 준비 시간 안에, 뒤 구간(drop)은 그 뒤에 달린다. 하루 끝에는 그 공정 앞에 서 있다.
+ * 자재 키트(4.0, D39, 4.3부터 공용 지게차): 차고 → 물류창고 앞(키트 싣는 자리) → 샛길로 큰길 → 그 공정 앞(큰길 위).
  */
 export const KIT_PICK = { x: WAREHOUSE.door, z: SHELF_Z + 1.5 };
-/** 뒷길(4.0.1): 물류창고 앞, 공장 뒷벽과 창고 사이의 가로 도로. 샛길이 모두 여기까지 이어진다. T1이 창고와 공장 사이를 이 길로 다닌다 */
+/** 뒷길(4.0.1): 물류창고 앞, 공장 뒷벽과 창고 사이의 가로 도로. 샛길이 모두 여기까지 이어진다. 지게차가 창고와 공장 사이를 이 길로 다닌다(4.3) */
 export const BACK_LANE_Z = KIT_PICK.z;
 /**
- * T1이 키트를 내려놓는 자리. 대부분은 그 공정 앞 큰길 위. 안벽의장은 해안선 너머(매립 안벽)라 큰길 끝은 바다다:
+ * 지게차가 키트를 내려놓는 자리. 대부분은 그 공정 앞 큰길 위. 안벽의장은 해안선 너머(매립 안벽)라 큰길 끝은 바다다:
  * 안벽 작업 구역 안에 내려놓는다(4.1.2).
  */
 export function kitDrop(station: number): { x: number; z: number } {
   if (station === ST.quay) return { x: STATION_X[ST.quay] - 1.0, z: QUAY.z0 + 1.7 };
   return { x: STATION_X[station] - 1.4, z: LANE_Z };
 }
-export function kitRoutes(station: number): { pick: Route; drop: Route } {
-  // 차고(큰길 왼쪽 끝) → 가공 공장 왼쪽 샛길 → 뒷길 → 창고 앞. 내릴 때는 뒷길에서 그 공정의 들어가는 샛길로 내려와 큰길로
-  const first = SPUR_X[0], down = SPUR_X[SPUR_IN[station] >= 0 ? SPUR_IN[station] : 5];
-  const end = kitDrop(station);
-  // 안벽의장: 큰길에서 PE장·도크 사이 샛길로 내려가 야드 앞쪽으로, 거기서 매립 안벽으로
-  const tail = station === ST.quay
-    ? [{ x: SPUR_X[6], z: LANE_Z }, { x: SPUR_X[6], z: end.z }, end]
-    : [end];
-  return {
-    pick: polyline([{ x: DEPOT.x, z: LANE_Z }, { x: first, z: LANE_Z }, { x: first, z: BACK_LANE_Z }, KIT_PICK]),
-    drop: polyline([KIT_PICK, { x: down, z: BACK_LANE_Z }, { x: down, z: LANE_Z }, ...tail]),
-  };
+/**
+ * 내업 길로 두 자리를 잇는다(지게차, 4.3). side: back = 뒷길 쪽(차고, 창고 앞), lane = 큰길 쪽(공정 앞, 정반),
+ * quay = 매립 안벽(큰길에서 PE장·도크 사이 샛길로 내려가 야드 앞쪽으로). 뒷길과 큰길 사이는 목적지에 가장 가까운 샛길로 건넌다.
+ */
+export type RoadSide = "back" | "lane" | "quay";
+export function roadPath(a: { x: number; z: number }, as: RoadSide, b: { x: number; z: number }, bs: RoadSide): Route {
+  const attach = (p: { x: number; z: number }, side: RoadSide) =>
+    side === "back" ? { pts: [p, { x: p.x, z: BACK_LANE_Z }], road: "back", x: p.x }
+      : side === "lane" ? { pts: [p, { x: p.x, z: LANE_Z }], road: "lane", x: p.x }
+        : { pts: [p, { x: SPUR_X[6], z: p.z }, { x: SPUR_X[6], z: LANE_Z }], road: "lane", x: SPUR_X[6] };
+  const from = attach(a, as), to = attach(b, bs);
+  const mid: { x: number; z: number }[] = [];
+  if (from.road !== to.road) {
+    // 뒷길까지 이어진 샛길(0~5) 중 큰길 쪽 끝에 가장 가까운 것
+    const laneX = from.road === "lane" ? from.x : to.x;
+    const spur = SPUR_X.slice(0, 6).reduce((best, x) => (Math.abs(x - laneX) < Math.abs(best - laneX) ? x : best));
+    const fz = from.road === "back" ? BACK_LANE_Z : LANE_Z, tz = to.road === "back" ? BACK_LANE_Z : LANE_Z;
+    mid.push({ x: spur, z: fz }, { x: spur, z: tz });
+  }
+  return polyline([...from.pts, ...mid, ...to.pts.slice().reverse()]);
 }
 
 /** 길 위 u(0~1) 자리와 나아가는 방향(xz 평면 각도, +x가 0) */

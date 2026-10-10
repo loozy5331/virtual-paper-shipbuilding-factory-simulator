@@ -10,13 +10,15 @@ export function eventText(ev: SimEvent, scenario: Scenario): string {
   const material = (id: string) => scenario.materials.find((m) => m.id === id)?.name ?? id;
   switch (ev.type) {
     case "arrival": return `${material(ev.material)} ${ev.quantity}개 입고 (${ev.ship}용)`;
-    case "issue": return `${material(ev.material)} ${ev.quantity}개 출고 → ${ev.ship} ${station(ev.station)}${ev.transporter ? ` (${ev.transporter} 자재 키트)` : ""}`;
+    case "issue": return `${material(ev.material)} ${ev.quantity}개 출고 → ${ev.ship} ${station(ev.station)}${ev.forklift ? ` (지게차 ${ev.forklift} 자재 키트)` : ev.transporter ? ` (${ev.transporter} 자재 키트)` : ""}`;
     case "enter": return `${ev.ship} ${station(ev.station)} 투입${ev.units ? ` (${ev.units.join("·")}호에 나눠)` : ""}`;
     case "complete": return `${ev.ship} ${station(ev.station)} 완료`;
     case "defect": return `${ev.ship} ${station(ev.station)} 검사 불량 → 재작업`;
     case "accident": return `${station(ev.station)} 잔업 사고 → 3일 중지`;
-    case "breakdown": return ev.transporter
-      ? `트랜스포터 ${ev.transporter} 고장 → 2일 중지`
+    case "breakdown": return ev.forklift
+      ? `지게차 ${ev.forklift} 고장 → 2일 중지`
+      : ev.transporter
+      ? `트랜스포터 고장 → 2일 중지`
       : `${station(ev.station ?? "")} 설비 고장 → 2일 중지`;
     case "transport_start": return `${ev.ship} ${station(ev.from)} → ${station(ev.to)} 운반 시작`;
     case "transport_end": return `${ev.ship} ${station(ev.to)}에 도착`;

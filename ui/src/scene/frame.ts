@@ -56,12 +56,28 @@ export interface StationView extends Omit<UnitView, "unit"> {
 
 export interface TransporterView {
   id: string;
-  /** 4.0: material = T1 자재 키트, block = T2 블록 */
-  role: "material" | "block";
+  /** 4.3(D46): 블록 트랜스포터 한 대 */
+  role: "block";
   state: "move" | "idle" | "breakdown_stop";
   ship: string | null;      // 실은 배 (여러 척이면 첫 배)
-  /** T1이 오늘 키트를 가져다 놓은 공정 번호(첫 키트). 없으면 null */
-  kitTo: number | null;
+}
+
+/** 지게차 오늘 일감(4.3): 자재 키트(물류창고 → station 앞) 또는 부재 팔레트(가공 unit호 → 소조립) */
+export interface ForkliftJobView {
+  kind: "kit" | "pallet";
+  ship: string;
+  /** 키트는 그 자재를 쓰는 공정, 팔레트는 소조립(공정 번호) */
+  station: number;
+  /** 팔레트를 실은 가공 작업장(0 = 1호) */
+  unit: number;
+  /** 키트의 자재 이름(팔레트는 null) */
+  material: string | null;
+}
+
+export interface ForkliftView {
+  id: string;
+  state: "move" | "idle" | "breakdown_stop";
+  jobs: ForkliftJobView[];
 }
 
 export interface ShelfView {
@@ -91,13 +107,15 @@ export interface Frame {
   lots: LotView[];
   stations: StationView[];
   transporters: TransporterView[];
+  /** 공용 지게차(4.3, D46): 대마다 오늘 일감 */
+  forklifts: ForkliftView[];
   idleWorkers: number;
   /** 오늘까지 인도한 배(시운전을 마치고 선주에게 넘김). 조선소를 떠나 그림에는 없고 화면 오른쪽 위 인도 완료 로그에 남는다 */
   delivered: { ship: string; type: string; day: number; late: number }[];
   /** 오늘 시운전 중인 배(먼바다라 그림에는 없고 화면 오른쪽 아래 말풍선에 뜬다). day는 시운전 며칠째, days는 시운전 일수 */
   seaTrial: { ship: string; type: string; day: number; days: number; state: ShipState }[];
-  /** 지게차가 오늘 나르는 부재 팔레트(4.0.2): 어제 가공을 마치고 오늘 소조립(정반이나 적치장)에 온 배. unit = 가공 작업장 */
-  palletMoves: { ship: string; unit: number }[];
+  /** 지게차가 오늘 나르는 부재 팔레트(4.0.2, 4.3부터 지게차 일감에서): 오늘 소조립(정반이나 적치장)에 온 배. unit = 가공 작업장, forklift = 지게차 번호 */
+  palletMoves: { ship: string; unit: number; forklift: number }[];
   /** 직종별 쉬는 인원(4.0, D42). 대기소의 모자 색 */
   idleByTrade: Record<string, number>;
   shelves: ShelfView[];
@@ -221,10 +239,20 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
   });
 
   const transporters: TransporterView[] = result.transporters.map((tr) => {
-    const rec = day > 0 ? tr.daily[index] : { state: "idle" as const, ships: [], kits: [] };
-    const kit = rec.kits?.[0];
-    return { id: tr.id, role: tr.role ?? "block", state: rec.state, ship: rec.ships[0] ?? null,
-      kitTo: kit ? scenario.stations.findIndex((s) => s.id === kit.station) : null };
+    const rec = day > 0 ? tr.daily[index] : { state: "idle" as const, ships: [] };
+    return { id: tr.id, role: "block", state: rec.state, ship: rec.ships[0] ?? null };
+  });
+  // 팔레트를 실은 가공 작업장: 그 배가 가공에 있던 마지막 날의 작업장
+  const procUnit = (shipId: string) => {
+    const ship = result.ships.find((s) => s.id === shipId);
+    for (let d = index - 1; ship && d >= 0; d--) if (ship.daily[d]?.station === "processing") return Math.max(0, (ship.daily[d].unit ?? 1) - 1);
+    return 0;
+  };
+  const forklifts: ForkliftView[] = (result.forklifts ?? []).map((fk) => {
+    const rec = day > 0 ? fk.daily[index] : { state: "idle" as const, jobs: [] };
+    return { id: fk.id, state: rec.state, jobs: rec.jobs.map((j) => ({
+      kind: j.kind, ship: j.ship, station: stationIds.indexOf(j.station), unit: j.kind === "pallet" ? procUnit(j.ship) : 0,
+      material: j.material ? scenario.materials.find((m) => m.id === j.material)?.name ?? j.material : null })) };
   });
 
   const stock = day > 0 ? result.inventory_daily[index] : {};
@@ -271,14 +299,12 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
     deliveries,
     stations,
     transporters,
+    forklifts,
     idleWorkers: day > 0 ? result.workforce.daily[index].idle : result.workforce.pool,
     delivered: result.ships.filter((s) => s.delivered_day !== null && s.delivered_day <= day)
       .map((s) => ({ ship: s.id, type: s.type, day: s.delivered_day!, late: s.late_days }))
       .sort((a, b) => b.day - a.day || a.ship.localeCompare(b.ship)),
-    palletMoves: result.ships.filter((s) => {
-      const sp = s.spans["processing"], l = lots.find((v) => v.ship === s.id);
-      return day > 0 && sp && sp.end === day - 1 && l && stationIds[l.station] === "sub_assembly";
-    }).map((s) => ({ ship: s.id, unit: Math.max(0, (s.daily[day - 2]?.unit ?? 1) - 1) })),
+    palletMoves: forklifts.flatMap((fk, k) => fk.jobs.filter((j) => j.kind === "pallet").map((j) => ({ ship: j.ship, unit: j.unit, forklift: k }))),
     seaTrial: lots.filter((l) => l.place === "bench" && stationIds[l.station] === "sea_trial").map((l) => {
       const span = result.ships.find((s) => s.id === l.ship)!.spans["sea_trial"];
       return { ship: l.ship, type: l.type, day: day - span.start + 1, days: span.end - span.start + 1, state: l.state };

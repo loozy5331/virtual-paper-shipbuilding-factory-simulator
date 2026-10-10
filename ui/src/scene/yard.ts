@@ -11,14 +11,14 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { LEAD_IN, type Delivery, type Frame, type LotView } from "./frame";
+import { LEAD_IN, type Delivery, type ForkliftJobView, type Frame, type LotView } from "./frame";
 import { mesh, Person, SENIOR_NAME, WORKER_NAMES } from "./people";
 import { shipLook } from "./ships";
 import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot } from "./stock";
 import { buildDock, buildLand, buildRoof, buildSectorOutline, buildWalls, buildYardLines, GiantHand, Gulliver, SEA_Y, type DockParts } from "./coast";
 import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_TOP, MAT_W, MAT2_D,
   nearLane, QUEUE_Z, SAFE_SPOT, seaSpot, SECTORS, sector, sectorBounds, DOCK2_AREA, SHELF_X, SHELF_Z, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_IN, SPUR_OUT, SPUR_X, STATION_X,
-  STOCK_AT, STOCK_D, STOCK_HALF, STOCK_NAME, CONVEYORS, FORKLIFT_HOME, BACK_LANE_Z, polyline, QUAY_WORK_Z, ST, isShop, quayQueueSpot, along, groundY, kitRoutes, LAB_TREES, LAND_ROUTE, route, SHIP_ROUTE, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
+  STOCK_AT, STOCK_D, STOCK_HALF, STOCK_NAME, CONVEYORS, BACK_LANE_Z, garageSpot, FORKLIFT_GARAGE, KIT_PICK, kitDrop, LANE_X0, roadPath, type RoadSide, QUAY_WORK_Z, ST, isShop, quayQueueSpot, along, groundY, LAB_TREES, LAND_ROUTE, route, SHIP_ROUTE, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
 import { clamp01, ease, flatOf, hullTris, type Tri } from "../proto/model";
 import { STATE_INFO, STATION_COLOR, STATION_TRADE, TRADE_HAT } from "../labels";
 import type { TrackPick } from "../track";
@@ -190,7 +190,7 @@ class Lot {
   readonly pairTags: CSS2DObject[] = [];
   /** 샛길을 따라가는 중간 지점(작업장 2호·3호로 들고 날 때). 3.0 */
   path: THREE.Vector3[] = [];
-  /** 지게차가 들고 있는 중(가공 → 소조립, 4.0.2): 자리는 driveForklift가 정한다 */
+  /** 지게차가 들고 있는 중(가공 → 소조립, 4.0.2): 자리는 driveForklifts가 정한다 */
   held = false;
   prev: { place: string; station: number; unit: number } | null = null;
 
@@ -387,8 +387,8 @@ export class Yard {
     /** 로봇 팔(인력이 로봇인 공정). 작업장마다 하나 */
     robots: THREE.Group[];
   }[] = [];
-  /** 트랜스포터(4.0): T1 자재 키트, T2 블록. crate = T1이 실은 키트 상자 */
-  private readonly carts: { group: THREE.Group; tag: CSS2DObject; smoke: THREE.Group; crate: THREE.Mesh }[] = [];
+  /** 트랜스포터(4.3, D46): 블록 한 대. 평소에는 소조립·중조립 사이 차고에 큰길과 직각으로 선다 */
+  private readonly carts: { group: THREE.Group; tag: CSS2DObject; smoke: THREE.Group }[] = [];
   /** 납품 마차(3.2): 입고일마다 한 대. 사흘 전 등대 곶을 떠나 입고일 아침 창고 뒤에 닿는다(그림만). 여러 대가 함께 길 위에 있을 수 있다 */
   private readonly supply = [0, 1, 2, 3, 4, 5, 6, 7].map(() => buildSupplyCart());
   /** 해상 납품 배(종이 = 철판): 먼바다 → 등대 부두 */
@@ -489,7 +489,7 @@ export class Yard {
 
     buildLand(this.scene);
     this.buildConveyor();
-    this.buildForklift();
+    this.buildForklifts();
     this.buildAreas();
     this.buildStations();
     this.scene.add(new Gulliver().root, this.gulliver.root);
@@ -796,8 +796,8 @@ export class Yard {
   }
 
   private buildLane(): void {
-    const lane = mesh(new THREE.BoxGeometry(SHORE_X - 0.3 - (DEPOT.x - 1.5), 0.02, 1.0), "#9f9a8f", { roughness: 1 });
-    lane.position.set((DEPOT.x - 1.5 + SHORE_X - 0.3) / 2, 0.01, LANE_Z);
+    const lane = mesh(new THREE.BoxGeometry(SHORE_X - 0.3 - (LANE_X0 - 1.5), 0.02, 1.0), "#9f9a8f", { roughness: 1 });
+    lane.position.set((LANE_X0 - 1.5 + SHORE_X - 0.3) / 2, 0.01, LANE_Z);
     lane.castShadow = false;
     this.scene.add(lane);
     // 샛길: 큰길에서 공정 사이로 3호 작업장 뒤까지 들어간다(뒤쪽 작업장에 블록을 나르는 길).
@@ -817,7 +817,19 @@ export class Yard {
       spur(sx, k <= 5 ? BACK_LANE_Z : unitZ(2) - MAT2_D / 2 - 0.4, LANE_Z - 0.5);
       if (k >= 4) spur(sx, LANE_Z + 0.5, benchAt(ST.pe, 2, 2).z + MAT2_D / 2 + 0.4);
     });
-    for (let k = 0; k < 2; k++) {
+    // 차고 바닥(4.3): 트랜스포터는 소조립·중조립 사이 큰길 건너편, 지게차는 물류창고 왼쪽 뒷길 가
+    const pad = (x: number, z: number, w: number, d: number, text: string, tz: number) => {
+      const m = mesh(new THREE.BoxGeometry(w, 0.02, d), "#b7b1a4", { roughness: 1 });
+      m.position.set(x, 0.013, z);
+      m.castShadow = false;
+      const tag = label(text, "place-tag small");
+      tag.position.set(x, 0.05, tz);
+      this.scene.add(m, tag);
+    };
+    pad(DEPOT.x, DEPOT.z, 1.15, 1.9, "트랜스포터 차고", DEPOT.z + 1.15);
+    const gw = FORKLIFT_GARAGE.gap * 3;
+    pad(FORKLIFT_GARAGE.x + FORKLIFT_GARAGE.gap, FORKLIFT_GARAGE.z, gw, 1.1, "지게차 차고", FORKLIFT_GARAGE.z - 0.75);
+    for (let k = 0; k < 1; k++) {
       const group = new THREE.Group();
       const deck = mesh(new THREE.BoxGeometry(1.7, 0.2, 1.0), "#5d6b78", { metalness: 0.2 });
       deck.position.y = 0.22;
@@ -840,18 +852,14 @@ export class Yard {
       }
       smoke.visible = false;
       group.add(smoke);
-      const tag = label(`T${k + 1}`, "place-tag small");
+      const tag = label("트랜스포터", "place-tag small");
       tag.position.y = 0.9;
       group.add(tag);
-      // 자재 키트 상자(T1이 싣고 다닐 때만 보인다)
-      const crate = mesh(new THREE.BoxGeometry(0.6, 0.35, 0.5), "#c9a26b");
-      crate.position.y = 0.5;
-      crate.visible = false;
-      group.add(crate);
-      group.position.set(DEPOT.x, 0, LANE_Z + k * 1.15);
+      group.position.set(DEPOT.x, 0, DEPOT.z);
+      group.rotation.y = Math.PI / 2;
       group.visible = false;
       this.scene.add(group);
-      this.carts.push({ group, tag, smoke, crate });
+      this.carts.push({ group, tag, smoke });
     }
   }
 
@@ -1344,30 +1352,27 @@ export class Yard {
     this.people.forEach((p, i) => p.setVisible(i < used));
     setLabel(this.lounge, `작업대기소 · 쉬는 사람 <b>${f.idleWorkers}</b>명`);
 
-    // 트랜스포터
+    // 트랜스포터(블록 한 대, 4.3): 나르는 날은 블록과 함께, 쉬는 날은 차고에 큰길과 직각으로
     f.transporters.forEach((tr, k) => {
       const cart = this.carts[k];
+      if (!cart) return;
       cart.group.visible = true;
-      const lot = tr.role === "block" && tr.ship ? f.lots.find((l) => l.ship === tr.ship) : undefined;
+      const lot = tr.ship ? f.lots.find((l) => l.ship === tr.ship) : undefined;
       let at: THREE.Vector3;
-      let carrying = false;
-      if (tr.role === "material" && tr.state === "move" && tr.kitTo !== null) {
-        // T1: 준비 시간 안에 물류창고 앞으로 가 키트를 싣고(~0.4), 그 공정 앞으로(~0.8). 멈춰 있으면 공정 앞.
-        const r = kitRoutes(tr.kitTo);
-        const t = src.playing ? frac : 1;
-        const p = t < LEAD_IN ? along(r.pick, t / LEAD_IN) : t < 0.4 ? along(r.pick, 1) : along(r.drop, Math.min(1, (t - 0.4) / 0.4));
-        at = new THREE.Vector3(p.x, 0, p.z);
-        carrying = t >= 0.4 && t < 0.95;
-      } else if (tr.state === "move" && lot) {
+      let parked = false;
+      if (tr.state === "move" && lot) {
         at = lot.place === "carried"
           ? this.lotPosition(lot, frac, f).setY(0)
           : new THREE.Vector3(STATION_X[lot.station] - 1.4, 0, LANE_Z);
       } else if (tr.state === "breakdown_stop") {
         at = cart.group.position.clone();
       } else {
-        at = new THREE.Vector3(DEPOT.x, 0, LANE_Z + k * 1.15);
+        at = new THREE.Vector3(DEPOT.x, 0, DEPOT.z);
+        parked = true;
       }
       cart.group.position.lerp(at, jump ? 1 : 0.2);
+      // 차고에 거의 닿으면 직각으로 돌려 세운다(큰길 위에서는 길 방향)
+      if (tr.state !== "breakdown_stop") cart.group.rotation.y = parked ? Math.PI / 2 : 0;
       cart.group.userData.moving = tr.state === "move";
       // 운반 중인 로트는 트랜스포터가 실으러 온 뒤에야 함께 움직인다(수레보다 앞서 가지 않게).
       // 수레가 아직 멀면 로트는 실을 자리에서 기다린다.
@@ -1376,13 +1381,11 @@ export class Yard {
         if (lotObj && cart.group.position.distanceTo(at) < 0.8) lotObj.group.position.copy(cart.group.position).setY(0.32);
       }
       cart.smoke.visible = tr.state === "breakdown_stop";
-      cart.crate.visible = carrying;
-      const name = `${tr.id} ${tr.role === "material" ? "자재" : "블록"}`;
-      setLabel(cart.tag, tr.state === "breakdown_stop" ? `${name} ${chipHtml("breakdown_stop", "고장")}` : name);
+      setLabel(cart.tag, tr.state === "breakdown_stop" ? `트랜스포터 ${chipHtml("breakdown_stop", "고장")}` : "트랜스포터");
     });
     for (let k = f.transporters.length; k < this.carts.length; k++) this.carts[k].group.visible = false;
 
-    this.driveForklift(f, src.playing && !jump ? frac : 1);
+    this.driveForklifts(f, src.playing && !jump ? frac : 1);
     const cutSt = f.stations[ST.cut];
     this.steelOn = !!cutSt && (cutSt.state === "work" || cutSt.state === "rework");
 
@@ -1588,72 +1591,123 @@ export class Yard {
     return `<b>${view.ship}</b>${chip}`;
   }
 
-  /** 지게차(4.0.2): 가공 → 소조립 부재 팔레트를 나른다. 평소에는 두 공장 사이에 서 있다 */
-  private readonly forklift = new THREE.Group();
-  private readonly forkPallet = new THREE.Group();
+  /**
+   * 공용 지게차(4.3, D46): 대마다 자재 키트(물류창고 → 그 공정 앞)와 부재 팔레트(가공 → 소조립)를 나른다.
+   * 평소에는 물류창고 왼쪽 차고에 뒷길을 보고 선다. pallet = 포크 위 나무 받침, crate = 키트 상자.
+   */
+  private readonly forklifts: { group: THREE.Group; pallet: THREE.Group; crate: THREE.Mesh; tag: CSS2DObject; smoke: THREE.Group }[] = [];
 
-  private buildForklift(): void {
-    const body = mesh(new THREE.BoxGeometry(0.75, 0.32, 0.5), "#e0b43a", { roughness: 0.7 });
-    body.position.set(-0.15, 0.3, 0);
-    const cab = mesh(new THREE.BoxGeometry(0.32, 0.36, 0.46), "#3a3f3c", { roughness: 0.8 });
-    cab.position.set(-0.25, 0.64, 0);
-    const mast = mesh(new THREE.BoxGeometry(0.06, 0.95, 0.42), "#5d6661");
-    mast.position.set(0.26, 0.5, 0);
-    const forks = [-0.12, 0.12].map((z) => { const f = mesh(new THREE.BoxGeometry(0.55, 0.03, 0.06), "#5d6661"); f.position.set(0.55, 0.1, z); return f; });
-    const wheels = [[-0.38, 0.22], [-0.38, -0.22], [0.12, 0.22], [0.12, -0.22]].map(([x, z]) => {
-      const w = mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.07, 16), "#222"); w.rotation.x = Math.PI / 2; w.position.set(x, 0.11, z); return w;
-    });
-    // 팔레트(나무 받침): 실어 나를 때만 포크 위에 보인다
-    const deck = mesh(new THREE.BoxGeometry(0.6, 0.05, 0.5), "#a8865a", { roughness: 1 });
-    deck.position.set(0.55, 0.15, 0);
-    this.forkPallet.add(deck);
-    this.forklift.add(body, cab, mast, ...forks, ...wheels, this.forkPallet);
-    this.forklift.position.set(FORKLIFT_HOME.x, 0, FORKLIFT_HOME.z);
-    this.forklift.rotation.y = -Math.PI / 2;   // 큰길 쪽(+z)을 본다
-    this.scene.add(this.forklift);
+  private buildForklifts(): void {
+    for (let k = 0; k < 3; k++) {
+      const group = new THREE.Group();
+      const body = mesh(new THREE.BoxGeometry(0.75, 0.32, 0.5), "#e0b43a", { roughness: 0.7 });
+      body.position.set(-0.15, 0.3, 0);
+      const cab = mesh(new THREE.BoxGeometry(0.32, 0.36, 0.46), "#3a3f3c", { roughness: 0.8 });
+      cab.position.set(-0.25, 0.64, 0);
+      const mast = mesh(new THREE.BoxGeometry(0.06, 0.95, 0.42), "#5d6661");
+      mast.position.set(0.26, 0.5, 0);
+      const forks = [-0.12, 0.12].map((z) => { const f = mesh(new THREE.BoxGeometry(0.55, 0.03, 0.06), "#5d6661"); f.position.set(0.55, 0.1, z); return f; });
+      const wheels = [[-0.38, 0.22], [-0.38, -0.22], [0.12, 0.22], [0.12, -0.22]].map(([x, z]) => {
+        const w = mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.07, 16), "#222"); w.rotation.x = Math.PI / 2; w.position.set(x, 0.11, z); return w;
+      });
+      // 팔레트(나무 받침): 부재를 실어 나를 때 포크 위에. 키트 상자: 자재 키트를 나를 때 받침 위에
+      const pallet = new THREE.Group();
+      const deck = mesh(new THREE.BoxGeometry(0.6, 0.05, 0.5), "#a8865a", { roughness: 1 });
+      deck.position.set(0.55, 0.15, 0);
+      pallet.add(deck);
+      const crate = mesh(new THREE.BoxGeometry(0.5, 0.32, 0.42), "#c9a26b");
+      crate.position.set(0.55, 0.34, 0);
+      const smoke = new THREE.Group();
+      for (let n = 0; n < 3; n++) {
+        const puff = mesh(new THREE.SphereGeometry(0.12, 12, 10), "#6e6e6e", { transparent: true, opacity: 0.55 });
+        puff.castShadow = false;
+        smoke.add(puff);
+      }
+      smoke.visible = false;
+      const tag = label(`지게차 F${k + 1}`, "place-tag small");
+      tag.position.y = 1.15;
+      group.add(body, cab, mast, ...forks, ...wheels, pallet, crate, smoke, tag);
+      const home = garageSpot(k);
+      group.position.set(home.x, 0, home.z);
+      group.rotation.y = -Math.PI / 2;   // 뒷길 쪽(+z)을 본다
+      group.visible = false;
+      this.scene.add(group);
+      this.forklifts.push({ group, pallet, crate, tag, smoke });
+    }
   }
 
   /**
-   * 지게차 하루 시간표(4.0.2, T1 키트처럼): 준비 시간(LEAD_IN) 안에 집에서 가공 정반으로 가서 팔레트를 싣고,
-   * 0.8까지 큰길을 따라 소조립(정반이나 적치장)으로 실어 가고, 그 뒤 집으로 돌아간다. 실어 가는 동안 로트는 포크 위에 있다.
-   * 멈춰 있거나(frac 1) 나를 것이 없으면 집에 서 있다.
+   * 지게차 하루 시간표(4.3): 그날 일감을 차례로 한다. 첫 구간(차고 → 첫 싣는 자리)은 준비 시간(LEAD_IN) 안에,
+   * 나머지(싣고 내리고, 다음 일감, 차고로 돌아오기)는 남은 하루에 길이 비례로 달린다. 부재 팔레트는 실을 때까지 가공 정반에서 기다린다.
+   * 멈춰 있거나(frac 1) 일감이 없으면 차고에 서 있다.
    */
-  private driveForklift(f: Frame, frac: number): void {
+  private driveForklifts(f: Frame, frac: number): void {
     for (const lot of this.lots.values()) lot.held = false;
-    const move = f.palletMoves[0];
-    const lot = move ? this.lots.get(move.ship) : undefined;
-    const home = { x: FORKLIFT_HOME.x, z: FORKLIFT_HOME.z };
-    let at = home, carrying = false;
-    if (move && lot && frac < 1) {
-      const pick = benchAt(ST.proc, move.unit, this.layoutDocks);
-      const pickAt = { x: pick.x + 0.9, z: pick.z };
-      const drop = { x: lot.target.x, z: lot.target.z };
-      const go = polyline([home, { x: home.x, z: LANE_Z }, { x: pickAt.x, z: LANE_Z }, pickAt]);
-      const carry = polyline([pickAt, { x: pickAt.x, z: LANE_Z }, { x: drop.x, z: LANE_Z }, drop]);
-      const back = polyline([drop, { x: drop.x, z: LANE_Z }, { x: home.x, z: LANE_Z }, home]);
-      if (frac < LEAD_IN) {
-        at = along(go, frac / LEAD_IN);
-        lot.held = true;
-        lot.group.position.set(pick.x, MAT_TOP, pick.z);
-      } else if (frac < 0.8) {
-        at = along(carry, (frac - LEAD_IN) / (0.8 - LEAD_IN));
-        carrying = true;
-      } else {
-        at = along(back, (frac - 0.8) / 0.2);
+    this.forklifts.forEach((fk, k) => {
+      const view = f.forklifts[k];
+      fk.group.visible = !!view;
+      if (!view) return;
+      const home = garageSpot(k);
+      const legs: { r: Route; job: ForkliftJobView | null }[] = [];
+      const picks = new Map<ForkliftJobView, { x: number; z: number }>();
+      let at: { x: number; z: number } = home, side: RoadSide = "back";
+      for (const job of view.state === "move" ? view.jobs : []) {
+        if (job.kind === "kit") {
+          const drop = kitDrop(job.station), ds: RoadSide = job.station === ST.quay ? "quay" : "lane";
+          legs.push({ r: roadPath(at, side, KIT_PICK, "back"), job: null }, { r: roadPath(KIT_PICK, "back", drop, ds), job });
+          at = drop; side = ds;
+        } else {
+          const lot = this.lots.get(job.ship);
+          const bench = benchAt(ST.proc, job.unit, this.layoutDocks);
+          const pick = { x: bench.x + 0.9, z: bench.z };
+          const drop = lot ? { x: lot.target.x, z: lot.target.z } : kitDrop(ST.sub);
+          picks.set(job, { x: bench.x, z: bench.z });
+          legs.push({ r: roadPath(at, side, pick, "lane"), job: null }, { r: roadPath(pick, "lane", drop, "lane"), job });
+          at = drop; side = "lane";
+        }
       }
-    }
-    const prev = this.forklift.position.clone();
-    this.forklift.position.set(at.x, 0, at.z);
-    const moved = this.forklift.position.clone().sub(prev);
-    if (moved.lengthSq() > 1e-5) this.forklift.rotation.y = Math.atan2(-moved.z, moved.x);
-    else if (at === home) this.forklift.rotation.y = -Math.PI / 2;
-    this.forkPallet.visible = carrying;
-    if (carrying && lot) {
-      // 포크(앞 0.55) 위에 로트를 얹는다
-      const fx = Math.cos(this.forklift.rotation.y), fz = -Math.sin(this.forklift.rotation.y);
-      lot.held = true;
-      lot.group.position.set(at.x + fx * 0.55, 0.22, at.z + fz * 0.55);
-    }
+      if (legs.length) legs.push({ r: roadPath(at, side, home, "back"), job: null });
+
+      let pos: { x: number; z: number; angle: number } | null = null, leg = -1;
+      if (legs.length && frac < 1) {
+        if (frac < LEAD_IN) { leg = 0; pos = along(legs[0].r, frac / LEAD_IN); }
+        else {
+          const lens = legs.slice(1).map((l) => l.r.len[l.r.len.length - 1]);
+          let d = (frac - LEAD_IN) / (1 - LEAD_IN) * lens.reduce((a, b) => a + b, 0);
+          leg = 1;
+          while (leg < legs.length - 1 && d > lens[leg - 1]) { d -= lens[leg - 1]; leg++; }
+          pos = along(legs[leg].r, lens[leg - 1] ? d / lens[leg - 1] : 1);
+        }
+      }
+      const carry = leg >= 0 ? legs[leg].job : null;
+      if (pos) {
+        fk.group.position.set(pos.x, 0, pos.z);
+        fk.group.rotation.y = -pos.angle;
+      } else if (view.state !== "breakdown_stop") {
+        fk.group.position.set(home.x, 0, home.z);
+        fk.group.rotation.y = -Math.PI / 2;
+      }
+      fk.pallet.visible = !!carry;
+      fk.crate.visible = carry?.kind === "kit";
+      fk.smoke.visible = view.state === "breakdown_stop";
+      setLabel(fk.tag, view.state === "breakdown_stop" ? `지게차 F${k + 1} ${chipHtml("breakdown_stop", "고장")}` : `지게차 F${k + 1}`);
+      // 차고에 서 있으면 이름표를 숨긴다(차고 팻말과 겹친다). 일하거나 고장 나면 보인다
+      fk.tag.visible = !!pos || view.state === "breakdown_stop";
+      // 부재 팔레트: 실을 구간 전에는 가공 정반에서 기다리고, 싣는 구간에는 포크(앞 0.55) 위에
+      legs.forEach((l, n) => {
+        if (l.job?.kind !== "pallet") return;
+        const lot = this.lots.get(l.job.ship);
+        if (!lot || leg < 0 || n < leg) return;
+        lot.held = true;
+        if (n > leg) {
+          const p = picks.get(l.job)!;
+          lot.group.position.set(p.x, MAT_TOP, p.z);
+        } else {
+          const fx = Math.cos(fk.group.rotation.y), fz = -Math.sin(fk.group.rotation.y);
+          lot.group.position.set(fk.group.position.x + fx * 0.55, 0.22, fk.group.position.z + fz * 0.55);
+        }
+      });
+    });
   }
 
   /** 컨베이어벨트 위 판(절단이 일하는 동안 벨트를 따라 가공 쪽으로 흘러간다) */

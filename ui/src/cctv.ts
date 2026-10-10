@@ -17,7 +17,7 @@ import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot } from "./scene/
 // 배치는 현장 3D와 같은 scene/layout.ts
 import { areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
   along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, quayQueueSpot, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_Z, shelfAt, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
-  BACK_LANE_Z, CONVEYORS, DOCK2_AREA, FORKLIFT_HOME, kitDrop, QUAY_WORK_Z, STOCK_NAME, type SectorId } from "./scene/layout";
+  BACK_LANE_Z, CONVEYORS, DOCK2_AREA, FORKLIFT_GARAGE, garageSpot, kitDrop, LANE_X0, QUAY_WORK_Z, STOCK_NAME, type SectorId } from "./scene/layout";
 
 // ----- 투영: 위에서 30도 기운 정사영 -----
 const S = 30;                        // 1 단위 = 30px
@@ -228,7 +228,13 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     s("rect", { x: lx - 5, y: ly - 26, width: 10, height: 6, fill: "#b8322d" }),
     s("path", { d: `M${lx - 7} ${ly - 34} L${lx} ${ly - 44} L${lx + 7} ${ly - 34} Z`, fill: "#b8322d" })));
   add(-98, tag(lx, ly + 14, "등대", "cc-tag mid"));
-  add(-99, box((DEPOT.x - 1.5 + SHORE_X - 0.3) / 2, LANE_Z, SHORE_X - 0.3 - (DEPOT.x - 1.5), 1.0, 0.02, "#3a423d", "#3a423d"));
+  add(-99, box((LANE_X0 - 1.5 + SHORE_X - 0.3) / 2, LANE_Z, SHORE_X - 0.3 - (LANE_X0 - 1.5), 1.0, 0.02, "#3a423d", "#3a423d"));
+  // 차고(4.3, D46): 트랜스포터는 소조립·중조립 사이 큰길 건너편, 지게차는 물류창고 왼쪽 뒷길 가
+  add(-99, box(DEPOT.x, DEPOT.z, 1.15, 1.9, 0.02, "#46504a", "#46504a"));
+  // 트랜스포터가 차고에 서 있으면 그 이름표가 대신한다
+  if (!frame.transporters.some((tr) => tr.state !== "move")) add(DEPOT.z + 1.2, tag(px(DEPOT.x), py(DEPOT.z + 1.0) + 12, "트랜스포터 차고", "cc-tag mid"));
+  add(-99, box(FORKLIFT_GARAGE.x + FORKLIFT_GARAGE.gap, FORKLIFT_GARAGE.z, FORKLIFT_GARAGE.gap * 3, 1.1, 0.02, "#46504a", "#46504a"));
+  add(FORKLIFT_GARAGE.z - 0.6, tag(px(FORKLIFT_GARAGE.x + FORKLIFT_GARAGE.gap), py(FORKLIFT_GARAGE.z - 0.6) - 4, "지게차 차고", "cc-tag mid"));
   add(-99, box(LOUNGE.x, LOUNGE.z, 3.2, 2.6, 0.02, "#2c3530", "#2c3530"));
   // 뒷길(4.0.1): 물류창고 앞 가로 도로, 샛길은 뒷길까지
   add(-99, box((SPUR_X[0] + SPUR_X[5]) / 2, BACK_LANE_Z, SPUR_X[5] - SPUR_X[0] + 0.8, 0.9, 0.02, "#3a423d", "#3a423d"));
@@ -442,18 +448,24 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     }
   });
 
-  // ----- 지게차(4.0.2): 가공 → 소조립 부재 팔레트. 정지 화면이라 평소엔 두 공장 사이에 서 있고,
-  //       부재를 나르는 날은 소조립 앞에 팔레트를 내려놓은 모습("지게차 · S1 부재") -----
-  {
-    const move = frame.palletMoves[0];
-    const fx = move ? STATION_X[ST.sub] - MAT_W / 2 - 0.2 : FORKLIFT_HOME.x, fz = move ? LANE_Z - 0.9 : FORKLIFT_HOME.z;
+  // ----- 공용 지게차(4.3, D46): 정지 화면이라 일한 날은 그날 마지막 일감을 내려놓은 자리에(부재 팔레트는 소조립 앞,
+  //       자재 키트는 그 공정 앞 큰길), 쉬는 날은 차고에. 이름표에 그날 일감("F1 · S1 부재, S2 물감") -----
+  frame.forklifts.forEach((fk, k) => {
+    const last = fk.state === "move" ? fk.jobs[fk.jobs.length - 1] : undefined;
+    const home = garageSpot(k);
+    const spot = !last ? home : last.kind === "pallet" ? { x: STATION_X[ST.sub] - MAT_W / 2 - 0.2 - k * 0.2, z: LANE_Z - 0.9 }
+      : { x: kitDrop(last.station).x + 0.6 * k, z: kitDrop(last.station).z - 0.6 };
+    const stop = fk.state === "breakdown_stop";
     const g = s("g", { class: "cc-forklift" },
-      box(fx, fz, 0.5, 0.75, 0.3, "#e0b43a", "#b8902c"),
-      box(fx, fz + 0.5, 0.42, 0.25, 0.05, "#5d6661", "#3a3f3c"));
-    if (move) g.append(box(fx + 0.75, fz + 0.1, 0.6, 0.5, 0.08, "#a8865a", "#8a6a4a"));
-    g.append(tag(px(fx), py(fz - 0.4, 0.3) - 4, move ? `지게차 · ${move.ship} 부재` : "지게차", "cc-tag mid"));
-    add(fz, g);
-  }
+      box(spot.x, spot.z, 0.5, 0.75, 0.3, stop ? (STATE_INFO.breakdown_stop?.color ?? "#8e2e42") : "#e0b43a", "#b8902c"),
+      box(spot.x, spot.z + 0.5, 0.42, 0.25, 0.05, "#5d6661", "#3a3f3c"));
+    if (last?.kind === "pallet") g.append(box(spot.x + 0.75, spot.z + 0.1, 0.6, 0.5, 0.08, "#a8865a", "#8a6a4a"));
+    if (last?.kind === "kit") g.append(box(spot.x + 0.75, spot.z + 0.1, 0.5, 0.42, 0.32, "#c9a26b", "#a8865a"));
+    const what = (j: (typeof fk.jobs)[number]) => `${j.ship} ${j.kind === "pallet" ? "부재" : j.material ?? "자재"}`;
+    // 차고에서 쉬는 지게차는 이름표 없이(차고 팻말과 겹친다)
+    if (stop || last) g.append(tag(px(spot.x), py(spot.z - 0.4, 0.3) - 4, stop ? `F${k + 1} 고장` : `F${k + 1} · ${fk.jobs.map(what).join(", ")}`, stop ? "cc-tag mid stop" : "cc-tag mid"));
+    add(spot.z, g);
+  });
 
   // ----- 컨베이어벨트(D43): 가공 공장 안 절단 → 가공. 절단이 일하는 날은 판이 실려 있다 -----
   for (const c of CONVEYORS) {
@@ -514,21 +526,18 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     add(zc - 6, zc <= LANE_Z ? tag(px(cx), py(zc - 1.8, 3.5) - 10, name, "cc-place") : tag(px(cx), py(zc + 1.8) + 22, name, "cc-place"));
   });
 
-  // ----- 트랜스포터(4.0): T1 자재 키트는 그날 가져다 놓은 공정 앞, T2 블록은 실은 블록과 함께 -----
-  frame.transporters.forEach((tr, k) => {
-    const carried = tr.role === "block" && tr.state === "move" && tr.ship ? frame.lots.find((l) => l.ship === tr.ship && l.place === "carried") : undefined;
-    // T1은 키트를 내려놓는 자리(안벽의장은 매립 안벽 위, 4.1.2), T2는 운반 중인 두 공정 사이 큰길
-    const kitAt = tr.role === "material" && tr.state === "move" && tr.kitTo !== null ? kitDrop(tr.kitTo) : null;
-    const x = carried ? (STATION_X[carried.station] + (STATION_X[carried.station + 1] ?? STATION_X[carried.station] + 4)) / 2 : kitAt?.x ?? DEPOT.x + 0.6;
-    const z = carried ? LANE_Z : kitAt ? kitAt.z : LANE_Z - 0.3 + k * 1.15;
+  // ----- 트랜스포터(블록 한 대, 4.3): 나르는 날은 실은 블록과 함께 두 공정 사이 큰길, 쉬는 날은 차고에 큰길과 직각으로 -----
+  frame.transporters.forEach((tr) => {
+    const carried = tr.state === "move" && tr.ship ? frame.lots.find((l) => l.ship === tr.ship && l.place === "carried") : undefined;
+    const x = carried ? (STATION_X[carried.station] + (STATION_X[carried.station + 1] ?? STATION_X[carried.station] + 4)) / 2 : DEPOT.x;
+    const z = carried ? LANE_Z : DEPOT.z;
     const body = tr.state === "breakdown_stop" ? (STATE_INFO.breakdown_stop?.color ?? "#8e2e42") : "#5f6b73";
-    add(z, box(x, z, 2.0, 0.8, 0.3, body, "#3f474d"));
+    add(z, carried ? box(x, z, 2.0, 0.8, 0.3, body, "#3f474d") : box(x, z, 0.8, 1.7, 0.3, body, "#3f474d"));
     if (carried) {
       add(z + 0.02, block(carried, lot(x, z, carried.form, 0.7), chip(x, z - 0.3, 0.9, carried, lateNow(carried))));
     }
-    if (kitAt !== null) add(z + 0.03, box(x, z, 0.6, 0.5, 0.65, "#c9a26b", "#a8865a"));   // 실어 온 키트 상자
-    const name = `${tr.id} ${tr.role === "material" ? "자재" : "블록"}`;
-    add(z + 0.5, tag(px(x), py(z + 0.4) + 13, tr.state === "breakdown_stop" ? `${name} 고장` : name, tr.state === "breakdown_stop" ? "cc-tag mid stop" : "cc-tag mid"));
+    const text = tr.state === "breakdown_stop" ? "트랜스포터 고장" : carried ? "트랜스포터" : "트랜스포터 · 차고";
+    add(z + 0.5, tag(px(x), py(z + (carried ? 0.4 : 1.0)) + 13, text, tr.state === "breakdown_stop" ? "cc-tag mid stop" : "cc-tag mid"));
   });
 
   // 인도한 배는 조선소를 떠난다(관제실 모니터 오른쪽 위 인도 완료 로그). 착수 전 배만 안벽에 적어 둔다
