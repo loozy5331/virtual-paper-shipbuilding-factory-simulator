@@ -2,9 +2,9 @@
 // 자리를 고칠 때는 여기 한 곳만 고친다. Three.js를 모른다. 단위는 대략 소인 키의 4배, x는 오른쪽(바다 쪽), z는 앞(카메라 쪽).
 //
 // 구획(D38): 공정이 늘면 야드 전체를 한 화면에 담을 수 없어 실제 조선소처럼 나눈다. 카메라는 구획 하나씩 옮겨 다닌다.
-//   내업 구획(왼쪽, 공용): 소조립·중조립 공장, 물류창고, 연구소, 작업대기소, 트랜스포터 차고, 두 공정의 적치장
+//   내업 구획(왼쪽, 공용): 소조립·중조립 공장, 블록 마감동(도장·선행의장, 4.0), 물류창고, 연구소, 작업대기소, 차고, 적치장
 //   1도크 구획(큰길 뒤)·2도크 구획(큰길 앞): PE장, 도크, 골리앗 크레인. PE장 적치장과 탑재 대기 줄은 1도크 구획에
-//   안벽 구획(바다): 인도한 배
+//   안벽 구획: 매립 안벽의 정박 자리(안벽의장, 4.0), 만 밖 바다(시운전), 인도한 배
 // 큰길(가로)이 내업에서 두 도크 구획 사이를 지나 안벽까지 간다. 구획은 그림일 뿐 엔진 규칙이 아니다.
 // PE장 작업장과 도크의 짝도 그림에서만: 도크가 둘이면 PE장 1호는 1도크, 2·3호는 2도크 구획. 도크가 하나면 PE장은 모두 1도크 구획.
 
@@ -24,8 +24,18 @@ export const QUEUE_Z = 2.2;
 /** 해안: 오른쪽 안벽(이 너머가 바다) */
 export const SHORE_X = 11.2;
 
-/** 공정의 가운데 x: 소조립·중조립(내업), PE장, 탑재(도크) */
-export const STATION_X = [-24, -18.5, 3.4, 8.5];
+/** 공정 번호(4.0, 공정 8개): 화면 코드는 숫자 대신 이 이름을 쓴다(rules.json의 공정 순서와 같다) */
+export const ST = { sub: 0, block: 1, paint: 2, preout: 3, pe: 4, dock: 5, quay: 6, trial: 7 } as const;
+/** 내업 공장(벽과 지붕이 있는 공정): 소조립, 중조립, 도장, 선행의장 */
+export const isShop = (station: number) => station <= ST.preout;
+
+/**
+ * 공정의 가운데 x: 소조립·중조립, 블록 마감동의 도장·선행의장(같은 건물, 4.0), PE장, 탑재(도크),
+ * 안벽의장(매립 안벽 1번 정박 자리), 시운전(만 밖 바다)
+ */
+export const STATION_X = [-24, -18.5, -12.6, -7.9, 3.4, 8.5, 13.1, 36];
+/** 안벽의장 정박 자리 사이 간격, 안벽 앞 물 위 줄(z) */
+const BERTH_GAP = 2.7, BERTH_Z = 10.6;
 /** 도크 줄: 1도크는 큰길 뒤, 2도크는 큰길 앞(큰길을 사이에 두고 마주 본다) */
 export const DOCK_Z = [0, 2 * LANE_Z];
 export const dockZ = (unit: number) => DOCK_Z[unit] ?? 0;
@@ -35,8 +45,11 @@ export const dockQueueZ = (unit: number) => (unit === 0 ? QUEUE_Z : 2 * LANE_Z -
 /** 작업장 하나의 정반 자리. docks = 도크(탑재 작업장) 수. */
 export function benchAt(station: number, unit: number, docks: number): { x: number; z: number; d: number } {
   const x = STATION_X[station];
-  if (station === 3) return { x, z: dockZ(unit), d: MAT_D };
-  if (station === 2 && docks >= 2 && unit > 0) {
+  if (station === ST.dock) return { x, z: dockZ(unit), d: MAT_D };
+  // 안벽의장: 매립 안벽 앞 물 위에 나란히(정박 자리), 시운전: 만 밖 바다에 한 줄씩
+  if (station === ST.quay) return { x: x + unit * BERTH_GAP, z: BERTH_Z, d: MAT_D };
+  if (station === ST.trial) return { x, z: LANE_Z - unit * 2.4, d: MAT_D };
+  if (station === ST.pe && docks >= 2 && unit > 0) {
     // 2도크 구획: 큰길에서 앞으로 한 줄씩(2호가 큰길 쪽)
     return { x, z: DOCK_Z[1] + (unit - 1) * (MAT_D / 2 + MAT2_D / 2 + 0.4), d: unit === 1 ? MAT_D : MAT2_D };
   }
@@ -49,7 +62,7 @@ export const nearLane = (z: number) => Math.abs(z - LANE_Z) < 4.5;
 /** 작업장의 구역(벽·구획선·도크)이 차지하는 바닥. 소조립·중조립은 벽, PE장은 노란 구획선, 탑재는 드라이 도크. */
 export function areaBounds(station: number, unit: number, docks: number): { x0: number; x1: number; z0: number; z1: number } {
   const { x, z, d } = benchAt(station, unit, docks);
-  const pad = station < 2 ? 0.45 : station === 2 ? 0.4 : 0.6;
+  const pad = isShop(station) ? 0.45 : station === ST.pe ? 0.4 : 0.6;
   // 큰길 쪽 가장자리를 조금 더 넓힌다(첫 줄 앞의 공정 이름 자리)
   const roadSide = d === MAT_D ? 0.35 : 0.05;
   const front = z <= LANE_Z ? roadSide : 0.3, back = z <= LANE_Z ? 0.3 : roadSide;
@@ -58,16 +71,21 @@ export function areaBounds(station: number, unit: number, docks: number): { x0: 
 
 /** 작업장이 있는 구획 */
 export function sectorOf(station: number, unit: number, docks: number): SectorId {
-  if (station < 2) return "shop";
-  if (station === 3) return unit === 0 ? "dock1" : "dock2";
+  if (isShop(station)) return "shop";
+  if (station >= ST.quay) return "quay";
+  if (station === ST.dock) return unit === 0 ? "dock1" : "dock2";
   return docks >= 2 && unit > 0 ? "dock2" : "dock1";
 }
 
-/** 샛길: 큰길에서 큰길에 닿지 않는 뒷줄 작업장으로 드나드는 길(벽을 뚫고 지나가지 않게). */
-export const SPUR_X = [STATION_X[0] - MAT_W / 2 - 1.45, (STATION_X[0] + STATION_X[1]) / 2, STATION_X[1] + MAT_W / 2 + 1.05,
-  STATION_X[2] - MAT_W / 2 - 0.95, (STATION_X[2] + MAT_W / 2 + 0.4 + STATION_X[3] - MAT_W / 2 - 0.6) / 2];
-/** 공정마다 들어가는 샛길(왼쪽)과 나오는 샛길(오른쪽): SPUR_X 번호 */
-export const SPUR_IN = [0, 1, 3, 3], SPUR_OUT = [1, 2, 4, 4];
+/**
+ * 샛길: 큰길에서 큰길에 닿지 않는 뒷줄 작업장으로 드나드는 길(벽을 뚫고 지나가지 않게).
+ * 소조립 왼쪽, 소조립·중조립 사이, 중조립·마감동 사이, 마감동 오른쪽, PE장 왼쪽, PE장·도크 사이
+ */
+export const SPUR_X = [STATION_X[ST.sub] - MAT_W / 2 - 1.45, (STATION_X[ST.sub] + STATION_X[ST.block]) / 2,
+  STATION_X[ST.block] + MAT_W / 2 + 1.05, STATION_X[ST.preout] + MAT_W / 2 + 0.85,
+  STATION_X[ST.pe] - MAT_W / 2 - 0.95, (STATION_X[ST.pe] + MAT_W / 2 + 0.4 + STATION_X[ST.dock] - MAT_W / 2 - 0.6) / 2];
+/** 공정마다 들어가는 샛길(왼쪽)과 나오는 샛길(오른쪽): SPUR_X 번호. 도장·선행의장은 같은 건물이라 안에서 옮긴다. −1은 샛길 없음 */
+export const SPUR_IN = [0, 1, 2, 2, 4, 4, -1, -1], SPUR_OUT = [1, 2, 3, 3, 5, 5, -1, -1];
 
 /** 트랜스포터 차고(큰길 왼쪽 끝), 작업대기소, 물류창고 선반 셋, 연구소: 모두 내업 구획 */
 export const DEPOT = { x: -31, z: LANE_Z };
@@ -90,10 +108,13 @@ export const LAB_TREES: { x: number; z: number }[] = (() => {
 /** 적치장 칸(공정마다, 탑재 제외): 칸 가운데 x, 큰길 쪽 끝 z, 큰길에서 멀어지는 방향. 내업 두 공정은 큰길 건너편, PE장은 1도크 구획 왼쪽 */
 export const STOCK_D = 3.4, STOCK_HALF = 2.2;
 export const STOCK_AT = [
-  { x: STATION_X[0], z0: LANE_Z + 0.8, dir: 1 },
-  { x: STATION_X[1], z0: LANE_Z + 0.8, dir: 1 },
+  { x: STATION_X[ST.sub], z0: LANE_Z + 0.8, dir: 1 },
+  { x: STATION_X[ST.block], z0: LANE_Z + 0.8, dir: 1 },
+  { x: (STATION_X[ST.paint] + STATION_X[ST.preout]) / 2, z0: LANE_Z + 0.8, dir: 1 },   // 블록 마감동(도장·선행의장 함께)
   { x: -1.8, z0: LANE_Z - 0.8, dir: -1 },
 ];
+/** 공정마다 쓰는 적치장 칸(STOCK_AT 번호). −1은 적치장 없음(탑재는 도크 앞, 안벽의장·시운전은 물 위) */
+export const STOCK_OF = [0, 1, 2, 2, 3, -1, -1, -1];
 
 /** 골리앗 크레인(탑재 도크 둘레)과 트랜스포터의 위험 반경(3.0 안전). 팻말에는 "반경 10m"로 적는다. */
 export const CRANE_R = 2.9;
@@ -107,9 +128,14 @@ export const SAFE_SPOT = { x: -1.5, z: LANE_Z + 1.9 };
  */
 export const QUAY = { x0: SHORE_X, x1: 23, z0: 11.4, z1: 15.7 };
 
-/** 인도한 배: 안벽에 나란히 네 척씩, 다섯째부터는 바깥에 한 줄 더(겹대기) */
+/** 인도한 배: 안벽의장 정박 자리 바깥에 네 척씩 두 줄(겹대기). 안쪽 줄(안벽 바로 앞)은 안벽의장이 쓴다(4.0) */
 export function seaSpot(i: number): { x: number; z: number } {
-  return { x: QUAY.x0 + 1.7 + (i % 4) * 2.6, z: QUAY.z0 - 0.8 - Math.floor(i / 4) * 1.25 };
+  return { x: QUAY.x0 + 1.7 + (i % 4) * 2.6, z: QUAY.z0 - 2.2 - Math.floor(i / 4) * 1.3 };
+}
+
+/** 안벽의장·시운전 차례를 기다리는 배: 정박 자리 오른쪽 물 위(만 입구 쪽)에 한 줄 */
+export function quayQueueSpot(slot: number): { x: number; z: number } {
+  return { x: QUAY.x1 + 1.6, z: BERTH_Z - slot * 1.3 };
 }
 
 /**
@@ -189,7 +215,7 @@ export function along(r: Route, u: number): { x: number; z: number; angle: numbe
 
 /** 구획의 바닥 범위. 2도크 구획은 도크가 하나뿐이어도 "증설 예정지"로 남는다. */
 export const SECTORS: Sector[] = [
-  { id: "shop", name: "내업 구획", x0: -34.6, x1: -13.5, z0: -13.6, z1: 11.7 },
+  { id: "shop", name: "내업 구획", x0: -34.6, x1: -4.8, z0: -13.6, z1: 11.7 },
   { id: "dock1", name: "1도크 구획", x0: -4.5, x1: SHORE_X, z0: -7.6, z1: LANE_Z - 0.75 },
   { id: "dock2", name: "2도크 구획", x0: -4.5, x1: SHORE_X, z0: LANE_Z + 0.75, z1: 12.4 },
   { id: "quay", name: "안벽 구획", x0: SHORE_X, x1: QUAY.x1 + 0.8, z0: 7.4, z1: QUAY.z1 + 0.4 },

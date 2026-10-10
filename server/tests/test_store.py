@@ -34,7 +34,7 @@ class StoreTest(unittest.TestCase):
     def test_grade_is_recomputed_on_the_server(self):
         # 화면이 등급을 보내도 무시하고 설정으로 다시 계산한다.
         saved = self.store.save_run({"nickname": "Bell", "class_code": "3반", "config": BASIC["managed"], "grade": "S", "score": 112})
-        self.assertEqual((saved["grade"], saved["score"]), ("A", 87.5))   # 관리안, 조율 전 값(D40)
+        self.assertEqual((saved["grade"], saved["score"]), ("F", 33.0))   # 관리안, 조율 전 값(D40)
 
     def test_leaderboard_takes_the_best_per_scenario_and_class(self):
         self.save("Bell", BASIC["unmanaged"])
@@ -42,7 +42,7 @@ class StoreTest(unittest.TestCase):
         self.save("Bell", GROWTH["managed"])
         self.save("Other", BASIC["managed"], code="4반")
         board = self.store.leaderboard("3반")["best"]
-        self.assertEqual((board["basic"]["nickname"], board["basic"]["grade"], board["basic"]["players"]), ("Loozy", "A", 2))
+        self.assertEqual((board["basic"]["nickname"], board["basic"]["grade"], board["basic"]["players"]), ("Loozy", "F", 2))   # 관리안이 무관리보다 점수가 높다(등급은 조율 전 값, D40)
         self.assertEqual(board["growth"]["nickname"], "Bell")
         self.assertEqual(self.store.leaderboard("4반")["best"]["basic"]["players"], 1)
 
