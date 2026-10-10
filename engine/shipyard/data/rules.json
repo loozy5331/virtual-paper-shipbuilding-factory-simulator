@@ -338,12 +338,10 @@
     }
   },
   "transporter": {
-    "max_count": 2,
+    "max_count": 1,
     "roles": [
-      "material",
       "block"
     ],
-    "kits_per_day": 2,
     "capacity": 6,
     "lot_weight": 12,
     "cost_per_day": 5,
@@ -354,7 +352,20 @@
     "stop_days": 2,
     "repair_cost": 150,
     "_arrive_note": "공정 사이 이동(4.0): 같은 자리(site)면 다음 날, 공정의 arrive가 crane(탑재)·tow(안벽의장·시운전)·conveyor(가공, 절단에서 벨트)·forklift(소조립, 부재 팔레트를 지게차로)면 다음 날, 그 밖은 T2 블록 운반",
-    "_kit_note": "T1 키트는 물류창고(store warehouse) 자재만(물감·깃발). 강재 적치장(store steel_yard) 자재(종이 = 철판)는 절단에 들어가는 날 롤러 컨베이어로 바로 출고한다(4.2)"
+    "_kit_note": "자재 키트(물감·깃발)와 가공 → 소조립 부재 팔레트는 공용 지게차가 나른다(4.3, forklift). 트랜스포터는 블록만. 강재 적치장 자재(종이 = 철판)는 절단에 들어가는 날 롤러 컨베이어로 바로 출고한다(4.2)"
+  },
+  "forklift": {
+    "default_count": 2,
+    "max_count": 3,
+    "jobs_per_day": 2,
+    "cost_per_day": 5,
+    "maintenance_cost": 50,
+    "every_moves": 6,
+    "threshold": 0.4,
+    "threshold_maintained": 0.1,
+    "stop_days": 2,
+    "repair_cost": 150,
+    "_note": "공용 지게차(4.3, 작업자 대기소처럼): 차고에 1~3대. 일감은 자재 키트(물류창고 → 그 자재를 쓰는 작업장)와 부재 팔레트(가공 → 소조립). 매일 일감을 배 우선순위 → 공정 순으로 줄 세워 멈추지 않은 지게차가 한 대에 하루 jobs_per_day건씩 맡는다. 못 맡은 팔레트는 운반 대기, 키트는 자재 대기. 고장은 대마다 운행한 날 every_moves일마다 판정(난수표 transporter_breakdown을 지게차 번호만큼 밀어 읽음)"
   },
   "research": {
     "automation": {

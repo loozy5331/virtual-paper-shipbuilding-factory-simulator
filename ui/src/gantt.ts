@@ -5,7 +5,7 @@
 // 막대를 누르면 onPick으로 그 배·공정·기간을 넘긴다(현장 들어가는 길, D7).
 // 재생 중에는 today까지만 그린다. 엔진이 준 segments와 daily를 자르고 묶기만 하고 새로 계산하지 않는다.
 
-import type { Result, Scenario, Segment } from "./api";
+import type { ForkliftJob, Result, Scenario, Segment } from "./api";
 import { s } from "./dom";
 import { PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, STATION_TEXT } from "./labels";
 
@@ -106,7 +106,7 @@ export function renderGantt(result: Result, scenario: Scenario, today: number, o
   const stationName = Object.fromEntries(scenario.stations.map((st) => [st.id, st.name]));
   const shipsBottom = TOP + result.ships.length * ROW_H;
   const craneUnits = result.stations.find((st) => st.id === CRANE)?.units.length ?? 1;
-  const eqRows = 1 + result.transporters.length + craneUnits;
+  const eqRows = 1 + result.transporters.length + (result.forklifts?.length ?? 0) + craneUnits;
   const height = shipsBottom + SECTION_GAP + eqRows * EQ_H + 8;
   const ended = today >= days;   // 합계는 끝난 뒤에만 보여 준다(재생 중에 결과를 미리 알려 주지 않게).
 
@@ -225,10 +225,9 @@ export function renderGantt(result: Result, scenario: Scenario, today: number, o
     }
   });
 
-  // 트랜스포터: 나른 날은 실은 배 이름으로, 고장은 중지 색으로. T1 자재 키트, T2 블록(4.0, D39)
+  // 트랜스포터: 나른 날은 실은 배 이름으로, 고장은 중지 색으로. 블록 한 대(4.3, D46)
   for (const tr of result.transporters) {
-    const kit = tr.role === "material";
-    eqRow(`트랜스포터 ${tr.id} · ${kit ? "자재" : "블록"}`, ended ? `운행 ${tr.moves}일 · 고장 ${tr.breakdowns}건` : kit ? "물류창고 → 작업장" : "공정 사이 블록", (g, y) => {
+    eqRow("트랜스포터 · 블록", ended ? `운행 ${tr.moves}일 · 고장 ${tr.breakdowns}건` : "공정 사이 블록", (g, y) => {
       const key = (day: number) => {
         const rec = tr.daily[day - 1];
         if (rec.state === "move") return `move:${rec.ships.join("+")}`;
@@ -239,10 +238,35 @@ export function renderGantt(result: Result, scenario: Scenario, today: number, o
         const w = width(run.start, run.end);
         const span = `${run.start}~${run.end}일`;
         if (run.key === "stop") {
-          g.append(bar(x(run.start), y, w, EQ_BAR, STOP_COLOR, `${tr.id} 고장 중지 · ${span}`, { label: "고장", hatch: true }));
+          g.append(bar(x(run.start), y, w, EQ_BAR, STOP_COLOR, `트랜스포터 고장 중지 · ${span}`, { label: "고장", hatch: true }));
         } else {
           const ships = run.key.slice(5);
-          g.append(bar(x(run.start), y, w, EQ_BAR, "#6d7a72", `${tr.id} · ${ships} ${kit ? "자재 키트" : "블록"} 운반 · ${span}`, { label: ships }));
+          g.append(bar(x(run.start), y, w, EQ_BAR, "#6d7a72", `트랜스포터 · ${ships} 블록 운반 · ${span}`, { label: ships }));
+        }
+      }
+    });
+  }
+
+  // 공용 지게차(4.3, D46): 한 대에 한 줄. 나른 날은 그날 일감(배 이름, 팔레트는 "판", 키트는 자재 이름)으로.
+  const materialName = Object.fromEntries(scenario.materials.map((m) => [m.id, m.name]));
+  for (const fk of result.forklifts ?? []) {
+    eqRow(`지게차 ${fk.id}`, ended ? `운행 ${fk.moves}일 · 고장 ${fk.breakdowns}건` : "자재 키트 · 부재 팔레트", (g, y) => {
+      const jobText = (j: ForkliftJob) => `${j.ship} ${j.kind === "pallet" ? "부재" : materialName[j.material ?? ""] ?? "자재"}`;
+      const key = (day: number) => {
+        const rec = fk.daily[day - 1];
+        if (rec.state === "move") return `move:${rec.jobs.map(jobText).join("+")}`;
+        if (rec.state === "breakdown_stop") return "stop";
+        return null;
+      };
+      for (const run of runs(fk.daily, key, today)) {
+        const w = width(run.start, run.end);
+        const span = `${run.start}~${run.end}일`;
+        if (run.key === "stop") {
+          g.append(bar(x(run.start), y, w, EQ_BAR, STOP_COLOR, `${fk.id} 고장 중지 · ${span}`, { label: "고장", hatch: true }));
+        } else {
+          const jobs = run.key.slice(5);
+          g.append(bar(x(run.start), y, w, EQ_BAR, "#6d7a72", `${fk.id} · ${jobs.split("+").join(", ")} 운반 · ${span}`,
+            { label: jobs.split("+").map((t) => t.split(" ")[0]).join("+") }));
         }
       }
     });

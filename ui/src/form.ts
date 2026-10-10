@@ -220,11 +220,21 @@ function commonPane(ctx: FormContext): HTMLElement {
         pools[t], (v) => { pools[t] = v; config.pool = Object.values(pools).reduce((a, b) => a + b, 0); ctx.onEdit(false); }),
       h("small", null, `명 · ${scenario.stations.filter((st) => st.trade === t).map((st) => st.name).join("·")}`))));
 
-  // 트랜스포터는 역할마다 한 대로 고정(4.0, D39): 대수는 고르지 않고 정비만 고른다.
+  // 트랜스포터는 블록 한 대로 고정(4.3, D46): 정비만 고른다.
   const transporter = h("div", { class: "field-row" },
     h("span", { class: "field-label" }, "트랜스포터"),
-    h("span", { class: "hint" }, "T1 자재(물류창고 → 작업장) · T2 블록(공정 사이), 각 1대"),
+    h("span", { class: "hint" }, "블록(소조립 이후 공정 사이), 1대"),
     toggle("정비", config.transporters.maintenance, (on) => { config.transporters.maintenance = on; ctx.onEdit(false); }));
+  // 공용 지게차(4.3, D46): 작업자처럼 차고에 몇 대를 둘지 고른다. 자재 키트와 가공 → 소조립 부재 팔레트를 나른다.
+  const fk = config.forklifts!;
+  const counts = opts.forklift_counts ?? Array.from({ length: scenario.forklift.max_count }, (_, k) => k + 1);
+  const forklift = h("div", { class: "field-row" },
+    h("span", { class: "field-label" }, "지게차"),
+    counts.length > 1
+      ? segmented("forklifts", counts.map((n) => ({ value: n, label: String(n) })), fk.count, (v) => { fk.count = v; ctx.onEdit(false); })
+      : h("b", null, String(fk.count)),
+    h("small", null, `대${counts.length > 1 ? "" : "(고정)"} · 자재 키트, 가공 → 소조립 팔레트 · 한 대에 하루 ${scenario.forklift.jobs_per_day}건`),
+    toggle("정비", fk.maintenance, (on) => { fk.maintenance = on; ctx.onEdit(false); }));
 
   // 공정마다 작업장 수 상한: 분기 상한과 공정 상한(탑재 도크는 크레인이 있어야 해 2곳) 중 작은 것
   const unitCap = (pid: string) => Math.min(opts.max_units, scenario.expansion.max_units_by_station?.[pid] ?? opts.max_units);
@@ -290,13 +300,13 @@ function commonPane(ctx: FormContext): HTMLElement {
     ` 배별 발주일은 ${scenario.orders[0].id}~${scenario.orders[scenario.orders.length - 1].id} 탭에 있습니다.`);
 
   return h("div", { class: "pane", "data-pane": "common" },
-    pool, transporter, ordering, orderingHint, opts.material_grades.includes("cheap") ? materialGrades(ctx) : null,
+    pool, transporter, forklift, ordering, orderingHint, opts.material_grades.includes("cheap") ? materialGrades(ctx) : null,
     researchQueue(ctx),
     h("div", { class: "stations" }, stationCards),
     h("p", { class: "hint fixed" },
       "고정비: 인건비 ", h("b", { "data-preview": "labor" }, "…"),
       " · 정비비 ", h("b", { "data-preview": "maintenance" }, "…"),
-      " · 트랜스포터 ", h("b", { "data-preview": "transporter" }, "…"),
+      " · 운반 설비 ", h("b", { "data-preview": "transporter" }, "…"),
       " · 설비 투자비 ", h("b", { "data-preview": "investment" }, "…"),
       " · 연구비 ", h("b", { "data-preview": "research" }, "…")));
 }

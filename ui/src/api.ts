@@ -34,8 +34,10 @@ export interface Config {
   pool: number;
   /** 4.0(D42): 직종별 대기소 인원. 사람은 자기 직종 공정에만 간다. 시운전은 외부팀이라 없다 */
   pools?: Record<string, number>;
-  /** 4.0(D39): 역할마다 한 대로 고정(T1 자재, T2 블록). count는 옛 설정에서만 읽고 엔진이 쓰지 않는다 */
+  /** 4.3(D46): 블록 트랜스포터 한 대로 고정. count는 옛 설정에서만 읽고 엔진이 쓰지 않는다 */
   transporters: { count?: number; maintenance: boolean };
+  /** 4.3(D46): 공용 지게차(자재 키트, 가공 → 소조립 부재 팔레트). 없으면 기본 대수, 정비는 트랜스포터를 따른다 */
+  forklifts?: { count: number; maintenance: boolean };
   research: string[];
   /** 1.x 설정의 시니어. 2.0부터는 공정의 crew = "skilled"로 쓴다(엔진이 둘 다 읽는다). */
   skilled_station?: string | null;
@@ -127,6 +129,8 @@ export interface ScenarioOptions {
   material_grades: string[];
   max_units: number;
   split: boolean;
+  /** 4.3: 고를 수 있는 지게차 대수. 하나뿐이면 고정 */
+  forklift_counts?: number[];
 }
 
 export interface Scenario {
@@ -156,7 +160,8 @@ export interface Scenario {
     crews: Record<Crew, CrewInfo>;
     overtime: { speed: number };
   };
-  transporter: { max_count: number; capacity: number; lot_weight: number; roles: ("material" | "block")[]; kits_per_day: number };
+  transporter: { max_count: number; capacity: number; lot_weight: number; roles: "block"[] };
+  forklift: { default_count: number; max_count: number; jobs_per_day: number; cost_per_day: number; maintenance_cost: number };
   expansion: { name: string; max_units: number; max_units_by_station?: Record<string, number>; summary: string; cost: Record<string, number> };
   material_grades: Record<"standard" | "cheap", { name: string; price_factor: number; defect_add: number }>;
   research: Record<string, ResearchInfo>;
@@ -185,6 +190,7 @@ export function completeConfig(config: Config, scenario: Scenario): Config {
     }));
   }
   config.pool = Object.values(config.pools).reduce((a, b) => a + b, 0);
+  config.forklifts ??= { count: scenario.forklift.default_count, maintenance: config.transporters.maintenance };
   return config;
 }
 
@@ -307,13 +313,30 @@ export interface StationResult {
 }
 
 export interface TransporterResult {
+  /** 4.3(D46): 블록 트랜스포터 한 대("TR"). 4.2까지는 T1 자재·T2 블록 */
   id: string;
-  /** 4.0: material = T1 자재 키트(물류창고 → 작업장), block = T2 블록(공정 사이) */
-  role: "material" | "block";
+  role: "block";
   moves: number;
   breakdowns: number;
-  /** kits: T1이 그날 실은 키트(배, 그 자재를 쓰는 공정, 자재) */
-  daily: { state: "move" | "idle" | "breakdown_stop"; ships: string[]; kits?: { ship: string; station: string; material: string }[] }[];
+  daily: { state: "move" | "idle" | "breakdown_stop"; ships: string[] }[];
+}
+
+/** 지게차 일감(4.3): 자재 키트(물류창고 → 그 자재를 쓰는 작업장) 또는 부재 팔레트(가공 → 소조립) */
+export interface ForkliftJob {
+  kind: "kit" | "pallet";
+  ship: string;
+  /** 키트는 그 자재를 쓰는 공정, 팔레트는 받는 공정(소조립) */
+  station: string;
+  material?: string;
+  /** 팔레트를 실은 공정(가공) */
+  from?: string;
+}
+
+export interface ForkliftResult {
+  id: string;
+  moves: number;
+  breakdowns: number;
+  daily: { state: "move" | "idle" | "breakdown_stop"; jobs: ForkliftJob[] }[];
 }
 
 export interface Finding {
@@ -344,10 +367,10 @@ export interface Grade {
 
 export type SimEvent =
   | { day: number; type: "arrival"; material: string; quantity: number; ship: string }
-  | { day: number; type: "issue"; material: string; quantity: number; ship: string; station: string; from: Peg[]; transporter?: string }
+  | { day: number; type: "issue"; material: string; quantity: number; ship: string; station: string; from: Peg[]; transporter?: string | null; forklift?: string }
   | { day: number; type: "enter" | "complete" | "defect"; ship: string; station: string; unit?: number; units?: number[] }
   | { day: number; type: "accident"; station: string; ship: string }
-  | { day: number; type: "breakdown"; station?: string; transporter?: string; ship?: string }
+  | { day: number; type: "breakdown"; station?: string; transporter?: string; forklift?: string; ship?: string }
   | { day: number; type: "transport_start" | "transport_end"; ship: string; from: string; to: string }
   | { day: number; type: "research_done"; research: string }
   | { day: number; type: "delivery"; ship: string; late_days: number };
@@ -372,6 +395,7 @@ export interface Result {
   ships: ShipResult[];
   stations: StationResult[];
   transporters: TransporterResult[];
+  forklifts: ForkliftResult[];
   research: ResearchSlot[];
   inventory_daily: Record<string, number>[];
   /** 그날 끝의 창고 재고를 몫(발주한 배)별로. 몫이 null이면 공용(처음 재고). 먼저 들어온 몫이 앞(자재 페깅, 3.1) */

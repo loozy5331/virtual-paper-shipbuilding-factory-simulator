@@ -70,11 +70,11 @@
   },
   "kpi": {
     "revenue": 51600,
-    "profit": 23000,
+    "profit": 25500,
     "on_time_rate": 1.0,
     "first_pass_yield": 0.9
   },
-  "unlocks": "로봇, 신공법, 저가 자재, 작업장 2개(증설)",
+  "unlocks": "로봇, 신공법, 저가 자재, 작업장 2개(증설), 지게차 대수(1~3대)",
   "options": {
     "crews": [
       "normal",
@@ -91,7 +91,12 @@
       "cheap"
     ],
     "max_units": 2,
-    "split": false
+    "split": false,
+    "forklift_counts": [
+      1,
+      2,
+      3
+    ]
   },
   "grade": {
     "weights": {
@@ -213,7 +218,7 @@
     {
       "id": "unmanaged",
       "name": "무관리",
-      "summary": "전부 한꺼번에 착수하고(우선순위도 납기 반대로, 마지막 배부터), 자재는 필요한 날에야 발주하고, 24명을 꽉 채워 속성 공법과 잔업으로 밀어붙인다. 증설과 정비는 하지 않는다.",
+      "summary": "전부 한꺼번에 착수하고(우선순위도 납기 반대로, 마지막 배부터), 자재는 필요한 날에야 발주하고, 24명을 꽉 채워 속성 공법과 잔업으로 밀어붙인다. 증설과 정비는 하지 않고, 지게차는 1대만 둔다.",
       "config": {
         "ordering": "late",
         "ships": {
@@ -258,6 +263,10 @@
           "outfitting": 4
         },
         "transporters": {
+          "maintenance": false
+        },
+        "forklifts": {
+          "count": 1,
           "maintenance": false
         },
         "research": [],
@@ -319,7 +328,7 @@
     {
       "id": "managed",
       "name": "관리",
-      "summary": "병목인 중조립과 도크(탑재)만 증설하고 탑재 인원도 4명으로 늘린다. 납기에서 역산해 착수를 나누고(VLCC 2일·LNG선 5일 먼저), 자재는 역산 발주, 17명(조립 6, 탑재 4, 의장 3)으로 표준 공법에 정비를 한다.",
+      "summary": "병목인 중조립(숙련공)과 도크(탑재)만 증설하고 탑재 인원도 3명으로 늘린다. 납기에서 역산해 착수를 나누고(VLCC 2일·LNG선 5일 먼저), 자재는 역산 발주, 15명(조립 6, 탑재 3)과 지게차 2대로 표준 공법에 정비를 한다.",
       "config": {
         "ordering": "jit",
         "ships": {
@@ -329,41 +338,45 @@
           },
           "S2": {
             "priority": 2,
-            "start_day": 5
+            "start_day": 4
           },
           "S3": {
             "priority": 3,
-            "start_day": 12
+            "start_day": 11
           },
           "S4": {
             "priority": 4,
-            "start_day": 18
+            "start_day": 17
           },
           "S5": {
             "priority": 5,
-            "start_day": 32
+            "start_day": 31
           },
           "S6": {
             "priority": 6,
-            "start_day": 39
+            "start_day": 38
           },
           "S7": {
             "priority": 7,
-            "start_day": 45
+            "start_day": 44
           },
           "S8": {
             "priority": 8,
-            "start_day": 59
+            "start_day": 58
           }
         },
         "pools": {
           "processing": 2,
           "assembly": 6,
-          "erection": 4,
+          "erection": 3,
           "painting": 2,
-          "outfitting": 3
+          "outfitting": 2
         },
         "transporters": {
+          "maintenance": true
+        },
+        "forklifts": {
+          "count": 2,
           "maintenance": true
         },
         "research": [],
@@ -387,7 +400,8 @@
             "method": "standard",
             "overtime": false,
             "maintenance": true,
-            "units": 2
+            "units": 2,
+            "crew": "skilled"
           },
           "painting": {
             "method": "standard",
@@ -408,7 +422,6 @@
             "method": "standard",
             "overtime": false,
             "maintenance": true,
-            "crew": "skilled",
             "units": 2
           },
           "quay_outfitting": {
@@ -428,7 +441,7 @@
     {
       "id": "all_in",
       "name": "전부 최대 투입",
-      "summary": "소조립·중조립·PE장을 증설하고, 사람 36명, 속도, 잔업, 정비를 전부 넣고 자재는 1일에 모두 발주한다. 등급의 기준선이다.",
+      "summary": "소조립·중조립·PE장을 증설하고, 사람 36명, 지게차 3대, 속도, 잔업, 정비를 전부 넣고 자재는 1일에 모두 발주한다. 등급의 기준선이다.",
       "config": {
         "ordering": "bulk",
         "ships": {
@@ -473,6 +486,10 @@
           "outfitting": 6
         },
         "transporters": {
+          "maintenance": true
+        },
+        "forklifts": {
+          "count": 3,
           "maintenance": true
         },
         "research": [],

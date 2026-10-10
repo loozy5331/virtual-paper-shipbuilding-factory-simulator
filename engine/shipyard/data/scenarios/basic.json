@@ -56,11 +56,11 @@
   },
   "kpi": {
     "revenue": 33600,
-    "profit": 15000,
+    "profit": 14500,
     "on_time_rate": 1.0,
     "first_pass_yield": 0.9
   },
-  "unlocks": "일정·자재 발주·사람·정비 같은 기본 운영만 씁니다. 작업장 증설과 로봇·신공법·저가 자재는 다음 반기부터 열립니다.",
+  "unlocks": "일정·자재 발주·사람·정비 같은 기본 운영만 씁니다. 지게차는 2대로 고정입니다. 작업장 증설, 지게차 대수, 로봇·신공법·저가 자재는 다음 반기부터 열립니다.",
   "options": {
     "crews": [
       "normal",
@@ -74,7 +74,10 @@
       "standard"
     ],
     "max_units": 1,
-    "split": false
+    "split": false,
+    "forklift_counts": [
+      2
+    ]
   },
   "grade": {
     "weights": {
@@ -211,6 +214,10 @@
         "transporters": {
           "maintenance": false
         },
+        "forklifts": {
+          "count": 2,
+          "maintenance": false
+        },
         "research": [],
         "stations": {
           "cutting": {
@@ -270,7 +277,7 @@
     {
       "id": "managed",
       "name": "관리",
-      "summary": "납기에서 역산해 착수를 나누고(VLCC는 2일·LNG선은 5일 먼저), 자재는 필요일에서 역산해 발주하고, 11명(조립 3, 나머지 직종 2명씩)으로 표준 공법에 정비를 한다.",
+      "summary": "납기에서 역산해 착수를 나누고(VLCC는 2일·LNG선은 5일 먼저), 자재는 필요일에서 역산해 발주하고, 11명(조립 3, 나머지 직종 2명씩)과 지게차 2대로 표준 공법에 정비를 한다.",
       "config": {
         "ordering": "jit",
         "ships": {
@@ -307,6 +314,10 @@
           "outfitting": 2
         },
         "transporters": {
+          "maintenance": true
+        },
+        "forklifts": {
+          "count": 2,
           "maintenance": true
         },
         "research": [],
@@ -406,6 +417,10 @@
           "outfitting": 6
         },
         "transporters": {
+          "maintenance": true
+        },
+        "forklifts": {
+          "count": 2,
           "maintenance": true
         },
         "research": [],
