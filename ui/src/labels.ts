@@ -4,11 +4,25 @@
 /** 고깔모자(작업모) 색: 역할. 3D 소인과 2D 작업 현황 기호가 함께 쓴다. */
 export const HAT = { worker: "#d6a400", manager: "#d9480f", senior: "#6f42c1" } as const;
 
+/** 직종별 작업모 색(4.0, D42). 조립은 원래 작업자 색. 모자 색만으로 구분하지 않게 현장 이름표와 대기소 글에 직종을 적는다 */
+export const TRADE_HAT: Record<string, string> = {
+  assembly: "#d6a400",
+  erection: "#2a78d6",
+  painting: "#00a07a",
+  outfitting: "#c0569e",
+};
+
+// 공정 8색(4.0): 검증기 통과(인접 CVD 최소 7.1 = 안벽의장↔시운전, 정상시 최소 23.7). 손실 색(주황·노랑·빨강)과 겹치지 않게
+// 새 공정은 청록·남색·자두·하늘. 막대 안 공정 이름과 막대 사이 틈을 함께 쓴다(CVD 6~8 구간의 보조 표시).
 export const STATION_COLOR: Record<string, string> = {
   sub_assembly: "#2a78d6",
   block_assembly: "#e87ba4",
+  painting: "#00a07a",
+  pre_outfitting: "#1c5cab",
   grand_assembly: "#008300",
   erection: "#4a3aa7",
+  quay_outfitting: "#c0569e",
+  sea_trial: "#0095c8",
 };
 
 // 막대 안 글자색. 중조립 분홍은 밝아서 흰 글자가 안 읽히므로 어두운 글자를 쓴다.
@@ -17,6 +31,10 @@ export const STATION_TEXT: Record<string, string> = {
   block_assembly: "#1f2a24",
   grand_assembly: "#ffffff",
   erection: "#ffffff",
+  painting: "#ffffff",
+  pre_outfitting: "#ffffff",
+  quay_outfitting: "#ffffff",
+  sea_trial: "#ffffff",
 };
 
 export interface StateInfo {
