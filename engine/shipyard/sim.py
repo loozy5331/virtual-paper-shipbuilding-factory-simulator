@@ -151,6 +151,10 @@ def complete_config(config: dict[str, Any], scenario: dict[str, Any]) -> dict[st
     if not isinstance(pools, dict):
         defaults = {k: v for k, v in scenario["default_pools"].items() if not k.startswith("_")}
         pools = {t: (config.get("pool") if t == "assembly" else defaults.get(t, 1)) for t in trades}
+    else:
+        # 4.0 개발 중 설정처럼 직종이 덜 적힌 pools(가공 직종 전)는 빠진 직종을 기본 인원으로 채운다
+        defaults = {k: v for k, v in scenario["default_pools"].items() if not k.startswith("_")}
+        pools = {**{t: defaults.get(t, 1) for t in trades if t not in pools}, **pools}
     out["pools"] = pools
     if all(_is_int(v) for v in pools.values()):
         out["pool"] = sum(pools.values())
@@ -460,11 +464,11 @@ def preview(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> d
 def move_days_between(scenario: dict[str, Any], a: int, b: int) -> int:
     """공정 a를 끝내고 공정 b에 들어갈 수 있게 되기까지(4.0, D41). 끝난 다음 날이 1.
 
-    같은 자리(site)면 운반 없이 다음 날, b가 크레인(탑재)·예인(안벽의장·시운전)으로 받는 공정이면 다음 날,
+    같은 자리(site)면 운반 없이 다음 날, b가 크레인(탑재)·예인(안벽의장·시운전)·컨베이어벨트(소조립)로 받는 공정이면 다음 날,
     그 밖은 T2가 로트 무게를 하루 용량씩 나른다(다 나른 날 들어간다).
     """
     sa, sb = scenario["stations"][a], scenario["stations"][b]
-    if sa.get("site") == sb.get("site") or sb.get("arrive") in ("crane", "tow"):
+    if sa.get("site") == sb.get("site") or sb.get("arrive") in ("crane", "tow", "conveyor"):
         return 1
     tr = scenario["transporter"]
     return math.ceil(tr["lot_weight"] / tr["capacity"] - EPS)
