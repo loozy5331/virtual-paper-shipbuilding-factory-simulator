@@ -18,7 +18,7 @@ import { STOCK_STATIONS, stockAssign, stockSpot } from "./stock";
 import { buildDock, buildLand, buildRoof, buildSectorOutline, buildWalls, buildYardLines, GiantHand, SEA_Y, type DockParts } from "./coast";
 import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_TOP, MAT_W, MAT2_D,
   nearLane, QUEUE_Z, SAFE_SPOT, seaSpot, SECTORS, sectorBounds, SHELF_X, SHELF_Z, SHORE_X, SPUR_IN, SPUR_OUT, SPUR_X, STATION_X,
-  STOCK_AT, STOCK_D, STOCK_HALF, along, groundY, LAB_TREES, route, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
+  STOCK_AT, STOCK_D, STOCK_HALF, along, groundY, kitRoutes, LAB_TREES, route, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
 import { clamp01, ease, flatOf, hullTris, type Tri } from "../proto/model";
 import { STATE_INFO, STATION_COLOR } from "../labels";
 import type { TrackPick } from "../track";
@@ -328,7 +328,8 @@ export class Yard {
     /** 로봇 팔(인력이 로봇인 공정). 작업장마다 하나 */
     robots: THREE.Group[];
   }[] = [];
-  private readonly carts: { group: THREE.Group; tag: CSS2DObject; smoke: THREE.Group }[] = [];
+  /** 트랜스포터(4.0): T1 자재 키트, T2 블록. crate = T1이 실은 키트 상자 */
+  private readonly carts: { group: THREE.Group; tag: CSS2DObject; smoke: THREE.Group; crate: THREE.Mesh }[] = [];
   /** 납품 마차(3.2): 입고일마다 한 대. 사흘 전 등대 곶을 떠나 입고일 아침 창고 뒤에 닿는다(그림만). 여러 대가 함께 길 위에 있을 수 있다 */
   private readonly supply = [0, 1, 2, 3, 4].map(() => buildSupplyCart());
   private readonly supplyRoute: Route = route(SUPPLY_ROUTE);
@@ -756,10 +757,15 @@ export class Yard {
       const tag = label(`T${k + 1}`, "place-tag small");
       tag.position.y = 0.9;
       group.add(tag);
+      // 자재 키트 상자(T1이 싣고 다닐 때만 보인다)
+      const crate = mesh(new THREE.BoxGeometry(0.6, 0.35, 0.5), "#c9a26b");
+      crate.position.y = 0.5;
+      crate.visible = false;
+      group.add(crate);
       group.position.set(DEPOT.x, 0, LANE_Z + k * 1.15);
       group.visible = false;
       this.scene.add(group);
-      this.carts.push({ group, tag, smoke });
+      this.carts.push({ group, tag, smoke, crate });
     }
   }
 
@@ -1189,9 +1195,17 @@ export class Yard {
     f.transporters.forEach((tr, k) => {
       const cart = this.carts[k];
       cart.group.visible = true;
-      const lot = tr.ship ? f.lots.find((l) => l.ship === tr.ship) : undefined;
+      const lot = tr.role === "block" && tr.ship ? f.lots.find((l) => l.ship === tr.ship) : undefined;
       let at: THREE.Vector3;
-      if (tr.state === "move" && lot) {
+      let carrying = false;
+      if (tr.role === "material" && tr.state === "move" && tr.kitTo !== null) {
+        // T1: 준비 시간 안에 물류창고 앞으로 가 키트를 싣고(~0.4), 그 공정 앞으로(~0.8). 멈춰 있으면 공정 앞.
+        const r = kitRoutes(tr.kitTo);
+        const t = src.playing ? frac : 1;
+        const p = t < LEAD_IN ? along(r.pick, t / LEAD_IN) : t < 0.4 ? along(r.pick, 1) : along(r.drop, Math.min(1, (t - 0.4) / 0.4));
+        at = new THREE.Vector3(p.x, 0, p.z);
+        carrying = t >= 0.4 && t < 0.95;
+      } else if (tr.state === "move" && lot) {
         at = lot.place === "carried"
           ? this.lotPosition(lot, frac, f).setY(0)
           : new THREE.Vector3(STATION_X[lot.station] - 1.4, 0, LANE_Z);
@@ -1209,7 +1223,9 @@ export class Yard {
         if (lotObj && cart.group.position.distanceTo(at) < 0.8) lotObj.group.position.copy(cart.group.position).setY(0.32);
       }
       cart.smoke.visible = tr.state === "breakdown_stop";
-      setLabel(cart.tag, tr.state === "breakdown_stop" ? `${tr.id} ${chipHtml("breakdown_stop", "고장")}` : tr.id);
+      cart.crate.visible = carrying;
+      const name = `${tr.id} ${tr.role === "material" ? "자재" : "블록"}`;
+      setLabel(cart.tag, tr.state === "breakdown_stop" ? `${name} ${chipHtml("breakdown_stop", "고장")}` : name);
     });
     for (let k = f.transporters.length; k < this.carts.length; k++) this.carts[k].group.visible = false;
 

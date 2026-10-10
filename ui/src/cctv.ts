@@ -427,22 +427,25 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     add(zc - 6, zc <= LANE_Z ? tag(px(cx), py(zc - 1.8, 3.5) - 10, name, "cc-place") : tag(px(cx), py(zc + 1.8) + 22, name, "cc-place"));
   });
 
-  // ----- 트랜스포터 -----
+  // ----- 트랜스포터(4.0): T1 자재 키트는 그날 가져다 놓은 공정 앞, T2 블록은 실은 블록과 함께 -----
   frame.transporters.forEach((tr, k) => {
-    const carried = tr.state === "move" && tr.ship ? frame.lots.find((l) => l.ship === tr.ship && l.place === "carried") : undefined;
-    const x = carried ? (STATION_X[carried.station] + (STATION_X[carried.station + 1] ?? STATION_X[carried.station] + 4)) / 2 : DEPOT.x + 0.6;
-    const z = carried ? LANE_Z : LANE_Z - 0.3 + k * 1.15;
+    const carried = tr.role === "block" && tr.state === "move" && tr.ship ? frame.lots.find((l) => l.ship === tr.ship && l.place === "carried") : undefined;
+    const kitAt = tr.role === "material" && tr.state === "move" && tr.kitTo !== null ? STATION_X[tr.kitTo] - 1.4 : null;
+    const x = carried ? (STATION_X[carried.station] + (STATION_X[carried.station + 1] ?? STATION_X[carried.station] + 4)) / 2 : kitAt ?? DEPOT.x + 0.6;
+    const z = carried || kitAt !== null ? LANE_Z : LANE_Z - 0.3 + k * 1.15;
     const body = tr.state === "breakdown_stop" ? (STATE_INFO.breakdown_stop?.color ?? "#8e2e42") : "#5f6b73";
     add(z, box(x, z, 2.0, 0.8, 0.3, body, "#3f474d"));
     if (carried) {
       add(z + 0.02, block(carried, lot(x, z, carried.form, 0.7), chip(x, z - 0.3, 0.9, carried, lateNow(carried))));
     }
-    add(z + 0.5, tag(px(x), py(z + 0.4) + 13, tr.state === "breakdown_stop" ? `${tr.id} 고장` : tr.id, tr.state === "breakdown_stop" ? "cc-tag mid stop" : "cc-tag mid"));
+    if (kitAt !== null) add(z + 0.03, box(x, z, 0.6, 0.5, 0.65, "#c9a26b", "#a8865a"));   // 실어 온 키트 상자
+    const name = `${tr.id} ${tr.role === "material" ? "자재" : "블록"}`;
+    add(z + 0.5, tag(px(x), py(z + 0.4) + 13, tr.state === "breakdown_stop" ? `${name} 고장` : name, tr.state === "breakdown_stop" ? "cc-tag mid stop" : "cc-tag mid"));
   });
 
   // ----- 안벽 앞 바다(인도): 현장 3D와 같은 자리, 세 척씩 두 줄 -----
   const sea = frame.lots.filter((l) => l.place === "sea").sort((a, b) => a.slot - b.slot);
-  sea.slice(0, 6).forEach((l, i) => {
+  sea.slice(0, 8).forEach((l, i) => {
     const { x: bx, z: bz } = seaSpot(i);
     add(bz, block(l, lot(bx, bz, 4, 0.75, l.type),
       s("text", { x: px(bx), y: py(bz) + 12, class: l.late ? "cc-sea-name late" : "cc-sea-name" }, l.ship)));

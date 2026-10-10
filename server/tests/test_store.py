@@ -34,7 +34,7 @@ class StoreTest(unittest.TestCase):
     def test_grade_is_recomputed_on_the_server(self):
         # 화면이 등급을 보내도 무시하고 설정으로 다시 계산한다.
         saved = self.store.save_run({"nickname": "Bell", "class_code": "3반", "config": BASIC["managed"], "grade": "S", "score": 112})
-        self.assertEqual((saved["grade"], saved["score"]), ("A", 90.0))
+        self.assertEqual((saved["grade"], saved["score"]), ("A", 87.5))   # 관리안, 4.x 조율 전 값(D40)
 
     def test_leaderboard_takes_the_best_per_scenario_and_class(self):
         self.save("Bell", BASIC["unmanaged"])

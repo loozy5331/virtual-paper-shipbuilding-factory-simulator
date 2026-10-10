@@ -54,8 +54,12 @@ export interface StationView extends Omit<UnitView, "unit"> {
 
 export interface TransporterView {
   id: string;
+  /** 4.0: material = T1 자재 키트, block = T2 블록 */
+  role: "material" | "block";
   state: "move" | "idle" | "breakdown_stop";
   ship: string | null;      // 실은 배 (여러 척이면 첫 배)
+  /** T1이 오늘 키트를 가져다 놓은 공정 번호(첫 키트). 없으면 null */
+  kitTo: number | null;
 }
 
 export interface ShelfView {
@@ -187,8 +191,10 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
   });
 
   const transporters: TransporterView[] = result.transporters.map((tr) => {
-    const rec = day > 0 ? tr.daily[index] : { state: "idle" as const, ships: [] };
-    return { id: tr.id, state: rec.state, ship: rec.ships[0] ?? null };
+    const rec = day > 0 ? tr.daily[index] : { state: "idle" as const, ships: [], kits: [] };
+    const kit = rec.kits?.[0];
+    return { id: tr.id, role: tr.role ?? "block", state: rec.state, ship: rec.ships[0] ?? null,
+      kitTo: kit ? scenario.stations.findIndex((s) => s.id === kit.station) : null };
   });
 
   const stock = day > 0 ? result.inventory_daily[index] : {};

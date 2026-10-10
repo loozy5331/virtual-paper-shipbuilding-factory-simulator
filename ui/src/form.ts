@@ -216,11 +216,10 @@ function commonPane(ctx: FormContext): HTMLElement {
       config.pool, (v) => { config.pool = v; ctx.onEdit(false); }),
     h("small", null, "명"));
 
+  // 트랜스포터는 역할마다 한 대로 고정(4.0, D39): 대수는 고르지 않고 정비만 고른다.
   const transporter = h("div", { class: "field-row" },
     h("span", { class: "field-label" }, "트랜스포터"),
-    segmented("transporters",
-      Array.from({ length: scenario.transporter.max_count }, (_, k) => ({ value: k + 1, label: `${k + 1}대` })),
-      config.transporters.count, (v) => { config.transporters.count = v; ctx.onEdit(false); }),
+    h("span", { class: "hint" }, "T1 자재(물류창고 → 작업장) · T2 블록(공정 사이), 각 1대"),
     toggle("정비", config.transporters.maintenance, (on) => { config.transporters.maintenance = on; ctx.onEdit(false); }));
 
   // 공정마다 작업장 수 상한: 분기 상한과 공정 상한(탑재 도크는 크레인이 있어야 해 2곳) 중 작은 것

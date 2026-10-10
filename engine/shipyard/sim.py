@@ -197,10 +197,8 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
     if not _is_int(pool) or not 1 <= pool <= rules["max_pool"]:
         errors.append(f"작업대기소 인원은 1~{rules['max_pool']}명이어야 합니다")
 
+    # 트랜스포터는 역할마다 한 대로 고정(4.0, D39): T1 자재, T2 블록. 옛 설정의 count는 읽되 쓰지 않는다.
     tr = config.get("transporters") or {}
-    max_tr = scenario["transporter"]["max_count"]
-    if not _is_int(tr.get("count")) or not 1 <= tr["count"] <= max_tr:
-        errors.append(f"트랜스포터는 1~{max_tr}대여야 합니다")
     if not isinstance(tr.get("maintenance"), bool):
         errors.append("트랜스포터 정비는 true 또는 false여야 합니다")
 
@@ -370,7 +368,7 @@ def fixed_costs(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, f
     costs = scenario["rules"]["costs"]
     tr = scenario["transporter"]
     days = scenario["days"]
-    n_tr = config["transporters"]["count"]
+    n_tr = len(tr["roles"])
     units = station_units(config, scenario)
     return {
         "labor": config["pool"] * costs["wage_per_day"] * days,
@@ -419,7 +417,8 @@ def plan_schedule(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str,
     """
     rules = scenario["rules"]
     tr = scenario["transporter"]
-    move_days = math.ceil(tr["lot_weight"] / (tr["capacity"] * config["transporters"]["count"]))
+    # 블록 운반은 T2 한 대(4.0). 골리앗 크레인이 바로 드는 공정(탑재)은 운반 없이 다음 날 들어간다.
+    move_days = math.ceil(tr["lot_weight"] / tr["capacity"] - EPS)
     assigned = min(config["pool"], rules["max_workers_per_station"])
     units_of = dict(zip((s["id"] for s in scenario["stations"]), station_units(config, scenario)))
     parts_of = {s["id"]: split_parts(config, scenario, p, units_of[s["id"]]) for p, s in enumerate(scenario["stations"])}
@@ -433,7 +432,10 @@ def plan_schedule(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str,
             # 나눠 하기: 작업장을 모두 쓴다고 보고 부분 작업량으로 잰다(배가 혼자 쓸 때의 일정).
             end = day + math.ceil(work[st["id"]] / parts_of[st["id"]] / rate - EPS) - 1
             spans[st["id"]] = {"start": day, "end": end}
-            day = end + move_days   # 끝난 다음 날부터 운반, 다 나른 날 다음 공정에 들어간다.
+            # 끝난 다음 날부터 운반, 다 나른 날 다음 공정에 들어간다. 크레인이 드는 공정 앞은 다음 날.
+            nxt = scenario["stations"].index(st) + 1
+            crane = nxt < len(scenario["stations"]) and scenario["stations"][nxt]["id"] in tr["crane_fed"]
+            day = end + (1 if crane else move_days)
         ships[order["id"]] = spans
 
     # 겹침: 같은 공정을 쓰는 배가 그 공정의 작업장 수보다 많은 날. 두 배씩 묶어 그 날들의 구간으로 적는다.
@@ -512,7 +514,10 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     n_units = station_units(config, scenario)              # 공정마다 작업장 수 (증설하면 2~3)
     parts_max = [split_parts(config, scenario, p, n_units[p]) for p in range(n_st)]   # 나눠 하기: 배 한 척의 최대 부분 수
     pool: int = config["pool"]
-    n_tr: int = config["transporters"]["count"]
+    # 트랜스포터 둘, 역할 고정(4.0, D39): T1(0번)은 자재 키트, T2(1번)는 블록.
+    n_tr: int = len(tr["roles"])
+    T_KIT, T_BLOCK = tr["roles"].index("material"), tr["roles"].index("block")
+    crane_fed = {p for p, s in enumerate(stations) if s["id"] in tr["crane_fed"]}
     tr_maintained: bool = config["transporters"]["maintenance"]
     schedule = research_schedule(config.get("research", []), scenario)
     automation = scenario["research"]["automation"]
@@ -559,6 +564,18 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     groups: dict[int, dict[str, Any]] = {}
     tr_moves = [0] * n_tr
     tr_stop_until = [0] * n_tr
+    # 자재 키트(4.0): 배 한 척이 한 공정에 쓸 자재 전량. (배, 공정) → 요청한 날. 실은(도착한) 키트는 kit_ready.
+    # 요청: 앞 공정에 들어간 날(소조립은 착수 예정일 하루 전). T1이 요청 다음 날부터 우선순위 순으로 하루 kits_per_day개 싣는다.
+    kit_since: dict[tuple[int, int], int] = {}
+    kit_ready: set[tuple[int, int]] = set()
+
+    def request_kit(i: int, p: int, day: int) -> None:
+        mid = stations[p]["material"] if p < n_st else None
+        if mid and bom_of(i, mid) > 0:
+            kit_since[(i, p)] = day
+
+    for i, o in enumerate(orders):
+        request_kit(i, 0, config["ships"][o["id"]]["start_day"] - 1)
 
     ship_daily: list[list[dict[str, Any]]] = [[] for _ in range(n_ships)]
     station_daily: list[list[list[dict[str, Any]]]] = [[[] for _ in range(n)] for n in n_units]
@@ -605,11 +622,34 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             batches[mid].append([day, for_ship, qty])
             events.append({"day": day, "type": "arrival", "material": mid, "quantity": qty, "ship": for_ship})
 
-        # 2. 운반: 공정을 끝낸 다음 날부터 우선순위 순으로 나른다.
-        #    트랜스포터 한 대는 하루에 capacity만큼 나르고, 로트를 다 나른 날 바로 다음 공정에 들어갈 수 있다.
-        free = [k for k in range(n_tr) if day > tr_stop_until[k]]
+        # 2. 운반(4.0, D39): 트랜스포터 둘이 역할을 나눈다. 멈춘(고장) 트랜스포터는 carried에 없다.
+        carried: dict[int, list[str]] = {k: [] for k in range(n_tr) if day > tr_stop_until[k]}
+        kits_today: list[dict[str, Any]] = []
+        # 2-0. T1 자재 키트: 요청 다음 날부터 우선순위(배) → 공정 순으로 하루 kits_per_day개.
+        #      실을 때 창고에서 출고한다(페깅 출고도 이때). 재고가 모자라면 싣지 못하고 다음 키트를 본다. 실은 날 작업장에 닿는다.
+        if T_KIT in carried:
+            room_kits = tr["kits_per_day"]
+            for i, p in sorted((k for k in kit_since if k not in kit_ready and kit_since[k] < day),
+                               key=lambda ip: (priority[ip[0]], ip[1])):
+                if room_kits == 0:
+                    break
+                mid = stations[p]["material"]
+                need = bom_of(i, mid)
+                if stock[mid] < need:
+                    continue
+                stock[mid] -= need
+                events.append({"day": day, "type": "issue", "material": mid, "quantity": need,
+                               "ship": orders[i]["id"], "station": stations[p]["id"], "transporter": f"T{T_KIT + 1}",
+                               "from": _take_pegged(batches[mid], orders[i]["id"], need)})
+                kit_ready.add((i, p))
+                kits_today.append({"ship": orders[i]["id"], "station": stations[p]["id"], "material": mid})
+                carried[T_KIT].append(orders[i]["id"])
+                room_kits -= 1
+
+        # 2-1. T2 블록: 공정을 끝낸 다음 날부터 우선순위 순으로 나른다.
+        #      하루에 capacity만큼 나르고, 로트를 다 나른 날 바로 다음 공정에 들어갈 수 있다.
+        free = [T_BLOCK] if T_BLOCK in carried else []
         room = {k: float(tr["capacity"]) for k in free}
-        carried: dict[int, list[str]] = {k: [] for k in free}
         for i in by_priority:
             lot = transit.get(i)
             if lot is None or lot["since"] >= day:
@@ -636,15 +676,16 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             else:
                 ship_state[i] = (TRANSPORT if took else TRANSPORT_WAIT, lot["from"], None)
 
-        # 2-1. 오늘 운행한 트랜스포터는 운행 횟수를 세고, 정해진 간격마다 고장 판정을 한다.
+        # 2-2. 오늘 운행한 트랜스포터는 운행 횟수를 세고, 정해진 간격마다 고장 판정을 한다.
         for k in range(n_tr):
+            extra = {"kits": kits_today} if k == T_KIT else {}
             if k not in carried:
-                transporter_daily[k].append({"state": BREAKDOWN_STOP, "ships": []})
+                transporter_daily[k].append({"state": BREAKDOWN_STOP, "ships": [], **({"kits": []} if k == T_KIT else {})})
                 continue
             if not carried[k]:
-                transporter_daily[k].append({"state": "idle", "ships": []})
+                transporter_daily[k].append({"state": "idle", "ships": [], **extra})
                 continue
-            transporter_daily[k].append({"state": "move", "ships": carried[k]})
+            transporter_daily[k].append({"state": "move", "ships": carried[k], **extra})
             tr_moves[k] += 1
             if tr_moves[k] % tr["every_moves"] == 0:
                 threshold = 0 if "predictive" in done_research else (
@@ -682,21 +723,15 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                     station_today[p][u] = {"state": cause, "ship": orders[cur["ship"]]["id"] if cur else None, "workers": 0}
                     continue
 
-                # 3-2. 비어 있으면 자재를 꺼내(출고) 로트를 들인다.
+                # 3-2. 비어 있으면 로트를 들인다. 자재를 쓰는 공정은 그 배의 키트가 작업장에 닿아 있어야 한다(4.0).
+                #      키트가 아직이면(재고 부족, T1이 바쁘거나 고장) 자재 대기다.
                 if cur is None:
-                    mid = stations[p]["material"]
                     for i in waiting:
                         if i in entered or ship_state.get(i, ("",))[0] == MATERIAL_WAIT:
                             continue
-                        need = bom_of(i, mid) if mid else 0
-                        if mid and stock[mid] < need:
+                        if (i, p) in kit_since and (i, p) not in kit_ready:
                             ship_state[i] = (MATERIAL_WAIT, p, None)
                             continue
-                        if mid:
-                            stock[mid] -= need
-                            events.append({"day": day, "type": "issue", "material": mid, "quantity": need,
-                                           "ship": orders[i]["id"], "station": pid,
-                                           "from": _take_pegged(batches[mid], orders[i]["id"], need)})
                         # 나눠 하기: 지금 비어 있고 멈추지 않은 작업장(이 작업장 + 뒤 번호)에 작업량을 똑같이 나눈다.
                         work = work_of(i, p)
                         parts = [u] + [v for v in range(u + 1, n_units[p])
@@ -714,6 +749,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                         events.append(enter)
                         cur = current[p][u]
                         entered.add(i)
+                        request_kit(i, p + 1, day)   # 다음 공정의 키트는 이 공정에 들어간 날 요청한다
                         spans[i][pid] = {"start": day, "end": day}
                         if p == 0:
                             started[i] = day
@@ -831,6 +867,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                     delivered[i] = day
                     events.append({"day": day, "type": "delivery", "ship": orders[i]["id"],
                                    "late_days": max(0, day - orders[i]["due_day"])})
+                elif p + 1 in crane_fed:
+                    ready[i] = day + 1   # 골리앗 크레인이 PE장에서 바로 든다(운반 없음, 4.0)
                 else:
                     transit[i] = {"from": p, "since": day, "left": float(tr["lot_weight"]), "moving": False}
 
@@ -960,6 +998,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
 
     transporters_out = [{
         "id": f"T{k + 1}",
+        "role": tr["roles"][k],
         "moves": tr_moves[k],
         "breakdowns": tr_breakdowns[k],
         "daily": transporter_daily[k],
@@ -1172,14 +1211,14 @@ def _need_days(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, di
         ship["order_days"] = {}
     result = _run(probe_config, probe_scenario)
 
+    # 필요일 = 그 자재를 출고한 날(4.0: T1이 키트를 실은 날). 쓰지 못했으면 마지막 날.
+    issued: dict[tuple[str, str], int] = {}
+    for ev in result["events"]:
+        if ev["type"] == "issue":
+            issued.setdefault((ev["ship"], ev["material"]), ev["day"])
     station_material = {s["id"]: s["material"] for s in scenario["stations"] if s["material"]}
-    needs: dict[str, dict[str, int]] = {}
-    for ship in result["ships"]:
-        needs[ship["id"]] = {}
-        for pid, mid in station_material.items():
-            span = ship["spans"].get(pid)
-            needs[ship["id"]][mid] = span["start"] if span else scenario["days"]
-    return needs
+    return {ship["id"]: {mid: issued.get((ship["id"], mid), scenario["days"]) for mid in station_material.values()}
+            for ship in result["ships"]}
 
 
 def _clamp_day(day: int, scenario: dict[str, Any]) -> int:
