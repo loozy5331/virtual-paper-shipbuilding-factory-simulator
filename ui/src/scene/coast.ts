@@ -9,7 +9,7 @@
 
 import * as THREE from "three";
 import { mesh } from "./people";
-import { BAY_MOUTH, BAY_Z, MOUTH_X, SHORE_X, STATION_X, YARD_X0 } from "./layout";
+import { BAY_C, BAY_MOUTH, BAY_Z, MOUTH_X, SHORE_X, STATION_X, YARD_X0, type Sector } from "./layout";
 
 export const SEA_Y = -0.32;
 
@@ -29,12 +29,12 @@ export function buildLand(scene: THREE.Scene): void {
     scene.add(m);
   };
   // 포장된 야드(밝은 콘크리트)와 둘레 풀밭. 오른쪽 만만 비운다.
-  ground(YARD_X0, SHORE_X, -14, 9, CONCRETE);
-  ground(-80, YARD_X0, -80, 80, "#93ab7c", -0.52);
-  ground(YARD_X0, SHORE_X, -80, -14, "#93ab7c", -0.52);
-  ground(YARD_X0, SHORE_X, 9, 80, "#93ab7c", -0.52);
-  ground(SHORE_X, 80, -80, -BAY_Z, "#93ab7c", -0.52);
-  ground(SHORE_X, 80, BAY_Z, 80, "#93ab7c", -0.52);
+  ground(YARD_X0, SHORE_X, -14, 15, CONCRETE);
+  ground(-90, YARD_X0, -90, 90, "#93ab7c", -0.52);
+  ground(YARD_X0, SHORE_X, -90, -14, "#93ab7c", -0.52);
+  ground(YARD_X0, SHORE_X, 15, 90, "#93ab7c", -0.52);
+  ground(SHORE_X, 90, -90, BAY_C - BAY_Z, "#93ab7c", -0.52);
+  ground(SHORE_X, 90, BAY_C + BAY_Z, 90, "#93ab7c", -0.52);
   const sea = new THREE.Mesh(new THREE.PlaneGeometry(300, 300),
     new THREE.MeshStandardMaterial({ color: "#3f6f8c", roughness: 0.25, metalness: 0.05 }));
   sea.rotation.x = -Math.PI / 2;
@@ -51,24 +51,24 @@ export function buildLand(scene: THREE.Scene): void {
   };
   const greens = ["#7f9a6b", "#87a173", "#7b9667", "#8aa476", "#90a97c"];
   // ㄷ자: 뒤(멀리, 크게), 왼쪽, 앞(카메라 뒤라 거의 안 보임)
-  for (let k = 0; k < 7; k++) hill(-34 + k * 12, -34 - (k % 2) * 3, 11, 8 + (k % 3) * 2, 7, greens[k % greens.length]);
-  for (let k = 0; k < 5; k++) hill(-34 - (k % 2) * 2, -20 + k * 12, 7, 6 + (k % 2) * 2, 9, greens[(k + 2) % greens.length]);
-  for (let k = 0; k < 6; k++) hill(-28 + k * 13, 34 + (k % 2) * 2, 10, 6, 6, greens[(k + 1) % greens.length]);
+  for (let k = 0; k < 9; k++) hill(-50 + k * 12, -36 - (k % 2) * 3, 11, 8 + (k % 3) * 2, 7, greens[k % greens.length]);
+  for (let k = 0; k < 6; k++) hill(-50 - (k % 2) * 2, -24 + k * 12, 7, 6 + (k % 2) * 2, 9, greens[(k + 2) % greens.length]);
+  for (let k = 0; k < 8; k++) hill(-44 + k * 13, 42 + (k % 2) * 2, 10, 6, 6, greens[(k + 1) % greens.length]);
   // 오른쪽 두 팔: 만을 따라 뻗다가 끝에서 안쪽으로 굽는다(곶). 물길은 남긴다.
   for (const side of [-1, 1]) {
-    hill(17, side * (BAY_Z + 6), 8, 5, 5, greens[2]);
-    hill(MOUTH_X + 1, side * (BAY_Z + 2), 5, 3.6, 5, greens[3]);
-    hill(MOUTH_X, side * (BAY_MOUTH + 3.2), 2.6, 2.2, 3.2, greens[4]);   // 곶 끝
+    hill(18, BAY_C + side * (BAY_Z + 6), 8, 5, 5, greens[2]);
+    hill(MOUTH_X + 1, BAY_C + side * (BAY_Z + 2), 5, 3.6, 5, greens[3]);
+    hill(MOUTH_X, BAY_C + side * (BAY_MOUTH + 3.2), 2.6, 2.2, 3.2, greens[4]);   // 곶 끝
   }
   // 등대: 뒤쪽 곶 끝(카메라에서 보이는 쪽)
   const tower = mesh(new THREE.CylinderGeometry(0.45, 0.6, 3.2, 20), "#f4f1ea");
-  tower.position.set(MOUTH_X, 2.6, -(BAY_MOUTH + 2.6));
+  tower.position.set(MOUTH_X, 2.6, BAY_C - (BAY_MOUTH + 2.6));
   const band = mesh(new THREE.CylinderGeometry(0.5, 0.53, 0.5, 20), "#b8322d");
-  band.position.set(MOUTH_X, 3.0, -(BAY_MOUTH + 2.6));
+  band.position.set(MOUTH_X, 3.0, BAY_C - (BAY_MOUTH + 2.6));
   const lamp = mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.5, 16), "#ffe9a8", { emissive: "#ffcf66", emissiveIntensity: 0.6 });
-  lamp.position.set(MOUTH_X, 4.45, -(BAY_MOUTH + 2.6));
+  lamp.position.set(MOUTH_X, 4.45, BAY_C - (BAY_MOUTH + 2.6));
   const cap = mesh(new THREE.ConeGeometry(0.55, 0.6, 16), "#b8322d");
-  cap.position.set(MOUTH_X, 5.0, -(BAY_MOUTH + 2.6));
+  cap.position.set(MOUTH_X, 5.0, BAY_C - (BAY_MOUTH + 2.6));
   scene.add(tower, band, lamp, cap);
 }
 
@@ -88,6 +88,44 @@ export function buildWalls(x0: number, x1: number, z0: number, z1: number, heigh
     base.position.set(w.x, 0.11, w.z);
     g.add(panel, base);
   }
+  return g;
+}
+
+/**
+ * 공장 지붕(3.2): 전경에서 내업 구획을 덮는 얇은 판 + 철골(트러스) 몇 줄. 구획을 가까이 보면 통째로 숨긴다
+ * (투명하게, 철골도 보이지 않게, D38). 벽(높이 wallH) 위에 얹는다.
+ */
+export function buildRoof(x0: number, x1: number, z0: number, z1: number, wallH: number): THREE.Group {
+  const g = new THREE.Group();
+  const w = x1 - x0, d = z1 - z0;
+  const sheet = mesh(new THREE.BoxGeometry(w + 0.3, 0.08, d + 0.3), "#b9c2bd", { roughness: 0.85 });
+  sheet.position.set((x0 + x1) / 2, wallH + 0.35, (z0 + z1) / 2);
+  g.add(sheet);
+  for (let k = 1; k < 4; k++) {
+    const beam = mesh(new THREE.BoxGeometry(0.1, 0.3, d), "#7d8a83", { roughness: 0.8 });
+    beam.position.set(x0 + (w * k) / 4, wallH + 0.16, (z0 + z1) / 2);
+    g.add(beam);
+  }
+  return g;
+}
+
+/** 구획 윤곽: 바닥의 흰 점선(전경에서 구획이 어디까지인지). dashed = 아직 쓰지 않는 땅(증설 예정지) */
+export function buildSectorOutline(sec: Sector, faint = false): THREE.Group {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({ color: "#f7f5ee", transparent: true, opacity: faint ? 0.35 : 0.75 });
+  const dash = (x0: number, z0: number, x1: number, z1: number) => {
+    const len = Math.hypot(x1 - x0, z1 - z0), n = Math.max(1, Math.floor(len / 0.9));
+    for (let k = 0; k < n; k += 1) {
+      const a = k / n, b = (k + 0.55) / n;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(Math.max(0.12, (x1 - x0) * (b - a)), 0.015, Math.max(0.12, (z1 - z0) * (b - a))), mat);
+      m.position.set(x0 + (x1 - x0) * (a + b) / 2, 0.02, z0 + (z1 - z0) * (a + b) / 2);
+      g.add(m);
+    }
+  };
+  dash(sec.x0, sec.z0, sec.x1, sec.z0);
+  dash(sec.x0, sec.z1, sec.x1, sec.z1);
+  dash(sec.x0, sec.z0, sec.x0, sec.z1);
+  if (sec.x1 < SHORE_X - 0.1) dash(sec.x1, sec.z0, sec.x1, sec.z1);
   return g;
 }
 
