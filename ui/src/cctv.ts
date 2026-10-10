@@ -16,7 +16,7 @@ import type { TrackPick } from "./track";
 import { STOCK_STATIONS, stockAssign, stockSpot } from "./scene/stock";
 // 배치는 현장 3D와 같은 scene/layout.ts
 import { areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
-  along, LAB_TREES, QUAY, route, seaSpot, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_X, SHELF_Z, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
+  along, LAB_TREES, LAND_ROUTE, PIER, QUAY, route, SHIP_ROUTE, seaSpot, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_X, SHELF_Z, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
   type SectorId } from "./scene/layout";
 
 // ----- 투영: 위에서 30도 기운 정사영 -----
@@ -206,7 +206,9 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   add(-100, s("line", { x1: px(QUAY.x1), x2: px(QUAY.x1), y1: py(QUAY.z0), y2: 4000, stroke: "#8fa7b4", "stroke-width": 1.5 }));
   for (let x = QUAY.x0 + 0.8; x < QUAY.x1 - 0.3; x += 1.3) add(-99, s("circle", { cx: px(x), cy: py(QUAY.z0 + 0.35), r: 2.2, fill: "#8f8a80" }));
   // 자재 납품 길: 등대 곶에서 굽어 들어와 물류창고 뒤까지, 그리고 왼쪽으로 빠지는 길(위에서 본 굵은 선)
-  for (const pts of [SUPPLY_ROUTE, SUPPLY_EXIT]) {
+  // 등대 곶 바깥 부두(해상 납품)
+  add(-99, box((PIER.x0 + PIER.x1) / 2, PIER.z, PIER.x1 - PIER.x0, 1.1, 0.1, "#8a6a4a", "#5d4632"));
+  for (const pts of [SUPPLY_ROUTE, LAND_ROUTE, SUPPLY_EXIT]) {
     const d = route(pts, 0.8).pts.map((p, i) => `${i ? "L" : "M"}${px(p.x).toFixed(1)} ${py(p.z).toFixed(1)}`).join(" ");
     add(-99, s("path", { d, fill: "none", stroke: "#4a4536", "stroke-width": 0.9 * S * DEPTH, "stroke-linejoin": "round", "stroke-linecap": "round" }));
   }
@@ -260,10 +262,25 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   });
   // 납품 마차(3.2): 정지 화면이라 그날 끝 자리. 입고일 마차는 창고 뒤(뒷문)에, 사흘 안의 입고는 납품 길 위에.
   // 상자 색은 선반 상자 뚜껑과 같다. 창고 뒤 마차만 무엇이 몇 개인지 적고, 길 위 마차는 "입고 D-n"만.
-  const roadIn = route(SUPPLY_ROUTE), roadOut = route(SUPPLY_EXIT);
+  // 해상(종이): 입고 사흘 전 날 끝에는 배가 부두에, 이틀·하루 전 날 끝에는 마차가 해상 길 위에. 육로(물감·깃발): 산길 위에.
+  const roadSea = route(SUPPLY_ROUTE), roadLand = route(LAND_ROUTE), roadOut = route(SUPPLY_EXIT), shipLane = route(SHIP_ROUTE, 1);
+  const crateColor = (m: string) => ["#f7f3ea", "#c8553d", "#c0392b"][frame.shelves.findIndex((sh) => sh.material === m)] ?? PAPER;
   for (const dv of frame.deliveries) {
-    const today = dv.day === frame.day;
-    const at = today ? along(roadOut, 0) : along(roadIn, (frame.day + 1 - (dv.day - SUPPLY_DAYS)) / SUPPLY_DAYS);
+    const left = dv.day - frame.day, today = left === 0;
+    const label = today ? `입고 · ${dv.items.map((a) => `${a.name} ${a.quantity}`).join(" · ")}` : `입고 D-${left} · ${dv.route === "sea" ? "해상" : "육로"}`;
+    if (dv.route === "sea" && left === 3) {
+      // 배가 부두에 닿아 있다(철판 = 종이 묶음)
+      const at = along(shipLane, 1), cx = px(at.x), cy = py(at.z);
+      add(at.z + 0.5, s("g", { class: "cc-supply-ship" },
+        s("path", { d: `M${cx - 48} ${cy - 10} L${cx + 40} ${cy - 10} L${cx + 52} ${cy - 3} L${cx + 40} ${cy + 4} L${cx - 48} ${cy + 4} Z`, fill: "#3f4f5a", stroke: "#26313a" }),
+        s("rect", { x: cx + 26, y: cy - 22, width: 16, height: 12, fill: "#e9e4d8" }),
+        ...dv.items.map((a, k) => s("rect", { x: cx - 40 + k * 20, y: cy - 16, width: 16, height: 7, fill: crateColor(a.material), stroke: "#4a3a2c", "stroke-width": 0.6 }))));
+      add(at.z + 0.5, tag(cx, cy - 28, label, "cc-tag mid"));
+      continue;
+    }
+    const at = today ? along(roadOut, 0)
+      : dv.route === "sea" ? along(roadSea, left === 2 ? 0.7 / 1.7 : 1)
+      : along(roadLand, (SUPPLY_DAYS - left + 1) / SUPPLY_DAYS);
     const cx = px(at.x), cy = py(at.z);
     const flip = Math.cos(at.angle) < 0 ? -1 : 1;   // 왼쪽으로 가면 좌우를 뒤집는다
     const g = s("g", { class: "cc-supply", transform: `translate(${cx} ${cy}) scale(${flip} 1)` },
@@ -276,13 +293,10 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
       s("line", { x1: 9, x2: 9, y1: -6, y2: 1, stroke: "#8a5a3b", "stroke-width": 2 }),
       s("line", { x1: 21, x2: 21, y1: -6, y2: 1, stroke: "#8a5a3b", "stroke-width": 2 }),
       s("line", { x1: 0, x2: 6, y1: -8, y2: -10, stroke: "#6b4a2b", "stroke-width": 1.5 }));
-    if (!today) dv.items.forEach((a, k) => {
-      const i = frame.shelves.findIndex((sh) => sh.material === a.material);
-      g.append(s("rect", { x: -28 + k * 9, y: -18, width: 8, height: 8, fill: ["#f7f3ea", "#c8553d", "#c0392b"][i] ?? PAPER, stroke: "#4a3a2c", "stroke-width": 0.6 }));
-    });
+    if (!today) dv.items.forEach((a, k) => g.append(s("rect", { x: -28 + k * 9, y: -18, width: 8, height: 8, fill: crateColor(a.material), stroke: "#4a3a2c", "stroke-width": 0.6 })));
     add(at.z + 0.5, g);
     // 이름표는 마차 위(아래쪽은 물류창고 이름과 겹친다)
-    add(at.z + 0.5, tag(cx, cy - 26, today ? `입고 · ${dv.items.map((a) => `${a.name} ${a.quantity}`).join(" · ")}` : `입고 D-${dv.day - frame.day}`, "cc-tag mid"));
+    add(at.z + 0.5, tag(cx, cy - 26, label, "cc-tag mid"));
   }
 
   // 물류창고 구역: 선반 셋을 벽으로 묶는다(앞은 열림)

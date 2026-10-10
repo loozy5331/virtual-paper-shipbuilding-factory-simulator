@@ -9,7 +9,7 @@
 
 import * as THREE from "three";
 import { mesh } from "./people";
-import { BAY_C, BAY_MOUTH, BAY_Z, groundY, HILL_BASE, HILLS, MOUTH_X, QUAY, route, SHORE_X, STATION_X, SUPPLY_EXIT, SUPPLY_ROUTE, YARD_X0, YARD_Z0, YARD_Z1, type Sector } from "./layout";
+import { BAY_C, BAY_MOUTH, BAY_Z, groundY, HILL_BASE, HILLS, MOUTH_X, QUAY, LAND_ROUTE, PIER, route, SHORE_X, STATION_X, SUPPLY_EXIT, SUPPLY_ROUTE, YARD_X0, YARD_Z0, YARD_Z1, type Sector } from "./layout";
 
 export const SEA_Y = -0.32;
 
@@ -47,7 +47,17 @@ export function buildLand(scene: THREE.Scene): void {
     scene.add(bollard);
   }
   // 자재 납품 길(3.2): 등대 곶에서 굽어 들어와 물류창고 뒤까지, 그리고 왼쪽으로 빠지는 길. 땅(언덕) 높이를 따라 깐 흙길
-  for (const pts of [SUPPLY_ROUTE, SUPPLY_EXIT]) {
+  // 등대 곶 바깥 부두(해상 납품: 배가 종이를 내린다). 나무 판과 기둥
+  const deck = mesh(new THREE.BoxGeometry(PIER.x1 - PIER.x0, 0.1, 1.1), "#8a6a4a", { roughness: 1 });
+  deck.position.set((PIER.x0 + PIER.x1) / 2, 0.05, PIER.z);
+  scene.add(deck);
+  for (let x = PIER.x0 + 0.6; x <= PIER.x1; x += 1.2) for (const dz of [-0.5, 0.5]) {
+    const post = mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.6, 8), "#5d4632");
+    post.position.set(x, -0.25, PIER.z + dz);
+    scene.add(post);
+  }
+  // 산길(육로 납품): 뒷산 능선을 넘어오는 흙길
+  for (const pts of [SUPPLY_ROUTE, LAND_ROUTE, SUPPLY_EXIT]) {
     const r = route(pts, 0.6);
     for (let i = 1; i < r.pts.length; i++) {
       const a = r.pts[i - 1], b = r.pts[i];
