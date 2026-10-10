@@ -13,20 +13,9 @@ import { HAT, STATE_INFO, STATION_COLOR } from "./labels";
 import type { Frame, LotView } from "./scene/frame";
 import type { TrackPick } from "./track";
 import { STOCK_D, STOCK_HALF, STOCK_STATIONS, STOCK_Z0, stockAssign, stockSpot } from "./scene/stock";
-
-// ----- 현장 3D와 같은 배치(yard.ts) -----
-const STATION_X = [-9, -3.5, 2, 8.5];
-const MAT_W = 3.2, MAT_D = 2.6, MAT2_D = 2.3;
-const UNIT_Z = [0, -2.85, -5.65];   // 1호·2호·3호 작업장 줄(3.0)
-const QUEUE_Z = 2.2, LANE_Z = 3.7, DEPOT_X = -16;
-const LOUNGE = { x: -15.6, z: -4.4 };
-const SHELF_X = [-7.2, -4.7, -2.2], SHELF_Z = -9.6;
-const LAB = { x: 4.6, z: -10.4 };
-// 샛길: 큰길에서 공정 사이로 3호 뒤까지(yard.ts의 SPUR_X와 같은 자리)
-const SPUR_X = [STATION_X[0] - MAT_W / 2 - 1.45, (STATION_X[0] + STATION_X[1]) / 2,
-  (STATION_X[1] + STATION_X[2] - 0.05) / 2, (STATION_X[2] + MAT_W / 2 + 0.4 + STATION_X[3] - MAT_W / 2 - 0.6) / 2];
-// 해안(coast.ts): 야드 오른쪽 만, 곶 끝의 등대
-const SHORE_X = 11.2, MOUTH_X = 23.5, BAY_MOUTH = 3.5;
+// 배치는 현장 3D와 같은 scene/layout.ts
+import { areaBounds, BAY_MOUTH, CRANE_R, DEPOT, LAB, LANE_Z, LOUNGE, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z, SHELF_X, SHELF_Z,
+  SHORE_X, SPUR_X, STATION_X, UNIT_Z, unitDepth, unitZ } from "./scene/layout";
 
 // ----- 투영: 위에서 30도 기운 정사영 -----
 const S = 30;                        // 1 단위 = 30px
@@ -213,7 +202,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     s("rect", { x: lx - 5, y: ly - 26, width: 10, height: 6, fill: "#b8322d" }),
     s("path", { d: `M${lx - 7} ${ly - 34} L${lx} ${ly - 44} L${lx + 7} ${ly - 34} Z`, fill: "#b8322d" })));
   add(-98, tag(lx, ly + 14, "등대", "cc-tag mid"));
-  add(-99, box((DEPOT_X - 1.5 + SHORE_X - 0.3) / 2, LANE_Z, SHORE_X - 0.3 - (DEPOT_X - 1.5), 1.0, 0.02, "#3a423d", "#3a423d"));
+  add(-99, box((DEPOT.x - 1.5 + SHORE_X - 0.3) / 2, LANE_Z, SHORE_X - 0.3 - (DEPOT.x - 1.5), 1.0, 0.02, "#3a423d", "#3a423d"));
   add(-99, box(LOUNGE.x, LOUNGE.z, 3.2, 2.6, 0.02, "#2c3530", "#2c3530"));
   for (const sx of SPUR_X) {
     const back = UNIT_Z[2] - MAT2_D / 2 - 0.4, front = LANE_Z - 0.5;
@@ -268,13 +257,13 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     const view = frame.stations[p];
     const color = STATION_COLOR[st.id];
     view.units.forEach((unit, k) => {
-      const z = UNIT_Z[k] ?? 0;
-      const d = k === 0 ? MAT_D : MAT2_D;
+      const z = unitZ(k);
+      const d = unitDepth(k);
       // 작업장마다: 소조립·중조립은 벽(뒤·옆), 대조립은 노란 구획선, 탑재는 드라이 도크(바다 쪽 문)
-      const z0 = z - d / 2 - 0.3, z1 = z + d / 2 + (k === 0 ? 0.35 : 0.05);
-      if (p < 2) add(z0 - 0.01, walls(x - MAT_W / 2 - 0.45, x + MAT_W / 2 + 0.45, z0, z1, 1.0));
-      else if (p === 2) add(z0 - 0.01, s("rect", { x: px(x - MAT_W / 2 - 0.4), y: py(z0), width: (MAT_W + 0.8) * S, height: (z1 - z0) * S * DEPTH, fill: "none", stroke: "#e0b43a", "stroke-width": 1.5, "stroke-dasharray": "6 4" }));
-      else add(z0 - 0.01, dock(x - MAT_W / 2 - 0.6, x + MAT_W / 2 + 0.6, z0, z1));
+      const { x0, x1, z0, z1 } = areaBounds(p, k);
+      if (p < 2) add(z0 - 0.01, walls(x0, x1, z0, z1, 1.0));
+      else if (p === 2) add(z0 - 0.01, s("rect", { x: px(x0), y: py(z0), width: (x1 - x0) * S, height: (z1 - z0) * S * DEPTH, fill: "none", stroke: "#e0b43a", "stroke-width": 1.5, "stroke-dasharray": "6 4" }));
+      else add(z0 - 0.01, dock(x0, x1, z0, z1));
       const g = s("g", {
         class: "cc-station pick", role: "button", tabindex: 0,
         "aria-label": `${st.name} ${unit.unit}호. 눌러서 확대`,
@@ -352,21 +341,21 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     }
   }
 
-  // ----- 골리앗 크레인 위험 반경(3.0 안전, 현장 3D와 같은 반경 2.9): 도크마다 점선 원, 그 도크가 탑재 중이면 진하게 -----
+  // ----- 골리앗 크레인 위험 반경(3.0 안전, 현장 3D와 같은 CRANE_R): 도크마다 점선 원, 그 도크가 탑재 중이면 진하게 -----
   // 도크마다 크레인이 하나다(D36): 2호 도크가 있으면 2호 크레인의 틀과 반경도 그린다.
   const docks = frame.stations[3]?.units ?? [];
   docks.forEach((dock, u) => {
     const busy = dock.state === "work" || dock.state === "rework";
-    const zc = UNIT_Z[u] ?? 0;
-    add(-95, s("ellipse", { cx: px(STATION_X[3]), cy: py(zc), rx: 2.9 * S, ry: 2.9 * S * DEPTH, fill: "none",
+    const zc = unitZ(u);
+    add(-95, s("ellipse", { cx: px(STATION_X[3]), cy: py(zc), rx: CRANE_R * S, ry: CRANE_R * S * DEPTH, fill: "none",
       stroke: "#e0b43a", "stroke-width": busy ? 2.2 : 1.2, "stroke-dasharray": "7 5", opacity: busy ? 0.95 : 0.5 }));
   });
-  add(-95, tag(px(STATION_X[3] - 2.9) + 4, py(2.6) + 4, "반경 10m 출입 금지", "cc-tag warn"));
+  add(-95, tag(px(STATION_X[3] - CRANE_R) + 4, py(2.6) + 4, "반경 10m 출입 금지", "cc-tag warn"));
 
   // ----- 골리앗 크레인(탑재 위, 틀만): 도크마다 하나 -----
   const cx = STATION_X[3];
   docks.forEach((_, u) => {
-    const zc = UNIT_Z[u] ?? 0;
+    const zc = unitZ(u);
     const crane = s("g", { class: "cc-crane", opacity: 0.85 });
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) crane.append(s("line", { x1: px(cx + sx * 2), y1: py(zc + sz * 1.8), x2: px(cx + sx * 2), y2: py(zc + sz * 1.8, 3.4), stroke: "#c9a640", "stroke-width": 3 }));
@@ -376,13 +365,13 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     add(zc + 1.9, crane);
   });
   // 이름은 맨 뒤 크레인 위에 한 번만(겹친 틀 사이에 적으면 뒤 도크를 가린다). 도크 번호는 정반의 "1호·2호" 팻말.
-  const backZ = UNIT_Z[docks.length - 1] ?? 0;
+  const backZ = unitZ(docks.length - 1);
   add(backZ - 6, tag(px(cx), py(backZ - 1.8, 3.5) - 10, docks.length > 1 ? "골리앗 크레인 1·2호" : "골리앗 크레인", "cc-place"));
 
   // ----- 트랜스포터 -----
   frame.transporters.forEach((tr, k) => {
     const carried = tr.state === "move" && tr.ship ? frame.lots.find((l) => l.ship === tr.ship && l.place === "carried") : undefined;
-    const x = carried ? (STATION_X[carried.station] + (STATION_X[carried.station + 1] ?? STATION_X[carried.station] + 4)) / 2 : DEPOT_X + 0.6;
+    const x = carried ? (STATION_X[carried.station] + (STATION_X[carried.station + 1] ?? STATION_X[carried.station] + 4)) / 2 : DEPOT.x + 0.6;
     const z = carried ? LANE_Z : LANE_Z - 0.3 + k * 1.15;
     const body = tr.state === "breakdown_stop" ? (STATE_INFO.breakdown_stop?.color ?? "#8e2e42") : "#5f6b73";
     add(z, box(x, z, 2.0, 0.8, 0.3, body, "#3f474d"));

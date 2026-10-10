@@ -5,9 +5,8 @@
 // 현장 3D(yard.ts)와 작업 현황 전경 2D(cctv.ts)가 같은 자리를 쓴다. Three.js를 모른다.
 
 import type { Frame } from "./frame";
+import { LANE_Z, STATION_X } from "./layout";
 
-export const STATION_X = [-9, -3.5, 2, 8.5];
-export const LANE_Z = 3.7;
 /** 적치장 앞(큰길 쪽) 끝과 깊이 */
 export const STOCK_Z0 = LANE_Z + 0.8;
 export const STOCK_D = 3.4;

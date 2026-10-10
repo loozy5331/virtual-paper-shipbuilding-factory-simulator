@@ -15,19 +15,14 @@ import { LEAD_IN, type Frame, type LotView } from "./frame";
 import { mesh, Person, SENIOR_NAME, WORKER_NAMES } from "./people";
 import { shipLook } from "./ships";
 import { STOCK_D, STOCK_HALF, STOCK_STATIONS, STOCK_Z0, stockAssign, stockSpot } from "./stock";
-import { buildDock, buildLand, buildWalls, buildYardLines, GiantHand, SEA_Y, SHORE_X, type DockParts } from "./coast";
+import { buildDock, buildLand, buildWalls, buildYardLines, GiantHand, SEA_Y, type DockParts } from "./coast";
+import { areaBounds, CART_R, CRANE_R, DEPOT, LAB, LANE_Z, LOUNGE, MAT_D, MAT_TOP, MAT_W, MAT2_D, QUEUE_Z, SHELF_X, SHELF_Z,
+  SHORE_X, SPUR_X, STATION_X, unitZ } from "./layout";
 import { clamp01, ease, flatOf, hullTris, type Tri } from "../proto/model";
 import { STATE_INFO, STATION_COLOR } from "../labels";
 import type { TrackPick } from "../track";
 
-// ----- 배치 (해안 조선소 야드 좌표, 단위는 대략 소인 키의 4배. 배경은 coast.ts) -----
-const STATION_X = [-9, -3.5, 2, 8.5];
-const MAT_W = 3.2, MAT_D = 2.6, MAT_TOP = 0.08;
-// 증설한 작업장은 1호 뒤로 한 줄씩(2호, 3호, 3.0). 공정 사이에는 큰길에서 뒤로 들어가는 샛길이 있다.
-const MAT2_D = 2.3;
-const UNIT_Z = [0, -2.85, -5.65];
-const unitZ = (unit: number) => UNIT_Z[unit] ?? 0;
-const unitDepth = (unit: number) => (unit === 0 ? MAT_D : MAT2_D);
+// 배치(야드 좌표)는 layout.ts, 배경은 coast.ts. 증설한 작업장은 1호 뒤로 한 줄씩(2호, 3호, 3.0).
 
 // 진수(그림만, 엔진 규칙 없음): 인도 다음 날 하루 안에 ① 작업자가 나가고 ② 도크에 물을 채우고 ③ 걸리버의 손이 문을 열고
 // ④ 배가 나가고 ⑤ 문을 닫고 ⑥ 물을 뺀다. 그동안 다음 블록은 도크 앞에서 기다린다. 값은 하루 안의 비율(frac).
@@ -38,24 +33,13 @@ const DOOR_OPEN = Math.PI * 0.47;   // 문이 거의 직각으로 열린다
 // 현장 안전(3.0, D27·D28·D35): 관리자는 평소 작업장에서 떨어진 안전한 자리에 선다. "골리앗 주변으로"·"트랜스포터 주변으로"를
 // 누르면 그 설비 옆으로 순간이동하고, 위험 반경이라 경고한다(재생 중 저절로 뜨는 경고는 1인칭 이동이 생길 때로 미룬다).
 // 엔진 규칙이 아니라 현장 화면의 규칙이다. 반경은 팻말에 "반경 10m"로 적는다(소인국 척도라 화면 크기는 보기 좋게만).
-const CRANE_R = 2.9;        // 걸리버의 손(골리앗 크레인): 탑재 도크 둘레
-const CART_R = 1.4;         // 트랜스포터
-// 안전한 자리: 도크의 큰길 맞은편 빈 땅. 크레인 반경(2.9)과 큰길 트랜스포터 반경(1.4) 밖이고, 샛길·적치장과도 겹치지 않는다.
-const SAFE_SPOT = new THREE.Vector3(8.5, 0, 3.7 + 2.1);   // STATION_X[3], LANE_Z + 2.1
+// 반경은 layout.ts의 CRANE_R(걸리버의 손, 탑재 도크 둘레)과 CART_R(트랜스포터).
+// 안전한 자리: 도크의 큰길 맞은편 빈 땅. 크레인 반경과 큰길 트랜스포터 반경 밖이고, 샛길·적치장과도 겹치지 않는다.
+const SAFE_SPOT = new THREE.Vector3(STATION_X[3], 0, LANE_Z + 2.1);
 export type ManagerSpot = "safe" | "crane" | "cart";
 export interface Hazard { id: string; label: string }
 const WATER_TOP = 0.32;
 const phase = (frac: number, [a, b]: readonly [number, number]) => clamp01((frac - a) / (b - a));
-// 샛길 자리: 소조립 왼쪽, 그리고 이웃한 공정의 작업장 사이 가운데(벽·구획선·도크를 피한다)
-const SPUR_X = [STATION_X[0] - MAT_W / 2 - 1.45,
-  (STATION_X[0] + STATION_X[1]) / 2, (STATION_X[1] + STATION_X[2] - 0.05) / 2, (STATION_X[2] + MAT_W / 2 + 0.4 + STATION_X[3] - MAT_W / 2 - 0.6) / 2];
-const QUEUE_Z = 2.2;
-const LANE_Z = 3.7;
-const DEPOT = new THREE.Vector3(-16, 0, LANE_Z);
-const LOUNGE = new THREE.Vector3(-15.6, 0, -4.4);   // 소조립 작업장 벽과 겹치지 않게 왼쪽으로
-const SHELF_X = [-7.2, -4.7, -2.2];
-const SHELF_Z = -9.6;   // 물류창고 구역(벽으로 묶음), 3호 작업장 뒤
-const LAB = new THREE.Vector3(4.6, 0, -10.4);
 
 const PAPER = new THREE.Color("#f4f0e6");
 const PAINT = new THREE.Color("#c8553d");
@@ -642,14 +626,13 @@ export class Yard {
 
   /** 작업장마다: 소조립·중조립은 벽만 있는 공장(앞은 열림), 대조립은 바깥 정반(노란 구획선), 탑재는 드라이 도크. 그리고 물류창고 구역. */
   private buildAreas(): void {
-    STATION_X.forEach((x, p) => {
+    STATION_X.forEach((_, p) => {
       this.unitAreas[p] = [];
       for (const unit of [0, 1, 2]) {
-        const zc = unitZ(unit), d = unitDepth(unit);
-        const z0 = zc - d / 2 - 0.3, z1 = zc + d / 2 + (unit === 0 ? 0.35 : 0.05);
-        const area = p < 2 ? buildWalls(x - MAT_W / 2 - 0.45, x + MAT_W / 2 + 0.45, z0, z1, 1.0)
-          : p === 2 ? buildYardLines(x - MAT_W / 2 - 0.4, x + MAT_W / 2 + 0.4, z0, z1)
-          : buildDock(x - MAT_W / 2 - 0.6, x + MAT_W / 2 + 0.6, z0, z1);
+        const { x0, x1, z0, z1 } = areaBounds(p, unit);
+        const area = p < 2 ? buildWalls(x0, x1, z0, z1, 1.0)
+          : p === 2 ? buildYardLines(x0, x1, z0, z1)
+          : buildDock(x0, x1, z0, z1);
         this.scene.add(area);
         if (p === 3) this.docks[unit] = area.userData.dock as DockParts;
         if (unit > 0) {
