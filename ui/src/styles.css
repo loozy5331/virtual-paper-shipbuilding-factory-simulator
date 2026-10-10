@@ -859,6 +859,17 @@ body { background: var(--desk); }
 .delivered-log em { font-style: normal; color: #9fd8b4; }
 .delivered-log li.late em { color: #ff8a95; }
 .field-screen .delivered-log { top: 10px; }
+.trial-bubble { position: absolute; right: 14px; bottom: 40px; z-index: 2; background: var(--paper); color: var(--ink); border: 1px solid #c9cfc9;
+  border-radius: 8px; padding: 5px 9px 6px; font-size: 11px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); min-width: 170px; }
+.trial-bubble[hidden] { display: none; }
+/* 말풍선 꼬리: 오른쪽 아래, 화면 밖 먼바다 쪽을 가리킨다 */
+.trial-bubble::after { content: ""; position: absolute; right: -7px; bottom: 10px; width: 12px; height: 12px; background: var(--paper);
+  border-right: 1px solid #c9cfc9; border-top: 1px solid #c9cfc9; transform: rotate(45deg); }
+.trial-head { font-weight: 700; color: #0b6f95; margin-bottom: 2px; }
+.trial-bubble ul { list-style: none; margin: 0; padding: 0; }
+.trial-bubble li { display: grid; grid-template-columns: 2.4em 1fr auto auto; gap: 6px; align-items: baseline; }
+.trial-bubble em { font-style: normal; color: #c0262d; font-weight: 700; }
+.field-host .trial-bubble { bottom: 14px; right: 18px; }
 .field-head .cam-track { position: static; }
 .scene-labels .pickable { pointer-events: auto; cursor: pointer; }
 .scene-labels .tracked { outline: 2px solid #e0b43a; outline-offset: 1px; }

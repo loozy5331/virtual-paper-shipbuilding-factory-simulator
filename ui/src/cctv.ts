@@ -331,6 +331,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
 
   // ----- 공정 -----
   scenario.stations.forEach((st, p) => {
+    if (p === ST.trial) return;   // 시운전은 먼바다라 그리지 않는다(화면 오른쪽 아래 말풍선)
     const view = frame.stations[p];
     const color = STATION_COLOR[st.id];
     const b0 = benchAt(p, 0, docks);

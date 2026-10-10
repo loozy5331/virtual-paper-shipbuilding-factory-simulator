@@ -94,6 +94,8 @@ export interface Frame {
   idleWorkers: number;
   /** 오늘까지 인도한 배(시운전을 마치고 선주에게 넘김). 조선소를 떠나 그림에는 없고 화면 오른쪽 위 인도 완료 로그에 남는다 */
   delivered: { ship: string; type: string; day: number; late: number }[];
+  /** 오늘 시운전 중인 배(먼바다라 그림에는 없고 화면 오른쪽 아래 말풍선에 뜬다). day는 시운전 며칠째, days는 시운전 일수 */
+  seaTrial: { ship: string; type: string; day: number; days: number; state: ShipState }[];
   /** 직종별 쉬는 인원(4.0, D42). 대기소의 모자 색 */
   idleByTrade: Record<string, number>;
   shelves: ShelfView[];
@@ -270,6 +272,10 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
     delivered: result.ships.filter((s) => s.delivered_day !== null && s.delivered_day <= day)
       .map((s) => ({ ship: s.id, type: s.type, day: s.delivered_day!, late: s.late_days }))
       .sort((a, b) => b.day - a.day || a.ship.localeCompare(b.ship)),
+    seaTrial: lots.filter((l) => l.place === "bench" && stationIds[l.station] === "sea_trial").map((l) => {
+      const span = result.ships.find((s) => s.id === l.ship)!.spans["sea_trial"];
+      return { ship: l.ship, type: l.type, day: day - span.start + 1, days: span.end - span.start + 1, state: l.state };
+    }),
     idleByTrade: Object.fromEntries(Object.entries(result.workforce.pools ?? { assembly: result.workforce.pool })
       .map(([t, n]) => [t, day > 0 ? result.workforce.daily[index].trades?.[t]?.idle ?? 0 : n])),
     shelves,
