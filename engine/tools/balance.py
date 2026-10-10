@@ -1,10 +1,11 @@
 """균형 점검(D15): "이것 하나만 고르면 끝"인 지배 전략이 없는지 숫자로 본다.
 
-    cd engine && python -m tools.balance              # 두 시나리오 모두
+    cd engine && python -m tools.balance              # 모든 분기
     cd engine && python -m tools.balance growth -n 30  # 수주 증가, 시작점 30개
 
-선택지 공간이 커서(공정마다 인력·공법·잔업·정비·작업장 수, 자재 등급, 인원, 연구, 발주, 착수 간격) 전수 대신
-무작위 시작점에서 한 칸씩 바꿔 점수가 오르면 옮기는 언덕 오르기를 여러 번 한다. 결과로
+선택지 공간이 커서(공정 8개마다 인력·공법·잔업·정비·작업장 수·나눠 하기, 자재 등급, 직종별 인원, 연구, 발주, 착수 간격)
+전수 대신 무작위 시작점에서 한 칸씩 바꿔 점수가 오르면 옮기는 언덕 오르기를 여러 번 한다.
+4.0부터는 이웃(한 칸씩 바꾼 설정)을 섞어 돌다가 처음 오르는 칸으로 옮긴다(공정이 8개라 매번 이웃을 다 돌면 너무 느리다). 결과로
   1. 찾은 최고 설정과 점수
   2. 상위 설정들에서 선택지별 사용 비율 (모든 상위 설정이 같은 값을 쓰면 그 선택이 지배적일 수 있다)
   3. "모든 공정을 X로 고정"했을 때의 최고 점수 (최고와 거의 같으면 그 X 하나로 끝나는 전략이다)
@@ -16,6 +17,7 @@ from __future__ import annotations
 import argparse
 import copy
 import random
+import time
 from collections import Counter
 from typing import Any, Callable
 
@@ -35,17 +37,22 @@ def space(sc: dict[str, Any]) -> dict[str, list[Any]]:
     out: dict[str, list[Any]] = {}
     for st in sc["stations"]:
         pid = st["id"]
-        out[f"{pid}.crew"] = list(opts["crews"])
+        external = sc["trades"].get(st.get("trade", ""), {}).get("external", False)
+        # 시운전(외부팀)은 인력·잔업을 고르지 않는다(4.0, D42)
+        out[f"{pid}.crew"] = ["normal"] if external else list(opts["crews"])
         out[f"{pid}.method"] = list(opts["methods"])
-        out[f"{pid}.overtime"] = [False, True]
+        out[f"{pid}.overtime"] = [False] if external else [False, True]
         out[f"{pid}.maintenance"] = [False, True]
         cap = sc["expansion"].get("max_units_by_station", {}).get(pid, opts["max_units"])
         out[f"{pid}.units"] = list(range(1, min(opts["max_units"], cap) + 1))
-        out[f"{pid}.split"] = [False, True] if opts["split"] else [False]   # 나눠 하기(3.0). 탑재는 엔진이 나누지 않는다
+        # 나눠 하기(3.0): 나눌 수 있는 공정(rules.json의 split)만
+        out[f"{pid}.split"] = [False, True] if opts["split"] and st.get("split", True) else [False]
     for m in sc["materials"]:
         out[f"material.{m['id']}"] = list(opts["material_grades"])
-    out["pool"] = list(range(1, rules["max_pool"] + 1))
-    out["transporters"] = list(range(1, sc["transporter"]["max_count"] + 1))
+    # 직종별 대기소 인원(4.0, D42). 트랜스포터는 역할마다 한 대로 고정이라 대수는 고르지 않는다(D39)
+    for t, info in sc["trades"].items():
+        if not t.startswith("_") and not info.get("external"):
+            out[f"pool.{t}"] = list(range(1, info["max"] + 1))
     out["tr_maintenance"] = [False, True]
     out["research"] = list(range(len(RESEARCH_SETS)))
     out["ordering"] = list(sc["ordering"])
@@ -63,8 +70,8 @@ def to_config(sc: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
         "stations": {st["id"]: {key: plan[f"{st['id']}.{key}"] for key in ("crew", "method", "overtime", "maintenance", "units", "split")}
                      for st in sc["stations"]},
         "materials": {m["id"]: plan[f"material.{m['id']}"] for m in sc["materials"]},
-        "pool": plan["pool"],
-        "transporters": {"count": plan["transporters"], "maintenance": plan["tr_maintenance"]},
+        "pools": {name.split(".", 1)[1]: v for name, v in plan.items() if name.startswith("pool.")},
+        "transporters": {"maintenance": plan["tr_maintenance"]},
         "research": RESEARCH_SETS[plan["research"]],
         "skilled_station": None,
     }
@@ -77,8 +84,12 @@ def score(sc: dict[str, Any], plan: dict[str, Any]) -> float:
 
 
 def climb(sc: dict[str, Any], sp: dict[str, list[Any]], start: dict[str, Any], fixed: dict[str, Any],
-          cache: dict[tuple, float]) -> tuple[float, dict[str, Any]]:
-    """한 칸씩 바꿔 보며 점수가 가장 많이 오르는 쪽으로 옮긴다. 더 오르지 않으면 멈춘다."""
+          cache: dict[tuple, float], rng: random.Random) -> tuple[float, dict[str, Any]]:
+    """이웃(한 칸씩 바꾼 설정)을 섞어 돌다가 점수가 오르는 첫 칸으로 옮긴다. 이웃을 다 돌아도 안 오르면 멈춘다.
+
+    3.x는 매 걸음 이웃을 다 돌아 가장 많이 오르는 쪽으로 옮겼다. 공정 8개(4.0)에서는 이웃이 60~100개라
+    너무 느려서 첫 개선으로 바꿨다(같은 언덕 오르기라 멈춘 곳은 어느 칸을 바꿔도 안 오르는 설정이다).
+    """
     def value(plan: dict[str, Any]) -> float:
         key = tuple(sorted(plan.items()))
         if key not in cache:
@@ -87,24 +98,23 @@ def climb(sc: dict[str, Any], sp: dict[str, list[Any]], start: dict[str, Any], f
 
     plan = {**start, **fixed}
     best = value(plan)
+    moves = [(name, v) for name, values in sp.items() if name not in fixed for v in values]
     while True:
-        move = None
-        for name, values in sp.items():
-            if name in fixed:
+        rng.shuffle(moves)
+        for name, v in moves:
+            if v == plan[name]:
                 continue
-            for v in values:
-                if v == plan[name]:
-                    continue
-                trial = {**plan, name: v}
-                got = value(trial)
-                if got > best + 1e-9:
-                    best, move = got, trial
-        if move is None:
+            trial = {**plan, name: v}
+            got = value(trial)
+            if got > best + 1e-9:
+                best, plan = got, trial
+                break
+        else:
             return best, plan
-        plan = move
 
 
 def run(scenario_id: str, starts: int, seed: int, report: Callable[[str], None] = print) -> dict[str, Any]:
+    began = time.time()
     sc = load_scenario(scenario_id)
     sp = space(sc)
     rng = random.Random(seed)
@@ -112,7 +122,7 @@ def run(scenario_id: str, starts: int, seed: int, report: Callable[[str], None] 
     found = []
     for _ in range(starts):
         start = {name: rng.choice(values) for name, values in sp.items()}
-        found.append(climb(sc, sp, start, {}, cache))
+        found.append(climb(sc, sp, start, {}, cache, rng))
     found.sort(key=lambda r: -r[0])
     best_score, best_plan = found[0]
 
@@ -125,36 +135,38 @@ def run(scenario_id: str, starts: int, seed: int, report: Callable[[str], None] 
     for st in sc["stations"]:
         c = cfg["stations"][st["id"]]
         report(f"  {st['name']}: 인력 {c['crew']}, 공법 {c['method']}, 잔업 {c['overtime']}, 정비 {c['maintenance']}, 작업장 {c['units']}, 나눠 {c['split']}")
-    report(f"  자재 {cfg['materials']}, 인원 {cfg['pool']}, 트랜스포터 {cfg['transporters']}, 연구 {cfg['research']}, "
+    report(f"  자재 {cfg['materials']}, 직종별 인원 {cfg['pools']}, 트랜스포터 정비 {cfg['transporters']['maintenance']}, 연구 {cfg['research']}, "
            f"발주 {cfg['ordering']}, 착수 간격 {best_plan['gap']}일")
 
     # 상위 설정에서 선택지 사용 비율
     top = [p for s, p in found if s >= best_score - 5]
-    report(f"\n최고와 5점 안의 설정 {len(top)}개에서 고른 값 (공정 칸은 4공정을 합쳐 셈)")
+    report(f"\n최고와 5점 안의 설정 {len(top)}개에서 고른 값 (공정 칸은 {len(sc['stations'])}공정을 합쳐 셈)")
     for kind in ("crew", "method", "overtime", "maintenance", "units", "split"):
         counts = Counter(p[f"{st['id']}.{kind}"] for p in top for st in sc["stations"])
         report(f"  {kind:12s} " + ", ".join(f"{k}: {v}" for k, v in counts.most_common()))
-    for name in ("material.paper", "material.paint", "material.flag", "pool", "research", "ordering"):
+    for name in [n for n in sp if n.startswith("material.") or n.startswith("pool.")] + ["research", "ordering"]:
         counts = Counter(p[name] for p in top)
         label = {"research": lambda k: "+".join(RESEARCH_SETS[k]) or "없음"}.get(name, str)
         report(f"  {name:12s} " + ", ".join(f"{label(k)}: {v}" for k, v in counts.most_common()))
 
     # 모든 공정을 한 값으로 고정했을 때의 최고 점수
+    # 시작점은 상위 2개 설정(3.x는 5개). 고를 수 없는 공정(시운전 인력, 나눌 수 없는 공정)은 고정하지 않는다
     report("\n모든 공정을 한 값으로 고정했을 때의 최고 (최고와의 차이)")
     forced = {}
     for kind in ("crew", "method", "units", "split"):
         for v in sp[f"{sc['stations'][0]['id']}.{kind}"]:
-            fixed = {f"{st['id']}.{kind}": v for st in sc["stations"]}
-            got = max(climb(sc, sp, {**p, **fixed}, fixed, cache)[0] for _, p in found[:5])
+            fixed = {f"{st['id']}.{kind}": v for st in sc["stations"] if v in sp[f"{st['id']}.{kind}"]}
+            got = max(climb(sc, sp, {**p, **fixed}, fixed, cache, rng)[0] for _, p in found[:2])
             forced[(kind, v)] = got
             report(f"  {kind} = {str(v):9s} {got:6.1f}점 ({got - best_score:+.1f})")
+    report(f"\n실행 {len(cache)}번, {time.time() - began:.0f}초")
     return {"best": best_score, "plan": best_plan, "forced": forced}
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("scenario", nargs="?", choices=scenario_ids())
-    parser.add_argument("-n", "--starts", type=int, default=20, help="무작위 시작점 수")
+    parser.add_argument("-n", "--starts", type=int, default=10, help="무작위 시작점 수")
     parser.add_argument("--seed", type=int, default=1)
     args = parser.parse_args()
     for sid in [args.scenario] if args.scenario else scenario_ids():
