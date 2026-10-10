@@ -623,9 +623,18 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     batches: dict[str, list[list[Any]]] = {mid: ([[0, None, stock[mid]]] if stock[mid] else []) for mid in materials}
     done: list[set[int]] = [set() for _ in range(n_ships)]   # 마친 공정(4.0: 공정 그래프)
 
+    def _candidates(i: int) -> list[int]:
+        return [q for q in range(n_st) if q not in done[i] and all(a in done[i] for a in after[q])]
+    # 투입 단계가 매일 공정·배마다 묻기 때문에 저장해 두고, 공정을 마칠 때(finish)만 다시 구한다(속도만, 결과는 같다).
+    cand: list[list[int]] = [_candidates(i) for i in range(n_ships)]
+
     def candidates(i: int) -> list[int]:
         """배가 지금 들어갈 수 있는 공정: 앞 공정을 모두 마쳤고 아직 안 한 공정(목록 순서)."""
-        return [q for q in range(n_st) if q not in done[i] and all(a in done[i] for a in after[q])]
+        return cand[i]
+
+    def finish(i: int, p: int) -> None:
+        done[i].add(p)
+        cand[i] = _candidates(i)
     ready = [config["ships"][o["id"]]["start_day"] for o in orders]   # 그 공정에 들어갈 수 있는 첫날
     started: list[int | None] = [None] * n_ships           # 소조립에 들어간 날
     delivered: list[int | None] = [None] * n_ships
@@ -951,7 +960,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                     continue
                 closed_today[i] = groups.pop(i)
                 events.append({"day": day, "type": "complete", "ship": orders[i]["id"], "station": pid, "unit": u + 1})
-                done[i].add(p)
+                finish(i, p)
                 nxt = candidates(i)
                 if not nxt:
                     delivered[i] = day
