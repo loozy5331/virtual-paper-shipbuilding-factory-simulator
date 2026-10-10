@@ -64,8 +64,8 @@ function showTab(root: HTMLElement, tab: string): void {
 export function renderPlanBar(root: HTMLElement, ctx: FormContext): void {
   const { scenario } = ctx;
   mount(root,
-    h("button", { class: "bar-back", type: "button", title: "책상으로 돌아가 다른 분기의 클립보드를 고릅니다", onclick: ctx.onDesk },
-      "← 분기 고르기"),
+    h("button", { class: "bar-back", type: "button", title: "책상으로 돌아가 다른 반기의 클립보드를 고릅니다", onclick: ctx.onDesk },
+      "← 반기 고르기"),
     h("span", { class: "bar-quarter" }, scenario.period, h("small", null, ` ${scenario.name}`)));
 }
 
@@ -87,7 +87,7 @@ export function renderPlanNotes(root: HTMLElement, ctx: FormContext): void {
       h("p", null, scenario.summary),
       // 분기별 옵션(D33): 새로 열린 것이 곧 이 분기에서 배울 것
       scenario.unlocks
-        ? h("p", { class: "postit-unlock" }, h("b", null, (scenario.level ?? 1) > 1 ? "새로 쓸 수 있는 것 " : "이 분기 "), scenario.unlocks)
+        ? h("p", { class: "postit-unlock" }, h("b", null, (scenario.level ?? 1) > 1 ? "새로 쓸 수 있는 것 " : "이 반기 "), scenario.unlocks)
         : null));
 }
 

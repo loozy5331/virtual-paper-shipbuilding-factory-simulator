@@ -1,66 +1,80 @@
 {
   "id": "surge",
   "name": "수주 급증",
-  "summary": "수주 8척(VLCC 3, 컨테이너선 3, LNG선 2). 중조립만 혼자 56일치다. 작업장을 몇 곳 두고 배를 나눠 만들지 정한다.",
+  "summary": "수주 10척(VLCC 4, 컨테이너선 3, LNG선 3). 16일마다 두 척씩 같은 날 인도한다. 작업장을 몇 곳 두고 배를 나눠 만들지 정한다.",
   "level": 3,
-  "period": "2027년 2분기",
-  "days": 60,
+  "period": "2027년 하반기",
+  "days": 120,
   "orders": [
     {
       "id": "S1",
       "type": "VLCC",
       "order_day": 1,
-      "due_day": 26,
-      "price": 3000
+      "due_day": 40,
+      "price": 6000
     },
     {
       "id": "S2",
       "type": "CONT",
       "order_day": 1,
-      "due_day": 32,
-      "price": 2600
+      "due_day": 40,
+      "price": 5200
     },
     {
       "id": "S3",
       "type": "LNG",
       "order_day": 1,
-      "due_day": 38,
-      "price": 4500
+      "due_day": 56,
+      "price": 9000
     },
     {
       "id": "S4",
       "type": "VLCC",
       "order_day": 1,
-      "due_day": 42,
-      "price": 3000
+      "due_day": 56,
+      "price": 6000
     },
     {
       "id": "S5",
       "type": "CONT",
       "order_day": 1,
-      "due_day": 46,
-      "price": 2600
+      "due_day": 72,
+      "price": 5200
     },
     {
       "id": "S6",
       "type": "LNG",
       "order_day": 1,
-      "due_day": 50,
-      "price": 4500
+      "due_day": 72,
+      "price": 9000
     },
     {
       "id": "S7",
       "type": "VLCC",
       "order_day": 1,
-      "due_day": 54,
-      "price": 3000
+      "due_day": 88,
+      "price": 6000
     },
     {
       "id": "S8",
       "type": "CONT",
       "order_day": 1,
-      "due_day": 58,
-      "price": 2600
+      "due_day": 88,
+      "price": 5200
+    },
+    {
+      "id": "S9",
+      "type": "LNG",
+      "order_day": 1,
+      "due_day": 104,
+      "price": 9000
+    },
+    {
+      "id": "S10",
+      "type": "VLCC",
+      "order_day": 1,
+      "due_day": 104,
+      "price": 6000
     }
   ],
   "initial_stock": {
@@ -69,8 +83,8 @@
     "flag": 0
   },
   "kpi": {
-    "revenue": 25800,
-    "profit": 11000,
+    "revenue": 66600,
+    "profit": 35000,
     "on_time_rate": 1.0,
     "first_pass_yield": 0.9
   },
@@ -112,100 +126,124 @@
   "random": {
     "quality": {
       "S1": {
-        "cutting": 0.41,
-        "processing": 0.73,
-        "sub_assembly": 0.58,
-        "block_assembly": 0.24,
-        "grand_assembly": 0.51,
-        "erection": 0.12,
-        "painting": 0.47,
-        "pre_outfitting": 0.64,
-        "quay_outfitting": 0.38,
-        "sea_trial": 0.56
+        "cutting": 0.56,
+        "processing": 0.66,
+        "sub_assembly": 0.37,
+        "block_assembly": 0.64,
+        "painting": 0.33,
+        "pre_outfitting": 0.58,
+        "grand_assembly": 0.5,
+        "erection": 0.55,
+        "quay_outfitting": 0.71,
+        "sea_trial": 0.09
       },
       "S2": {
-        "cutting": 0.15,
-        "processing": 0.58,
-        "sub_assembly": 0.31,
-        "block_assembly": 0.69,
-        "grand_assembly": 0.07,
-        "erection": 0.44,
-        "painting": 0.42,
-        "pre_outfitting": 0.6,
-        "quay_outfitting": 0.11,
-        "sea_trial": 0.93
+        "cutting": 0.8,
+        "processing": 0.45,
+        "sub_assembly": 0.19,
+        "block_assembly": 0.57,
+        "painting": 0.32,
+        "pre_outfitting": 0.18,
+        "grand_assembly": 0.32,
+        "erection": 0.65,
+        "quay_outfitting": 0.33,
+        "sea_trial": 0.17
       },
       "S3": {
-        "cutting": 0.86,
-        "processing": 0.32,
-        "sub_assembly": 0.47,
-        "block_assembly": 0.16,
-        "grand_assembly": 0.82,
-        "erection": 0.29,
-        "painting": 0.05,
-        "pre_outfitting": 0.19,
-        "quay_outfitting": 0.24,
-        "sea_trial": 0.82
+        "cutting": 0.88,
+        "processing": 0.81,
+        "sub_assembly": 0.44,
+        "block_assembly": 0.06,
+        "painting": 0.38,
+        "pre_outfitting": 0.64,
+        "grand_assembly": 0.32,
+        "erection": 0.71,
+        "quay_outfitting": 0.86,
+        "sea_trial": 0.62
       },
       "S4": {
-        "cutting": 0.67,
-        "processing": 0.09,
-        "sub_assembly": 0.13,
-        "block_assembly": 0.36,
-        "grand_assembly": 0.62,
-        "erection": 0.71,
-        "painting": 0.29,
-        "pre_outfitting": 0.71,
-        "quay_outfitting": 0.87,
-        "sea_trial": 0.76
+        "cutting": 0.6,
+        "processing": 0.23,
+        "sub_assembly": 0.5,
+        "block_assembly": 0.65,
+        "painting": 0.44,
+        "pre_outfitting": 0.6,
+        "grand_assembly": 0.89,
+        "erection": 0.23,
+        "quay_outfitting": 0.25,
+        "sea_trial": 0.06
       },
       "S5": {
-        "cutting": 0.52,
-        "processing": 0.24,
-        "sub_assembly": 0.66,
-        "block_assembly": 0.09,
-        "grand_assembly": 0.27,
-        "erection": 0.53,
-        "painting": 0.47,
-        "pre_outfitting": 0.64,
-        "quay_outfitting": 0.38,
-        "sea_trial": 0.56
+        "cutting": 0.21,
+        "processing": 0.25,
+        "sub_assembly": 0.94,
+        "block_assembly": 0.69,
+        "painting": 0.1,
+        "pre_outfitting": 0.1,
+        "grand_assembly": 0.35,
+        "erection": 0.18,
+        "quay_outfitting": 0.62,
+        "sea_trial": 0.49
       },
       "S6": {
-        "cutting": 0.79,
-        "processing": 0.37,
-        "sub_assembly": 0.22,
-        "block_assembly": 0.81,
-        "grand_assembly": 0.41,
-        "erection": 0.18,
-        "painting": 0.42,
-        "pre_outfitting": 0.6,
-        "quay_outfitting": 0.11,
-        "sea_trial": 0.93
+        "cutting": 0.33,
+        "processing": 0.13,
+        "sub_assembly": 0.5,
+        "block_assembly": 0.27,
+        "painting": 0.51,
+        "pre_outfitting": 0.29,
+        "grand_assembly": 0.58,
+        "erection": 0.79,
+        "quay_outfitting": 0.9,
+        "sea_trial": 0.81
       },
       "S7": {
-        "cutting": 0.61,
-        "processing": 0.18,
-        "sub_assembly": 0.39,
-        "block_assembly": 0.27,
-        "grand_assembly": 0.94,
-        "erection": 0.06,
-        "painting": 0.05,
-        "pre_outfitting": 0.19,
-        "quay_outfitting": 0.24,
-        "sea_trial": 0.82
+        "cutting": 0.2,
+        "processing": 0.57,
+        "sub_assembly": 0.41,
+        "block_assembly": 0.62,
+        "painting": 0.27,
+        "pre_outfitting": 0.64,
+        "grand_assembly": 0.67,
+        "erection": 0.94,
+        "quay_outfitting": 0.28,
+        "sea_trial": 0.7
       },
       "S8": {
-        "cutting": 0.94,
-        "processing": 0.45,
-        "sub_assembly": 0.75,
-        "block_assembly": 0.52,
-        "grand_assembly": 0.14,
-        "erection": 0.37,
-        "painting": 0.29,
-        "pre_outfitting": 0.71,
-        "quay_outfitting": 0.87,
-        "sea_trial": 0.76
+        "cutting": 0.23,
+        "processing": 0.73,
+        "sub_assembly": 0.64,
+        "block_assembly": 0.2,
+        "painting": 0.47,
+        "pre_outfitting": 0.9,
+        "grand_assembly": 0.72,
+        "erection": 0.75,
+        "quay_outfitting": 0.32,
+        "sea_trial": 0.67
+      },
+      "S9": {
+        "cutting": 0.9,
+        "processing": 0.54,
+        "sub_assembly": 0.67,
+        "block_assembly": 0.22,
+        "painting": 0.89,
+        "pre_outfitting": 0.75,
+        "grand_assembly": 0.64,
+        "erection": 0.39,
+        "quay_outfitting": 0.36,
+        "sea_trial": 0.74
+      },
+      "S10": {
+        "cutting": 0.23,
+        "processing": 0.49,
+        "sub_assembly": 0.27,
+        "block_assembly": 0.74,
+        "painting": 0.6,
+        "pre_outfitting": 0.61,
+        "grand_assembly": 0.32,
+        "erection": 0.89,
+        "quay_outfitting": 0.19,
+        "sea_trial": 0.11
       }
     }
   },
@@ -213,9 +251,8 @@
     {
       "id": "unmanaged",
       "name": "무관리",
-      "summary": "8척을 한꺼번에 착수하고, 자재는 필요한 날에야 발주하고, 12명을 꽉 채워 속성 공법과 잔업으로 밀어붙인다. 증설과 정비는 하지 않는다.",
+      "summary": "전부 한꺼번에 착수하고(우선순위도 납기순이 아니다), 자재는 필요한 날에야 발주하고, 24명을 꽉 채워 속성 공법과 잔업으로 밀어붙인다. 증설과 정비는 하지 않는다.",
       "config": {
-        "scenario": "surge",
         "ordering": "late",
         "ships": {
           "S1": {
@@ -223,11 +260,11 @@
             "start_day": 1
           },
           "S2": {
-            "priority": 2,
+            "priority": 3,
             "start_day": 1
           },
           "S3": {
-            "priority": 3,
+            "priority": 2,
             "start_day": 1
           },
           "S4": {
@@ -235,11 +272,11 @@
             "start_day": 1
           },
           "S5": {
-            "priority": 5,
+            "priority": 6,
             "start_day": 1
           },
           "S6": {
-            "priority": 6,
+            "priority": 5,
             "start_day": 1
           },
           "S7": {
@@ -247,17 +284,56 @@
             "start_day": 1
           },
           "S8": {
+            "priority": 9,
+            "start_day": 1
+          },
+          "S9": {
             "priority": 8,
+            "start_day": 1
+          },
+          "S10": {
+            "priority": 10,
             "start_day": 1
           }
         },
+        "pools": {
+          "processing": 4,
+          "assembly": 8,
+          "erection": 4,
+          "painting": 4,
+          "outfitting": 4
+        },
+        "transporters": {
+          "maintenance": false
+        },
+        "research": [],
         "stations": {
+          "cutting": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": false
+          },
+          "processing": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": false
+          },
           "sub_assembly": {
             "method": "fast",
             "overtime": true,
             "maintenance": false
           },
           "block_assembly": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": false
+          },
+          "painting": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": false
+          },
+          "pre_outfitting": {
             "method": "fast",
             "overtime": true,
             "maintenance": false
@@ -271,31 +347,35 @@
             "method": "fast",
             "overtime": true,
             "maintenance": false
+          },
+          "quay_outfitting": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": false
+          },
+          "sea_trial": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": false
           }
         },
-        "pool": 12,
-        "transporters": {
-          "count": 1,
-          "maintenance": false
-        },
-        "research": []
+        "scenario": "surge"
       }
     },
     {
       "id": "managed",
       "name": "관리",
-      "summary": "병목인 중조립을 2곳으로 늘려 배를 나눠 만들고(나눠 하기), 도크 2곳·트랜스포터 2대로 뒤를 받친다. 납기순으로 4일 간격 착수, 자재는 역산 발주, 8명으로 표준 공법에 정비를 한다.",
+      "summary": "병목인 소조립·중조립을 2곳으로 늘려 배를 나눠 만들고(나눠 하기), 절단·선행의장·PE장도 2곳으로 뒤를 받친다. 납기에서 역산해 착수(납기 − 42일, VLCC 2일·LNG선 5일 먼저), 자재는 역산 발주, 19명으로 표준 공법에 정비를 한다.",
       "config": {
-        "scenario": "surge",
         "ordering": "jit",
         "ships": {
           "S1": {
             "priority": 1,
-            "start_day": 1
+            "start_day": 3
           },
           "S2": {
             "priority": 2,
-            "start_day": 5
+            "start_day": 3
           },
           "S3": {
             "priority": 3,
@@ -303,30 +383,62 @@
           },
           "S4": {
             "priority": 4,
-            "start_day": 13
+            "start_day": 12
           },
           "S5": {
             "priority": 5,
-            "start_day": 17
+            "start_day": 30
           },
           "S6": {
             "priority": 6,
-            "start_day": 21
+            "start_day": 25
           },
           "S7": {
             "priority": 7,
-            "start_day": 25
+            "start_day": 44
           },
           "S8": {
             "priority": 8,
-            "start_day": 29
+            "start_day": 46
+          },
+          "S9": {
+            "priority": 9,
+            "start_day": 57
+          },
+          "S10": {
+            "priority": 10,
+            "start_day": 60
           }
         },
+        "pools": {
+          "processing": 3,
+          "assembly": 8,
+          "erection": 2,
+          "painting": 2,
+          "outfitting": 4
+        },
+        "transporters": {
+          "maintenance": true
+        },
+        "research": [],
         "stations": {
-          "sub_assembly": {
+          "cutting": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true,
+            "units": 2
+          },
+          "processing": {
             "method": "standard",
             "overtime": false,
             "maintenance": true
+          },
+          "sub_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true,
+            "units": 2,
+            "split": true
           },
           "block_assembly": {
             "method": "standard",
@@ -335,32 +447,48 @@
             "units": 2,
             "split": true
           },
-          "grand_assembly": {
+          "painting": {
             "method": "standard",
             "overtime": false,
             "maintenance": true
+          },
+          "pre_outfitting": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true,
+            "units": 2
+          },
+          "grand_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true,
+            "units": 2
           },
           "erection": {
             "method": "standard",
             "overtime": false,
             "maintenance": true,
-            "units": 2
+            "crew": "skilled"
+          },
+          "quay_outfitting": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          },
+          "sea_trial": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
           }
         },
-        "pool": 8,
-        "transporters": {
-          "count": 2,
-          "maintenance": true
-        },
-        "research": []
+        "scenario": "surge"
       }
     },
     {
       "id": "all_in",
       "name": "전부 최대 투입",
-      "summary": "모든 공정을 2곳으로 증설하고(나눠 하기는 끔), 사람 12명, 속도, 잔업, 정비를 전부 넣고 자재는 1일에 모두 발주한다. 등급의 기준선이다.",
+      "summary": "중조립 3곳(나눠 하기), 소조립·PE장·도크 2곳으로 증설하고, 사람 36명, 속도, 잔업, 정비를 전부 넣고 자재는 1일에 모두 발주한다. 등급의 기준선이다.",
       "config": {
-        "scenario": "surge",
         "ordering": "bulk",
         "ships": {
           "S1": {
@@ -394,9 +522,38 @@
           "S8": {
             "priority": 8,
             "start_day": 1
+          },
+          "S9": {
+            "priority": 9,
+            "start_day": 1
+          },
+          "S10": {
+            "priority": 10,
+            "start_day": 1
           }
         },
+        "pools": {
+          "processing": 6,
+          "assembly": 12,
+          "erection": 6,
+          "painting": 6,
+          "outfitting": 6
+        },
+        "transporters": {
+          "maintenance": true
+        },
+        "research": [],
         "stations": {
+          "cutting": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": true
+          },
+          "processing": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": true
+          },
           "sub_assembly": {
             "method": "fast",
             "overtime": true,
@@ -407,8 +564,19 @@
             "method": "fast",
             "overtime": true,
             "maintenance": true,
-            "units": 2,
-            "crew": "skilled"
+            "crew": "skilled",
+            "units": 3,
+            "split": true
+          },
+          "painting": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": true
+          },
+          "pre_outfitting": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": true
           },
           "grand_assembly": {
             "method": "fast",
@@ -421,14 +589,19 @@
             "overtime": true,
             "maintenance": true,
             "units": 2
+          },
+          "quay_outfitting": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": true
+          },
+          "sea_trial": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": true
           }
         },
-        "pool": 12,
-        "transporters": {
-          "count": 1,
-          "maintenance": true
-        },
-        "research": []
+        "scenario": "surge"
       }
     }
   ]

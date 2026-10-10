@@ -17,7 +17,7 @@ import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot } from "./scene/
 // 배치는 현장 3D와 같은 scene/layout.ts
 import { areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
   along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, quayQueueSpot, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_X, SHELF_Z, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
-  CONVEYOR, STOCK_NAME, type SectorId } from "./scene/layout";
+  CONVEYOR, QUAY_WORK_Z, STOCK_NAME, type SectorId } from "./scene/layout";
 
 // ----- 투영: 위에서 30도 기운 정사영 -----
 const S = 30;                        // 1 단위 = 30px
@@ -351,6 +351,10 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
       if (isShop(p)) add(z0 - 0.01, walls(x0, x1, z0, z1, 1.0));
       else if (p === ST.pe) add(z0 - 0.01, s("rect", { x: px(x0), y: py(z0), width: (x1 - x0) * S, height: (z1 - z0) * S * DEPTH, fill: "none", stroke: "#e0b43a", "stroke-width": 1.5, "stroke-dasharray": "6 4" }));
       else if (p === ST.dock) add(z0 - 0.01, dock(x0, x1, z0, z1));
+      if (p === ST.quay) {   // 안벽 위 작업 구역(노란 구획선)
+        const a = areaBounds(p, k, docks);
+        add(a.z0 - 0.01, s("rect", { x: px(a.x0), y: py(a.z0), width: (a.x1 - a.x0) * S, height: (a.z1 - a.z0) * S * DEPTH, fill: "none", stroke: "#e0b43a", "stroke-width": 1.5, "stroke-dasharray": "6 4" }));
+      }
       const g = s("g", {
         class: "cc-station pick", role: "button", tabindex: 0,
         "aria-label": `${st.name} ${unit.unit}호. 눌러서 그 구획 보기`,
@@ -382,7 +386,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
         const hat = view.senior ? HAT.senior : TRADE_HAT[STATION_TRADE[st.id]] ?? HAT.worker;
         for (let i = 0; i < unit.workers; i++) {
           const wx = x + (i === 0 ? -1 : 1) * (MAT_W / 2 - 0.4);
-          const wz = p === ST.quay ? QUAY.z0 + 0.6 : z + 0.4;
+          const wz = p === ST.quay ? QUAY_WORK_Z : z + 0.4;
           add(wz, person(wx, wz, hat));
         }
       }
