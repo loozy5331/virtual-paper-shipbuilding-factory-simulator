@@ -14,7 +14,7 @@ import { renderDesk } from "./desk";
 import { planLabel, renderForm, renderPlanBar, renderPlanNotes, renderPlanTabs, updatePreview, type FormContext } from "./form";
 import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
 import { docHead, REVIEWER } from "./paper";
-import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, PAIR_WAIT_STATE, STATION_COLOR, TRANSPORT_STATE } from "./labels";
+import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, TRANSPORT_STATE } from "./labels";
 import { breakdownBar, breakdownLegend, eventText, renderReport } from "./report";
 import { renderCctv } from "./cctv";
 import { renderTrackCard, type TrackPick } from "./track";
@@ -135,6 +135,8 @@ const els = {
   /** 인도 완료 로그: 작업 현황(관제실)과 현장 3D의 오른쪽 위. 인도한 배는 조선소를 떠나 그림에 없다 */
   deliveredRoom: h("ol", { class: "delivered-log", "aria-label": "인도 완료" }),
   deliveredField: h("ol", { class: "delivered-log", "aria-label": "인도 완료" }),
+  trialRoom: h("div", { class: "trial-bubble", role: "status", hidden: true }),
+  trialField: h("div", { class: "trial-bubble", role: "status", hidden: true }),
   log: h("ol", { class: "log", "aria-label": "사건 기록" }),
   deskClip: h("button", { class: "desk-clip", type: "button", title: "생산계획서로 돌아가 계획을 고칩니다" }),
   hat: h("button", { class: "desk-hat", type: "button", title: "작업모를 쓰고 현장으로 나갑니다" }),
@@ -745,7 +747,9 @@ function tick(jump: boolean): void {
   els.log.scrollTop = keep;
 
   drawTrackCard();
-  drawDelivered(buildFrame(result, scenario, r.config, state.day, 1));
+  const today = buildFrame(result, scenario, r.config, state.day, 1);
+  drawDelivered(today);
+  drawSeaTrial(today);
   syncScene(jump);
 }
 
@@ -792,6 +796,24 @@ function drawDelivered(frame: Frame): void {
   for (const host of [els.deliveredRoom, els.deliveredField]) {
     host.hidden = !!state.pick || rows.length === 0;
     mount(host, rows.length ? [h("li", { class: "head" }, `인도 완료 ${rows.length}척`), ...rows.map((r) => r.cloneNode(true) as HTMLElement)] : []);
+  }
+}
+
+/** 시운전 말풍선: 시운전은 먼바다라 그림 밖이다. 시운전 중인 배가 있을 때만 오른쪽 아래에 뜬다 */
+function drawSeaTrial(frame: Frame): void {
+  const { scenario } = state.data;
+  const rows = frame.seaTrial.map((t) => {
+    const loss = t.state === "work" ? "" : STATE_INFO[t.state]?.name ?? "";
+    return h("li", null,
+      h("b", null, t.ship),
+      h("span", null, scenario.ship_types[t.type]?.name ?? t.type),
+      h("span", null, `${t.day}/${t.days}일째`),
+      loss ? h("em", null, loss) : null);
+  });
+  for (const host of [els.trialRoom, els.trialField]) {
+    host.hidden = rows.length === 0;
+    mount(host, rows.length ? [h("div", { class: "trial-head" }, "시운전 중 · 먼바다"),
+      h("ul", null, rows.map((r) => r.cloneNode(true) as HTMLElement))] : []);
   }
 }
 
@@ -1036,6 +1058,7 @@ function drawRightTop(): void {
       "익명 표시 · 개인을 구분하지 않습니다"),
     els.trackRoom,
     els.deliveredRoom,
+    els.trialRoom,
     // 추적할 배 고르기(3.1): 고른 배의 블록만 진하게, 선반에는 그 배 몫
     trackSelect(),
     h("div", { class: "cam-switch", role: "group", "aria-label": "볼 구획" },
@@ -1380,7 +1403,7 @@ async function start(): Promise<void> {
     h("div", { class: "room-desk" }, h("div", { class: "desk-top" }), h("div", { class: "arm-clamp", "aria-hidden": "true" }), els.deskClip, els.hands, els.hat),
     els.reportBoard, els.planBoard);
 
-  els.sceneField.append(els.trackField, els.deliveredField);
+  els.sceneField.append(els.trackField, els.deliveredField, els.trialField);
   mount(els.field, els.fieldHead, els.sceneField, els.fieldOsd);
   mount(root, els.desk, els.plan, els.room, els.field);
 

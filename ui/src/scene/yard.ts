@@ -1066,7 +1066,8 @@ export class Yard {
       const lot = this.lots.get(view.ship);
       if (!lot) continue;
       // 인도한 배(sea)는 선주에게 넘어가 조선소를 떠났다(화면 오른쪽 위 인도 완료 로그에 남는다)
-      lot.group.visible = view.place !== "hidden" && view.place !== "sea";
+      // 인도한 배는 떠났고, 시운전 중인 배는 먼바다에 나가 있다(화면 오른쪽 아래 말풍선)
+      lot.group.visible = view.place !== "hidden" && view.place !== "sea" && !(view.place === "bench" && view.station === ST.trial);
       if (!lot.group.visible) continue;
       const launch = launching.find((l) => l.ship === view.ship);
       if (launch) {
@@ -1150,7 +1151,7 @@ export class Yard {
         r.visible = robot && u < st.units.length;
         r.userData.working = robot && (st.units[u]?.state === "work" || st.units[u]?.state === "rework");
       });
-      if (!robot) {
+      if (!robot && i !== ST.trial) {   // 시운전 외부팀은 배와 함께 먼바다에 있다
         st.units.forEach((unit, u) => {
           const unitWorking = unit.state === "work" || unit.state === "rework";
           // 진수하는 도크의 작업자는 도크 밖(앞쪽)으로 비켜 선다
@@ -1193,6 +1194,7 @@ export class Yard {
         : st.state === "material_wait" ? chipHtml("material_wait", "자재 대기")
         : i === ST.sub && working ? `<span class="chip cut">절단 중</span>` : "";
       const crewNote = robot ? " · 로봇" : st.crew === "skilled" ? " · 숙련공" : "";
+      props.tag.visible = i !== ST.trial;
       setLabel(props.tag, `<i style="background:${STATION_COLOR[st.id]}"></i>${st.name}${st.units.length > 1 ? " 1호" : ""}${crewNote}${st.overtime && !robot ? " · 잔업" : ""}${chip}`);
     });
     if (!f.stations.some((st) => st.senior)) this.senior.setVisible(false);
