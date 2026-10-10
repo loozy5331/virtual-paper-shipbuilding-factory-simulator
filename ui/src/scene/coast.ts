@@ -213,16 +213,68 @@ export function buildDock(x0: number, x1: number, z0: number, z1: number): THREE
  * 골리앗 크레인 = 걸리버의 손: 하늘에서 수직으로 내려오는 팔과 벙어리장갑, 손바닥 아래 둥근 자석판(블록이 붙어 들린다).
  * 탑재를 가까이 보면 손이 화면 위쪽 변에서 곧게 내려온다. 손은 크레인 훅 자리를 따라간다.
  */
+/**
+ * 걸리버(4.1.1, 사용자 아이디어): 도크 구획 뒤쪽 하늘에 떠 있는 구름 위에 엎드려 있다. 머리는 도크 쪽(+z), 다리는 뒷산 쪽.
+ * 두 팔(GiantHand)이 어깨에서 도크로 뻗어 골리앗 크레인 노릇을 한다. 오른팔 = 1도크, 왼팔 = 2도크(도크가 하나면 턱을 괴고 쉰다).
+ */
+export const GULLIVER = { x: STATION_X[ST.dock], y: 15.5, z: -3.5 };
+const SKIN = "#e3c4a3", SHIRT = "#34495e", PANTS = "#5b4a3a";
+
+export class Gulliver {
+  readonly root = new THREE.Group();
+  constructor() {
+    const { x, y, z } = GULLIVER;
+    // 구름: 납작한 흰 공 여럿
+    const puffs: [number, number, number, number][] = [[0, 0, -4, 5.5], [-4, 0.3, -2, 4], [4, 0.2, -1, 4.2], [-2, 0.4, 3, 3.8], [3, 0.3, 3.5, 3.6],
+      [0, 0.5, 1, 4.5], [-5, 0, -7, 3.6], [5, 0, -8, 3.4], [0, 0.2, -10, 4.4], [0, -0.4, 5.5, 2.8]];
+    for (const [dx, dy, dz, r] of puffs) {
+      const m = mesh(new THREE.SphereGeometry(r, 18, 12), "#f6f7f8", { roughness: 1 });
+      m.scale.set(1, 0.38, 0.85);
+      m.position.set(x + dx, y + dy - 0.6, z + dz);
+      m.castShadow = false;
+      this.root.add(m);
+    }
+    // 몸통(엎드림, z 방향으로 눕힘), 머리(도크를 내려다봄), 다리
+    const torso = mesh(new THREE.CapsuleGeometry(1.9, 5.5, 8, 20), SHIRT);
+    torso.rotation.x = Math.PI / 2;
+    torso.position.set(x, y + 1.3, z - 1.5);
+    const head = mesh(new THREE.SphereGeometry(1.55, 24, 18), SKIN);
+    head.position.set(x, y + 2.0, z + 3.7);
+    const hair = mesh(new THREE.SphereGeometry(1.6, 24, 18, 0, Math.PI * 2, 0, Math.PI * 0.55), "#5a3d27");
+    hair.position.copy(head.position);
+    hair.rotation.x = -0.5;
+    this.root.add(torso, head, hair);
+    for (const side of [-1, 1]) {
+      const leg = mesh(new THREE.CapsuleGeometry(0.85, 6.5, 6, 14), PANTS);
+      leg.rotation.x = Math.PI / 2;
+      leg.position.set(x + side * 0.95, y + 1.0, z - 9.2);
+      const shoe = mesh(new THREE.BoxGeometry(1.1, 1.6, 1.0), "#2b2b2b");
+      shoe.position.set(x + side * 0.95, y + 1.6, z - 13.2);
+      this.root.add(leg, shoe);
+    }
+    this.root.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = false; });
+  }
+}
+
 export class GiantHand {
   readonly root = new THREE.Group();
   readonly hand = new THREE.Group();
-  private readonly arm: THREE.Mesh;
-  private static readonly TOP = 40;   // 팔이 끝나는 높이(화면 밖)
-  private static readonly SCALE = 0.72;
+  private readonly upper: THREE.Mesh;
+  private readonly fore: THREE.Mesh;
+  private readonly shoulder: THREE.Vector3;
+  private readonly side: number;
+  private static readonly SCALE = 1.0;
+  /** 위팔·아래팔 길이, 굵기 */
+  private static readonly BONE = 9.2;
+  private static readonly R = 0.95;
 
   /** left: 걸리버의 왼손(2호 도크 크레인). 엄지가 반대쪽이다. */
   constructor(left = false) {
-    this.arm = mesh(new THREE.CapsuleGeometry(0.62, 1, 6, 16), "#34495e");
+    this.side = left ? 1 : -1;
+    this.shoulder = new THREE.Vector3(GULLIVER.x + this.side * 2.1, GULLIVER.y + 1.6, GULLIVER.z + 1.9);
+    const R = GiantHand.R;
+    this.upper = mesh(new THREE.CapsuleGeometry(R, 1, 6, 16), SHIRT);
+    this.fore = mesh(new THREE.CapsuleGeometry(R * 0.85, 1, 6, 16), SHIRT);
     const mitten = mesh(new THREE.SphereGeometry(0.9, 20, 14), "#c9b79a");
     mitten.scale.set(1.15, 1.2, 0.8);
     const thumb = mesh(new THREE.CapsuleGeometry(0.28, 0.5, 6, 10), "#c9b79a");
@@ -234,18 +286,49 @@ export class GiantHand {
     magnet.position.y = -1.05;
     this.hand.add(mitten, thumb, cuff, magnet);
     this.hand.scale.setScalar(GiantHand.SCALE);
-    this.root.add(this.arm, this.hand);
+    this.root.add(this.upper, this.fore, this.hand);
     this.place(new THREE.Vector3(STATION_X[ST.dock], 3, 0));
   }
 
-  /** 손(자석판 바닥)을 이 자리로. 팔은 손목에서 하늘까지 수직. */
+  /** 손(자석판 바닥)을 이 자리로. 팔은 어깨에서 팔꿈치를 바깥 위로 꺾어 손목까지(두 마디, 닿지 않으면 늘어난다). */
   place(magnetBottom: THREE.Vector3): void {
     const k = GiantHand.SCALE;
     this.hand.position.set(magnetBottom.x, magnetBottom.y + 1.12 * k, magnetBottom.z);
+    this.hand.rotation.set(0, 0, 0);
     const wrist = this.hand.position.clone().setY(this.hand.position.y + 1.2 * k);
-    const top = wrist.clone().setY(GiantHand.TOP);
-    const len = top.y - wrist.y;
-    this.arm.position.set(wrist.x, wrist.y + len / 2, wrist.z);
-    this.arm.scale.set(1, len / (1 + 2 * 0.62), 1);
+    this.reach(wrist, new THREE.Vector3(this.side, 0.7, -0.4), GiantHand.BONE);
+  }
+
+  /** 도크가 하나일 때 왼팔: 구름 위에 팔꿈치를 대고 접어 손으로 턱을 괸다(크레인 일을 하지 않음). 접은 팔이라 마디를 짧게 본다 */
+  rest(): void {
+    const chin = new THREE.Vector3(GULLIVER.x + this.side * 0.7, GULLIVER.y + 1.2, GULLIVER.z + 5.0);
+    this.hand.position.copy(chin);
+    this.hand.rotation.set(-0.9, 0, this.side * 0.5);
+    this.reach(chin.clone().setY(chin.y - 0.4), new THREE.Vector3(this.side, -0.6, 0.8), 2.6);
+  }
+
+  /** 두 마디 팔: 어깨 → 팔꿈치(pole 쪽으로 꺾임) → 손목 */
+  private reach(wrist: THREE.Vector3, pole: THREE.Vector3, bone: number): void {
+    const a = bone, b = bone, s = this.shoulder;
+    const to = wrist.clone().sub(s);
+    const d = to.length();
+    const dir = to.clone().normalize();
+    let elbow: THREE.Vector3;
+    if (d >= a + b - 1e-3) {
+      elbow = s.clone().addScaledVector(dir, d * a / (a + b));   // 닿지 않으면 곧게 펴고 늘어난다
+    } else {
+      const x = (a * a - b * b + d * d) / (2 * d), h = Math.sqrt(Math.max(0, a * a - x * x));
+      const n = pole.clone().addScaledVector(dir, -pole.dot(dir)).normalize();
+      elbow = s.clone().addScaledVector(dir, x).addScaledVector(n, h);
+    }
+    this.bone(this.upper, s, elbow);
+    this.bone(this.fore, elbow, wrist);
+  }
+
+  private bone(m: THREE.Mesh, from: THREE.Vector3, to: THREE.Vector3): void {
+    const v = to.clone().sub(from), len = v.length();
+    m.position.copy(from).addScaledVector(v, 0.5);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v.normalize());
+    m.scale.set(1, Math.max(0.01, len / (1 + 2 * GiantHand.R)), 1);
   }
 }

@@ -15,7 +15,7 @@ import { LEAD_IN, type Delivery, type Frame, type LotView } from "./frame";
 import { mesh, Person, SENIOR_NAME, WORKER_NAMES } from "./people";
 import { shipLook } from "./ships";
 import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot } from "./stock";
-import { buildDock, buildLand, buildRoof, buildSectorOutline, buildWalls, buildYardLines, GiantHand, SEA_Y, type DockParts } from "./coast";
+import { buildDock, buildLand, buildRoof, buildSectorOutline, buildWalls, buildYardLines, GiantHand, Gulliver, SEA_Y, type DockParts } from "./coast";
 import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_TOP, MAT_W, MAT2_D,
   nearLane, QUEUE_Z, SAFE_SPOT, seaSpot, SECTORS, sector, sectorBounds, DOCK2_AREA, SHELF_X, SHELF_Z, SHORE_X, SPUR_IN, SPUR_OUT, SPUR_X, STATION_X,
   STOCK_AT, STOCK_D, STOCK_HALF, STOCK_NAME, CONVEYORS, FORKLIFT_HOME, BACK_LANE_Z, polyline, QUAY_WORK_Z, ST, isShop, quayQueueSpot, along, groundY, kitRoutes, LAB_TREES, LAND_ROUTE, route, SHIP_ROUTE, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
@@ -423,6 +423,7 @@ export class Yard {
   private readonly gulliver = new GiantHand();
   /** 2호 도크의 골리앗 크레인 = 걸리버의 왼손(도크를 증설했을 때만). 도크마다 크레인이 하나씩이다(3.0). */
   private readonly gulliver2 = new GiantHand(true);
+  private readonly craneTag2 = label("골리앗 크레인 2호 · 걸리버의 왼손", "place-tag");
   /** 작업장마다의 벽·구획선·도크(2호·3호는 있을 때만 보인다). [공정][작업장 번호 − 1] */
   private readonly areas: THREE.Group[][] = [];
   /** 내업 공장 지붕(작업장마다). 전경과 다른 구획을 볼 때만 보인다 */
@@ -487,15 +488,13 @@ export class Yard {
     this.buildForklift();
     this.buildAreas();
     this.buildStations();
-    this.scene.add(this.gulliver.root);
+    this.scene.add(new Gulliver().root, this.gulliver.root);
     const craneTag = label("골리앗 크레인 1호 · 걸리버의 오른손", "place-tag");
     craneTag.position.set(0, 1.5, 0);
     this.gulliver.hand.add(craneTag);
     this.scene.add(this.gulliver2.root);
-    const craneTag2 = label("골리앗 크레인 2호 · 걸리버의 왼손", "place-tag");
-    craneTag2.position.set(0, 1.5, 0);
-    this.gulliver2.hand.add(craneTag2);
-    this.gulliver2.root.visible = false;
+    this.craneTag2.position.set(0, 1.5, 0);
+    this.gulliver2.hand.add(this.craneTag2);
     this.buildLane();
     this.lounge = this.buildLounge();
     this.buildShelves();
@@ -1196,8 +1195,9 @@ export class Yard {
     const hands: [GiantHand, { x: number; y: number } | null, number][] = [[this.gulliver, hook, 0], [this.gulliver2, hook2, 1]];
     for (const [hand, hk, u] of hands) {
       this.craneRings[u].visible = u < docks;
-      if (u >= docks) { hand.root.visible = false; continue; }
-      hand.root.visible = true;
+      if (u === 1) this.craneTag2.visible = u < docks;
+      // 도크가 하나면 왼팔은 크레인 일을 하지 않고 구름 위에서 턱을 괸다
+      if (u >= docks) { hand.rest(); continue; }
       const at = new THREE.Vector3(STATION_X[ST.dock] + (hk ? hk.x : 0), hk ? hk.y + 0.15 : 3.0, dockZ(u));
       const launch = launching.find((l) => l.unit === u);
       const gate = launch ? this.gateHand(u, frac) : null;
