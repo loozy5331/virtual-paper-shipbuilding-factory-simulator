@@ -2,7 +2,7 @@
 // 자리를 고칠 때는 여기 한 곳만 고친다. Three.js를 모른다. 단위는 대략 소인 키의 4배, x는 오른쪽(바다 쪽), z는 앞(카메라 쪽).
 //
 // 구획(D38): 공정이 늘면 야드 전체를 한 화면에 담을 수 없어 실제 조선소처럼 나눈다. 카메라는 구획 하나씩 옮겨 다닌다.
-//   내업 구획(왼쪽, 공용): 소조립·중조립 공장, 블록 마감동(도장·선행의장, 4.0), 물류창고, 연구소, 작업대기소, 차고, 적치장
+//   내업 구획(왼쪽, 공용): 가공 공장(절단·가공, D43), 소조립·중조립 공장, 블록 마감동(도장·선행의장, 4.0), 물류창고, 연구소, 작업대기소, 차고, 적치장
 //   1도크 구획(큰길 뒤)·2도크 구획(큰길 앞): PE장, 도크, 골리앗 크레인. PE장 적치장과 탑재 대기 줄은 1도크 구획에
 //   안벽 구획: 매립 안벽의 정박 자리(안벽의장, 4.0), 만 밖 바다(시운전), 인도한 배
 // 큰길(가로)이 내업에서 두 도크 구획 사이를 지나 안벽까지 간다. 구획은 그림일 뿐 엔진 규칙이 아니다.
@@ -24,16 +24,18 @@ export const QUEUE_Z = 2.2;
 /** 해안: 오른쪽 안벽(이 너머가 바다) */
 export const SHORE_X = 11.2;
 
-/** 공정 번호(4.0, 공정 8개): 화면 코드는 숫자 대신 이 이름을 쓴다(rules.json의 공정 순서와 같다) */
-export const ST = { sub: 0, block: 1, paint: 2, preout: 3, pe: 4, dock: 5, quay: 6, trial: 7 } as const;
-/** 내업 공장(벽과 지붕이 있는 공정): 소조립, 중조립, 도장, 선행의장 */
+/** 공정 번호(4.0, 공정 10개): 화면 코드는 숫자 대신 이 이름을 쓴다(rules.json의 공정 순서와 같다) */
+export const ST = { cut: 0, proc: 1, sub: 2, block: 3, paint: 4, preout: 5, pe: 6, dock: 7, quay: 8, trial: 9 } as const;
+/** 내업 공장(벽과 지붕이 있는 공정): 절단, 가공, 소조립, 중조립, 도장, 선행의장 */
 export const isShop = (station: number) => station <= ST.preout;
 
 /**
- * 공정의 가운데 x: 소조립·중조립, 블록 마감동의 도장·선행의장(같은 건물, 4.0), PE장, 탑재(도크),
+ * 공정의 가운데 x: 가공 공장의 절단·가공(같은 건물, D43), 소조립·중조립, 블록 마감동의 도장·선행의장(같은 건물, 4.0), PE장, 탑재(도크),
  * 안벽의장(매립 안벽 1번 정박 자리), 시운전(만 밖 바다)
  */
-export const STATION_X = [-24, -18.5, -12.6, -7.9, 3.4, 8.5, 13.1, 36];
+export const STATION_X = [-35.6, -30.8, -24, -18.5, -12.6, -7.9, 3.4, 8.5, 13.1, 36];
+/** 컨베이어벨트(D43): 가공 공장 오른쪽 벽에서 소조립 왼쪽 벽까지, 1호 줄 뒤쪽 높이(z). 샛길 위를 지나도록 다리 위에 놓는다 */
+export const CONVEYOR = { x0: STATION_X[1] + MAT_W / 2 + 0.45, x1: STATION_X[2] - MAT_W / 2 - 0.45, z: -0.7, y: 0.55, w: 0.55 };
 /** 안벽의장 정박 자리 사이 간격, 안벽 앞 물 위 줄(z) */
 const BERTH_GAP = 2.7, BERTH_Z = 10.6;
 /** 도크 줄: 1도크는 큰길 뒤, 2도크는 큰길 앞(큰길을 사이에 두고 마주 본다) */
@@ -79,20 +81,20 @@ export function sectorOf(station: number, unit: number, docks: number): SectorId
 
 /**
  * 샛길: 큰길에서 큰길에 닿지 않는 뒷줄 작업장으로 드나드는 길(벽을 뚫고 지나가지 않게).
- * 소조립 왼쪽, 소조립·중조립 사이, 중조립·마감동 사이, 마감동 오른쪽, PE장 왼쪽, PE장·도크 사이
+ * 가공 공장 왼쪽, 소조립 왼쪽(가공 공장 오른쪽), 소조립·중조립 사이, 중조립·마감동 사이, 마감동 오른쪽, PE장 왼쪽, PE장·도크 사이
  */
-export const SPUR_X = [STATION_X[ST.sub] - MAT_W / 2 - 1.45, (STATION_X[ST.sub] + STATION_X[ST.block]) / 2,
+export const SPUR_X = [STATION_X[ST.cut] - MAT_W / 2 - 1.45, (STATION_X[ST.proc] + MAT_W / 2 + STATION_X[ST.sub] - MAT_W / 2) / 2, (STATION_X[ST.sub] + STATION_X[ST.block]) / 2,
   STATION_X[ST.block] + MAT_W / 2 + 1.05, STATION_X[ST.preout] + MAT_W / 2 + 0.85,
   STATION_X[ST.pe] - MAT_W / 2 - 0.95, (STATION_X[ST.pe] + MAT_W / 2 + 0.4 + STATION_X[ST.dock] - MAT_W / 2 - 0.6) / 2];
-/** 공정마다 들어가는 샛길(왼쪽)과 나오는 샛길(오른쪽): SPUR_X 번호. 도장·선행의장은 같은 건물이라 안에서 옮긴다. −1은 샛길 없음 */
-export const SPUR_IN = [0, 1, 2, 2, 4, 4, -1, -1], SPUR_OUT = [1, 2, 3, 3, 5, 5, -1, -1];
+/** 공정마다 들어가는 샛길(왼쪽)과 나오는 샛길(오른쪽): SPUR_X 번호. 절단·가공, 도장·선행의장은 같은 건물이라 안에서 옮긴다. −1은 샛길 없음 */
+export const SPUR_IN = [0, 0, 1, 2, 3, 3, 5, 5, -1, -1], SPUR_OUT = [1, 1, 2, 3, 4, 4, 6, 6, -1, -1];
 
 /** 트랜스포터 차고(큰길 왼쪽 끝), 작업대기소, 물류창고 선반 셋, 연구소: 모두 내업 구획 */
-export const DEPOT = { x: -31, z: LANE_Z };
-export const LOUNGE = { x: -30.6, z: -4.4 };
+export const DEPOT = { x: -42.6, z: LANE_Z };
+export const LOUNGE = { x: -42.2, z: -4.4 };
 export const SHELF_X = [-22.2, -19.7, -17.2], SHELF_Z = -9.6;
 /** 연구소(3.2): 내업 구획 왼쪽 아래(큰길 앞, 차고 옆). 둘레에 나무를 심어 가리고 큰길 쪽 출입구 하나만 둔다(보안). */
-export const LAB = { x: -30.6, z: 8.7 };
+export const LAB = { x: -40.4, z: 8.7 };
 /** 연구소를 둘러싼 나무 자리: 직사각형 둘레를 따라, 큰길 쪽 가운데는 출입구로 비운다 */
 export const LAB_TREES: { x: number; z: number }[] = (() => {
   const out: { x: number; z: number }[] = [];
@@ -105,16 +107,19 @@ export const LAB_TREES: { x: number; z: number }[] = (() => {
   return out;
 })();
 
-/** 적치장 칸(공정마다, 탑재 제외): 칸 가운데 x, 큰길 쪽 끝 z, 큰길에서 멀어지는 방향. 내업 두 공정은 큰길 건너편, PE장은 1도크 구획 왼쪽 */
+/** 적치장 칸(공정마다, 탑재 제외): 칸 가운데 x, 큰길 쪽 끝 z, 큰길에서 멀어지는 방향. 내업 공정은 큰길 건너편, PE장은 1도크 구획 왼쪽 */
 export const STOCK_D = 3.4, STOCK_HALF = 2.2;
 export const STOCK_AT = [
+  { x: (STATION_X[ST.cut] + STATION_X[ST.proc]) / 2, z0: LANE_Z + 0.8, dir: 1 },   // 가공 공장(절단·가공 함께, D43)
   { x: STATION_X[ST.sub], z0: LANE_Z + 0.8, dir: 1 },
   { x: STATION_X[ST.block], z0: LANE_Z + 0.8, dir: 1 },
   { x: (STATION_X[ST.paint] + STATION_X[ST.preout]) / 2, z0: LANE_Z + 0.8, dir: 1 },   // 블록 마감동(도장·선행의장 함께)
   { x: -1.8, z0: LANE_Z - 0.8, dir: -1 },
 ];
 /** 공정마다 쓰는 적치장 칸(STOCK_AT 번호). −1은 적치장 없음(탑재는 도크 앞, 안벽의장·시운전은 물 위) */
-export const STOCK_OF = [0, 1, 2, 2, 3, -1, -1, -1];
+export const STOCK_OF = [0, 0, 1, 2, 3, 3, 4, -1, -1, -1];
+/** 적치장 칸 이름(STOCK_AT 번호 순서) */
+export const STOCK_NAME = ["가공 공장 적치장", "적치장", "적치장", "마감동 적치장", "적치장"];
 
 /** 골리앗 크레인(탑재 도크 둘레)과 트랜스포터의 위험 반경(3.0 안전). 팻말에는 "반경 10m"로 적는다. */
 export const CRANE_R = 2.9;
@@ -160,7 +165,7 @@ export const LAND_ROUTE = [
   { x: -15, z: -16 }, { x: -17.5, z: -13.3 }, { x: -19.7, z: -12.6 },
 ];
 /** 창고 뒤에서 왼쪽으로 야드를 빠져나가는 길 */
-export const SUPPLY_EXIT = [{ x: -19.7, z: -12.6 }, { x: -30, z: -12.6 }, { x: -44, z: -12.2 }];
+export const SUPPLY_EXIT = [{ x: -19.7, z: -12.6 }, { x: -34, z: -12.6 }, { x: -54, z: -12.2 }];
 /** 납품 길을 지나는 날 수(입고일 며칠 전에 출발하나) */
 export const SUPPLY_DAYS = 3;
 
@@ -215,7 +220,7 @@ export function along(r: Route, u: number): { x: number; z: number; angle: numbe
 
 /** 구획의 바닥 범위. 2도크 구획은 도크가 하나뿐이어도 "증설 예정지"로 남는다. */
 export const SECTORS: Sector[] = [
-  { id: "shop", name: "내업 구획", x0: -34.6, x1: -4.8, z0: -13.6, z1: 11.7 },
+  { id: "shop", name: "내업 구획", x0: -44.4, x1: -4.8, z0: -13.6, z1: 11.7 },
   { id: "dock1", name: "1도크 구획", x0: -4.5, x1: SHORE_X, z0: -7.6, z1: LANE_Z - 0.75 },
   { id: "dock2", name: "2도크 구획", x0: -4.5, x1: SHORE_X, z0: LANE_Z + 0.75, z1: 12.4 },
   { id: "quay", name: "안벽 구획", x0: SHORE_X, x1: QUAY.x1 + 0.8, z0: 7.4, z1: QUAY.z1 + 0.4 },
@@ -229,7 +234,7 @@ export function sectorBounds(id: SectorId, docks: number): Sector {
 }
 
 /** 야드 왼쪽 끝, 만의 가운데 z와 반폭, 곶 끝의 x, 곶 사이 물길 반폭 */
-export const YARD_X0 = -36;
+export const YARD_X0 = -46;
 export const BAY_C = LANE_Z;
 export const BAY_Z = 12;
 export const MOUTH_X = 27;
@@ -243,7 +248,7 @@ export const HILLS: Hill[] = (() => {
   const out: Hill[] = [];
   // ㄷ자: 뒤(멀리, 크게), 왼쪽, 앞(카메라 뒤라 거의 안 보임)
   for (let k = 0; k < 9; k++) out.push({ x: -50 + k * 12, z: -36 - (k % 2) * 3, rx: 11, h: 8 + (k % 3) * 2, rz: 7, color: k % 5 });
-  for (let k = 0; k < 6; k++) out.push({ x: -50 - (k % 2) * 2, z: -24 + k * 12, rx: 7, h: 6 + (k % 2) * 2, rz: 9, color: (k + 2) % 5 });
+  for (let k = 0; k < 6; k++) out.push({ x: -58 - (k % 2) * 2, z: -24 + k * 12, rx: 7, h: 6 + (k % 2) * 2, rz: 9, color: (k + 2) % 5 });
   for (let k = 0; k < 8; k++) out.push({ x: -44 + k * 13, z: 42 + (k % 2) * 2, rx: 10, h: 6, rz: 6, color: (k + 1) % 5 });
   // 오른쪽 두 팔: 만을 따라 뻗다가 끝에서 안쪽으로 굽는다(곶). 물길은 남긴다. 뒤쪽 곶 끝에 등대
   for (const side of [-1, 1]) {

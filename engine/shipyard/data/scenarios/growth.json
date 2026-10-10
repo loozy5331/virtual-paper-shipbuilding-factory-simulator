@@ -98,6 +98,8 @@
   "random": {
     "quality": {
       "S1": {
+        "cutting": 0.41,
+        "processing": 0.73,
         "sub_assembly": 0.62,
         "block_assembly": 0.21,
         "grand_assembly": 0.48,
@@ -108,6 +110,8 @@
         "sea_trial": 0.56
       },
       "S2": {
+        "cutting": 0.15,
+        "processing": 0.58,
         "sub_assembly": 0.35,
         "block_assembly": 0.74,
         "grand_assembly": 0.03,
@@ -118,6 +122,8 @@
         "sea_trial": 0.93
       },
       "S3": {
+        "cutting": 0.86,
+        "processing": 0.32,
         "sub_assembly": 0.17,
         "block_assembly": 0.28,
         "grand_assembly": 0.9,
@@ -128,6 +134,8 @@
         "sea_trial": 0.82
       },
       "S4": {
+        "cutting": 0.67,
+        "processing": 0.09,
         "sub_assembly": 0.55,
         "block_assembly": 0.13,
         "grand_assembly": 0.69,
@@ -138,6 +146,8 @@
         "sea_trial": 0.76
       },
       "S5": {
+        "cutting": 0.52,
+        "processing": 0.24,
         "sub_assembly": 0.44,
         "block_assembly": 0.19,
         "grand_assembly": 0.77,
@@ -148,6 +158,8 @@
         "sea_trial": 0.56
       },
       "S6": {
+        "cutting": 0.79,
+        "processing": 0.37,
         "sub_assembly": 0.19,
         "block_assembly": 0.77,
         "grand_assembly": 0.36,

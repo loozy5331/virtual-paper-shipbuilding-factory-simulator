@@ -26,7 +26,7 @@ export interface LotView {
   parts?: { unit: number; state: string }[];
   /** 운반 중이면 이번 운반의 진행률(0~1). 운반이 며칠 걸리면 그 날들을 이어서 센다. */
   travel?: number;
-  /** 조립 단계. 0 부재, 1 소블록 12개, 2 중블록 6개, 3 대블록 3개, 4 배. 정반 위에서는 진행률만큼 소수가 된다(공정별 FORM). */
+  /** 조립 단계. −2 종이 묶음, −1 평평한 판, 0 굽힌 판, 1 소블록 8개, 2 중블록 4개, 3 대블록 2개, 4 배(D43). 정반 위에서는 진행률만큼 소수가 된다(공정별 FORM). */
   form: number;
   /** 칠한 정도 0~1(4.0: 도장 공정에서 칠한다. 도장을 마친 블록은 1) */
   paint: number;
@@ -111,11 +111,12 @@ export interface Frame {
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
 
 /**
- * 공정마다 조립 단계의 처음과 끝(4.0 공정 그래프). 도장·선행의장은 블록 모양을 바꾸지 않고(칠·배관만),
- * 안벽의장·시운전은 다 된 배다. 표에 없는 공정은 공정 번호를 단계로 쓴다(옛 손 계산용).
+ * 공정마다 조립 단계의 처음과 끝(4.0 공정 그래프). 단계: −2 종이(철판) 묶음, −1 잘라 낸 평평한 판 8장, 0 굽힌 판 8장,
+ * 1 소블록 8개, 2 중블록 4개, 3 대블록 2개, 4 배(D43). 절단은 판을 잘라 내고, 가공은 판을 굽히고(곡면), 소조립이 판을 블록으로 세운다.
+ * 도장·선행의장은 블록 모양을 바꾸지 않고(칠·배관만), 안벽의장·시운전은 다 된 배다. 표에 없는 공정은 공정 번호를 단계로 쓴다(옛 손 계산용).
  */
 export const FORM: Record<string, [number, number]> = {
-  sub_assembly: [0, 1], block_assembly: [1, 2], painting: [2, 2], pre_outfitting: [2, 2],
+  cutting: [-2, -1], processing: [-1, 0], sub_assembly: [0, 1], block_assembly: [1, 2], painting: [2, 2], pre_outfitting: [2, 2],
   grand_assembly: [2, 3], erection: [3, 4], quay_outfitting: [4, 4], sea_trial: [4, 4],
 };
 

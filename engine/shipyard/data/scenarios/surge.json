@@ -112,6 +112,8 @@
   "random": {
     "quality": {
       "S1": {
+        "cutting": 0.41,
+        "processing": 0.73,
         "sub_assembly": 0.58,
         "block_assembly": 0.24,
         "grand_assembly": 0.51,
@@ -122,6 +124,8 @@
         "sea_trial": 0.56
       },
       "S2": {
+        "cutting": 0.15,
+        "processing": 0.58,
         "sub_assembly": 0.31,
         "block_assembly": 0.69,
         "grand_assembly": 0.07,
@@ -132,6 +136,8 @@
         "sea_trial": 0.93
       },
       "S3": {
+        "cutting": 0.86,
+        "processing": 0.32,
         "sub_assembly": 0.47,
         "block_assembly": 0.16,
         "grand_assembly": 0.82,
@@ -142,6 +148,8 @@
         "sea_trial": 0.82
       },
       "S4": {
+        "cutting": 0.67,
+        "processing": 0.09,
         "sub_assembly": 0.13,
         "block_assembly": 0.36,
         "grand_assembly": 0.62,
@@ -152,6 +160,8 @@
         "sea_trial": 0.76
       },
       "S5": {
+        "cutting": 0.52,
+        "processing": 0.24,
         "sub_assembly": 0.66,
         "block_assembly": 0.09,
         "grand_assembly": 0.27,
@@ -162,6 +172,8 @@
         "sea_trial": 0.56
       },
       "S6": {
+        "cutting": 0.79,
+        "processing": 0.37,
         "sub_assembly": 0.22,
         "block_assembly": 0.81,
         "grand_assembly": 0.41,
@@ -172,6 +184,8 @@
         "sea_trial": 0.93
       },
       "S7": {
+        "cutting": 0.61,
+        "processing": 0.18,
         "sub_assembly": 0.39,
         "block_assembly": 0.27,
         "grand_assembly": 0.94,
@@ -182,6 +196,8 @@
         "sea_trial": 0.82
       },
       "S8": {
+        "cutting": 0.94,
+        "processing": 0.45,
         "sub_assembly": 0.75,
         "block_assembly": 0.52,
         "grand_assembly": 0.14,
