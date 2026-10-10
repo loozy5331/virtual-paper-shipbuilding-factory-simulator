@@ -3,6 +3,7 @@
 // 규칙을 다시 계산하지 않는다. 3D 코드(Three.js)도 모른다.
 
 import type { Config, Peg, Result, Scenario, ShipState } from "../api";
+import { SUPPLY_DAYS } from "./layout";
 
 /** 로트가 있는 자리. */
 export type Place =
@@ -66,6 +67,12 @@ export interface ShelfView {
   pegs: Peg[];
 }
 
+export interface Delivery {
+  /** 입고일(마차가 창고에 닿는 날) */
+  day: number;
+  items: { material: string; name: string; quantity: number }[];
+}
+
 export interface ResearchView {
   current: { name: string; done: number; total: number } | null;
   finished: string[];
@@ -82,7 +89,9 @@ export interface Frame {
   /** 오늘 진수하는 배: 어제 탑재를 끝내 오늘 인도된 배와 그 도크(0 = 1호). 현장 3D의 진수 장면용(그림만) */
   launches: { ship: string; unit: number }[];
   /** 오늘 입고(하루의 맨 처음): 자재마다 들어온 양. 납품 마차 장면용(그림만, 3.2) */
-  arrivals: { material: string; name: string; quantity: number }[];
+  arrivals: Delivery["items"];
+  /** 납품 마차: 오늘부터 사흘 뒤까지의 입고(입고일마다 마차 한 대, 사흘 전부터 길 위에 보인다) */
+  deliveries: Delivery[];
 }
 
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
@@ -203,18 +212,25 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
       ? [{ ship: ship.id, unit: (before.unit ?? 1) - 1 }] : [];
   }) : [];
 
-  // 입고: 오늘 들어온 자재를 자재마다 합친다(배마다 따로 발주해도 마차 한 대에 싣는다)
-  const arrivals = scenario.materials.flatMap((m) => {
-    const quantity = result.events.filter((ev) => ev.type === "arrival" && ev.day === day && ev.material === m.id)
+  // 입고: 그날 들어온 자재를 자재마다 합친다(배마다 따로 발주해도 마차 한 대에 싣는다)
+  const itemsOn = (d: number) => scenario.materials.flatMap((m) => {
+    const quantity = result.events.filter((ev) => ev.type === "arrival" && ev.day === d && ev.material === m.id)
       .reduce((sum, ev) => sum + (ev.type === "arrival" ? ev.quantity : 0), 0);
     return quantity > 0 ? [{ material: m.id, name: m.name, quantity }] : [];
   });
+  const arrivals = day > 0 ? itemsOn(day) : [];
+  const deliveries: Delivery[] = [];
+  for (let d = Math.max(1, day); d <= Math.min(result.days, day + SUPPLY_DAYS); d++) {
+    const items = itemsOn(d);
+    if (items.length) deliveries.push({ day: d, items });
+  }
 
   return {
     day,
     lots,
     launches,
     arrivals,
+    deliveries,
     stations,
     transporters,
     idleWorkers: day > 0 ? result.workforce.daily[index].idle : result.workforce.pool,

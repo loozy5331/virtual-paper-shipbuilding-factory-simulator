@@ -73,7 +73,19 @@ export const SPUR_IN = [0, 1, 3, 3], SPUR_OUT = [1, 2, 4, 4];
 export const DEPOT = { x: -31, z: LANE_Z };
 export const LOUNGE = { x: -30.6, z: -4.4 };
 export const SHELF_X = [-22.2, -19.7, -17.2], SHELF_Z = -9.6;
-export const LAB = { x: -13.2, z: -3.4 };
+/** 연구소(3.2): 내업 구획 왼쪽 아래(큰길 앞, 차고 옆). 둘레에 나무를 심어 가리고 큰길 쪽 출입구 하나만 둔다(보안). */
+export const LAB = { x: -30.6, z: 8.7 };
+/** 연구소를 둘러싼 나무 자리: 직사각형 둘레를 따라, 큰길 쪽 가운데는 출입구로 비운다 */
+export const LAB_TREES: { x: number; z: number }[] = (() => {
+  const out: { x: number; z: number }[] = [];
+  const x0 = LAB.x - 3.1, x1 = LAB.x + 3.1, z0 = LAB.z - 2.4, z1 = LAB.z + 2.5, step = 1.05;
+  for (let x = x0; x <= x1 + 1e-6; x += (x1 - x0) / Math.round((x1 - x0) / step)) {
+    out.push({ x, z: z1 });
+    if (Math.abs(x - LAB.x) > 1.0) out.push({ x, z: z0 });   // 출입구
+  }
+  for (let z = z0 + step; z < z1 - 0.3; z += step) out.push({ x: x0, z }, { x: x1, z });
+  return out;
+})();
 
 /** 적치장 칸(공정마다, 탑재 제외): 칸 가운데 x, 큰길 쪽 끝 z, 큰길에서 멀어지는 방향. 내업 두 공정은 큰길 건너편, PE장은 1도크 구획 왼쪽 */
 export const STOCK_D = 3.4, STOCK_HALF = 2.2;
@@ -100,12 +112,51 @@ export function seaSpot(i: number): { x: number; z: number } {
   return { x: QUAY.x0 + 1.7 + (i % 4) * 2.6, z: QUAY.z0 - 0.8 - Math.floor(i / 4) * 1.25 };
 }
 
-/** 자재 납품 길(3.2): 야드 왼쪽 끝에서 물류창고 앞까지. 입고 날 마차가 이 길로 들어와 상자를 내린다(그림만). */
-export const SUPPLY = { x0: -44, z: -7.95 };
+/**
+ * 자재 납품 길(3.2): 등대가 있는 뒤쪽 곶에서 만의 뒤쪽 물가를 따라 굽어 들어와 야드 뒤를 지나 물류창고 뒤(뒷문)에 닿는다.
+ * 마차는 입고일 사흘 전 아침에 등대 앞을 떠나 입고일 아침에 창고 뒤에 닿고, 상자를 내린 뒤 왼쪽 길로 야드를 빠져나간다(그림만).
+ */
+export const SUPPLY_ROUTE = [
+  { x: 26.6, z: -5.4 }, { x: 25.2, z: -8.6 }, { x: 20, z: -9.4 }, { x: 13, z: -9.2 }, { x: 6, z: -10.8 },
+  { x: -2, z: -13.0 }, { x: -9, z: -12.9 }, { x: -14.5, z: -12.7 }, { x: -19.7, z: -12.6 },
+];
+/** 창고 뒤에서 왼쪽으로 야드를 빠져나가는 길 */
+export const SUPPLY_EXIT = [{ x: -19.7, z: -12.6 }, { x: -30, z: -12.6 }, { x: -44, z: -12.2 }];
+/** 납품 길을 지나는 날 수(입고일 며칠 전에 출발하나) */
+export const SUPPLY_DAYS = 3;
+
+/** 점 여럿을 지나는 부드러운 곡선(Catmull-Rom)을 촘촘한 점으로. 길이 비율로 자리를 찾을 수 있게 누적 길이를 단다. */
+export interface Route { pts: { x: number; z: number }[]; len: number[] }
+export function route(points: { x: number; z: number }[], step = 0.4): Route {
+  const pts: { x: number; z: number }[] = [];
+  const at = (i: number) => points[Math.max(0, Math.min(points.length - 1, i))];
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
+    const n = Math.max(2, Math.ceil(Math.hypot(p2.x - p1.x, p2.z - p1.z) / step));
+    for (let k = 0; k < n; k++) {
+      const t = k / n, t2 = t * t, t3 = t2 * t;
+      const c = (a: number, b: number, d: number, e: number) =>
+        0.5 * (2 * b + (-a + d) * t + (2 * a - 5 * b + 4 * d - e) * t2 + (-a + 3 * b - 3 * d + e) * t3);
+      pts.push({ x: c(p0.x, p1.x, p2.x, p3.x), z: c(p0.z, p1.z, p2.z, p3.z) });
+    }
+  }
+  pts.push(points[points.length - 1]);
+  const len = [0];
+  for (let i = 1; i < pts.length; i++) len.push(len[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z));
+  return { pts, len };
+}
+/** 길 위 u(0~1) 자리와 나아가는 방향(xz 평면 각도, +x가 0) */
+export function along(r: Route, u: number): { x: number; z: number; angle: number } {
+  const total = r.len[r.len.length - 1], d = Math.max(0, Math.min(1, u)) * total;
+  let i = 1;
+  while (i < r.len.length - 1 && r.len[i] < d) i++;
+  const a = r.pts[i - 1], b = r.pts[i], seg = r.len[i] - r.len[i - 1] || 1, k = (d - r.len[i - 1]) / seg;
+  return { x: a.x + (b.x - a.x) * k, z: a.z + (b.z - a.z) * k, angle: Math.atan2(b.z - a.z, b.x - a.x) };
+}
 
 /** 구획의 바닥 범위. 2도크 구획은 도크가 하나뿐이어도 "증설 예정지"로 남는다. */
 export const SECTORS: Sector[] = [
-  { id: "shop", name: "내업 구획", x0: -33.5, x1: -11, z0: -11.2, z1: 8.4 },
+  { id: "shop", name: "내업 구획", x0: -34.6, x1: -13.5, z0: -13.6, z1: 11.7 },
   { id: "dock1", name: "1도크 구획", x0: -4.5, x1: SHORE_X, z0: -7.6, z1: LANE_Z - 0.75 },
   { id: "dock2", name: "2도크 구획", x0: -4.5, x1: SHORE_X, z0: LANE_Z + 0.75, z1: 12.4 },
   { id: "quay", name: "안벽 구획", x0: SHORE_X, x1: QUAY.x1 + 0.8, z0: 7.4, z1: QUAY.z1 + 0.4 },
@@ -124,3 +175,36 @@ export const BAY_C = LANE_Z;
 export const BAY_Z = 12;
 export const MOUTH_X = 27;
 export const BAY_MOUTH = 3.5;
+/** 포장된 야드의 앞뒤 끝(z) */
+export const YARD_Z0 = -14, YARD_Z1 = 15;
+
+/** 언덕(반구를 늘린 모양): ㄷ자 산과 만의 두 팔, 곶 끝. 바닥 높이(groundY)를 함께 쓰려고 자리만 여기 둔다. color는 초록 번호 */
+export interface Hill { x: number; z: number; rx: number; h: number; rz: number; color: number }
+export const HILLS: Hill[] = (() => {
+  const out: Hill[] = [];
+  // ㄷ자: 뒤(멀리, 크게), 왼쪽, 앞(카메라 뒤라 거의 안 보임)
+  for (let k = 0; k < 9; k++) out.push({ x: -50 + k * 12, z: -36 - (k % 2) * 3, rx: 11, h: 8 + (k % 3) * 2, rz: 7, color: k % 5 });
+  for (let k = 0; k < 6; k++) out.push({ x: -50 - (k % 2) * 2, z: -24 + k * 12, rx: 7, h: 6 + (k % 2) * 2, rz: 9, color: (k + 2) % 5 });
+  for (let k = 0; k < 8; k++) out.push({ x: -44 + k * 13, z: 42 + (k % 2) * 2, rx: 10, h: 6, rz: 6, color: (k + 1) % 5 });
+  // 오른쪽 두 팔: 만을 따라 뻗다가 끝에서 안쪽으로 굽는다(곶). 물길은 남긴다. 뒤쪽 곶 끝에 등대
+  for (const side of [-1, 1]) {
+    out.push({ x: 18, z: BAY_C + side * (BAY_Z + 6), rx: 8, h: 5, rz: 5, color: 2 });
+    out.push({ x: MOUTH_X + 1, z: BAY_C + side * (BAY_Z + 2), rx: 5, h: 3.6, rz: 5, color: 3 });
+    out.push({ x: MOUTH_X, z: BAY_C + side * (BAY_MOUTH + 3.2), rx: 2.6, h: 2.2, rz: 3.2, color: 4 });
+  }
+  return out;
+})();
+/** 언덕 바닥 높이(밑면 y = −0.5) */
+export const HILL_BASE = -0.5;
+
+/** 그 자리 땅 높이: 포장된 야드·안벽 0, 풀밭 −0.02, 언덕 위면 그 높이(납품 길과 마차가 땅을 따라간다) */
+export function groundY(x: number, z: number): number {
+  const paved = (x >= YARD_X0 && x <= SHORE_X && z >= YARD_Z0 && z <= YARD_Z1)
+    || (x >= QUAY.x0 && x <= QUAY.x1 && z >= QUAY.z0 && z <= QUAY.z1);
+  let y = paved ? 0 : -0.02;
+  for (const hl of HILLS) {
+    const v = 1 - ((x - hl.x) / hl.rx) ** 2 - ((z - hl.z) / hl.rz) ** 2;
+    if (v > 0) y = Math.max(y, HILL_BASE + hl.h * Math.sqrt(v));
+  }
+  return y;
+}

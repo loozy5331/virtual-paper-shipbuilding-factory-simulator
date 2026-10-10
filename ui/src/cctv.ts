@@ -16,7 +16,7 @@ import type { TrackPick } from "./track";
 import { STOCK_STATIONS, stockAssign, stockSpot } from "./scene/stock";
 // 배치는 현장 3D와 같은 scene/layout.ts
 import { areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
-  QUAY, seaSpot, sectorBounds, SUPPLY, sectorOf, SECTORS, SHELF_X, SHELF_Z, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
+  along, LAB_TREES, QUAY, route, seaSpot, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_X, SHELF_Z, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
   type SectorId } from "./scene/layout";
 
 // ----- 투영: 위에서 30도 기운 정사영 -----
@@ -141,11 +141,14 @@ function tag(x: number, y: number, text: string, cls = "cc-tag"): SVGElement {
   return s("text", { x, y, class: cls }, text);
 }
 
-/** 벽만 있는 작업장·구역(지붕 없음, 앞은 열림): 뒷벽은 앞면이 보이고, 옆벽은 위에서 본 띠. */
-function walls(x0: number, x1: number, z0: number, z1: number, h: number): SVGElement {
+/** 벽만 있는 작업장·구역(지붕 없음, 앞은 열림): 뒷벽은 앞면이 보이고, 옆벽은 위에서 본 띠. door = 뒷벽의 문(물류창고 뒷문) */
+function walls(x0: number, x1: number, z0: number, z1: number, h: number, door?: { x: number; w: number }): SVGElement {
   const t = 0.14, top = "#a3ada6", front = "#7d8a83";
+  const back = door
+    ? [box((x0 + door.x - door.w / 2) / 2, z0, door.x - door.w / 2 - x0, t, h, top, front), box((door.x + door.w / 2 + x1) / 2, z0, x1 - door.x - door.w / 2, t, h, top, front)]
+    : [box((x0 + x1) / 2, z0, x1 - x0, t, h, top, front)];
   return s("g", { class: "cc-walls" },
-    box((x0 + x1) / 2, z0, x1 - x0, t, h, top, front),
+    ...back,
     box(x0, (z0 + z1) / 2, t, z1 - z0, h, top, front),
     box(x1, (z0 + z1) / 2, t, z1 - z0, h, top, front));
 }
@@ -200,8 +203,11 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   add(-100, s("line", { x1: px(QUAY.x0), x2: px(QUAY.x1), y1: py(QUAY.z0), y2: py(QUAY.z0), stroke: "#8fa7b4", "stroke-width": 1.5 }));
   add(-100, s("line", { x1: px(QUAY.x1), x2: px(QUAY.x1), y1: py(QUAY.z0), y2: 4000, stroke: "#8fa7b4", "stroke-width": 1.5 }));
   for (let x = QUAY.x0 + 0.8; x < QUAY.x1 - 0.3; x += 1.3) add(-99, s("circle", { cx: px(x), cy: py(QUAY.z0 + 0.35), r: 2.2, fill: "#8f8a80" }));
-  // 자재 납품 길: 야드 왼쪽 끝에서 물류창고 앞까지
-  add(-99, box((SUPPLY.x0 + SHELF_X[2] + 1.2) / 2, SUPPLY.z, SHELF_X[2] + 1.2 - SUPPLY.x0, 0.9, 0.02, "#3a423d", "#3a423d"));
+  // 자재 납품 길: 등대 곶에서 굽어 들어와 물류창고 뒤까지, 그리고 왼쪽으로 빠지는 길(위에서 본 굵은 선)
+  for (const pts of [SUPPLY_ROUTE, SUPPLY_EXIT]) {
+    const d = route(pts, 0.8).pts.map((p, i) => `${i ? "L" : "M"}${px(p.x).toFixed(1)} ${py(p.z).toFixed(1)}`).join(" ");
+    add(-99, s("path", { d, fill: "none", stroke: "#4a4536", "stroke-width": 0.9 * S * DEPTH, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+  }
   for (const side of [-1, 1]) {
     add(-99, s("ellipse", { cx: px(MOUTH_X + 1.5), cy: py(BAY_C + side * (BAY_MOUTH + 3.4)), rx: 3.4 * S, ry: 3.2 * S * DEPTH, fill: "#33402f", stroke: "#4f6147" }));
   }
@@ -250,37 +256,49 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     }
     add(SHELF_Z, g);
   });
-  // 납품 마차(3.2): 입고 날에는 물류창고 앞에 마차가 서 있다(정지 화면). 상자 색은 선반 상자 뚜껑과 같다.
-  if (frame.arrivals.length) {
-    const cx = px(SHELF_X[1]), cy = py(SUPPLY.z);
-    const g = s("g", { class: "cc-supply" },
-      s("ellipse", { cx: cx - 4, cy: cy + 2, rx: 30, ry: 4, fill: "rgba(0,0,0,0.35)" }),
-      s("rect", { x: cx - 30, y: cy - 10, width: 30, height: 10, rx: 1, fill: "#a07e58", stroke: "#4a3a2c", "stroke-width": 0.8 }),
-      s("circle", { cx: cx - 15, cy: cy + 1, r: 4, fill: "#4a3a2c" }),
-      // 말: 몸과 머리
-      s("rect", { x: cx + 6, y: cy - 14, width: 18, height: 8, rx: 3, fill: "#8a5a3b" }),
-      s("rect", { x: cx + 21, y: cy - 20, width: 8, height: 6, rx: 2, fill: "#8a5a3b" }),
-      s("line", { x1: cx + 9, x2: cx + 9, y1: cy - 6, y2: cy + 1, stroke: "#8a5a3b", "stroke-width": 2 }),
-      s("line", { x1: cx + 21, x2: cx + 21, y1: cy - 6, y2: cy + 1, stroke: "#8a5a3b", "stroke-width": 2 }),
-      s("line", { x1: cx, x2: cx + 6, y1: cy - 8, y2: cy - 10, stroke: "#6b4a2b", "stroke-width": 1.5 }));
-    frame.arrivals.forEach((a, k) => {
+  // 납품 마차(3.2): 정지 화면이라 그날 끝 자리. 입고일 마차는 창고 뒤(뒷문)에, 사흘 안의 입고는 납품 길 위에.
+  // 상자 색은 선반 상자 뚜껑과 같다. 창고 뒤 마차만 무엇이 몇 개인지 적고, 길 위 마차는 "입고 D-n"만.
+  const roadIn = route(SUPPLY_ROUTE), roadOut = route(SUPPLY_EXIT);
+  for (const dv of frame.deliveries) {
+    const today = dv.day === frame.day;
+    const at = today ? along(roadOut, 0) : along(roadIn, (frame.day + 1 - (dv.day - SUPPLY_DAYS)) / SUPPLY_DAYS);
+    const cx = px(at.x), cy = py(at.z);
+    const flip = Math.cos(at.angle) < 0 ? -1 : 1;   // 왼쪽으로 가면 좌우를 뒤집는다
+    const g = s("g", { class: "cc-supply", transform: `translate(${cx} ${cy}) scale(${flip} 1)` },
+      s("ellipse", { cx: -4, cy: 2, rx: 30, ry: 4, fill: "rgba(0,0,0,0.35)" }),
+      s("rect", { x: -30, y: -10, width: 30, height: 10, rx: 1, fill: "#a07e58", stroke: "#4a3a2c", "stroke-width": 0.8 }),
+      s("circle", { cx: -15, cy: 1, r: 4, fill: "#4a3a2c" }),
+      // 말: 몸과 머리, 다리
+      s("rect", { x: 6, y: -14, width: 18, height: 8, rx: 3, fill: "#8a5a3b" }),
+      s("rect", { x: 21, y: -20, width: 8, height: 6, rx: 2, fill: "#8a5a3b" }),
+      s("line", { x1: 9, x2: 9, y1: -6, y2: 1, stroke: "#8a5a3b", "stroke-width": 2 }),
+      s("line", { x1: 21, x2: 21, y1: -6, y2: 1, stroke: "#8a5a3b", "stroke-width": 2 }),
+      s("line", { x1: 0, x2: 6, y1: -8, y2: -10, stroke: "#6b4a2b", "stroke-width": 1.5 }));
+    if (!today) dv.items.forEach((a, k) => {
       const i = frame.shelves.findIndex((sh) => sh.material === a.material);
-      g.append(s("rect", { x: cx - 28 + k * 9, y: cy - 18, width: 8, height: 8, fill: ["#f7f3ea", "#c8553d", "#c0392b"][i] ?? PAPER, stroke: "#4a3a2c", "stroke-width": 0.6 }));
+      g.append(s("rect", { x: -28 + k * 9, y: -18, width: 8, height: 8, fill: ["#f7f3ea", "#c8553d", "#c0392b"][i] ?? PAPER, stroke: "#4a3a2c", "stroke-width": 0.6 }));
     });
-    g.append(tag(cx - 4, cy + 14, `입고 · ${frame.arrivals.map((a) => `${a.name} ${a.quantity}`).join(" · ")}`, "cc-tag mid"));
-    add(SUPPLY.z + 0.5, g);
+    add(at.z + 0.5, g);
+    // 이름표는 마차 위(아래쪽은 물류창고 이름과 겹친다)
+    add(at.z + 0.5, tag(cx, cy - 26, today ? `입고 · ${dv.items.map((a) => `${a.name} ${a.quantity}`).join(" · ")}` : `입고 D-${dv.day - frame.day}`, "cc-tag mid"));
   }
 
   // 물류창고 구역: 선반 셋을 벽으로 묶는다(앞은 열림)
-  add(SHELF_Z - 2, walls(SHELF_X[0] - 1.5, SHELF_X[2] + 1.5, SHELF_Z - 0.9, SHELF_Z + 1.0, 1.9));
+  add(SHELF_Z - 2, walls(SHELF_X[0] - 1.5, SHELF_X[2] + 1.5, SHELF_Z - 0.9, SHELF_Z + 1.0, 1.9, { x: SHELF_X[1], w: 1.3 }));
   add(SHELF_Z - 1, tag(px(SHELF_X[1]), py(SHELF_Z - 0.9, 1.9) - 8, "물류창고 구역", "cc-place"));
 
-  // ----- 연구소 -----
+  // ----- 연구소: 둘레의 나무(보안, 큰길 쪽 출입구만) -----
+  for (const t of LAB_TREES) {
+    add(t.z, s("g", { class: "cc-tree" },
+      s("ellipse", { cx: px(t.x), cy: py(t.z), rx: 9, ry: 3.5, fill: "rgba(0,0,0,0.35)" }),
+      s("path", { d: `M${px(t.x) - 9} ${py(t.z)} L${px(t.x)} ${py(t.z, 1.7)} L${px(t.x) + 9} ${py(t.z)} Z`, fill: "#3f6b47", stroke: "#2c4a32", "stroke-width": 0.8 })));
+  }
   const r = frame.research;
-  add(LAB.z, s("g", null,
-    box(LAB.x, LAB.z, 2.2, 2.0, 1.6, "#55636b", "#6c7a82"),
-    tag(px(LAB.x), py(LAB.z - 1, 1.6) - 8, "연구소", "cc-place"),
-    tag(px(LAB.x), py(LAB.z + 1) + 14, r.current ? `${r.current.name} ${r.current.done}/${r.current.total}일` : r.finished.length ? `완료 ${r.finished.length}개` : "쉬는 중", "cc-tag mid")));
+  add(LAB.z, box(LAB.x, LAB.z, 2.2, 2.0, 1.6, "#55636b", "#6c7a82"));
+  // 이름과 상태는 건물 바로 앞, 앞줄 나무보다 위에(뒤쪽 나무 줄은 큰길·차고와 가깝다)
+  add(LAB.z + 3, s("g", null,
+    tag(px(LAB.x), py(LAB.z + 1) + 13, "연구소", "cc-place"),
+    tag(px(LAB.x), py(LAB.z + 1) + 27, r.current ? `${r.current.name} ${r.current.done}/${r.current.total}일` : r.finished.length ? `완료 ${r.finished.length}개` : "쉬는 중", "cc-tag mid")));
 
   // ----- 작업대기소: 벤치 둘과 쉬는 사람 -----
   for (const row of [0, 1]) add(LOUNGE.z - 0.6 + row * 1.2 - 0.01, box(LOUNGE.x, LOUNGE.z - 0.6 + row * 1.2, 2.6, 0.3, 0.3, "#6b5a48", "#5a4a3a"));

@@ -18,7 +18,7 @@ import { STOCK_STATIONS, stockAssign, stockSpot } from "./stock";
 import { buildDock, buildLand, buildRoof, buildSectorOutline, buildWalls, buildYardLines, GiantHand, SEA_Y, type DockParts } from "./coast";
 import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_TOP, MAT_W, MAT2_D,
   nearLane, QUEUE_Z, SAFE_SPOT, seaSpot, SECTORS, sectorBounds, SHELF_X, SHELF_Z, SHORE_X, SPUR_IN, SPUR_OUT, SPUR_X, STATION_X,
-  STOCK_AT, STOCK_D, STOCK_HALF, SUPPLY, unitZ, type SectorId } from "./layout";
+  STOCK_AT, STOCK_D, STOCK_HALF, along, groundY, LAB_TREES, route, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
 import { clamp01, ease, flatOf, hullTris, type Tri } from "../proto/model";
 import { STATE_INFO, STATION_COLOR } from "../labels";
 import type { TrackPick } from "../track";
@@ -329,8 +329,10 @@ export class Yard {
     robots: THREE.Group[];
   }[] = [];
   private readonly carts: { group: THREE.Group; tag: CSS2DObject; smoke: THREE.Group }[] = [];
-  /** 납품 마차(3.2): 입고 날 하루의 앞부분에 납품 길로 들어와 물류창고 앞에서 상자를 내리고 돌아간다(그림만) */
-  private readonly supply = buildSupplyCart();
+  /** 납품 마차(3.2): 입고일마다 한 대. 사흘 전 등대 곶을 떠나 입고일 아침 창고 뒤에 닿는다(그림만). 여러 대가 함께 길 위에 있을 수 있다 */
+  private readonly supply = [0, 1, 2, 3, 4].map(() => buildSupplyCart());
+  private readonly supplyRoute: Route = route(SUPPLY_ROUTE);
+  private readonly supplyExit: Route = route(SUPPLY_EXIT);
   private readonly shelves: { boxes: THREE.Mesh[]; tag: CSS2DObject }[] = [];
   /** 자재·블록 추적(3.1): 누르면 상자를 띄울 곳(main.ts), 진하게 볼 배, 선반의 보이지 않는 누름 상자, 추적 중인 배 밑의 고리 */
   private pickHandler: ((pick: TrackPick) => void) | null = null;
@@ -436,8 +438,10 @@ export class Yard {
     this.labWindow = lab.window;
     this.buildSectors();
     this.placeStations(1);
-    this.supply.root.visible = false;
-    this.scene.add(this.supply.root);
+    for (const cart of this.supply) {
+      cart.root.visible = false;
+      this.scene.add(cart.root);
+    }
 
     for (let i = 0; i < 8; i++) {
       const p = new Person("worker", i, WORKER_NAMES[i]);
@@ -632,7 +636,8 @@ export class Yard {
       this.areas[p] = [];
       this.roofs[p] = [];
     });
-    this.scene.add(buildWalls(SHELF_X[0] - 1.5, SHELF_X[2] + 1.5, SHELF_Z - 0.9, SHELF_Z + 1.0, 1.9));
+    // 물류창고: 뒷벽에 문(납품 마차가 뒤에서 상자를 내린다)
+    this.scene.add(buildWalls(SHELF_X[0] - 1.5, SHELF_X[2] + 1.5, SHELF_Z - 0.9, SHELF_Z + 1.0, 1.9, { x: SHELF_X[1], w: 1.3 }));
 
     // 적치장: 공정(탑재 제외)마다 칸. 기다리는 블록은 정반 대신 여기에 둔다(내업 두 공정은 큰길 건너편, PE장은 1도크 구획).
     STOCK_AT.slice(0, STOCK_STATIONS).forEach((at, p) => {
@@ -840,7 +845,26 @@ export class Yard {
     const window = new THREE.MeshStandardMaterial({ color: "#3a4a58", emissive: "#000000" });
     const pane = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 0.6), window);
     pane.position.set(LAB.x, 0.95, LAB.z + 1.01);
-    this.scene.add(body, roof, pane);
+    // 출입구(큰길 쪽)에서 보이는 창도 하나 더
+    const pane2 = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 0.6), window);
+    pane2.position.set(LAB.x, 0.95, LAB.z - 1.01);
+    pane2.rotation.y = Math.PI;
+    this.scene.add(body, roof, pane, pane2);
+    // 보안(3.2): 둘레에 침엽수를 촘촘히 심어 가린다. 큰길 쪽 가운데만 출입구로 비운다(layout.ts의 LAB_TREES)
+    const leaf = new THREE.MeshStandardMaterial({ color: "#3f6b47", roughness: 0.9, flatShading: true });
+    const bark = new THREE.MeshStandardMaterial({ color: "#6b4a2b", roughness: 1 });
+    LAB_TREES.forEach((t, k) => {
+      const tree = new THREE.Group();
+      const h = 1.5 + (k % 3) * 0.2;
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.4, 8), bark);
+      trunk.position.y = 0.2;
+      const crown = new THREE.Mesh(new THREE.ConeGeometry(0.5, h, 10), leaf);
+      crown.position.y = 0.35 + h / 2;
+      for (const m of [trunk, crown]) { m.castShadow = true; m.receiveShadow = true; }
+      tree.add(trunk, crown);
+      tree.position.set(t.x, 0, t.z);
+      this.scene.add(tree);
+    });
     const tag = label("", "place-tag");
     tag.position.set(LAB.x, 2.8, LAB.z);
     this.scene.add(tag);
@@ -1211,31 +1235,37 @@ export class Yard {
   }
 
   /**
-   * 납품 마차: 입고는 하루의 맨 처음이다. 들어와(0~0.25) 상자를 내리고(~0.45) 돌아간다(~0.75).
-   * 1배속 하루 2초라 장면이 1.5초쯤 걸린다(선반 수량은 그날 아침 값 그대로).
-   * 멈춰 있으면(또는 관제실처럼 정지 화면이면) 창고 앞에 선 채로, 무엇이 몇 개 들어왔는지 이름표를 단다.
+   * 납품 마차: 입고일 d의 마차는 d − 3일 아침 등대 곶을 떠나 납품 길을 사흘 동안 달려 d일 아침 창고 뒤에 닿는다.
+   * d일에는 상자를 내리고(0~0.3, 준비 시간 안) 왼쪽 길로 야드를 빠져나간다(~0.75). 멈춰 있으면 그날 끝(frac = 1) 자리.
+   * 입고일 마차는 멈춰 있으면 창고 뒤에 선 채로, 무엇이 몇 개 들어왔는지 이름표를 단다. 길 위 마차는 "입고 D-n"만.
    */
   private drawSupply(f: Frame, playing: boolean, frac: number): void {
-    const cart = this.supply;
-    const on = f.arrivals.length > 0 && (!playing || frac < 0.75);
-    cart.root.visible = on;
-    if (!on) return;
-    const stop = SHELF_X[1], start = SUPPLY.x0;
-    let x = stop, back = false, unloaded = 1;
-    if (playing) {
-      if (frac < 0.25) { x = start + (stop - start) * ease(frac / 0.25); unloaded = 0; }
-      else if (frac < 0.45) unloaded = (frac - 0.25) / 0.2;
-      else { back = true; x = stop + (start - stop) * ease((frac - 0.45) / 0.3); }
-    }
-    cart.root.position.set(x, 0, SUPPLY.z);
-    cart.root.rotation.y = back ? Math.PI : 0;
-    // 상자: 들어온 자재마다 하나(선반 상자와 같은 색), 내리는 동안 하나씩 사라진다
-    cart.crates.forEach((c, k) => {
-      const a = f.arrivals[k];
-      c.visible = !!a && k >= Math.floor(unloaded * f.arrivals.length + 1e-9);
-      if (a) (c.userData.top as THREE.Mesh).material = crateTop(f.shelves.findIndex((sh) => sh.material === a.material));
+    this.supply.forEach((cart, k) => {
+      const dv = f.deliveries[k];
+      const today = dv?.day === f.day;
+      const on = !!dv && (!today || !playing || frac < 0.75);
+      cart.root.visible = on;
+      if (!dv || !on) return;
+      let at: { x: number; z: number; angle: number }, unloaded = 0;
+      if (!today) {
+        at = along(this.supplyRoute, (f.day + frac - (dv.day - SUPPLY_DAYS)) / SUPPLY_DAYS);
+      } else if (!playing || frac < 0.3) {
+        at = along(this.supplyExit, 0);
+        unloaded = playing ? Math.min(1, frac / 0.25) : 1;
+      } else {
+        at = along(this.supplyExit, ease((frac - 0.3) / 0.45));
+        unloaded = 1;
+      }
+      cart.root.position.set(at.x, groundY(at.x, at.z), at.z);
+      cart.root.rotation.y = -at.angle;
+      // 상자: 실은 자재마다 하나(선반 상자와 같은 색), 내리는 동안 하나씩 사라진다
+      cart.crates.forEach((c, i) => {
+        const a = dv.items[i];
+        c.visible = !!a && i >= Math.floor(unloaded * dv.items.length + 1e-9);
+        if (a) (c.userData.top as THREE.Mesh).material = crateTop(f.shelves.findIndex((sh) => sh.material === a.material));
+      });
+      setLabel(cart.tag, today ? `입고 · ${dv.items.map((a) => `${a.name} <b>${a.quantity}</b>`).join(" · ")}` : `입고 D-${dv.day - f.day}`);
     });
-    setLabel(cart.tag, `입고 · ${f.arrivals.map((a) => `${a.name} <b>${a.quantity}</b>`).join(" · ")}`);
   }
 
   /**
