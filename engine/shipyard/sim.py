@@ -678,6 +678,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     inventory_daily: list[dict[str, int]] = []
     pegging_daily: list[dict[str, list[dict[str, Any]]]] = []   # 그날 끝의 창고 재고를 몫(배)별로
     inventory_value_daily: list[float] = []            # 그날 작업이 끝난 뒤 창고 재고 금액 (재고비의 기준)
+    onsite_value_daily: list[float] = []               # 작업장 앞·적치장에 놓인 키트 금액: 출고했지만 아직 그 공정에 들이지 않은 자재(4.1)
     events: list[dict[str, Any]] = []
 
     busy = [0] * n_st
@@ -1005,12 +1006,16 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
 
         # 7. 비용을 더한다: 재고비, 재공비. (잔업수당, 사고, 고장, 재작업은 위에서 더했다.)
         value = sum(stock[mid] * prices[mid] for mid in stock)
-        cost["holding"] += value * costs["holding_rate_per_day"]
+        # 작업장 앞 키트(4.1): T1이 실어 온 뒤 그 공정에 들어가기 전까지는 창고 밖에 쌓인 재고라 같은 재고비를 문다
+        onsite = sum(bom_of(i, stations[p]["material"]) * prices[stations[p]["material"]]
+                     for i, p in kit_ready if stations[p]["id"] not in spans[i])
+        cost["holding"] += (value + onsite) * costs["holding_rate_per_day"]
         cost["wip"] += sum(costs["wip_per_ship_day"] for i in range(n_ships)
                            if started[i] is not None and delivered[i] is None)
         inventory_daily.append(dict(stock))
         pegging_daily.append({mid: _pegging(batches[mid]) for mid in materials})
         inventory_value_daily.append(value)
+        onsite_value_daily.append(onsite)
 
     # ----- 기간이 끝난 뒤 한 번에 계산하는 원가 (7장) -----
     skilled_premium = cost["labor"]                     # 숙련공 할증(작업 중에 더했다)
@@ -1139,6 +1144,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         "inventory_daily": inventory_daily,
         "pegging_daily": pegging_daily,
         "inventory_value_daily": inventory_value_daily,
+        "onsite_value_daily": onsite_value_daily,
         "events": events,
         "findings": _findings(ships_out),
         "end_state": {

@@ -96,6 +96,8 @@ export interface Frame {
   delivered: { ship: string; type: string; day: number; late: number }[];
   /** 오늘 시운전 중인 배(먼바다라 그림에는 없고 화면 오른쪽 아래 말풍선에 뜬다). day는 시운전 며칠째, days는 시운전 일수 */
   seaTrial: { ship: string; type: string; day: number; days: number; state: ShipState }[];
+  /** 지게차가 오늘 나르는 부재 팔레트(4.0.2): 어제 가공을 마치고 오늘 소조립(정반이나 적치장)에 온 배. unit = 가공 작업장 */
+  palletMoves: { ship: string; unit: number }[];
   /** 직종별 쉬는 인원(4.0, D42). 대기소의 모자 색 */
   idleByTrade: Record<string, number>;
   shelves: ShelfView[];
@@ -273,6 +275,10 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
     delivered: result.ships.filter((s) => s.delivered_day !== null && s.delivered_day <= day)
       .map((s) => ({ ship: s.id, type: s.type, day: s.delivered_day!, late: s.late_days }))
       .sort((a, b) => b.day - a.day || a.ship.localeCompare(b.ship)),
+    palletMoves: result.ships.filter((s) => {
+      const sp = s.spans["processing"], l = lots.find((v) => v.ship === s.id);
+      return day > 0 && sp && sp.end === day - 1 && l && stationIds[l.station] === "sub_assembly";
+    }).map((s) => ({ ship: s.id, unit: Math.max(0, (s.daily[day - 2]?.unit ?? 1) - 1) })),
     seaTrial: lots.filter((l) => l.place === "bench" && stationIds[l.station] === "sea_trial").map((l) => {
       const span = result.ships.find((s) => s.id === l.ship)!.spans["sea_trial"];
       return { ship: l.ship, type: l.type, day: day - span.start + 1, days: span.end - span.start + 1, state: l.state };
