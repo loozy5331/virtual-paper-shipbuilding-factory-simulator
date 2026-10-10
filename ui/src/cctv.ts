@@ -259,7 +259,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     view.units.forEach((unit, k) => {
       const z = unitZ(k);
       const d = unitDepth(k);
-      // 작업장마다: 소조립·중조립은 벽(뒤·옆), 대조립은 노란 구획선, 탑재는 드라이 도크(바다 쪽 문)
+      // 작업장마다: 소조립·중조립은 벽(뒤·옆), PE장은 노란 구획선, 탑재는 드라이 도크(바다 쪽 문)
       const { x0, x1, z0, z1 } = areaBounds(p, k);
       if (p < 2) add(z0 - 0.01, walls(x0, x1, z0, z1, 1.0));
       else if (p === 2) add(z0 - 0.01, s("rect", { x: px(x0), y: py(z0), width: (x1 - x0) * S, height: (z1 - z0) * S * DEPTH, fill: "none", stroke: "#e0b43a", "stroke-width": 1.5, "stroke-dasharray": "6 4" }));

@@ -1,7 +1,7 @@
 // 해안 조선소 야드의 배치(3.2). 현장 3D(yard.ts, coast.ts), 작업 현황 전경 2D(cctv.ts), 공용 적치장(stock.ts)이 같은 자리를 쓴다.
 // 자리를 고칠 때는 여기 한 곳만 고친다. Three.js를 모른다. 단위는 대략 소인 키의 4배, x는 오른쪽(바다 쪽), z는 앞(큰길 쪽).
 
-/** 공정(소조립·중조립·대조립·탑재)의 가운데 x */
+/** 공정(소조립·중조립·PE장·탑재)의 가운데 x */
 export const STATION_X = [-9, -3.5, 2, 8.5];
 /** 정반 폭, 1호 정반 깊이, 2호·3호 정반 깊이, 정반 두께 */
 export const MAT_W = 3.2, MAT_D = 2.6, MAT2_D = 2.3, MAT_TOP = 0.08;
@@ -10,7 +10,7 @@ export const UNIT_Z = [0, -2.85, -5.65];
 export const unitZ = (unit: number) => UNIT_Z[unit] ?? 0;
 export const unitDepth = (unit: number) => (unit === 0 ? MAT_D : MAT2_D);
 
-/** 작업장 하나의 구역(벽·구획선·도크)이 차지하는 바닥. 소조립·중조립은 벽, 대조립은 노란 구획선, 탑재는 드라이 도크. */
+/** 작업장 하나의 구역(벽·구획선·도크)이 차지하는 바닥. 소조립·중조립은 벽, PE장은 노란 구획선, 탑재는 드라이 도크. */
 export function areaBounds(station: number, unit: number): { x0: number; x1: number; z0: number; z1: number } {
   const x = STATION_X[station], zc = unitZ(unit), d = unitDepth(unit);
   const pad = station < 2 ? 0.45 : station === 2 ? 0.4 : 0.6;
