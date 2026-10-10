@@ -860,15 +860,29 @@ body { background: var(--desk); }
 .delivered-log li.late em { color: #ff8a95; }
 .field-screen .delivered-log { top: 10px; }
 .trial-bubble { position: absolute; right: 14px; bottom: 40px; z-index: 2; background: var(--paper); color: var(--ink); border: 1px solid #c9cfc9;
-  border-radius: 8px; padding: 5px 9px 6px; font-size: 11px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); min-width: 170px; }
+  border-radius: 8px; padding: 5px 7px 7px; font-size: 11px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
 .trial-bubble[hidden] { display: none; }
 /* 말풍선 꼬리: 오른쪽 아래, 화면 밖 먼바다 쪽을 가리킨다 */
 .trial-bubble::after { content: ""; position: absolute; right: -7px; bottom: 10px; width: 12px; height: 12px; background: var(--paper);
   border-right: 1px solid #c9cfc9; border-top: 1px solid #c9cfc9; transform: rotate(45deg); }
-.trial-head { font-weight: 700; color: #0b6f95; margin-bottom: 2px; }
-.trial-bubble ul { list-style: none; margin: 0; padding: 0; }
-.trial-bubble li { display: grid; grid-template-columns: 2.4em 1fr auto auto; gap: 6px; align-items: baseline; }
-.trial-bubble em { font-style: normal; color: #c0262d; font-weight: 700; }
+.trial-head { font-weight: 700; color: #0b6f95; margin-bottom: 3px; }
+/* 시운전 그림: 먼바다 위에 배가 동동 뜬다(천천히 위아래로 흔들림, 움직임 줄이기 설정이면 멈춤) */
+.trial-sea { display: block; border-radius: 4px; }
+.trial-sea .sky { fill: #e3edf2; }
+.trial-sea .water { fill: #3f6f8c; }
+.trial-sea .wave { fill: none; stroke: #9cc0d4; stroke-width: 1; opacity: 0.7; }
+.trial-sea .hull { fill: #f4f0e6; stroke: #5d6661; stroke-width: 0.8; }
+.trial-sea .bottom { fill: #c8553d; }
+.trial-sea .deck { fill: #f4f0e6; stroke: #5d6661; stroke-width: 0.7; }
+.trial-sea .funnel { fill: #c8553d; }
+.trial-sea .pipe { stroke: #8f9a93; stroke-width: 2; }
+.trial-sea .box { stroke: #5d6661; stroke-width: 0.5; }
+.trial-sea .b0 { fill: #efe7d4; } .trial-sea .b1 { fill: #d9cba8; } .trial-sea .b2 { fill: #e6dcc6; }
+.trial-sea .name { fill: #f3f1ea; font-size: 10px; font-weight: 700; text-anchor: middle; }
+.trial-sea .name.loss { fill: #ffb3bb; }
+.trial-ship { animation: trial-bob 3.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center bottom; }
+@keyframes trial-bob { 0%, 100% { transform: translateY(0) rotate(-1.2deg); } 50% { transform: translateY(-2px) rotate(1.2deg); } }
+@media (prefers-reduced-motion: reduce) { .trial-ship { animation: none; } }
 .field-host .trial-bubble { bottom: 14px; right: 18px; }
 .field-head .cam-track { position: static; }
 .scene-labels .pickable { pointer-events: auto; cursor: pointer; }

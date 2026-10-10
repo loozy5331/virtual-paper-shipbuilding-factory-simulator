@@ -17,7 +17,7 @@ import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot } from "./scene/
 // 배치는 현장 3D와 같은 scene/layout.ts
 import { areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
   along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, quayQueueSpot, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_X, SHELF_Z, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
-  CONVEYOR, QUAY_WORK_Z, STOCK_NAME, type SectorId } from "./scene/layout";
+  BACK_LANE_Z, CONVEYORS, QUAY_WORK_Z, STOCK_NAME, type SectorId } from "./scene/layout";
 
 // ----- 투영: 위에서 30도 기운 정사영 -----
 const S = 30;                        // 1 단위 = 30px
@@ -230,8 +230,10 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   add(-98, tag(lx, ly + 14, "등대", "cc-tag mid"));
   add(-99, box((DEPOT.x - 1.5 + SHORE_X - 0.3) / 2, LANE_Z, SHORE_X - 0.3 - (DEPOT.x - 1.5), 1.0, 0.02, "#3a423d", "#3a423d"));
   add(-99, box(LOUNGE.x, LOUNGE.z, 3.2, 2.6, 0.02, "#2c3530", "#2c3530"));
+  // 뒷길(4.0.1): 물류창고 앞 가로 도로, 샛길은 뒷길까지
+  add(-99, box((SPUR_X[0] + SPUR_X[5]) / 2, BACK_LANE_Z, SPUR_X[5] - SPUR_X[0] + 0.8, 0.9, 0.02, "#3a423d", "#3a423d"));
   SPUR_X.forEach((sx, k) => {
-    const back = UNIT_Z[2] - MAT2_D / 2 - 0.4, front = LANE_Z - 0.5;
+    const back = k <= 5 ? BACK_LANE_Z : UNIT_Z[2] - MAT2_D / 2 - 0.4, front = LANE_Z - 0.5;
     add(-99, box(sx, (front + back) / 2, 0.8, front - back, 0.02, "#3a423d", "#3a423d"));
     // PE장 양옆 샛길은 큰길 앞(2도크 구획)으로도
     const far = benchAt(ST.pe, 2, 2).z + MAT2_D / 2 + 0.4;
@@ -419,13 +421,12 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     }
   });
 
-  // ----- 컨베이어벨트(D43): 가공 공장 → 소조립 공장. 가공이 일하는 날은 판이 실려 있다 -----
-  {
-    const c = CONVEYOR;
-    add(c.z - 0.05, box((c.x0 + c.x1) / 2, c.z, c.x1 - c.x0 + 1.2, c.w, c.y, "#5d6661", "#3a3f3c"));
-    const proc = frame.stations[ST.proc];
-    if (proc && (proc.state === "work" || proc.state === "rework")) {
-      for (let k = 0; k < 3; k++) add(c.z + 0.01, box(c.x0 + (k + 0.5) * (c.x1 - c.x0) / 3, c.z, 0.34, 0.26, c.y + 0.04, PAPER, PAPER_SIDE));
+  // ----- 컨베이어벨트(D43, 4.0.1): 절단 → 가공, 가공 → 소조립. 판을 올리는 공정이 일하는 날은 판이 실려 있다 -----
+  for (const c of CONVEYORS) {
+    add(c.z - 0.05, box((c.x0 + c.x1) / 2, c.z, c.x1 - c.x0 + 0.6, c.w, c.y, "#5d6661", "#3a3f3c"));
+    const st = frame.stations[c.from];
+    if (st && (st.state === "work" || st.state === "rework")) {
+      for (let k = 0; k < 2; k++) add(c.z + 0.01, box(c.x0 + (k + 0.5) * (c.x1 - c.x0) / 2, c.z, 0.3, 0.24, c.y + 0.04, PAPER, PAPER_SIDE));
     }
   }
 
