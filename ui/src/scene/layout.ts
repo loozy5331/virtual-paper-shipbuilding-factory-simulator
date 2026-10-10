@@ -8,7 +8,7 @@
 // 큰길(가로)이 내업에서 두 도크 구획 사이를 지나 안벽까지 간다. 구획은 그림일 뿐 엔진 규칙이 아니다.
 // PE장 작업장과 도크의 짝도 그림에서만: 도크가 둘이면 PE장 1호는 1도크, 2·3호는 2도크 구획. 도크가 하나면 PE장은 모두 1도크 구획.
 
-export type SectorId = "shop" | "dock1" | "dock2" | "quay";
+export type SectorId = "shop" | "dock" | "quay";
 export interface Sector { id: SectorId; name: string; x0: number; x1: number; z0: number; z1: number }
 
 /** 정반 폭, 첫 줄 정반 깊이, 뒷줄 정반 깊이, 정반 두께 */
@@ -81,11 +81,10 @@ export function areaBounds(station: number, unit: number, docks: number): { x0: 
 }
 
 /** 작업장이 있는 구획 */
-export function sectorOf(station: number, unit: number, docks: number): SectorId {
+export function sectorOf(station: number, _unit = 0, _docks = 1): SectorId {
   if (isShop(station)) return "shop";
   if (station >= ST.quay) return "quay";
-  if (station === ST.dock) return unit === 0 ? "dock1" : "dock2";
-  return docks >= 2 && unit > 0 ? "dock2" : "dock1";
+  return "dock";
 }
 
 /**
@@ -241,20 +240,25 @@ export function along(r: Route, u: number): { x: number; z: number; angle: numbe
   return { x: a.x + (b.x - a.x) * k, z: a.z + (b.z - a.z) * k, angle: Math.atan2(b.z - a.z, b.x - a.x) };
 }
 
-/** 구획의 바닥 범위. 2도크 구획은 도크가 하나뿐이어도 "증설 예정지"로 남는다. */
+/** 구획의 바닥 범위(4.0.3: 1·2도크를 "도크 구획" 하나로). 도크 구획은 큰길 뒤 1도크와 큰길 앞 2도크(또는 증설 예정지)를 함께 담는다. */
 export const SECTORS: Sector[] = [
   { id: "shop", name: "내업 구획", x0: -44.4, x1: -4.8, z0: -13.6, z1: 11.7 },
-  { id: "dock1", name: "1도크 구획", x0: -4.5, x1: SHORE_X, z0: -7.6, z1: LANE_Z - 0.75 },
-  { id: "dock2", name: "2도크 구획", x0: -4.5, x1: SHORE_X, z0: LANE_Z + 0.75, z1: 12.4 },
+  { id: "dock", name: "도크 구획", x0: -4.5, x1: SHORE_X, z0: -7.6, z1: 12.4 },
   { id: "quay", name: "안벽 구획", x0: SHORE_X, x1: QUAY.x1 + 0.8, z0: 7.4, z1: QUAY.z1 + 0.4 },
 ];
 export const sector = (id: SectorId) => SECTORS.find((s) => s.id === id)!;
 
-/** 그 회차의 구획 범위: 도크가 둘이면 PE장 2·3호가 2도크 구획으로 가서 1도크 구획 뒤쪽 땅은 쓰지 않는다. */
+/**
+ * 그 회차의 구획 범위(카메라가 담는 곳). 도크 구획은 도크가 둘이면 PE장 2·3호가 큰길 앞으로 가서 1도크 뒤쪽 땅은 쓰지 않고,
+ * 도크가 하나면 큰길 앞은 증설 예정지라 1도크 쪽에 맞춘다(앞 땅은 가장자리만 보인다).
+ */
 export function sectorBounds(id: SectorId, docks: number): Sector {
   const sec = sector(id);
-  return id === "dock1" && docks >= 2 ? { ...sec, z0: -2.4 } : sec;
+  if (id !== "dock") return sec;
+  return docks >= 2 ? { ...sec, z0: -2.4 } : { ...sec, z1: LANE_Z + 3.0 };
 }
+/** 2도크 자리(큰길 앞): 도크가 하나인 반기에서는 흐린 점선과 "2도크 · 증설 예정지" */
+export const DOCK2_AREA = { x0: -4.5, x1: SHORE_X, z0: LANE_Z + 0.75, z1: 12.4 };
 
 /** 야드 왼쪽 끝, 만의 가운데 z와 반폭, 곶 끝의 x, 곶 사이 물길 반폭 */
 export const YARD_X0 = -46;

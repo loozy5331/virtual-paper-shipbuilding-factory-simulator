@@ -418,6 +418,7 @@ select.priority { max-width: 84px; }
 .scene-labels > div { font-family: inherit; }
 /* 구획 이름(3.2, D38): 바닥에 적힌 먹색 글. 전경에서는 이것만 보이고 나머지 글(이름표, 수량, 팻말)은 숨긴다 */
 .sector-tag { padding: 4px 12px; border-radius: 6px; background: rgba(51, 65, 58, 0.82); color: #f7f5ee; font-size: 14px; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; }
+.sector-tag.faint { background: rgba(51, 65, 58, 0.45); font-size: 12px; font-weight: 600; }
 .scene-labels.overview > div:not(.sector-tag) { visibility: hidden !important; }
 /* 현장 이름표(2.1, 가상의 이름): 작업복 가슴의 명찰처럼 흰 바탕에 작은 글자 */
 .name-tag { background: #fff; color: #33413a; border: 1px solid #33413a; border-radius: 2px; font-size: 10px; font-weight: 700; padding: 0 4px; line-height: 15px; white-space: nowrap; }

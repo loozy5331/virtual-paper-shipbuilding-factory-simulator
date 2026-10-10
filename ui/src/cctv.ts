@@ -17,7 +17,7 @@ import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot } from "./scene/
 // 배치는 현장 3D와 같은 scene/layout.ts
 import { areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
   along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, quayQueueSpot, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_X, SHELF_Z, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
-  BACK_LANE_Z, CONVEYORS, FORKLIFT_HOME, QUAY_WORK_Z, STOCK_NAME, type SectorId } from "./scene/layout";
+  BACK_LANE_Z, CONVEYORS, DOCK2_AREA, FORKLIFT_HOME, QUAY_WORK_Z, STOCK_NAME, type SectorId } from "./scene/layout";
 
 // ----- 투영: 위에서 30도 기운 정사영 -----
 const S = 30;                        // 1 단위 = 30px
@@ -239,13 +239,17 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     const far = benchAt(ST.pe, 2, 2).z + MAT2_D / 2 + 0.4;
     if (k >= 4) add(-99, box(sx, (LANE_Z + 0.5 + far) / 2, 0.8, far - LANE_Z - 0.5, 0.02, "#3a423d", "#3a423d"));
   });
-  // 구획 윤곽(점선)과 이름: 이웃 구획이 가장자리에 걸쳐 보일 때 어디까지인지. 2도크 구획은 도크가 하나면 증설 예정지
-  for (const sec of SECTORS.map((sc) => sectorBounds(sc.id, docks))) {
+  // 구획 윤곽(점선): 이웃 구획이 가장자리에 걸쳐 보일 때 어디까지인지. 도크가 하나면 큰길 앞 2도크 자리는 증설 예정지
+  for (const sec of SECTORS) {
     if (sec.id === "quay") continue;
-    const empty = sec.id === "dock2" && docks < 2;
     add(-98, s("rect", { x: px(sec.x0), y: py(sec.z0), width: (sec.x1 - sec.x0) * S, height: (sec.z1 - sec.z0) * S * DEPTH,
-      fill: "none", stroke: "#8f9a93", "stroke-width": 1.2, "stroke-dasharray": "3 6", opacity: empty ? 0.5 : 0.8 }));
-    if (empty) add(-98, tag(px((sec.x0 + sec.x1) / 2), py((sec.z0 + sec.z1) / 2), "2도크 구획 · 증설 예정지", "cc-place"));
+      fill: "none", stroke: "#8f9a93", "stroke-width": 1.2, "stroke-dasharray": "3 6", opacity: 0.8 }));
+  }
+  if (docks < 2) {
+    const a = DOCK2_AREA;
+    add(-98, s("rect", { x: px(a.x0 + 0.3), y: py(a.z0 + 0.3), width: (a.x1 - a.x0 - 0.6) * S, height: (a.z1 - a.z0 - 0.6) * S * DEPTH,
+      fill: "none", stroke: "#8f9a93", "stroke-width": 1, "stroke-dasharray": "2 6", opacity: 0.5 }));
+    add(-98, tag(px((a.x0 + a.x1) / 2), py((a.z0 + a.z1) / 2), "2도크 · 증설 예정지", "cc-place"));
   }
 
   // ----- 자재창고 선반 -----
@@ -421,11 +425,18 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     }
   });
 
-  // ----- 지게차(4.0.2): 가공 → 소조립 부재 팔레트. 정지 화면이라 두 공장 사이에 서 있는 기호만 -----
-  add(FORKLIFT_HOME.z, s("g", { class: "cc-forklift" },
-    box(FORKLIFT_HOME.x, FORKLIFT_HOME.z, 0.5, 0.75, 0.3, "#e0b43a", "#b8902c"),
-    box(FORKLIFT_HOME.x, FORKLIFT_HOME.z + 0.5, 0.42, 0.25, 0.05, "#5d6661", "#3a3f3c"),
-    tag(px(FORKLIFT_HOME.x), py(FORKLIFT_HOME.z - 0.4, 0.3) - 4, "지게차", "cc-tag mid")));
+  // ----- 지게차(4.0.2): 가공 → 소조립 부재 팔레트. 정지 화면이라 평소엔 두 공장 사이에 서 있고,
+  //       부재를 나르는 날은 소조립 앞에 팔레트를 내려놓은 모습("지게차 · S1 부재") -----
+  {
+    const move = frame.palletMoves[0];
+    const fx = move ? STATION_X[ST.sub] - MAT_W / 2 - 0.2 : FORKLIFT_HOME.x, fz = move ? LANE_Z - 0.9 : FORKLIFT_HOME.z;
+    const g = s("g", { class: "cc-forklift" },
+      box(fx, fz, 0.5, 0.75, 0.3, "#e0b43a", "#b8902c"),
+      box(fx, fz + 0.5, 0.42, 0.25, 0.05, "#5d6661", "#3a3f3c"));
+    if (move) g.append(box(fx + 0.75, fz + 0.1, 0.6, 0.5, 0.08, "#a8865a", "#8a6a4a"));
+    g.append(tag(px(fx), py(fz - 0.4, 0.3) - 4, move ? `지게차 · ${move.ship} 부재` : "지게차", "cc-tag mid"));
+    add(fz, g);
+  }
 
   // ----- 컨베이어벨트(D43): 가공 공장 안 절단 → 가공. 절단이 일하는 날은 판이 실려 있다 -----
   for (const c of CONVEYORS) {
