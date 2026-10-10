@@ -16,7 +16,7 @@ import type { TrackPick } from "./track";
 import { STOCK_STATIONS, stockAssign, stockSpot } from "./scene/stock";
 // 배치는 현장 3D와 같은 scene/layout.ts
 import { areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
-  seaSpot, sectorBounds, sectorOf, SECTORS, SHELF_X, SHELF_Z, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
+  QUAY, seaSpot, sectorBounds, SUPPLY, sectorOf, SECTORS, SHELF_X, SHELF_Z, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
   type SectorId } from "./scene/layout";
 
 // ----- 투영: 위에서 30도 기운 정사영 -----
@@ -195,6 +195,13 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   // ----- 바닥: 만(바다), 곶과 등대, 운반로, 작업대기소 -----
   add(-100, s("rect", { x: px(SHORE_X), y: -2000, width: 4000, height: 6000, fill: "#2f4a5a" }));
   add(-100, s("line", { x1: px(SHORE_X), x2: px(SHORE_X), y1: -2000, y2: 4000, stroke: "#8fa7b4", "stroke-width": 1.5 }));
+  // 매립한 안벽(3.2): 앞쪽 곶과 야드 사이를 메운 땅, 만 쪽 가장자리에 계선주
+  add(-100, s("rect", { x: px(QUAY.x0) - 1, y: py(QUAY.z0), width: (QUAY.x1 - QUAY.x0) * S + 1, height: 4000, class: "cc-bg" }));
+  add(-100, s("line", { x1: px(QUAY.x0), x2: px(QUAY.x1), y1: py(QUAY.z0), y2: py(QUAY.z0), stroke: "#8fa7b4", "stroke-width": 1.5 }));
+  add(-100, s("line", { x1: px(QUAY.x1), x2: px(QUAY.x1), y1: py(QUAY.z0), y2: 4000, stroke: "#8fa7b4", "stroke-width": 1.5 }));
+  for (let x = QUAY.x0 + 0.8; x < QUAY.x1 - 0.3; x += 1.3) add(-99, s("circle", { cx: px(x), cy: py(QUAY.z0 + 0.35), r: 2.2, fill: "#8f8a80" }));
+  // 자재 납품 길: 야드 왼쪽 끝에서 물류창고 앞까지
+  add(-99, box((SUPPLY.x0 + SHELF_X[2] + 1.2) / 2, SUPPLY.z, SHELF_X[2] + 1.2 - SUPPLY.x0, 0.9, 0.02, "#3a423d", "#3a423d"));
   for (const side of [-1, 1]) {
     add(-99, s("ellipse", { cx: px(MOUTH_X + 1.5), cy: py(BAY_C + side * (BAY_MOUTH + 3.4)), rx: 3.4 * S, ry: 3.2 * S * DEPTH, fill: "#33402f", stroke: "#4f6147" }));
   }
@@ -243,6 +250,27 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     }
     add(SHELF_Z, g);
   });
+  // 납품 마차(3.2): 입고 날에는 물류창고 앞에 마차가 서 있다(정지 화면). 상자 색은 선반 상자 뚜껑과 같다.
+  if (frame.arrivals.length) {
+    const cx = px(SHELF_X[1]), cy = py(SUPPLY.z);
+    const g = s("g", { class: "cc-supply" },
+      s("ellipse", { cx: cx - 4, cy: cy + 2, rx: 30, ry: 4, fill: "rgba(0,0,0,0.35)" }),
+      s("rect", { x: cx - 30, y: cy - 10, width: 30, height: 10, rx: 1, fill: "#a07e58", stroke: "#4a3a2c", "stroke-width": 0.8 }),
+      s("circle", { cx: cx - 15, cy: cy + 1, r: 4, fill: "#4a3a2c" }),
+      // 말: 몸과 머리
+      s("rect", { x: cx + 6, y: cy - 14, width: 18, height: 8, rx: 3, fill: "#8a5a3b" }),
+      s("rect", { x: cx + 21, y: cy - 20, width: 8, height: 6, rx: 2, fill: "#8a5a3b" }),
+      s("line", { x1: cx + 9, x2: cx + 9, y1: cy - 6, y2: cy + 1, stroke: "#8a5a3b", "stroke-width": 2 }),
+      s("line", { x1: cx + 21, x2: cx + 21, y1: cy - 6, y2: cy + 1, stroke: "#8a5a3b", "stroke-width": 2 }),
+      s("line", { x1: cx, x2: cx + 6, y1: cy - 8, y2: cy - 10, stroke: "#6b4a2b", "stroke-width": 1.5 }));
+    frame.arrivals.forEach((a, k) => {
+      const i = frame.shelves.findIndex((sh) => sh.material === a.material);
+      g.append(s("rect", { x: cx - 28 + k * 9, y: cy - 18, width: 8, height: 8, fill: ["#f7f3ea", "#c8553d", "#c0392b"][i] ?? PAPER, stroke: "#4a3a2c", "stroke-width": 0.6 }));
+    });
+    g.append(tag(cx - 4, cy + 14, `입고 · ${frame.arrivals.map((a) => `${a.name} ${a.quantity}`).join(" · ")}`, "cc-tag mid"));
+    add(SUPPLY.z + 0.5, g);
+  }
+
   // 물류창고 구역: 선반 셋을 벽으로 묶는다(앞은 열림)
   add(SHELF_Z - 2, walls(SHELF_X[0] - 1.5, SHELF_X[2] + 1.5, SHELF_Z - 0.9, SHELF_Z + 1.0, 1.9));
   add(SHELF_Z - 1, tag(px(SHELF_X[1]), py(SHELF_Z - 0.9, 1.9) - 8, "물류창고 구역", "cc-place"));
@@ -402,7 +430,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
       s("text", { x: px(bx), y: py(bz) + 12, class: l.late ? "cc-sea-name late" : "cc-sea-name" }, l.ship)));
   });
   const waiting = frame.lots.filter((l) => l.place === "hidden").map((l) => l.ship);
-  add(9, tag(px(SHORE_X + 4.8), py(seaSpot(5).z + 0.9) + 14, `안벽 · 인도 ${sea.length}척${waiting.length ? ` · 착수 전 ${waiting.join(" ")}` : ""}`, "cc-tag mid"));
+  add(9, tag(px((QUAY.x0 + QUAY.x1) / 2), py(QUAY.z0 + 1.8), `안벽 · 인도 ${sea.length}척${waiting.length ? ` · 착수 전 ${waiting.join(" ")}` : ""}`, "cc-tag mid"));
 
   // ----- 그리기: 고른 구획을 화면 가득 -----
   const sec = sectorBounds(opts.focus, docks);

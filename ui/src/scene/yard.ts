@@ -18,7 +18,7 @@ import { STOCK_STATIONS, stockAssign, stockSpot } from "./stock";
 import { buildDock, buildLand, buildRoof, buildSectorOutline, buildWalls, buildYardLines, GiantHand, SEA_Y, type DockParts } from "./coast";
 import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_TOP, MAT_W, MAT2_D,
   nearLane, QUEUE_Z, SAFE_SPOT, seaSpot, SECTORS, sectorBounds, SHELF_X, SHELF_Z, SHORE_X, SPUR_IN, SPUR_OUT, SPUR_X, STATION_X,
-  STOCK_AT, STOCK_D, STOCK_HALF, unitZ, type SectorId } from "./layout";
+  STOCK_AT, STOCK_D, STOCK_HALF, SUPPLY, unitZ, type SectorId } from "./layout";
 import { clamp01, ease, flatOf, hullTris, type Tri } from "../proto/model";
 import { STATE_INFO, STATION_COLOR } from "../labels";
 import type { TrackPick } from "../track";
@@ -329,6 +329,8 @@ export class Yard {
     robots: THREE.Group[];
   }[] = [];
   private readonly carts: { group: THREE.Group; tag: CSS2DObject; smoke: THREE.Group }[] = [];
+  /** 납품 마차(3.2): 입고 날 하루의 앞부분에 납품 길로 들어와 물류창고 앞에서 상자를 내리고 돌아간다(그림만) */
+  private readonly supply = buildSupplyCart();
   private readonly shelves: { boxes: THREE.Mesh[]; tag: CSS2DObject }[] = [];
   /** 자재·블록 추적(3.1): 누르면 상자를 띄울 곳(main.ts), 진하게 볼 배, 선반의 보이지 않는 누름 상자, 추적 중인 배 밑의 고리 */
   private pickHandler: ((pick: TrackPick) => void) | null = null;
@@ -434,6 +436,8 @@ export class Yard {
     this.labWindow = lab.window;
     this.buildSectors();
     this.placeStations(1);
+    this.supply.root.visible = false;
+    this.scene.add(this.supply.root);
 
     for (let i = 0; i < 8; i++) {
       const p = new Person("worker", i, WORKER_NAMES[i]);
@@ -689,7 +693,7 @@ export class Yard {
       mark.outline = sec.id === "quay" ? null : buildSectorOutline(sec, sec.id === "dock2" && docks < 2);
       if (mark.outline) this.scene.add(mark.outline);
       // 이름은 구획의 왼쪽 가장자리(작업장 이름표와 겹치지 않게): 1도크는 뒤, 나머지는 앞
-      mark.tag.position.set(sec.x0 + 2.4, sec.id === "quay" ? SEA_Y + 0.1 : 0.05, sec.id === "dock1" ? sec.z0 + 0.4 : sec.z1 - 0.4);
+      mark.tag.position.set(sec.x0 + 2.4, 0.05, sec.id === "dock1" ? sec.z0 + 0.4 : sec.z1 - 0.4);
       if (sec.id === "dock2") setLabel(mark.tag, docks >= 2 ? "2도크 구획" : "2도크 구획 · 증설 예정지");
     }
     if (this.focus) this.setCamera("field", this.focus);
@@ -1195,6 +1199,8 @@ export class Yard {
       setLabel(shelf.tag, `${sh.name} ${note}${mine !== null ? `<br><small class="${mine ? "track" : ""}">${this.track} 몫 ${mine}</small>` : ""}`);
     });
 
+    this.drawSupply(f, src.playing, frac);
+
     // 연구소
     const rs = f.research;
     this.labWindow.emissive.set(rs.current ? "#7fd1ff" : "#000000");
@@ -1202,6 +1208,34 @@ export class Yard {
     const now = rs.current ? `${rs.current.name} ${rs.current.done}/${rs.current.total}일` : "진행 중인 연구 없음";
     const done = rs.finished.length ? `<br><small>완료: ${rs.finished.join(", ")}</small>` : "";
     setLabel(this.labTag, `연구소 · ${now}${done}`);
+  }
+
+  /**
+   * 납품 마차: 입고는 하루의 맨 처음이다. 들어와(0~0.25) 상자를 내리고(~0.45) 돌아간다(~0.75).
+   * 1배속 하루 2초라 장면이 1.5초쯤 걸린다(선반 수량은 그날 아침 값 그대로).
+   * 멈춰 있으면(또는 관제실처럼 정지 화면이면) 창고 앞에 선 채로, 무엇이 몇 개 들어왔는지 이름표를 단다.
+   */
+  private drawSupply(f: Frame, playing: boolean, frac: number): void {
+    const cart = this.supply;
+    const on = f.arrivals.length > 0 && (!playing || frac < 0.75);
+    cart.root.visible = on;
+    if (!on) return;
+    const stop = SHELF_X[1], start = SUPPLY.x0;
+    let x = stop, back = false, unloaded = 1;
+    if (playing) {
+      if (frac < 0.25) { x = start + (stop - start) * ease(frac / 0.25); unloaded = 0; }
+      else if (frac < 0.45) unloaded = (frac - 0.25) / 0.2;
+      else { back = true; x = stop + (start - stop) * ease((frac - 0.45) / 0.3); }
+    }
+    cart.root.position.set(x, 0, SUPPLY.z);
+    cart.root.rotation.y = back ? Math.PI : 0;
+    // 상자: 들어온 자재마다 하나(선반 상자와 같은 색), 내리는 동안 하나씩 사라진다
+    cart.crates.forEach((c, k) => {
+      const a = f.arrivals[k];
+      c.visible = !!a && k >= Math.floor(unloaded * f.arrivals.length + 1e-9);
+      if (a) (c.userData.top as THREE.Mesh).material = crateTop(f.shelves.findIndex((sh) => sh.material === a.material));
+    });
+    setLabel(cart.tag, `입고 · ${f.arrivals.map((a) => `${a.name} <b>${a.quantity}</b>`).join(" · ")}`);
   }
 
   /**
@@ -1334,6 +1368,64 @@ export class Yard {
     });
     this.carts.forEach((c) => puffs(c.smoke, 1.4));
   }
+}
+
+const CRATE_COLORS = ["#f7f3ea", "#c8553d", "#c0392b"];   // 선반 상자 뚜껑과 같은 색(종이, 물감, 깃발)
+const crateTops = CRATE_COLORS.map((c) => new THREE.MeshStandardMaterial({ color: c }));
+const crateTop = (i: number) => crateTops[i] ?? crateTops[0];
+
+/** 납품 마차: 말 한 마리와 짐수레, 자재 상자 셋. 무광 단색(장식은 절제). 앞이 +x */
+function buildSupplyCart(): { root: THREE.Group; crates: THREE.Mesh[]; tag: CSS2DObject } {
+  const root = new THREE.Group();
+  const horse = new THREE.Group();
+  const coat = "#8a5a3b";
+  const body = mesh(new THREE.BoxGeometry(0.9, 0.34, 0.3), coat);
+  body.position.y = 0.58;
+  const neck = mesh(new THREE.BoxGeometry(0.2, 0.42, 0.18), coat);
+  neck.position.set(0.48, 0.78, 0);
+  neck.rotation.z = -0.5;
+  const head = mesh(new THREE.BoxGeometry(0.34, 0.16, 0.16), coat);
+  head.position.set(0.66, 0.96, 0);
+  const mane = mesh(new THREE.BoxGeometry(0.06, 0.4, 0.06), "#3b2a1e");
+  mane.position.set(0.42, 0.84, 0);
+  mane.rotation.z = -0.5;
+  const tail = mesh(new THREE.BoxGeometry(0.06, 0.32, 0.06), "#3b2a1e");
+  tail.position.set(-0.48, 0.5, 0);
+  tail.rotation.z = 0.4;
+  horse.add(body, neck, head, mane, tail);
+  for (const lx of [-0.34, 0.34]) for (const lz of [-0.1, 0.1]) {
+    const leg = mesh(new THREE.CylinderGeometry(0.045, 0.04, 0.42, 8), coat);
+    leg.position.set(lx, 0.21, lz);
+    horse.add(leg);
+  }
+  horse.position.x = 0.75;
+  const bed = mesh(new THREE.BoxGeometry(1.1, 0.08, 0.7), "#a07e58");
+  bed.position.set(-0.55, 0.36, 0);
+  root.add(horse, bed);
+  for (const sz of [-1, 1]) {
+    const board = mesh(new THREE.BoxGeometry(1.1, 0.14, 0.04), "#8a6a4a");
+    board.position.set(-0.55, 0.46, sz * 0.33);
+    const wheel = mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.06, 20), "#4a3a2c");
+    wheel.rotation.x = Math.PI / 2;
+    wheel.position.set(-0.55, 0.26, sz * 0.4);
+    const shaft = mesh(new THREE.BoxGeometry(0.9, 0.04, 0.04), "#6b4a2b");
+    shaft.position.set(0.3, 0.45, sz * 0.2);
+    root.add(board, wheel, shaft);
+  }
+  const crates = [0, 1, 2].map((k) => {
+    const box = mesh(new THREE.BoxGeometry(0.28, 0.26, 0.5), "#c9a26b");
+    box.position.set(-0.9 + k * 0.33, 0.53, 0);
+    const top = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.02, 0.44), crateTop(k));
+    top.position.y = 0.14;
+    box.add(top);
+    box.userData.top = top;
+    root.add(box);
+    return box;
+  });
+  const tag = label("", "place-tag small");
+  tag.position.set(-0.2, 1.3, 0);
+  root.add(tag);
+  return { root, crates, tag };
 }
 
 /** 로봇 팔: 받침, 돌아가는 기둥, 위팔, 아래팔, 집게. 무광 회색(장식은 절제). */

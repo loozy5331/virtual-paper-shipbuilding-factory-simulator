@@ -89,17 +89,26 @@ export const CART_R = 1.4;
 /** 관리자의 안전한 자리: 내업과 도크 구획 사이 큰길 앞(크레인·트랜스포터 반경 밖) */
 export const SAFE_SPOT = { x: -1.5, z: LANE_Z + 1.9 };
 
-/** 인도한 배: 안벽 앞 바다에 세 척씩 두 줄(두 도크 문 사이) */
+/**
+ * 매립한 안벽(3.2): 등대가 없는 앞쪽 곶과 야드 사이 바다를 메운 땅. 큰길 앞쪽 야드에 붙어 있고, 뒤쪽(만 쪽) 가장자리가 안벽이다.
+ * 4.0 안벽의장·시운전이 여기서 한다. 지금은 인도한 배를 대 두는 곳(그림만).
+ */
+export const QUAY = { x0: SHORE_X, x1: 23, z0: 11.4, z1: 15.7 };
+
+/** 인도한 배: 안벽에 나란히 네 척씩, 다섯째부터는 바깥에 한 줄 더(겹대기) */
 export function seaSpot(i: number): { x: number; z: number } {
-  return { x: SHORE_X + 1.9 + (i % 3) * 2.9, z: LANE_Z - 1.05 + Math.floor(i / 3) * 2.1 };
+  return { x: QUAY.x0 + 1.7 + (i % 4) * 2.6, z: QUAY.z0 - 0.8 - Math.floor(i / 4) * 1.25 };
 }
+
+/** 자재 납품 길(3.2): 야드 왼쪽 끝에서 물류창고 앞까지. 입고 날 마차가 이 길로 들어와 상자를 내린다(그림만). */
+export const SUPPLY = { x0: -44, z: -7.95 };
 
 /** 구획의 바닥 범위. 2도크 구획은 도크가 하나뿐이어도 "증설 예정지"로 남는다. */
 export const SECTORS: Sector[] = [
   { id: "shop", name: "내업 구획", x0: -33.5, x1: -11, z0: -11.2, z1: 8.4 },
   { id: "dock1", name: "1도크 구획", x0: -4.5, x1: SHORE_X, z0: -7.6, z1: LANE_Z - 0.75 },
   { id: "dock2", name: "2도크 구획", x0: -4.5, x1: SHORE_X, z0: LANE_Z + 0.75, z1: 12.4 },
-  { id: "quay", name: "안벽 구획", x0: SHORE_X, x1: 21.5, z0: LANE_Z - 2.6, z1: LANE_Z + 3.2 },
+  { id: "quay", name: "안벽 구획", x0: SHORE_X, x1: QUAY.x1 + 0.8, z0: 7.4, z1: QUAY.z1 + 0.4 },
 ];
 export const sector = (id: SectorId) => SECTORS.find((s) => s.id === id)!;
 

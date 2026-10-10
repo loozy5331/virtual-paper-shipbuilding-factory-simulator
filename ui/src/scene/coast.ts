@@ -9,7 +9,7 @@
 
 import * as THREE from "three";
 import { mesh } from "./people";
-import { BAY_C, BAY_MOUTH, BAY_Z, MOUTH_X, SHORE_X, STATION_X, YARD_X0, type Sector } from "./layout";
+import { BAY_C, BAY_MOUTH, BAY_Z, MOUTH_X, QUAY, SHELF_X, SHORE_X, STATION_X, SUPPLY, YARD_X0, type Sector } from "./layout";
 
 export const SEA_Y = -0.32;
 
@@ -35,6 +35,26 @@ export function buildLand(scene: THREE.Scene): void {
   ground(YARD_X0, SHORE_X, 15, 90, "#93ab7c", -0.52);
   ground(SHORE_X, 90, -90, BAY_C - BAY_Z, "#93ab7c", -0.52);
   ground(SHORE_X, 90, BAY_C + BAY_Z, 90, "#93ab7c", -0.52);
+  // 매립한 안벽(3.2): 등대가 없는 앞쪽 곶과 야드 사이를 메운 땅. 만 쪽 가장자리가 안벽(어두운 테두리와 계선주)
+  ground(QUAY.x0, QUAY.x1, QUAY.z0, QUAY.z1, CONCRETE);
+  const edge = mesh(new THREE.BoxGeometry(QUAY.x1 - QUAY.x0, 0.1, 0.25), "#8f8a80", { roughness: 1 });
+  edge.position.set((QUAY.x0 + QUAY.x1) / 2, 0.05, QUAY.z0 + 0.125);
+  edge.castShadow = false;
+  scene.add(edge);
+  for (let x = QUAY.x0 + 0.8; x < QUAY.x1 - 0.3; x += 1.3) {
+    const bollard = mesh(new THREE.CylinderGeometry(0.09, 0.11, 0.22, 12), "#3a3f3c");
+    bollard.position.set(x, 0.11, QUAY.z0 + 0.35);
+    scene.add(bollard);
+  }
+  // 자재 납품 길(3.2): 야드 왼쪽 끝 너머 풀밭에서 들어와 물류창고 앞까지(마차가 다니는 흙길)
+  const road = (x0: number, x1: number, color: string, y: number) => {
+    const m = mesh(new THREE.BoxGeometry(x1 - x0, 0.02, 0.9), color, { roughness: 1 });
+    m.position.set((x0 + x1) / 2, y, SUPPLY.z);
+    m.castShadow = false;
+    scene.add(m);
+  };
+  road(SUPPLY.x0, YARD_X0, "#a8946f", -0.01);
+  road(YARD_X0, SHELF_X[2] + 1.2, "#bdb6a8", 0.008);
   const sea = new THREE.Mesh(new THREE.PlaneGeometry(300, 300),
     new THREE.MeshStandardMaterial({ color: "#3f6f8c", roughness: 0.25, metalness: 0.05 }));
   sea.rotation.x = -Math.PI / 2;
