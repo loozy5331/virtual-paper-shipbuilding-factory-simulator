@@ -9,21 +9,16 @@
 
 import * as THREE from "three";
 import { mesh } from "./people";
+import { BAY_MOUTH, BAY_Z, MOUTH_X, SHORE_X, STATION_X, YARD_X0 } from "./layout";
 
 export const SEA_Y = -0.32;
-export const SHORE_X = 11.2;      // 오른쪽 안벽(이 너머가 바다)
 
 const CONCRETE = "#c9c5bb";
 const WALL = "#d9ddd8";
 const WALL_BASE = "#7d8a83";
 
 // 만(灣): 야드 오른쪽(SHORE_X 너머)만 바다다. 산은 ㄷ자로 둘러싸고(뒤·왼쪽·앞), 오른쪽 두 끝을 안쪽으로 굽혀 곶을 만든다.
-// 뒤쪽 곶 끝에 등대. 곶 사이 물길(BAY_MOUTH)은 막지 않는다.
-const BAY_Z = 10;            // 만의 폭(±)
-const MOUTH_X = 23.5;        // 곶 끝의 x(전경에서 등대가 보이게)
-const BAY_MOUTH = 3.5;       // 곶 사이 물길 반폭
-
-export const YARD_X0 = -21;       // 야드 왼쪽 끝
+// 뒤쪽 곶 끝에 등대. 곶 사이 물길(BAY_MOUTH)은 막지 않는다. 숫자는 layout.ts.
 
 /** 땅(포장된 야드 + 풀밭), 만의 바다, ㄷ자 산, 곶과 등대. */
 export function buildLand(scene: THREE.Scene): void {
@@ -171,7 +166,7 @@ export class GiantHand {
     this.hand.add(mitten, thumb, cuff, magnet);
     this.hand.scale.setScalar(GiantHand.SCALE);
     this.root.add(this.arm, this.hand);
-    this.place(new THREE.Vector3(8.5, 3, 0));
+    this.place(new THREE.Vector3(STATION_X[3], 3, 0));
   }
 
   /** 손(자석판 바닥)을 이 자리로. 팔은 손목에서 하늘까지 수직. */
