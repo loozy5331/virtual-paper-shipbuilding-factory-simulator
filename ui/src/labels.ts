@@ -6,21 +6,25 @@ export const HAT = { worker: "#d6a400", manager: "#d9480f", senior: "#6f42c1" } 
 
 /** 공정의 직종(rules.json의 trade와 같다). 시운전은 외부팀이라 없다 */
 export const STATION_TRADE: Record<string, string> = {
-  sub_assembly: "assembly", block_assembly: "assembly", painting: "painting", pre_outfitting: "outfitting",
+  cutting: "processing", processing: "processing", sub_assembly: "assembly", block_assembly: "assembly", painting: "painting", pre_outfitting: "outfitting",
   grand_assembly: "assembly", erection: "erection", quay_outfitting: "outfitting",
 };
 
 /** 직종별 작업모 색(4.0, D42). 조립은 원래 작업자 색. 모자 색만으로 구분하지 않게 현장 이름표와 대기소 글에 직종을 적는다 */
 export const TRADE_HAT: Record<string, string> = {
+  processing: "#5b6770",   // 가공(절단·가공, D43): 강철 회색. 새로 나빠지는 모자 색 쌍이 없다
   assembly: "#d6a400",
   erection: "#2a78d6",
   painting: "#00a07a",
   outfitting: "#c0569e",
 };
 
-// 공정 8색(4.0): 검증기 통과(인접 CVD 최소 7.1 = 안벽의장↔시운전, 정상시 최소 23.7). 손실 색(주황·노랑·빨강)과 겹치지 않게
-// 새 공정은 청록·남색·자두·하늘. 막대 안 공정 이름과 막대 사이 틈을 함께 쓴다(CVD 6~8 구간의 보조 표시).
+// 공정 10색(4.0): 검증기 인접 쌍 통과(CVD 최소 7.1 = 안벽의장↔시운전, 정상시 최소 17.0 = 가공↔소조립). 손실 색(주황·노랑·빨강)과 겹치지 않게
+// 새 공정은 청록·남색·자두·하늘, 절단 짙은 초록·가공 보라(D43). 10색이면 색 공간이 차서, 절단은 PE장·도장과, 가공은 탑재와
+// 멀리 떨어진 공정끼리 가깝다(정상시 ΔE 8~12). 그래서 막대 안 공정 이름과 막대 사이 틈을 함께 쓴다(보조 표시).
 export const STATION_COLOR: Record<string, string> = {
+  cutting: "#007e54",
+  processing: "#844ea8",
   sub_assembly: "#2a78d6",
   block_assembly: "#e87ba4",
   painting: "#00a07a",
@@ -33,6 +37,8 @@ export const STATION_COLOR: Record<string, string> = {
 
 // 막대 안 글자색. 중조립 분홍은 밝아서 흰 글자가 안 읽히므로 어두운 글자를 쓴다.
 export const STATION_TEXT: Record<string, string> = {
+  cutting: "#ffffff",
+  processing: "#ffffff",
   sub_assembly: "#ffffff",
   block_assembly: "#1f2a24",
   grand_assembly: "#ffffff",

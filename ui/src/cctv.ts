@@ -17,7 +17,7 @@ import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot } from "./scene/
 // 배치는 현장 3D와 같은 scene/layout.ts
 import { areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
   along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, quayQueueSpot, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_X, SHELF_Z, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
-  type SectorId } from "./scene/layout";
+  CONVEYOR, STOCK_NAME, type SectorId } from "./scene/layout";
 
 // ----- 투영: 위에서 30도 기운 정사영 -----
 const S = 30;                        // 1 단위 = 30px
@@ -113,14 +113,21 @@ function lot(x: number, z: number, form: number, scale = 1, kind = "VLCC"): SVGE
   g.append(s("rect", { x: px(x - hw), y: py(z - hd, 0.7 * scale), width: hw * 2 * S, height: py(z + hd) - py(z - hd, 0.7 * scale), fill: "transparent" }));
   const b = (bx: number, bz: number, w: number, d: number, h: number) =>
     g.append(box(x + bx * scale, z + bz * scale, w * scale, d * scale, h * scale, PAPER, PAPER_SIDE));
-  if (stage === 0) {
+  // 단계(D43): −2 종이 묶음, −1 평평한 판 8장, 0 굽힌 판, 1 블록 8개, 2 블록 4개, 3 블록 2개, 4 배.
+  // 굽힌 뒤(0 이상)에는 선수·선미 열이 가운데 쪽으로 좁아져 선체 곡면이 보인다.
+  const taper = (c: number, cols: number) => (c === 0 || c === cols - 1 ? 0.72 : 1);
+  if (stage <= -2) {
     b(0, 0, 1.4, 1.0, 0.08);
-  } else if (stage === 1) {
-    for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) b(-0.6 + c * 0.4, -0.4 + r * 0.4, 0.32, 0.32, 0.25);
+  } else if (stage <= 1) {
+    const bent = stage >= 0, h = stage === 1 ? 0.25 : 0.05;
+    for (let r = 0; r < 2; r++) for (let c = 0; c < 4; c++) {
+      const d = 0.4 * (bent ? taper(c, 4) : 1);
+      b(-0.66 + c * 0.44, (r - 0.5) * 0.46 + (bent ? (0.4 - d) / 2 * (r === 0 ? 1 : -1) : 0), 0.38, d, h);
+    }
   } else if (stage === 2) {
-    for (let r = 0; r < 2; r++) for (let c = 0; c < 3; c++) b(-0.5 + c * 0.5, -0.25 + r * 0.5, 0.44, 0.44, 0.35);
+    for (let r = 0; r < 2; r++) for (let c = 0; c < 2; c++) b(-0.42 + c * 0.84, (r - 0.5) * 0.48, 0.8, 0.44, 0.35);
   } else if (stage === 3) {
-    for (let c = 0; c < 3; c++) b(-0.6 + c * 0.6, 0, 0.55, 0.7, 0.5);
+    for (let c = 0; c < 2; c++) b(-0.42 + c * 0.84, 0, 0.8, 0.9, 0.5);
   } else {
     g.append(ship(x, z, kind, scale));
   }
@@ -408,7 +415,17 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     }
   });
 
-  // ----- 적치장: 공정마다 칸(내업 두 공정은 큰길 건너편, PE장은 1도크 구획) -----
+  // ----- 컨베이어벨트(D43): 가공 공장 → 소조립 공장. 가공이 일하는 날은 판이 실려 있다 -----
+  {
+    const c = CONVEYOR;
+    add(c.z - 0.05, box((c.x0 + c.x1) / 2, c.z, c.x1 - c.x0 + 1.2, c.w, c.y, "#5d6661", "#3a3f3c"));
+    const proc = frame.stations[ST.proc];
+    if (proc && (proc.state === "work" || proc.state === "rework")) {
+      for (let k = 0; k < 3; k++) add(c.z + 0.01, box(c.x0 + (k + 0.5) * (c.x1 - c.x0) / 3, c.z, 0.34, 0.26, c.y + 0.04, PAPER, PAPER_SIDE));
+    }
+  }
+
+  // ----- 적치장: 공정마다 칸(내업 공정은 큰길 건너편, PE장은 1도크 구획) -----
   for (let p = 0; p < STOCK_STATIONS; p++) {
     const at = STOCK_AT[p];
     const far = at.z0 + at.dir * STOCK_D, zTop = Math.min(at.z0, far);
@@ -416,7 +433,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
       fill: "#2a332e", stroke: "#8f9a93", "stroke-width": 1.2, "stroke-dasharray": "5 4" }));
     add(-96, s("g", { class: "cc-mat-text" },
       s("rect", { x: px(at.x - STOCK_HALF) + 6, y: py(zTop + STOCK_D) - 17, width: 9, height: 9, rx: 2, fill: STATION_COLOR[scenario.stations[STOCK_COLOR_OF[p]].id] }),
-      tag(px(at.x - STOCK_HALF) + 19, py(zTop + STOCK_D) - 8, p === 2 ? "마감동 적치장" : "적치장", "cc-tag")));
+      tag(px(at.x - STOCK_HALF) + 19, py(zTop + STOCK_D) - 8, STOCK_NAME[p], "cc-tag")));
   }
   const stock = stockAssign(frame);
   for (const l of frame.lots) {

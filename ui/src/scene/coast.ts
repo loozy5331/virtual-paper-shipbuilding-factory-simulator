@@ -9,7 +9,7 @@
 
 import * as THREE from "three";
 import { mesh } from "./people";
-import { BAY_C, BAY_MOUTH, BAY_Z, groundY, HILL_BASE, HILLS, MOUTH_X, QUAY, LAND_ROUTE, PIER, route, SHORE_X, STATION_X, SUPPLY_EXIT, SUPPLY_ROUTE, YARD_X0, YARD_Z0, YARD_Z1, type Sector } from "./layout";
+import { BAY_C, BAY_MOUTH, BAY_Z, groundY, HILL_BASE, HILLS, MOUTH_X, QUAY, LAND_ROUTE, PIER, route, SHORE_X, STATION_X, SUPPLY_EXIT, SUPPLY_ROUTE, ST, YARD_X0, YARD_Z0, YARD_Z1, type Sector } from "./layout";
 
 export const SEA_Y = -0.32;
 
@@ -235,7 +235,7 @@ export class GiantHand {
     this.hand.add(mitten, thumb, cuff, magnet);
     this.hand.scale.setScalar(GiantHand.SCALE);
     this.root.add(this.arm, this.hand);
-    this.place(new THREE.Vector3(STATION_X[3], 3, 0));
+    this.place(new THREE.Vector3(STATION_X[ST.dock], 3, 0));
   }
 
   /** 손(자석판 바닥)을 이 자리로. 팔은 손목에서 하늘까지 수직. */

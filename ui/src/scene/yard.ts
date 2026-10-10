@@ -18,7 +18,7 @@ import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot } from "./stock"
 import { buildDock, buildLand, buildRoof, buildSectorOutline, buildWalls, buildYardLines, GiantHand, SEA_Y, type DockParts } from "./coast";
 import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_TOP, MAT_W, MAT2_D,
   nearLane, QUEUE_Z, SAFE_SPOT, seaSpot, SECTORS, sectorBounds, SHELF_X, SHELF_Z, SHORE_X, SPUR_IN, SPUR_OUT, SPUR_X, STATION_X,
-  STOCK_AT, STOCK_D, STOCK_HALF, ST, isShop, quayQueueSpot, QUAY, along, groundY, kitRoutes, LAB_TREES, LAND_ROUTE, route, SHIP_ROUTE, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
+  STOCK_AT, STOCK_D, STOCK_HALF, STOCK_NAME, CONVEYOR, ST, isShop, quayQueueSpot, QUAY, along, groundY, kitRoutes, LAB_TREES, LAND_ROUTE, route, SHIP_ROUTE, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
 import { clamp01, ease, flatOf, hullTris, type Tri } from "../proto/model";
 import { STATE_INFO, STATION_COLOR, STATION_TRADE, TRADE_HAT } from "../labels";
 import type { TrackPick } from "../track";
@@ -112,15 +112,62 @@ class FoldMesh {
 }
 
 // ---------------------------------------------------------------------------
-// 로트: 블록 12개 → 6개 → 3개(도장) → 배(선종마다 다른 갑판 구조물, ships.ts)
+// 로트: 종이 묶음 → 판 8장(절단) → 굽힌 판(가공) → 블록 8개 → 4개 → 2개 → 배(선종마다 다른 갑판 구조물, ships.ts). D43
 // ---------------------------------------------------------------------------
+
+/** 블록 한 개의 길이(x)·높이·폭(z). 4열 × 좌우 2줄 = 8개 */
+const BLOCK_X = 0.42, BLOCK_H = 0.22, BLOCK_Z = UNIT;
+/** 판(절단·가공 뒤, 소조립 전)의 두께 비율 */
+const PLATE = 0.2;
+
+/**
+ * 블록 한 개의 모양(D43). 가공에서 판을 굽히면(bend 0 → 1) 선체 곡면이 된다:
+ * 바깥쪽 아래가 둥글게 올라가고(빌지), 선미(0열)·선수(3열) 블록은 끝으로 갈수록 가운데 쪽으로 좁아진다. 선수는 바닥도 들린다.
+ */
+class BlockMesh {
+  readonly mesh: THREE.Mesh;
+  private readonly flat: Float32Array;
+  private readonly curved: Float32Array;
+  private bend = -1;
+
+  constructor(col: number, row: number, material: THREE.Material) {
+    const geo = new THREE.BoxGeometry(BLOCK_X, BLOCK_H, BLOCK_Z, 4, 2, 3);
+    this.flat = Float32Array.from(geo.getAttribute("position").array as Float32Array);
+    this.curved = Float32Array.from(this.flat);
+    const inward = row === 0 ? 1 : -1;   // 0줄은 왼쪽(−z)이 바깥, 1줄은 오른쪽(+z)이 바깥
+    for (let i = 0; i < this.flat.length; i += 3) {
+      const x = this.flat[i], y = this.flat[i + 1], z = this.flat[i + 2];
+      const out = row === 0 ? 0.5 - z / BLOCK_Z : 0.5 + z / BLOCK_Z;   // 1 = 바깥 가장자리
+      const bottom = 0.5 - y / BLOCK_H;                               // 1 = 바닥
+      const end = col === 0 ? 0.5 - x / BLOCK_X : col === 3 ? 0.5 + x / BLOCK_X : 0;   // 1 = 배의 끝
+      this.curved[i + 1] = y + BLOCK_H * (0.75 * out * out * bottom + (col === 3 ? 0.5 * end * bottom : 0));
+      this.curved[i + 2] = z + inward * BLOCK_Z * 0.55 * end * out;
+    }
+    this.mesh = new THREE.Mesh(geo, material);
+    this.mesh.castShadow = true;
+    this.setBend(0);
+  }
+
+  /** 굽힌 정도 0~1. 바뀔 때만 꼭짓점을 다시 계산한다 */
+  setBend(bend: number): void {
+    if (Math.abs(bend - this.bend) < 1e-3) return;
+    this.bend = bend;
+    const attr = this.mesh.geometry.getAttribute("position") as THREE.BufferAttribute;
+    const out = attr.array as Float32Array;
+    const e = ease(bend);
+    for (let i = 0; i < out.length; i++) out[i] = this.flat[i] + (this.curved[i] - this.flat[i]) * e;
+    attr.needsUpdate = true;
+    this.mesh.geometry.computeVertexNormals();
+    this.mesh.geometry.computeBoundingSphere();
+  }
+}
 
 class Lot {
   readonly group = new THREE.Group();
-  private readonly units: THREE.Mesh[] = [];
+  private readonly units: BlockMesh[] = [];
   private readonly unitMat = paperMaterial();
   private readonly sheet: THREE.Mesh;
-  /** 절단 자투리: 소조립 정반에서 종이를 자를 때 튀어 나가는 종잇조각. */
+  /** 절단 자투리: 절단 정반에서 종이를 자를 때 튀어 나가는 종잇조각(D43, 3.x는 소조립). */
   private readonly scraps: THREE.Mesh[] = [];
   private readonly boat = new THREE.Group();
   private readonly hullMat = paperMaterial();
@@ -146,12 +193,10 @@ class Lot {
   prev: { place: string; station: number; unit: number } | null = null;
 
   constructor(readonly ship: string, kind: string) {
-    const geo = new THREE.BoxGeometry(UNIT, 0.22, UNIT);
-    for (let u = 0; u < 12; u++) {
-      const m = new THREE.Mesh(geo, this.unitMat);
-      m.castShadow = true;
-      this.units.push(m);
-      this.group.add(m);
+    for (let u = 0; u < 8; u++) {
+      const b = new BlockMesh(u % 4, Math.floor(u / 4), this.unitMat);
+      this.units.push(b);
+      this.group.add(b.mesh);
     }
     this.sheet = mesh(new THREE.BoxGeometry(1.5, 0.06, 1.1), "#f7f3ea");
     this.sheet.position.y = 0.03;
@@ -196,7 +241,7 @@ class Lot {
     this.group.add(this.sheet, this.boat, this.tag);
   }
 
-  /** 소조립(절단) 중이면 자투리가 종이 둘레에서 튀어 나갔다가 떨어진다. time은 초. */
+  /** 절단 중이면 자투리가 종이 둘레에서 튀어 나갔다가 떨어진다. time은 초. */
   animateCut(cutting: boolean, time: number): void {
     this.scraps.forEach((scrap, k) => {
       scrap.visible = cutting;
@@ -211,16 +256,19 @@ class Lot {
   /** 칠한 정도 0~1(frame의 paint, 4.0: 도장 공정에서 칠한다) */
   paint = 0;
 
-  /** form: 0 부재(종이 묶음) … 4 배. bench면 소조립 중에 블록이 하나씩 생긴다. */
+  /**
+   * form: −2 종이 묶음 … 4 배(frame.ts의 FORM). bench면 그 공정이 진행되는 모습:
+   * 절단은 묶음이 줄며 판이 한 장씩 나오고, 가공은 판이 굽고, 소조립은 굽힌 판이 하나씩 블록으로 선다.
+   */
   setForm(form: number, onBench: boolean): void {
     this.hookX = null;
     const stage = Math.floor(form + 1e-9);
     const t = form - stage;
-    this.sheet.visible = stage === 0;
-    this.sheet.scale.setScalar(stage === 0 ? 1 - 0.6 * t : 1);
+    this.sheet.visible = stage === -2;
+    this.sheet.scale.setScalar(stage === -2 && onBench ? 1 - 0.6 * t : 1);
     this.boat.visible = stage >= 3 && (stage === 4 || t > 0);
 
-    // 블록 배치: 6열 × 2행. 짝(열 2개)이 먼저 붙고(12 → 6), 그다음 앞뒤 줄이 붙는다(6 → 3).
+    // 블록 배치: 4열 × 2줄. 짝(열 2개)이 먼저 붙고(8 → 4), 그다음 좌우 줄이 붙는다(4 → 2). 판일 때는 띄워 놓는다.
     let gp = 0.12, gr = 0.12;
     if (stage === 1) gp = 0.12 * (1 - ease(t));
     if (stage >= 2) gp = 0;
@@ -231,20 +279,23 @@ class Lot {
     this.unitMat.color.lerpColors(PAPER, PAINT, paint);
     this.hullMat.color.copy(PAINT);
 
-    const visibleUnits = stage === 0 ? (onBench ? Math.ceil(12 * t) : 0) : 12;
-    // 탑재(3 → 4): 대블록 3개를 크레인이 하나씩 배 자리로 옮긴다.
-    const moving = stage === 3 ? Math.min(2, Math.floor(t * 3)) : -1;
-    const u3 = stage === 3 ? t * 3 - moving : 0;
-    const pileX = stage === 3 ? -0.9 : 0;
+    // 절단: 판이 한 장씩 나온다. 그 앞(묶음만)이면 0장
+    const visibleUnits = stage === -2 ? (onBench ? Math.ceil(8 * t) : 0) : 8;
+    const bend = stage <= -2 ? 0 : stage === -1 ? (onBench ? t : 0) : 1;
+    // 탑재(3 → 4): 대블록 2개를 크레인이 하나씩 배 자리로 옮긴다.
+    const moving = stage === 3 ? Math.min(1, Math.floor(t * 2)) : -1;
+    const u3 = stage === 3 ? t * 2 - moving : 0;
+    const pileX = stage === 3 ? -0.8 : 0;
     const boatX = 0.75;
 
-    this.units.forEach((m, u) => {
-      const c = u % 6, r = Math.floor(u / 6);
+    this.units.forEach((b, u) => {
+      const m = b.mesh;
+      const c = u % 4, r = Math.floor(u / 4);
       const pair = Math.floor(c / 2), within = c % 2;
-      const px = (pair - 1) * (2 * UNIT + gb + gp);
-      let x = px + (within - 0.5) * (UNIT + gp) + pileX;
-      const z = (r - 0.5) * (UNIT + gr);
-      let y = 0.11;
+      const px = (pair - 0.5) * (2 * BLOCK_X + gb + gp);
+      let x = px + (within - 0.5) * (BLOCK_X + gp) + pileX;
+      const z = (r - 0.5) * (BLOCK_Z + gr);
+      let y = BLOCK_H / 2;
       let visible = u < visibleUnits && stage < 4;
       if (stage === 3) {
         if (pair < moving) visible = false;
@@ -253,14 +304,17 @@ class Lot {
           const k = clamp01(u3 / 0.55);
           if (u3 > 0.6) visible = false;
           x = x + (boatX - (px + pileX)) * ease(k);
-          y = 0.11 + Math.sin(Math.PI * k) * 1.4;
+          y = BLOCK_H / 2 + Math.sin(Math.PI * k) * 1.4;
           this.hookX = px + pileX + (boatX - (px + pileX)) * ease(k);
           this.hookY = y + 0.15;
         }
       }
+      // 두께: 판(절단·가공 뒤)은 얇고, 소조립에서 판이 하나씩 블록으로 선다
+      const thick = stage < 0 ? PLATE : stage === 0 ? PLATE + (1 - PLATE) * (onBench ? clamp01(8 * t - u) : 0) : 1;
+      b.setBend(bend);
       m.visible = visible;
-      m.position.set(x, y, z);
-      m.scale.setScalar(stage === 0 && onBench && u === visibleUnits - 1 ? 0.6 + 0.4 * ((12 * t) % 1) : 1);
+      m.scale.set(1, thick, 1);
+      m.position.set(x, y * thick, z);
     });
 
     // 나눠 하기: 블록을 열(짝) 단위로 부분마다 나눠, 부분이 든 작업장 자리로 옮긴다. 탑재(대블록 → 배)는 나누지 않는다.
@@ -271,10 +325,10 @@ class Lot {
     });
     if (split && split.length > 1 && stage < 3) {
       const k = split.length;
-      const partOf = (u: number) => Math.min(k - 1, Math.floor(((u % 6) * k) / 6));
+      const partOf = (u: number) => Math.min(k - 1, Math.floor(((u % 4) * k) / 4));
       const sum = Array.from({ length: k }, () => ({ x: 0, n: 0 }));
-      this.units.forEach((m, u) => { const s = sum[partOf(u)]; s.x += m.position.x; s.n += 1; });
-      this.units.forEach((m, u) => {
+      this.units.forEach(({ mesh: m }, u) => { const s = sum[partOf(u)]; s.x += m.position.x; s.n += 1; });
+      this.units.forEach(({ mesh: m }, u) => {
         const j = partOf(u), mean = sum[j].x / Math.max(1, sum[j].n);
         m.position.x += split[j].offset.x - mean;
         m.position.z += split[j].offset.z;
@@ -421,12 +475,13 @@ export class Yard {
     sun.target.position.set(-6, 0, 0);
     sun.castShadow = true;
     sun.shadow.mapSize.set(4096, 4096);
-    Object.assign(sun.shadow.camera, { left: -36, right: 36, top: 24, bottom: -24, near: 1, far: 90 });
+    Object.assign(sun.shadow.camera, { left: -48, right: 38, top: 24, bottom: -24, near: 1, far: 90 });
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.02;
     this.scene.add(hemi, sun, sun.target);
 
     buildLand(this.scene);
+    this.buildConveyor();
     this.buildAreas();
     this.buildStations();
     this.scene.add(this.gulliver.root);
@@ -657,7 +712,7 @@ export class Yard {
       floor.castShadow = false;
       this.scene.add(floor, buildYardLines(at.x - STOCK_HALF, at.x + STOCK_HALF, z0, z1, "#f4f1ea"));
       const ids = Object.keys(STATION_COLOR);
-      const tag = label(`<i style="background:${STATION_COLOR[ids[STOCK_COLOR_OF[p]]]}"></i>${p === 2 ? "마감동 적치장" : "적치장"}`, "station-tag small-tag");
+      const tag = label(`<i style="background:${STATION_COLOR[ids[STOCK_COLOR_OF[p]]]}"></i>${STOCK_NAME[p]}`, "station-tag small-tag");
       tag.position.set(at.x - STOCK_HALF + 0.9, 0.05, far - at.dir * 0.25);
       this.scene.add(tag);
     });
@@ -1102,7 +1157,7 @@ export class Yard {
       }
       lot.paint = view.paint;
       lot.setForm(view.form, view.place === "bench");
-      lot.animateCut(view.place === "bench" && view.station === ST.sub && (view.state === "work" || view.state === "rework"), performance.now() / 1000);
+      lot.animateCut(view.place === "bench" && view.station === ST.cut && (view.state === "work" || view.state === "rework"), performance.now() / 1000);
       if (view.place === "sea") {
         lot.group.rotation.set(Math.sin(lot.floatPhase * 1.1) * 0.03, 0, Math.sin(lot.floatPhase * 1.3) * 0.04);
       } else {
@@ -1129,6 +1184,9 @@ export class Yard {
       const gate = launch ? this.gateHand(u, frac) : null;
       hand.place(gate ? at.lerp(gate.at, gate.k) : at);
     }
+    // 컨베이어벨트: 가공이 일하는 날 판이 흘러간다
+    const proc = f.stations[ST.proc];
+    this.beltOn = !!proc && (proc.state === "work" || proc.state === "rework");
     this.craneActive = [0, 1].map((u) => (u === 0 ? hook : hook2) !== null || launching.some((l) => l.unit === u));
 
     // 정반: 작업장(1호, 증설하면 2호)마다 인원 또는 로봇, 시니어, 중지, 잔업
@@ -1166,7 +1224,7 @@ export class Yard {
             const p = this.people[person++];
             p?.setHat(TRADE_HAT[STATION_TRADE[st.id]] ?? TRADE_HAT.assembly);
             p?.place(at, side > 0 ? Math.PI : 0, unitWorking && !out ? "work" : "stand", jump, within);
-            p?.holdKnife(i === ST.sub && unitWorking);
+            p?.holdKnife(i === ST.cut && unitWorking);
           }
         });
       }
@@ -1176,7 +1234,7 @@ export class Yard {
         const b = bench(0);
         this.senior.place(out ? new THREE.Vector3(b.x - 1.6, 0, b.z + 1.9) : new THREE.Vector3(b.x + 1.3, MAT_TOP, b.z - 0.2),
           -Math.PI / 2, working && !out ? "work" : "stand", jump, within);
-        this.senior.holdKnife(i === ST.sub && working);
+        this.senior.holdKnife(i === ST.cut && working);
       }
       // 멈춘 작업장에 연기(고장)나 통제 테이프(사고). 둘 다 멈췄으면 1호에 표시한다.
       const stopped = st.units.findIndex((u) => u.stop !== null);
@@ -1192,7 +1250,8 @@ export class Yard {
         : st.stop === "breakdown" ? chipHtml("breakdown_stop", "고장 · 수리 중")
         : st.state === "labor_wait" ? chipHtml("labor_wait", "인력 대기")
         : st.state === "material_wait" ? chipHtml("material_wait", "자재 대기")
-        : i === ST.sub && working ? `<span class="chip cut">절단 중</span>` : "";
+        : i === ST.cut && working ? `<span class="chip cut">절단 중</span>`
+        : i === ST.proc && working ? `<span class="chip cut">굽힘 중</span>` : "";
       const crewNote = robot ? " · 로봇" : st.crew === "skilled" ? " · 숙련공" : "";
       props.tag.visible = i !== ST.trial;
       setLabel(props.tag, `<i style="background:${STATION_COLOR[st.id]}"></i>${st.name}${st.units.length > 1 ? " 1호" : ""}${crewNote}${st.overtime && !robot ? " · 잔업" : ""}${chip}`);
@@ -1345,6 +1404,12 @@ export class Yard {
     if (before.place === now.place && before.station === now.station && before.unit === now.unit) return;
     const y = MAT_TOP;
     const to = benchAt(now.station, now.unit, docks), from = benchAt(before.station, before.unit, docks);
+    if (before.station === ST.proc && before.place === "bench" && now.station === ST.sub) {
+      // 가공 → 소조립: 컨베이어벨트 위로 올라 벨트를 따라 간다(D43)
+      const c = CONVEYOR;
+      lot.path = [new THREE.Vector3(c.x0 - 0.3, c.y, c.z), new THREE.Vector3(c.x1 + 0.3, c.y, c.z)];
+      return;
+    }
     if (now.place === "bench" && !nearLane(to.z) && before.place !== "bench") {
       const sx = SPUR_X[SPUR_IN[now.station]];
       lot.path = [new THREE.Vector3(sx, y, LANE_Z), new THREE.Vector3(sx, y, to.z)];
@@ -1443,7 +1508,43 @@ export class Yard {
     return `<b>${view.ship}</b>${chip}`;
   }
 
+  /** 컨베이어벨트 위 판(가공이 일하는 동안 벨트를 따라 흘러간다) */
+  private readonly beltPlates: THREE.Mesh[] = [];
+  private beltOn = false;
+
+  /** 컨베이어벨트(D43): 가공 공장에서 소조립 공장까지. 샛길 위를 지나도록 다리 위에 놓는다 */
+  private buildConveyor(): void {
+    const c = CONVEYOR, len = c.x1 - c.x0 + 1.2, cx = (c.x0 + c.x1) / 2;
+    const belt = mesh(new THREE.BoxGeometry(len, 0.08, c.w), "#3a3f3c", { roughness: 0.9 });
+    belt.position.set(cx, c.y, c.z);
+    const rails = [-1, 1].map((side) => {
+      const r = mesh(new THREE.BoxGeometry(len, 0.12, 0.05), "#9aa3a8");
+      r.position.set(cx, c.y + 0.04, c.z + side * (c.w / 2 + 0.02));
+      return r;
+    });
+    this.scene.add(belt, ...rails);
+    for (const x of [c.x0 - 0.4, cx, c.x1 + 0.4]) for (const side of [-1, 1]) {
+      const leg = mesh(new THREE.BoxGeometry(0.06, c.y, 0.06), "#7d878c");
+      leg.position.set(x, c.y / 2, c.z + side * c.w / 2);
+      this.scene.add(leg);
+    }
+    for (let k = 0; k < 4; k++) {
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.03, 0.26), paperMaterial());
+      plate.castShadow = true;
+      plate.visible = false;
+      this.beltPlates.push(plate);
+      this.scene.add(plate);
+    }
+  }
+
   private animateProps(t: number): void {
+    const c = CONVEYOR;
+    this.beltPlates.forEach((plate, k) => {
+      plate.visible = this.beltOn;
+      if (!this.beltOn) return;
+      const u = (t * 0.25 + k / this.beltPlates.length) % 1;
+      plate.position.set(c.x0 - 0.5 + (c.x1 - c.x0 + 1) * u, c.y + 0.06, c.z);
+    });
     const puffs = (g: THREE.Group, height: number) => {
       if (!g.visible) return;
       g.children.forEach((c, k) => {
