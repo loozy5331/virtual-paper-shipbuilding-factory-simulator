@@ -1,89 +1,476 @@
 {
   "_comment": "모든 시나리오가 함께 쓰는 규칙: 공정, 자재, 선종, 단가, 고장, 운반, 증설, 연구, 발주 방식, 사고·고장 난수표. 수주와 목표는 scenarios/*.json에 있다.",
   "stations": [
-    {"id": "sub_assembly", "name": "소조립", "real": "소조립 정반: 부재를 붙여 작은 블록 12개", "material": "paper"},
-    {"id": "block_assembly", "name": "중조립", "real": "중조립 정반: 블록 12개 → 6개", "material": null},
-    {"id": "grand_assembly", "name": "PE장", "real": "PE장(선행탑재장, 도크 옆 옥외 조립장): 블록 6개 → 3개, 도장", "material": "paint"},
-    {"id": "erection", "name": "탑재", "real": "골리앗 크레인: 블록 3개 → 배 1척, 의장", "material": "flag"}
+    {
+      "id": "sub_assembly",
+      "name": "소조립",
+      "real": "소조립 정반: 부재를 붙여 작은 블록 12개",
+      "material": "paper",
+      "trade": "assembly",
+      "after": [],
+      "site": "sub",
+      "split": true
+    },
+    {
+      "id": "block_assembly",
+      "name": "중조립",
+      "real": "중조립 정반: 블록 12개 → 6개",
+      "material": null,
+      "trade": "assembly",
+      "after": [
+        "sub_assembly"
+      ],
+      "site": "block",
+      "split": true
+    },
+    {
+      "id": "painting",
+      "name": "도장",
+      "real": "블록 마감동 도장장: 블록에 칠을 한다",
+      "material": "paint",
+      "trade": "painting",
+      "after": [
+        "block_assembly"
+      ],
+      "site": "finish",
+      "split": true
+    },
+    {
+      "id": "pre_outfitting",
+      "name": "선행의장",
+      "real": "블록 마감동 의장장: 블록에 배관·받침을 미리 단다",
+      "material": null,
+      "trade": "outfitting",
+      "after": [
+        "block_assembly"
+      ],
+      "site": "finish",
+      "split": true
+    },
+    {
+      "id": "grand_assembly",
+      "name": "PE장",
+      "real": "PE장(선행탑재장, 도크 옆 옥외 조립장): 블록 6개 → 3개",
+      "material": null,
+      "trade": "assembly",
+      "after": [
+        "painting",
+        "pre_outfitting"
+      ],
+      "site": "pe",
+      "split": true
+    },
+    {
+      "id": "erection",
+      "name": "탑재",
+      "real": "골리앗 크레인: 블록 3개 → 배 1척",
+      "material": null,
+      "trade": "erection",
+      "after": [
+        "grand_assembly"
+      ],
+      "site": "dock",
+      "arrive": "crane",
+      "split": false
+    },
+    {
+      "id": "quay_outfitting",
+      "name": "안벽의장",
+      "real": "안벽: 진수한 배의 마무리 의장",
+      "material": "flag",
+      "trade": "outfitting",
+      "after": [
+        "erection"
+      ],
+      "site": "quay",
+      "arrive": "tow",
+      "split": false
+    },
+    {
+      "id": "sea_trial",
+      "name": "시운전",
+      "real": "바다: 항해·기관 시험(외부 시운전팀)",
+      "material": null,
+      "trade": "trial",
+      "after": [
+        "quay_outfitting"
+      ],
+      "site": "sea",
+      "arrive": "tow",
+      "split": false
+    }
   ],
   "materials": [
-    {"id": "paper", "name": "종이", "price": 20, "lead_days": 2, "cheap_name": "휴지"},
-    {"id": "paint", "name": "물감", "price": 40, "lead_days": 5, "cheap_name": "저가 물감"},
-    {"id": "flag", "name": "깃발", "price": 100, "lead_days": 10, "cheap_name": "저가 깃발"}
+    {
+      "id": "paper",
+      "name": "종이",
+      "price": 20,
+      "lead_days": 2,
+      "cheap_name": "휴지"
+    },
+    {
+      "id": "paint",
+      "name": "물감",
+      "price": 40,
+      "lead_days": 5,
+      "cheap_name": "저가 물감"
+    },
+    {
+      "id": "flag",
+      "name": "깃발",
+      "price": 100,
+      "lead_days": 10,
+      "cheap_name": "저가 깃발"
+    }
   ],
   "ship_types": {
     "VLCC": {
       "name": "VLCC",
-      "work": {"sub_assembly": 8, "block_assembly": 16, "grand_assembly": 8, "erection": 8},
-      "bom": {"paper": 8, "paint": 4, "flag": 2}
+      "work": {
+        "sub_assembly": 8,
+        "block_assembly": 16,
+        "painting": 4,
+        "pre_outfitting": 4,
+        "grand_assembly": 8,
+        "erection": 8,
+        "quay_outfitting": 4,
+        "sea_trial": 3
+      },
+      "bom": {
+        "paper": 8,
+        "paint": 4,
+        "flag": 2
+      }
     },
     "CONT": {
       "name": "컨테이너선",
-      "work": {"sub_assembly": 6, "block_assembly": 12, "grand_assembly": 4, "erection": 10},
-      "bom": {"paper": 6, "paint": 2, "flag": 3}
+      "work": {
+        "sub_assembly": 6,
+        "block_assembly": 12,
+        "painting": 3,
+        "pre_outfitting": 4,
+        "grand_assembly": 4,
+        "erection": 10,
+        "quay_outfitting": 4,
+        "sea_trial": 3
+      },
+      "bom": {
+        "paper": 6,
+        "paint": 2,
+        "flag": 3
+      }
     },
     "LNG": {
       "name": "LNG선",
-      "work": {"sub_assembly": 8, "block_assembly": 14, "grand_assembly": 8, "erection": 18},
-      "bom": {"paper": 8, "paint": 4, "flag": 6}
+      "work": {
+        "sub_assembly": 8,
+        "block_assembly": 14,
+        "painting": 4,
+        "pre_outfitting": 6,
+        "grand_assembly": 8,
+        "erection": 10,
+        "quay_outfitting": 10,
+        "sea_trial": 5
+      },
+      "bom": {
+        "paper": 8,
+        "paint": 4,
+        "flag": 6
+      }
     }
   },
   "ordering": {
-    "bulk": {"name": "일괄 발주", "summary": "모든 자재를 1일에 한꺼번에 발주한다. 자재 대기는 없지만 재고비가 쌓인다."},
-    "jit": {"name": "역산 발주", "summary": "자재가 필요한 날에서 리드타임만큼 거꾸로 세어 발주한다.", "buffer_days": 0},
-    "late": {"name": "늦은 발주", "summary": "자재가 필요한 날 발주한다. 리드타임만큼 자재 대기가 생긴다."}
+    "bulk": {
+      "name": "일괄 발주",
+      "summary": "모든 자재를 1일에 한꺼번에 발주한다. 자재 대기는 없지만 재고비가 쌓인다."
+    },
+    "jit": {
+      "name": "역산 발주",
+      "summary": "자재가 필요한 날에서 리드타임만큼 거꾸로 세어 발주한다.",
+      "buffer_days": 0
+    },
+    "late": {
+      "name": "늦은 발주",
+      "summary": "자재가 필요한 날 발주한다. 리드타임만큼 자재 대기가 생긴다."
+    }
   },
-  "blocks": {"sub_assembly": 12, "block_assembly": 6, "grand_assembly": 3, "erection": 1},
+  "blocks": {
+    "sub_assembly": 12,
+    "block_assembly": 6,
+    "painting": 6,
+    "pre_outfitting": 6,
+    "grand_assembly": 3,
+    "erection": 1,
+    "quay_outfitting": 1,
+    "sea_trial": 1
+  },
   "rules": {
     "max_workers_per_station": 2,
     "max_pool": 12,
     "methods": {
-      "standard": {"name": "표준", "speed": 1.0, "defect_rate": 0.1},
-      "fast": {"name": "속성", "speed": 1.5, "defect_rate": 0.3},
-      "new": {"name": "신공법", "speed": 1.25, "defect_rate": 0.3, "learning_step": 0.1, "defect_floor": 0.05, "setup_cost": 150, "summary": "처음엔 불량이 많지만 로트를 끝낼 때마다 불량률이 10%p씩 줄어 5%까지 내려간다(학습 곡선)."}
+      "standard": {
+        "name": "표준",
+        "speed": 1.0,
+        "defect_rate": 0.1
+      },
+      "fast": {
+        "name": "속성",
+        "speed": 1.5,
+        "defect_rate": 0.3
+      },
+      "new": {
+        "name": "신공법",
+        "speed": 1.25,
+        "defect_rate": 0.3,
+        "learning_step": 0.1,
+        "defect_floor": 0.05,
+        "setup_cost": 150,
+        "summary": "처음엔 불량이 많지만 로트를 끝낼 때마다 불량률이 10%p씩 줄어 5%까지 내려간다(학습 곡선)."
+      }
     },
-    "overtime": {"speed": 1.25, "pay_rate": 0.5, "defect_add": 0.05, "accident_every_days": 10, "accident_threshold": 0.5, "accident_stop_days": 3},
+    "overtime": {
+      "speed": 1.25,
+      "pay_rate": 0.5,
+      "defect_add": 0.05,
+      "accident_every_days": 10,
+      "accident_threshold": 0.5,
+      "accident_stop_days": 3
+    },
     "no_maintenance_defect_add": 0.15,
     "rework_ratio": 0.5,
-    "costs": {"wage_per_day": 10, "maintenance_per_station": 100, "rework_per_defect": 200, "accident": 300, "holding_rate_per_day": 0.01, "wip_per_ship_day": 10, "late_penalty_rate_per_day": 0.03},
+    "costs": {
+      "wage_per_day": 10,
+      "maintenance_per_station": 100,
+      "rework_per_defect": 200,
+      "accident": 300,
+      "holding_rate_per_day": 0.01,
+      "wip_per_ship_day": 10,
+      "late_penalty_rate_per_day": 0.03
+    },
     "crews": {
-      "normal": {"name": "일반", "summary": "대기소에서 2명을 받는다."},
-      "skilled": {"name": "숙련공", "defect_add": -0.08, "extra_wage_per_worker_day": 5, "summary": "불량률 −8%p. 그 작업장에 배정된 사람의 일당이 50% 비싸다."},
-      "robot": {"name": "로봇", "defect_add": 0.05, "rate": 2, "install_cost": 700, "summary": "사람 없이 2명분을 처리한다. 작업장마다 도입비가 들고 불량률이 +5%p다. 잔업은 하지 않는다."}
+      "normal": {
+        "name": "일반",
+        "summary": "대기소에서 2명을 받는다."
+      },
+      "skilled": {
+        "name": "숙련공",
+        "defect_add": -0.08,
+        "extra_wage_per_worker_day": 5,
+        "summary": "불량률 −8%p. 그 작업장에 배정된 사람의 일당이 50% 비싸다."
+      },
+      "robot": {
+        "name": "로봇",
+        "defect_add": 0.05,
+        "rate": 2,
+        "install_cost": 700,
+        "summary": "사람 없이 2명분을 처리한다. 작업장마다 도입비가 들고 불량률이 +5%p다. 잔업은 하지 않는다."
+      },
+      "external": {
+        "name": "외부 시운전팀",
+        "summary": "시운전은 외부 전문팀이 한다. 대기소 사람을 쓰지 않고, 일한 날마다 팀마다 비용을 낸다."
+      }
     }
   },
-  "breakdown": {"every_busy_days": 8, "threshold": 0.4, "threshold_maintained": 0.1, "stop_days": 2, "cost": 150},
+  "breakdown": {
+    "every_busy_days": 8,
+    "threshold": 0.4,
+    "threshold_maintained": 0.1,
+    "stop_days": 2,
+    "cost": 150
+  },
   "expansion": {
     "name": "작업장 증설",
     "max_units": 3,
-    "max_units_by_station": {"erection": 2},
+    "max_units_by_station": {
+      "erection": 2,
+      "sea_trial": 2
+    },
     "_cap_note": "탑재(도크)마다 골리앗 크레인이 하나 있어야 한다. 크레인은 걸리버의 두 손이라 도크는 2곳까지(3.0)",
     "summary": "같은 공정에 작업장을 하나 더 두어 서로 다른 배를 동시에 처리한다. 작업장마다 사람을 따로 보내야 한다.",
-    "cost": {"sub_assembly": 300, "block_assembly": 300, "grand_assembly": 300, "erection": 800}
+    "cost": {
+      "sub_assembly": 300,
+      "block_assembly": 300,
+      "grand_assembly": 300,
+      "erection": 800,
+      "painting": 300,
+      "pre_outfitting": 300,
+      "quay_outfitting": 300,
+      "sea_trial": 500
+    }
   },
-  "transporter": {"max_count": 2, "roles": ["material", "block"], "kits_per_day": 2, "crane_fed": ["erection"], "capacity": 6, "lot_weight": 12, "cost_per_day": 5, "maintenance_cost": 50, "every_moves": 6, "threshold": 0.4, "threshold_maintained": 0.1, "stop_days": 2, "repair_cost": 150},
+  "transporter": {
+    "max_count": 2,
+    "roles": [
+      "material",
+      "block"
+    ],
+    "kits_per_day": 2,
+    "capacity": 6,
+    "lot_weight": 12,
+    "cost_per_day": 5,
+    "maintenance_cost": 50,
+    "every_moves": 6,
+    "threshold": 0.4,
+    "threshold_maintained": 0.1,
+    "stop_days": 2,
+    "repair_cost": 150,
+    "_arrive_note": "공정 사이 이동(4.0): 같은 자리(site)면 다음 날, 공정의 arrive가 crane(탑재)·tow(안벽의장·시운전)면 다음 날, 그 밖은 T2 블록 운반"
+  },
   "research": {
-    "automation": {"name": "공정 자동화", "cost": 500, "days": 12, "workers_needed": 1, "worker_factor": 2, "effect": "사람이 하는 작업장마다 1명만 보내도 2명분을 처리한다. 대기소 인원을 줄일 수 있다."},
-    "auto_inspect": {"name": "자동 검사", "cost": 300, "days": 8, "defect_sub": 0.05, "rework_ratio": 0.25, "effect": "모든 공정 불량률 −5%p, 불량이 나도 재작업은 작업량의 50% 대신 25%."},
-    "predictive": {"name": "예지 정비", "cost": 400, "days": 8, "effect": "작업장과 트랜스포터가 고장 나지 않는다. 정비를 안 한 공정의 불량률 +15%p는 그대로다."}
+    "automation": {
+      "name": "공정 자동화",
+      "cost": 500,
+      "days": 12,
+      "workers_needed": 1,
+      "worker_factor": 2,
+      "effect": "사람이 하는 작업장마다 1명만 보내도 2명분을 처리한다. 대기소 인원을 줄일 수 있다."
+    },
+    "auto_inspect": {
+      "name": "자동 검사",
+      "cost": 300,
+      "days": 8,
+      "defect_sub": 0.05,
+      "rework_ratio": 0.25,
+      "effect": "모든 공정 불량률 −5%p, 불량이 나도 재작업은 작업량의 50% 대신 25%."
+    },
+    "predictive": {
+      "name": "예지 정비",
+      "cost": 400,
+      "days": 8,
+      "effect": "작업장과 트랜스포터가 고장 나지 않는다. 정비를 안 한 공정의 불량률 +15%p는 그대로다."
+    }
   },
   "random": {
     "accident": {
-      "sub_assembly": [0.71, 0.3, 0.55],
-      "block_assembly": [0.42, 0.64, 0.18],
-      "grand_assembly": [0.83, 0.27, 0.6],
-      "erection": [0.36, 0.92, 0.45]
+      "sub_assembly": [
+        0.71,
+        0.3,
+        0.55
+      ],
+      "block_assembly": [
+        0.42,
+        0.64,
+        0.18
+      ],
+      "grand_assembly": [
+        0.83,
+        0.27,
+        0.6
+      ],
+      "erection": [
+        0.36,
+        0.92,
+        0.45
+      ],
+      "painting": [
+        0.58,
+        0.22,
+        0.79
+      ],
+      "pre_outfitting": [
+        0.31,
+        0.67,
+        0.44
+      ],
+      "quay_outfitting": [
+        0.74,
+        0.12,
+        0.5
+      ],
+      "sea_trial": [
+        0.9,
+        0.4,
+        0.65
+      ]
     },
     "breakdown": {
-      "sub_assembly": [0.33, 0.58, 0.12],
-      "block_assembly": [0.05, 0.47, 0.81],
-      "grand_assembly": [0.66, 0.22, 0.39],
-      "erection": [0.52, 0.08, 0.74]
+      "sub_assembly": [
+        0.33,
+        0.58,
+        0.12
+      ],
+      "block_assembly": [
+        0.05,
+        0.47,
+        0.81
+      ],
+      "grand_assembly": [
+        0.66,
+        0.22,
+        0.39
+      ],
+      "erection": [
+        0.52,
+        0.08,
+        0.74
+      ],
+      "painting": [
+        0.44,
+        0.71,
+        0.09
+      ],
+      "pre_outfitting": [
+        0.27,
+        0.55,
+        0.83
+      ],
+      "quay_outfitting": [
+        0.61,
+        0.19,
+        0.36
+      ],
+      "sea_trial": [
+        0.48,
+        0.85,
+        0.23
+      ]
     },
-    "transporter_breakdown": [0.25, 0.6, 0.15]
+    "transporter_breakdown": [
+      0.25,
+      0.6,
+      0.15
+    ]
   },
   "material_grades": {
-    "standard": {"name": "표준", "price_factor": 1.0, "defect_add": 0.0},
-    "cheap": {"name": "저가", "price_factor": 0.5, "defect_add": 0.3}
+    "standard": {
+      "name": "표준",
+      "price_factor": 1.0,
+      "defect_add": 0.0
+    },
+    "cheap": {
+      "name": "저가",
+      "price_factor": 0.5,
+      "defect_add": 0.3
+    }
+  },
+  "trades": {
+    "_comment": "직종(4.0, D42): 대기소는 하나이고 사람마다 직종이 있다. 사람은 자기 직종 공정에만 간다. 시운전은 외부 전문팀(대기소 밖, 일한 날마다 비용).",
+    "assembly": {
+      "name": "조립",
+      "max": 12
+    },
+    "erection": {
+      "name": "탑재",
+      "max": 6
+    },
+    "painting": {
+      "name": "도장",
+      "max": 6
+    },
+    "outfitting": {
+      "name": "의장",
+      "max": 6
+    },
+    "trial": {
+      "name": "시운전",
+      "external": true,
+      "cost_per_team_day": 20
+    }
+  },
+  "default_pools": {
+    "_comment": "1.x~3.x 설정(pool 하나)은 pool을 조립 인원으로 읽고 나머지는 이 값으로 채운다",
+    "erection": 2,
+    "painting": 2,
+    "outfitting": 2
   }
 }

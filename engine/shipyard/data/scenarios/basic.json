@@ -6,27 +6,120 @@
   "period": "2026년 4분기",
   "days": 60,
   "orders": [
-    {"id": "S1", "type": "VLCC", "order_day": 1, "due_day": 30, "price": 3000},
-    {"id": "S2", "type": "CONT", "order_day": 1, "due_day": 38, "price": 2600},
-    {"id": "S3", "type": "VLCC", "order_day": 1, "due_day": 46, "price": 3000},
-    {"id": "S4", "type": "CONT", "order_day": 1, "due_day": 56, "price": 2600}
+    {
+      "id": "S1",
+      "type": "VLCC",
+      "order_day": 1,
+      "due_day": 30,
+      "price": 3000
+    },
+    {
+      "id": "S2",
+      "type": "CONT",
+      "order_day": 1,
+      "due_day": 38,
+      "price": 2600
+    },
+    {
+      "id": "S3",
+      "type": "VLCC",
+      "order_day": 1,
+      "due_day": 46,
+      "price": 3000
+    },
+    {
+      "id": "S4",
+      "type": "CONT",
+      "order_day": 1,
+      "due_day": 56,
+      "price": 2600
+    }
   ],
-  "initial_stock": {"paper": 0, "paint": 0, "flag": 0},
-  "kpi": {"revenue": 11200, "profit": 4200, "on_time_rate": 1.0, "first_pass_yield": 0.9},
+  "initial_stock": {
+    "paper": 0,
+    "paint": 0,
+    "flag": 0
+  },
+  "kpi": {
+    "revenue": 11200,
+    "profit": 4200,
+    "on_time_rate": 1.0,
+    "first_pass_yield": 0.9
+  },
   "unlocks": "일정·자재 발주·사람·정비 같은 기본 운영만 씁니다. 작업장 증설과 로봇·신공법·저가 자재는 다음 분기부터 열립니다.",
-  "options": {"crews": ["normal", "skilled"], "methods": ["standard", "fast"], "material_grades": ["standard"], "max_units": 1, "split": false},
+  "options": {
+    "crews": [
+      "normal",
+      "skilled"
+    ],
+    "methods": [
+      "standard",
+      "fast"
+    ],
+    "material_grades": [
+      "standard"
+    ],
+    "max_units": 1,
+    "split": false
+  },
   "grade": {
-    "weights": {"revenue": 30, "profit": 40, "delivery": 20, "quality": 10},
+    "weights": {
+      "revenue": 30,
+      "profit": 40,
+      "delivery": 20,
+      "quality": 10
+    },
     "profit_cap": 1.3,
-    "bands": {"S": 105, "A": 85, "B": 70, "C": 50},
+    "bands": {
+      "S": 105,
+      "A": 85,
+      "B": 70,
+      "C": 50
+    },
     "baseline_preset": "all_in"
   },
   "random": {
     "quality": {
-      "S1": {"sub_assembly": 0.62, "block_assembly": 0.21, "grand_assembly": 0.48, "erection": 0.08},
-      "S2": {"sub_assembly": 0.35, "block_assembly": 0.74, "grand_assembly": 0.03, "erection": 0.41},
-      "S3": {"sub_assembly": 0.17, "block_assembly": 0.28, "grand_assembly": 0.9, "erection": 0.33},
-      "S4": {"sub_assembly": 0.55, "block_assembly": 0.13, "grand_assembly": 0.69, "erection": 0.26}
+      "S1": {
+        "sub_assembly": 0.62,
+        "block_assembly": 0.21,
+        "grand_assembly": 0.48,
+        "erection": 0.08,
+        "painting": 0.47,
+        "pre_outfitting": 0.64,
+        "quay_outfitting": 0.38,
+        "sea_trial": 0.56
+      },
+      "S2": {
+        "sub_assembly": 0.35,
+        "block_assembly": 0.74,
+        "grand_assembly": 0.03,
+        "erection": 0.41,
+        "painting": 0.42,
+        "pre_outfitting": 0.6,
+        "quay_outfitting": 0.11,
+        "sea_trial": 0.93
+      },
+      "S3": {
+        "sub_assembly": 0.17,
+        "block_assembly": 0.28,
+        "grand_assembly": 0.9,
+        "erection": 0.33,
+        "painting": 0.05,
+        "pre_outfitting": 0.19,
+        "quay_outfitting": 0.24,
+        "sea_trial": 0.82
+      },
+      "S4": {
+        "sub_assembly": 0.55,
+        "block_assembly": 0.13,
+        "grand_assembly": 0.69,
+        "erection": 0.26,
+        "painting": 0.29,
+        "pre_outfitting": 0.71,
+        "quay_outfitting": 0.87,
+        "sea_trial": 0.76
+      }
     }
   },
   "presets": [
@@ -37,19 +130,50 @@
       "config": {
         "ordering": "late",
         "ships": {
-          "S1": {"priority": 1, "start_day": 1},
-          "S2": {"priority": 3, "start_day": 1},
-          "S3": {"priority": 2, "start_day": 1},
-          "S4": {"priority": 4, "start_day": 1}
+          "S1": {
+            "priority": 1,
+            "start_day": 1
+          },
+          "S2": {
+            "priority": 3,
+            "start_day": 1
+          },
+          "S3": {
+            "priority": 2,
+            "start_day": 1
+          },
+          "S4": {
+            "priority": 4,
+            "start_day": 1
+          }
         },
         "stations": {
-          "sub_assembly": {"method": "fast", "overtime": true, "maintenance": false},
-          "block_assembly": {"method": "fast", "overtime": true, "maintenance": false},
-          "grand_assembly": {"method": "fast", "overtime": true, "maintenance": false},
-          "erection": {"method": "fast", "overtime": true, "maintenance": false}
+          "sub_assembly": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": false
+          },
+          "block_assembly": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": false
+          },
+          "grand_assembly": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": false
+          },
+          "erection": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": false
+          }
         },
         "pool": 8,
-        "transporters": {"count": 1, "maintenance": false},
+        "transporters": {
+          "count": 1,
+          "maintenance": false
+        },
         "research": []
       }
     },
@@ -60,19 +184,51 @@
       "config": {
         "ordering": "jit",
         "ships": {
-          "S1": {"priority": 1, "start_day": 3},
-          "S2": {"priority": 2, "start_day": 11},
-          "S3": {"priority": 3, "start_day": 17},
-          "S4": {"priority": 4, "start_day": 23}
+          "S1": {
+            "priority": 1,
+            "start_day": 3
+          },
+          "S2": {
+            "priority": 2,
+            "start_day": 11
+          },
+          "S3": {
+            "priority": 3,
+            "start_day": 17
+          },
+          "S4": {
+            "priority": 4,
+            "start_day": 23
+          }
         },
         "stations": {
-          "sub_assembly": {"method": "standard", "overtime": false, "maintenance": true},
-          "block_assembly": {"method": "standard", "overtime": false, "maintenance": true},
-          "grand_assembly": {"method": "standard", "overtime": false, "maintenance": true},
-          "erection": {"method": "standard", "overtime": false, "maintenance": true, "crew": "skilled"}
+          "sub_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          },
+          "block_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          },
+          "grand_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          },
+          "erection": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true,
+            "crew": "skilled"
+          }
         },
         "pool": 6,
-        "transporters": {"count": 1, "maintenance": true},
+        "transporters": {
+          "count": 1,
+          "maintenance": true
+        },
         "research": []
       }
     },
@@ -83,19 +239,51 @@
       "config": {
         "ordering": "bulk",
         "ships": {
-          "S1": {"priority": 1, "start_day": 1},
-          "S2": {"priority": 2, "start_day": 1},
-          "S3": {"priority": 3, "start_day": 1},
-          "S4": {"priority": 4, "start_day": 1}
+          "S1": {
+            "priority": 1,
+            "start_day": 1
+          },
+          "S2": {
+            "priority": 2,
+            "start_day": 1
+          },
+          "S3": {
+            "priority": 3,
+            "start_day": 1
+          },
+          "S4": {
+            "priority": 4,
+            "start_day": 1
+          }
         },
         "stations": {
-          "sub_assembly": {"method": "fast", "overtime": true, "maintenance": true},
-          "block_assembly": {"method": "fast", "overtime": true, "maintenance": true, "crew": "skilled"},
-          "grand_assembly": {"method": "fast", "overtime": true, "maintenance": true},
-          "erection": {"method": "fast", "overtime": true, "maintenance": true}
+          "sub_assembly": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": true
+          },
+          "block_assembly": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": true,
+            "crew": "skilled"
+          },
+          "grand_assembly": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": true
+          },
+          "erection": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": true
+          }
         },
         "pool": 8,
-        "transporters": {"count": 1, "maintenance": true},
+        "transporters": {
+          "count": 1,
+          "maintenance": true
+        },
         "research": []
       }
     }

@@ -75,7 +75,24 @@
     "first_pass_yield": 0.9
   },
   "unlocks": "작업장 3개, 나눠 하기(한 배를 작업장 여러 곳에서 동시에)",
-  "options": {"crews": ["normal", "skilled", "robot"], "methods": ["standard", "fast", "new"], "material_grades": ["standard", "cheap"], "max_units": 3, "split": true},
+  "options": {
+    "crews": [
+      "normal",
+      "skilled",
+      "robot"
+    ],
+    "methods": [
+      "standard",
+      "fast",
+      "new"
+    ],
+    "material_grades": [
+      "standard",
+      "cheap"
+    ],
+    "max_units": 3,
+    "split": true
+  },
   "grade": {
     "weights": {
       "revenue": 30,
@@ -98,49 +115,81 @@
         "sub_assembly": 0.58,
         "block_assembly": 0.24,
         "grand_assembly": 0.51,
-        "erection": 0.12
+        "erection": 0.12,
+        "painting": 0.47,
+        "pre_outfitting": 0.64,
+        "quay_outfitting": 0.38,
+        "sea_trial": 0.56
       },
       "S2": {
         "sub_assembly": 0.31,
         "block_assembly": 0.69,
         "grand_assembly": 0.07,
-        "erection": 0.44
+        "erection": 0.44,
+        "painting": 0.42,
+        "pre_outfitting": 0.6,
+        "quay_outfitting": 0.11,
+        "sea_trial": 0.93
       },
       "S3": {
         "sub_assembly": 0.47,
         "block_assembly": 0.16,
         "grand_assembly": 0.82,
-        "erection": 0.29
+        "erection": 0.29,
+        "painting": 0.05,
+        "pre_outfitting": 0.19,
+        "quay_outfitting": 0.24,
+        "sea_trial": 0.82
       },
       "S4": {
         "sub_assembly": 0.13,
         "block_assembly": 0.36,
         "grand_assembly": 0.62,
-        "erection": 0.71
+        "erection": 0.71,
+        "painting": 0.29,
+        "pre_outfitting": 0.71,
+        "quay_outfitting": 0.87,
+        "sea_trial": 0.76
       },
       "S5": {
         "sub_assembly": 0.66,
         "block_assembly": 0.09,
         "grand_assembly": 0.27,
-        "erection": 0.53
+        "erection": 0.53,
+        "painting": 0.47,
+        "pre_outfitting": 0.64,
+        "quay_outfitting": 0.38,
+        "sea_trial": 0.56
       },
       "S6": {
         "sub_assembly": 0.22,
         "block_assembly": 0.81,
         "grand_assembly": 0.41,
-        "erection": 0.18
+        "erection": 0.18,
+        "painting": 0.42,
+        "pre_outfitting": 0.6,
+        "quay_outfitting": 0.11,
+        "sea_trial": 0.93
       },
       "S7": {
         "sub_assembly": 0.39,
         "block_assembly": 0.27,
         "grand_assembly": 0.94,
-        "erection": 0.06
+        "erection": 0.06,
+        "painting": 0.05,
+        "pre_outfitting": 0.19,
+        "quay_outfitting": 0.24,
+        "sea_trial": 0.82
       },
       "S8": {
         "sub_assembly": 0.75,
         "block_assembly": 0.52,
         "grand_assembly": 0.14,
-        "erection": 0.37
+        "erection": 0.37,
+        "painting": 0.29,
+        "pre_outfitting": 0.71,
+        "quay_outfitting": 0.87,
+        "sea_trial": 0.76
       }
     }
   },
