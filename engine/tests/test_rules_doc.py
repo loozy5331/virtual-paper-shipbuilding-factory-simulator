@@ -158,7 +158,7 @@ class HandExamples(unittest.TestCase):
 class Presets(unittest.TestCase):
     """10장의 프리셋 3개 기대 결과."""
 
-    # 4.0 물류 전담(D39) 뒤의 값. 등급 구간은 4.x를 마친 뒤 한 번에 조율한다(D40): "4.x 조율 전 값".
+    # 4.0 물류 전담(D39) 뒤의 값. 등급 구간은 버전을 올릴 때 조율한다(D40): "조율 전 값".
     EXPECTED = {
         "unmanaged": {
             "delivered": [29, 52, 44, 59], "late": [0, 14, 0, 3], "fpy": (5, 16), "on_time": 2,
@@ -269,7 +269,7 @@ def method(preset_id, name, *stations):
 
 
 class GradeTable(unittest.TestCase):
-    """10장의 등급 표: (설정, 이익, 납기 준수 척수, 점수, 등급). 4.0 물류 전담 뒤의 "4.x 조율 전 값"(D40).
+    """10장의 등급 표: (설정, 이익, 납기 준수 척수, 점수, 등급). 4.0 물류 전담 뒤의 "조율 전 값"(D40).
     트랜스포터는 역할마다 한 대로 고정돼(D39) 대수를 바꾼 줄은 뺐다."""
 
     ROWS = [
@@ -551,7 +551,7 @@ class Scenarios(unittest.TestCase):
         self.assertEqual(simulate(cfg)["profit"], simulate(PRESETS["managed"])["profit"])
 
     def test_growth_presets(self):
-        # 4.x 조율 전 값(D40)
+        # 조율 전 값(D40)
         cases = {"unmanaged": (-9794.0, 26.8, "F"), "managed": (7118.4, 94.3, "A"), "all_in": (1958.8, 66.4, "C")}
         for pid, (profit, score, grade) in cases.items():
             r = simulate(GROWTH[pid])
@@ -609,7 +609,7 @@ class AreasAndSplit(unittest.TestCase):
         self.assertEqual(split["profit"], plain["profit"])
 
     def test_split_divides_work_and_waits_for_the_pair(self):
-        # 1차 시험 결과: 관리안 인원 4명에 중조립 2곳 나눠 하기 → 지연 없음. 점수는 4.x 조율 전 값(D40).
+        # 1차 시험 결과: 관리안 인원 4명에 중조립 2곳 나눠 하기 → 지연 없음. 점수는 조율 전 값(D40).
         cfg = as_areas({**PRESETS["managed"], "pool": 4}, block_assembly={"stations": 2, "split": True})
         r = open_sim(cfg)
         self.assertEqual((r["grade"]["grade"], r["grade"]["score"], r["qcd"]["delivery"]["on_time"]), ("A", 95.4, 4))
@@ -625,8 +625,8 @@ class AreasAndSplit(unittest.TestCase):
         self.assertTrue(parts and all(len(p) == 2 for p in parts))
 
     def test_expanding_without_split_does_not_fix_the_delay(self):
-        # 4.x 조율 전(D40): 4.0 물류 전담 뒤에는 관리안 4명도 지연이 없어 이 비교의 전제(한 척 지연)가 사라졌다.
-        # 값만 적어 두고, 4.x 조율 때 지연이 생기는 설정으로 다시 잡는다.
+        # 조율 전(D40): 4.0 물류 전담 뒤에는 관리안 4명도 지연이 없어 이 비교의 전제(한 척 지연)가 사라졌다.
+        # 값만 적어 두고, 다음 조율(버전을 올릴 때) 지연이 생기는 설정으로 다시 잡는다.
         cfg = as_areas({**PRESETS["managed"], "pool": 4}, block_assembly={"stations": 2})
         r = open_sim(cfg)
         self.assertEqual((r["grade"]["score"], r["qcd"]["delivery"]["on_time"]), (95.0, 4))
@@ -658,7 +658,7 @@ class Surge(unittest.TestCase):
     """3.0 새 분기 "수주 급증"(8척): 3호 작업장과 나눠 하기의 판단 거리."""
 
     def test_presets(self):
-        # 4.x 조율 전 값(D40). 블록 운반이 한 대로 줄어 관리안도 한 척 지연(7/8)
+        # 조율 전 값(D40). 블록 운반이 한 대로 줄어 관리안도 한 척 지연(7/8)
         cases = {"unmanaged": (-14055.0, 22.5, "F"), "managed": (10439.4, 95.5, "A"), "all_in": (1854.6, 63.3, "C")}
         for pid, (profit, score, grade) in cases.items():
             r = simulate(SURGE[pid])
@@ -758,7 +758,7 @@ class Pegging(unittest.TestCase):
         self.assertEqual((issues["S2"]["day"], issues["S2"]["from"]), (11, [{"ship": "S2", "quantity": 6}]))
         self.assertEqual((issues["S3"]["day"], issues["S3"]["from"]), (17, [{"ship": "S1", "quantity": 8}]))
         self.assertEqual(r["pegging_daily"][9]["paper"], [{"ship": "S1", "quantity": 8}])   # 10일 끝: S1 몫 8장이 선반에
-        # 일정은 관리 프리셋과 같고, S3 종이가 14일 일찍 들어와 재고비만 19.2 늘었다(이익은 4.x 조율 전 값).
+        # 일정은 관리 프리셋과 같고, S3 종이가 14일 일찍 들어와 재고비만 19.2 늘었다(이익은 조율 전 값).
         self.assertEqual([s["daily"] for s in r["ships"]], [s["daily"] for s in simulate(base, baseline=False)["ships"]])
         self.assertEqual((r["costs"]["holding"], r["profit"]), (19.2, 2870.8))
 
