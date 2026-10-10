@@ -14,15 +14,17 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { LEAD_IN, type Frame, type LotView } from "./frame";
 import { mesh, Person, SENIOR_NAME, WORKER_NAMES } from "./people";
 import { shipLook } from "./ships";
-import { STOCK_D, STOCK_HALF, STOCK_STATIONS, STOCK_Z0, stockAssign, stockSpot } from "./stock";
-import { buildDock, buildLand, buildWalls, buildYardLines, GiantHand, SEA_Y, type DockParts } from "./coast";
-import { areaBounds, CART_R, CRANE_R, DEPOT, LAB, LANE_Z, LOUNGE, MAT_D, MAT_TOP, MAT_W, MAT2_D, QUEUE_Z, SHELF_X, SHELF_Z,
-  SHORE_X, SPUR_X, STATION_X, unitZ } from "./layout";
+import { STOCK_STATIONS, stockAssign, stockSpot } from "./stock";
+import { buildDock, buildLand, buildRoof, buildSectorOutline, buildWalls, buildYardLines, GiantHand, SEA_Y, type DockParts } from "./coast";
+import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_TOP, MAT_W, MAT2_D,
+  nearLane, QUEUE_Z, SAFE_SPOT, seaSpot, SECTORS, sectorBounds, SHELF_X, SHELF_Z, SHORE_X, SPUR_IN, SPUR_OUT, SPUR_X, STATION_X,
+  STOCK_AT, STOCK_D, STOCK_HALF, unitZ, type SectorId } from "./layout";
 import { clamp01, ease, flatOf, hullTris, type Tri } from "../proto/model";
 import { STATE_INFO, STATION_COLOR } from "../labels";
 import type { TrackPick } from "../track";
 
 // 배치(야드 좌표)는 layout.ts, 배경은 coast.ts. 증설한 작업장은 1호 뒤로 한 줄씩(2호, 3호, 3.0).
+// 구획(3.2, D38): 카메라는 전경 또는 구획 하나(내업, 1도크, 2도크, 안벽). 전경에서는 구획 이름만 보이고, 내업 공장에는 지붕을 덮는다.
 
 // 진수(그림만, 엔진 규칙 없음): 인도 다음 날 하루 안에 ① 작업자가 나가고 ② 도크에 물을 채우고 ③ 걸리버의 손이 문을 열고
 // ④ 배가 나가고 ⑤ 문을 닫고 ⑥ 물을 뺀다. 그동안 다음 블록은 도크 앞에서 기다린다. 값은 하루 안의 비율(frac).
@@ -34,8 +36,7 @@ const DOOR_OPEN = Math.PI * 0.47;   // 문이 거의 직각으로 열린다
 // 누르면 그 설비 옆으로 순간이동하고, 위험 반경이라 경고한다(재생 중 저절로 뜨는 경고는 1인칭 이동이 생길 때로 미룬다).
 // 엔진 규칙이 아니라 현장 화면의 규칙이다. 반경은 팻말에 "반경 10m"로 적는다(소인국 척도라 화면 크기는 보기 좋게만).
 // 반경은 layout.ts의 CRANE_R(걸리버의 손, 탑재 도크 둘레)과 CART_R(트랜스포터).
-// 안전한 자리: 도크의 큰길 맞은편 빈 땅. 크레인 반경과 큰길 트랜스포터 반경 밖이고, 샛길·적치장과도 겹치지 않는다.
-const SAFE_SPOT = new THREE.Vector3(STATION_X[3], 0, LANE_Z + 2.1);
+// 안전한 자리(layout.ts의 SAFE_SPOT): 내업과 도크 구획 사이 큰길 앞. 크레인 반경과 큰길 트랜스포터 반경 밖이다.
 export type ManagerSpot = "safe" | "crane" | "cart";
 export interface Hazard { id: string; label: string }
 const WATER_TOP = 0.32;
@@ -321,10 +322,9 @@ export class Yard {
   private readonly senior = new Person("senior", 5, SENIOR_NAME);
   private readonly manager = new Person("manager");
   private readonly stationProps: {
-    tag: CSS2DObject; smoke: THREE.Group; tape: THREE.Group; candle: THREE.PointLight; flame: THREE.Mesh;
-    /** 2호 정반과 팻말(증설했을 때만 보인다) */
-    /** 2호·3호 정반과 팻말(증설했을 때만 보인다) */
-    extra: { mat: THREE.Mesh; tag: CSS2DObject }[];
+    tag: CSS2DObject; smoke: THREE.Group; tape: THREE.Group; candle: THREE.Group; light: THREE.PointLight; flame: THREE.Mesh;
+    /** 작업장(1호·2호·3호)마다 정반과 번호 팻말. 2호·3호는 증설했을 때만 보인다 */
+    mats: { mat: THREE.Mesh; tag: CSS2DObject }[];
     /** 로봇 팔(인력이 로봇인 공정). 작업장마다 하나 */
     robots: THREE.Group[];
   }[] = [];
@@ -341,7 +341,7 @@ export class Yard {
   private readonly labWindow: THREE.MeshStandardMaterial;
   /** 관리자 자리와 위험 경고 */
   private managerSpot: ManagerSpot = "safe";
-  private managerStation: number | null = null;
+  private managerStation: SectorId | null = null;
   /** 도크마다 크레인 반경 원(1호, 2호) */
   private readonly craneRings: THREE.Mesh[] = [];
   private readonly cartRings: THREE.Mesh[] = [];
@@ -355,9 +355,17 @@ export class Yard {
   private readonly gulliver = new GiantHand();
   /** 2호 도크의 골리앗 크레인 = 걸리버의 왼손(도크를 증설했을 때만). 도크마다 크레인이 하나씩이다(3.0). */
   private readonly gulliver2 = new GiantHand(true);
-  /** 증설한 2호·3호 작업장의 벽·구획선·도크(있을 때만 보인다). [공정][작업장 번호 − 1] */
-  private readonly unitAreas: THREE.Group[][] = [];
-  private readonly camGoal = { pos: new THREE.Vector3(2, 17, 27), target: new THREE.Vector3(2, 0, -7) };
+  /** 작업장마다의 벽·구획선·도크(2호·3호는 있을 때만 보인다). [공정][작업장 번호 − 1] */
+  private readonly areas: THREE.Group[][] = [];
+  /** 내업 공장 지붕(작업장마다). 전경과 다른 구획을 볼 때만 보인다 */
+  private readonly roofs: THREE.Group[][] = [];
+  /** 구획 윤곽과 이름표. 2도크 구획은 도크가 하나면 흐린 "증설 예정지" */
+  private readonly sectorMarks = new Map<SectorId, { outline: THREE.Group | null; tag: CSS2DObject }>();
+  /** 지금 배치를 맞춘 도크 수(PE장 작업장의 구획이 도크 수에 따라 달라진다) */
+  private layoutDocks = 0;
+  /** 카메라가 보는 구획. null이면 전경 */
+  private focus: SectorId | null = null;
+  private readonly camGoal = { pos: new THREE.Vector3(), target: new THREE.Vector3() };
   private camMoving = 0;
 
   private readonly hemi = new THREE.HemisphereLight("#fff8ec", "#8a6a4a", 1.5);
@@ -372,14 +380,15 @@ export class Yard {
     this.labels.domElement.className = "scene-labels";
 
     this.scene.background = BG.clone();
-    this.scene.fog = new THREE.Fog(BG.clone(), 45, 110);
+    this.scene.fog = new THREE.Fog(BG.clone(), 70, 170);
+    this.aim(null);
     this.camera.position.copy(this.camGoal.pos);
     this.controls = new OrbitControls(this.camera, r.domElement);
     this.controls.target.copy(this.camGoal.target);
     this.controls.enableDamping = true;
     this.controls.maxPolarAngle = Math.PI * 0.46;
     this.controls.minDistance = 4;
-    this.controls.maxDistance = 60;
+    this.controls.maxDistance = 95;
     this.controls.addEventListener("start", () => { this.camMoving = 0; });
     // 누르기: 끌지 않고 떼면(카메라 돌리기와 구분) 그 자리의 블록이나 선반을 찾는다(자재·블록 추적, 3.1)
     let down: { x: number; y: number } | null = null;
@@ -395,13 +404,15 @@ export class Yard {
     this.scene.add(this.trackRing);
 
     const { hemi, sun } = this;
-    sun.position.set(-9, 17, 11);
+    // 야드가 넓어(구획 넷) 그림자 범위도 넓다. 해상도를 함께 올린다.
+    sun.position.set(-15, 22, 14);
+    sun.target.position.set(-6, 0, 0);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    Object.assign(sun.shadow.camera, { left: -22, right: 22, top: 15, bottom: -15, near: 1, far: 60 });
+    sun.shadow.mapSize.set(4096, 4096);
+    Object.assign(sun.shadow.camera, { left: -36, right: 36, top: 24, bottom: -24, near: 1, far: 90 });
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.02;
-    this.scene.add(hemi, sun);
+    this.scene.add(hemi, sun, sun.target);
 
     buildLand(this.scene);
     this.buildAreas();
@@ -421,9 +432,8 @@ export class Yard {
     const lab = this.buildLab();
     this.labTag = lab.tag;
     this.labWindow = lab.window;
-    const seaTag = label("안벽 · 인도한 배", "place-tag");
-    seaTag.position.set(SHORE_X + 3, 0.2, 4.2);
-    this.scene.add(seaTag);
+    this.buildSectors();
+    this.placeStations(1);
 
     for (let i = 0; i < 8; i++) {
       const p = new Person("worker", i, WORKER_NAMES[i]);
@@ -477,7 +487,7 @@ export class Yard {
    * 관리자 자리. safe = 도크의 큰길 맞은편(어느 공정을 보든 같은 자리).
    * crane·cart = 그 설비 옆으로 순간이동한다. 위험 반경에 들었으면 무엇인지 돌려준다(화면이 경고).
    */
-  setManagerSpot(spot: ManagerSpot, station: number | null): Hazard | null {
+  setManagerSpot(spot: ManagerSpot, station: SectorId | null): Hazard | null {
     this.managerSpot = spot;
     this.managerStation = station;
     const at = this.managerAt();
@@ -496,7 +506,7 @@ export class Yard {
       return new THREE.Vector3(cart.x + 0.5, 0, cart.z + 0.7);
     }
     void i;
-    return SAFE_SPOT.clone();
+    return new THREE.Vector3(SAFE_SPOT.x, 0, SAFE_SPOT.z);
   }
 
   /** 위험 반경 표시(노랑·검정 점선 원)와 "반경 10m 출입 금지" 팻말 */
@@ -511,7 +521,7 @@ export class Yard {
     // 도크마다 크레인이 하나라 반경도 도크마다(2호는 2호 도크가 있을 때만 보인다)
     for (let u = 0; u < 2; u++) {
       const r = ring(CRANE_R);
-      r.position.set(STATION_X[3], 0.03, unitZ(u));
+      r.position.set(STATION_X[3], 0.03, dockZ(u));
       r.visible = u === 0;
       this.craneRings.push(r);
       this.scene.add(r);
@@ -545,16 +555,22 @@ export class Yard {
 
   // ----- 구성 -----
 
+  /** 공정마다 작업장 셋(1호·2호·3호)의 정반, 이름표, 고장 연기, 사고 테이프, 잔업 촛불, 로봇 팔. 자리는 placeStations가 정한다. */
   private buildStations(): void {
-    STATION_X.forEach((x, i) => {
+    STATION_X.forEach((_, i) => {
       const ids = Object.keys(STATION_COLOR);
       const color = STATION_COLOR[ids[i]];
-      const mat = mesh(new THREE.BoxGeometry(MAT_W, MAT_TOP, MAT_D), color, { roughness: 0.95 });
-      mat.position.set(x, MAT_TOP / 2, 0);
-      mat.castShadow = false;
-      this.scene.add(mat);
+      const mats = [0, 1, 2].map((u) => {
+        const m = mesh(new THREE.BoxGeometry(MAT_W, MAT_TOP, u === 0 ? MAT_D : MAT2_D), color, { roughness: 0.95 });
+        m.castShadow = false;
+        m.visible = u === 0;
+        this.scene.add(m);
+        const t = label(`${u + 1}호`, "place-tag small");
+        t.visible = false;
+        this.scene.add(t);
+        return { mat: m, tag: t };
+      });
       const tag = label("", "station-tag");
-      tag.position.set(x, 0.1, -1.75);
       this.scene.add(tag);
 
       // 고장: 연기 / 사고: 통제 테이프
@@ -564,7 +580,6 @@ export class Yard {
         puff.castShadow = false;
         smoke.add(puff);
       }
-      smoke.position.set(x + 1.1, 0.4, -0.9);
       smoke.visible = false;
       this.scene.add(smoke);
 
@@ -582,7 +597,6 @@ export class Yard {
         band.rotation.y = -Math.atan2(nz - cz, nx - cx);
         tape.add(band);
       });
-      tape.position.set(x, 0, 0);
       tape.visible = false;
       this.scene.add(tape);
 
@@ -595,69 +609,99 @@ export class Yard {
       const light = new THREE.PointLight("#ffae5a", 0, 7, 1.3);
       light.position.y = 0.75;
       candle.add(wax, flame, light);
-      candle.position.set(x + MAT_W / 2 + 0.3, 0, -1.2);
       this.scene.add(candle);
 
-      // 2호·3호 정반(증설): 1호 뒤로 한 줄씩. 처음에는 숨겨 둔다.
-      const extra = [1, 2].map((u) => {
-        const m = mesh(new THREE.BoxGeometry(MAT_W, MAT_TOP, MAT2_D), color, { roughness: 0.95 });
-        m.position.set(x, MAT_TOP / 2, unitZ(u));
-        m.castShadow = false;
-        m.visible = false;
-        this.scene.add(m);
-        const t = label(`${u + 1}호`, "place-tag small");
-        t.position.set(x - MAT_W / 2 - 0.2, 0.1, unitZ(u));
-        t.visible = false;
-        this.scene.add(t);
-        return { mat: m, tag: t };
-      });
-
-      const robots = [0, 1, 2].map((u) => {
+      const robots = [0, 1, 2].map(() => {
         const robot = buildRobot();
-        robot.position.set(x + MAT_W / 2 + 0.25, 0, unitZ(u));
         robot.visible = false;
         this.scene.add(robot);
         return robot;
       });
 
-      this.stationProps.push({ tag, smoke, tape, candle: light, flame, extra, robots });
+      this.stationProps.push({ tag, smoke, tape, candle, light, flame, mats, robots });
     });
   }
 
-  /** 작업장마다: 소조립·중조립은 벽만 있는 공장(앞은 열림), PE장은 바깥 정반(노란 구획선), 탑재는 드라이 도크. 그리고 물류창고 구역. */
+  /** 작업장마다: 소조립·중조립은 벽만 있는 공장(앞은 열림) + 지붕, PE장은 바깥 정반(노란 구획선), 탑재는 드라이 도크. 그리고 물류창고 구역과 적치장. */
   private buildAreas(): void {
     STATION_X.forEach((_, p) => {
-      this.unitAreas[p] = [];
-      for (const unit of [0, 1, 2]) {
-        const { x0, x1, z0, z1 } = areaBounds(p, unit);
-        const area = p < 2 ? buildWalls(x0, x1, z0, z1, 1.0)
-          : p === 2 ? buildYardLines(x0, x1, z0, z1)
-          : buildDock(x0, x1, z0, z1);
-        this.scene.add(area);
-        if (p === 3) this.docks[unit] = area.userData.dock as DockParts;
-        if (unit > 0) {
-          area.visible = false;
-          this.unitAreas[p][unit - 1] = area;
-        }
-      }
+      this.areas[p] = [];
+      this.roofs[p] = [];
     });
     this.scene.add(buildWalls(SHELF_X[0] - 1.5, SHELF_X[2] + 1.5, SHELF_Z - 0.9, SHELF_Z + 1.0, 1.9));
 
-    // 공용 적치장: 큰길 건너편, 공정(탑재 제외)마다 맞은편 칸. 기다리는 블록은 정반 대신 여기에 둔다.
-    for (let p = 0; p < STOCK_STATIONS; p++) {
-      const x = STATION_X[p], zc = STOCK_Z0 + STOCK_D / 2;
+    // 적치장: 공정(탑재 제외)마다 칸. 기다리는 블록은 정반 대신 여기에 둔다(내업 두 공정은 큰길 건너편, PE장은 1도크 구획).
+    STOCK_AT.slice(0, STOCK_STATIONS).forEach((at, p) => {
+      const far = at.z0 + at.dir * STOCK_D;
+      const z0 = Math.min(at.z0, far), z1 = Math.max(at.z0, far);
       const floor = mesh(new THREE.BoxGeometry(STOCK_HALF * 2, 0.02, STOCK_D), "#b7b2a6", { roughness: 1 });
-      floor.position.set(x, 0.011, zc);
+      floor.position.set(at.x, 0.011, (z0 + z1) / 2);
       floor.castShadow = false;
-      this.scene.add(floor, buildYardLines(x - STOCK_HALF, x + STOCK_HALF, STOCK_Z0, STOCK_Z0 + STOCK_D, "#f4f1ea"));
+      this.scene.add(floor, buildYardLines(at.x - STOCK_HALF, at.x + STOCK_HALF, z0, z1, "#f4f1ea"));
       const ids = Object.keys(STATION_COLOR);
       const tag = label(`<i style="background:${STATION_COLOR[ids[p]]}"></i>적치장`, "station-tag small-tag");
-      tag.position.set(x - STOCK_HALF + 0.9, 0.05, STOCK_Z0 + STOCK_D - 0.25);
+      tag.position.set(at.x - STOCK_HALF + 0.9, 0.05, far - at.dir * 0.25);
       this.scene.add(tag);
+    });
+  }
+
+  /**
+   * 도크 수에 맞춰 작업장 자리를 놓는다(PE장 작업장은 도크가 둘이면 2·3호가 2도크 구획으로 간다).
+   * 벽·구획선·도크·지붕은 다시 만들고, 정반·팻말·로봇은 옮긴다. 도크 수가 바뀔 때만 부른다.
+   */
+  private placeStations(docks: number): void {
+    this.layoutDocks = docks;
+    STATION_X.forEach((_, p) => {
+      for (const g of [...this.areas[p], ...this.roofs[p]]) if (g) this.scene.remove(g);
+      this.areas[p] = [];
+      this.roofs[p] = [];
+      const props = this.stationProps[p];
+      for (const unit of [0, 1, 2]) {
+        const { x0, x1, z0, z1 } = areaBounds(p, unit, docks);
+        const area = p < 2 ? buildWalls(x0, x1, z0, z1, 1.0)
+          : p === 2 ? buildYardLines(x0, x1, z0, z1)
+          : buildDock(x0, x1, z0, z1);
+        area.visible = unit === 0;
+        this.scene.add(area);
+        this.areas[p][unit] = area;
+        if (p === 3) this.docks[unit] = area.userData.dock as DockParts;
+        if (p < 2) {
+          const roof = buildRoof(x0, x1, z0, z1, 1.0);
+          roof.visible = false;
+          this.scene.add(roof);
+          this.roofs[p][unit] = roof;
+        }
+        const b = benchAt(p, unit, docks);
+        props.mats[unit].mat.position.set(b.x, MAT_TOP / 2, b.z);
+        props.mats[unit].tag.position.set(b.x - MAT_W / 2 - 0.2, 0.1, b.z);
+        props.robots[unit].position.set(b.x + MAT_W / 2 + 0.25, 0, b.z);
+      }
+      const first = benchAt(p, 0, docks);
+      props.tag.position.set(first.x, 0.1, first.z - first.d / 2 - 0.45);
+      props.candle.position.set(first.x + MAT_W / 2 + 0.3, 0, first.z - 1.2);
+    });
+    // 구획 윤곽과 이름표도 도크 수에 맞춘다(2도크 구획은 도크가 하나면 흐린 "증설 예정지")
+    for (const base of SECTORS) {
+      const sec = sectorBounds(base.id, docks);
+      const mark = this.sectorMarks.get(sec.id);
+      if (!mark) continue;
+      if (mark.outline) this.scene.remove(mark.outline);
+      mark.outline = sec.id === "quay" ? null : buildSectorOutline(sec, sec.id === "dock2" && docks < 2);
+      if (mark.outline) this.scene.add(mark.outline);
+      // 이름은 구획의 왼쪽 가장자리(작업장 이름표와 겹치지 않게): 1도크는 뒤, 나머지는 앞
+      mark.tag.position.set(sec.x0 + 2.4, sec.id === "quay" ? SEA_Y + 0.1 : 0.05, sec.id === "dock1" ? sec.z0 + 0.4 : sec.z1 - 0.4);
+      if (sec.id === "dock2") setLabel(mark.tag, docks >= 2 ? "2도크 구획" : "2도크 구획 · 증설 예정지");
     }
-    const sign = label("공용 적치장", "place-tag");
-    sign.position.set(STATION_X[1], 0.05, STOCK_Z0 + STOCK_D + 0.5);
-    this.scene.add(sign);
+    if (this.focus) this.setCamera("field", this.focus);
+  }
+
+  /** 구획 이름표. 전경에서는 이것만 글로 보인다. 윤곽(바닥의 점선)과 자리는 placeStations가 도크 수에 맞춰 놓는다. */
+  private buildSectors(): void {
+    for (const sec of SECTORS) {
+      const tag = label(sec.name, "sector-tag");
+      this.scene.add(tag);
+      this.sectorMarks.set(sec.id, { outline: null, tag });
+    }
   }
 
   private buildLane(): void {
@@ -666,13 +710,17 @@ export class Yard {
     lane.castShadow = false;
     this.scene.add(lane);
     // 샛길: 큰길에서 공정 사이로 3호 작업장 뒤까지 들어간다(뒤쪽 작업장에 블록을 나르는 길).
-    for (const sx of SPUR_X) {
-      const back = unitZ(2) - MAT2_D / 2 - 0.4, front = LANE_Z - 0.5;
-      const spur = mesh(new THREE.BoxGeometry(0.8, 0.02, front - back), "#9f9a8f", { roughness: 1 });
-      spur.position.set(sx, 0.012, (front + back) / 2);
-      spur.castShadow = false;
-      this.scene.add(spur);
-    }
+    // PE장 양옆 샛길은 큰길 앞(2도크 구획의 3호)으로도 이어진다.
+    const spur = (x: number, z0: number, z1: number) => {
+      const m = mesh(new THREE.BoxGeometry(0.8, 0.02, z1 - z0), "#9f9a8f", { roughness: 1 });
+      m.position.set(x, 0.012, (z0 + z1) / 2);
+      m.castShadow = false;
+      this.scene.add(m);
+    };
+    SPUR_X.forEach((sx, k) => {
+      spur(sx, unitZ(2) - MAT2_D / 2 - 0.4, LANE_Z - 0.5);
+      if (k >= 3) spur(sx, LANE_Z + 0.5, benchAt(2, 2, 2).z + MAT2_D / 2 + 0.4);
+    });
     for (let k = 0; k < 2; k++) {
       const group = new THREE.Group();
       const deck = mesh(new THREE.BoxGeometry(1.7, 0.2, 1.0), "#5d6b78", { metalness: 0.2 });
@@ -863,18 +911,28 @@ export class Yard {
     this.draw(source.snap);
   }
 
-  setCamera(mode: CameraMode, station: number | null = null): void {
-    if (mode === "control" || station === null) {
-      // 전경: 조금 낮게 비스듬히 봐서 능선 너머 걸리버의 상반신과 만 입구의 등대가 함께 들어오게.
-      this.camGoal.pos.set(2, 17, 27);
-      this.camGoal.target.set(2, 0, -7);
-    } else {
-      // 1호 뒤의 2호·3호 줄까지 벽 너머로 보이게 높이 내려다본다(3.0).
-      const x = STATION_X[station];
-      this.camGoal.pos.set(x + 2.0, 11.5, 11.5);
-      this.camGoal.target.set(x, 0, -0.6);   // 3호 줄부터 큰길 건너 적치장 칸까지
-    }
+  /** 카메라: 전경(null) 또는 구획 하나. 전경에서는 구획 이름만 보이고 공장에 지붕을 덮는다. */
+  setCamera(mode: CameraMode, focus: SectorId | null = null): void {
+    this.aim(mode === "control" ? null : focus);
     this.camMoving = 1;
+  }
+
+  private aim(focus: SectorId | null): void {
+    this.focus = focus;
+    this.labels.domElement.classList.toggle("overview", focus === null);
+    if (focus === null) {
+      // 전경: 높이서 비스듬히. 구획 넷과 큰길, 만 입구의 등대가 함께 들어오게.
+      this.camGoal.target.set(-6, 0, 1);
+      this.camGoal.pos.set(-6, 40, 42);
+      return;
+    }
+    // 구획 하나를 화면 가득: 구획이 클수록 멀리서, 뒷줄 작업장까지 벽 너머로 보이게 높이 내려다본다.
+    const sec = sectorBounds(focus, Math.max(1, this.layoutDocks));
+    const w = sec.x1 - sec.x0, d = sec.z1 - sec.z0;
+    const span = Math.max(w * 0.8, d * 1.25, 9);
+    const cx = (sec.x0 + sec.x1) / 2, cz = (sec.z0 + sec.z1) / 2;
+    this.camGoal.target.set(cx, 0, cz - d * 0.05);
+    this.camGoal.pos.set(cx + span * 0.08, span * 0.95, cz + span * 0.85);
   }
 
   start(): void {
@@ -950,6 +1008,9 @@ export class Yard {
     // 사람은 하루의 준비 시간 안에 새 자리에 도착한다(작업은 그 뒤에 진행, frame.ts의 LEAD_IN).
     const within = (src.msPerDay / 1000) * LEAD_IN;
 
+    // 도크 수가 바뀌면(다른 회차) PE장 작업장 자리를 다시 놓는다.
+    const docks = f.stations[3]?.units.length ?? 1;
+    if (docks !== this.layoutDocks) this.placeStations(docks);
     // 로트. 기다리는 블록의 적치장 자리를 먼저 정한다.
     this.stock = stockAssign(f);
     let hook: { x: number; y: number } | null = null;
@@ -975,19 +1036,19 @@ export class Yard {
       }
       // 진수가 끝날 때까지 다음 블록은 도크 앞에서 기다린다
       const held = view.place === "bench" && view.station === 3 && launching.some((l) => l.unit === view.unit);
-      const pos = held ? new THREE.Vector3(STATION_X[3] - 0.9, 0, QUEUE_Z) : this.lotPosition(view, frac, f);
+      const pos = held ? new THREE.Vector3(STATION_X[3] - 0.9, 0, dockQueueZ(view.unit)) : this.lotPosition(view, frac, f);
       lot.target.copy(pos);
-      this.planPath(lot, view, jump);
+      this.planPath(lot, view, jump, docks);
       if (jump || view.place === "carried" || view.place === "sea") lot.group.position.copy(pos);
       // 나눠 하기: 부분마다 자기 작업장 자리. 먼저 끝난 부분은 공용 적치장으로 나가 짝을 기다린다.
       if (view.place === "bench" && view.parts && view.parts.length > 1) {
-        const x = STATION_X[view.station];
         lot.split = view.parts.map((pt) => {
           // 먼저 끝난 부분은 공용 적치장 칸에서 짝을 기다린다(작업장은 비워 둔다).
           const waiting = pt.state === "pair_wait";
           const spot = waiting ? this.stock.get(`w:${view.ship}:${pt.unit}`) : undefined;
           const at = spot ? stockSpot(spot.station, spot.index) : null;
-          const world = at ? new THREE.Vector3(at.x, 0, at.z) : new THREE.Vector3(x, MAT_TOP, unitZ(pt.unit));
+          const b = benchAt(view.station, pt.unit, docks);
+          const world = at ? new THREE.Vector3(at.x, 0, at.z) : new THREE.Vector3(b.x, MAT_TOP, b.z);
           return { offset: world.sub(pos), waiting };
         });
       } else {
@@ -1011,13 +1072,12 @@ export class Yard {
 
     // 골리앗 크레인(걸리버의 손): 탑재 중이면 자석판이 블록을 따라간다. 쉴 때는 도크 위에 손을 띄워 둔다.
     // 도크마다 손이 하나: 1호 = 오른손, 2호 = 왼손(2호가 있을 때만). 진수 중이면 그 도크의 손이 문을 열고 닫는다.
-    const docks = f.stations[3]?.units.length ?? 1;
     const hands: [GiantHand, { x: number; y: number } | null, number][] = [[this.gulliver, hook, 0], [this.gulliver2, hook2, 1]];
     for (const [hand, hk, u] of hands) {
       this.craneRings[u].visible = u < docks;
       if (u >= docks) { hand.root.visible = false; continue; }
       hand.root.visible = true;
-      const at = new THREE.Vector3(STATION_X[3] + (hk ? hk.x : 0), hk ? hk.y + 0.15 : 3.0, unitZ(u));
+      const at = new THREE.Vector3(STATION_X[3] + (hk ? hk.x : 0), hk ? hk.y + 0.15 : 3.0, dockZ(u));
       const launch = launching.find((l) => l.unit === u);
       const gate = launch ? this.gateHand(u, frac) : null;
       hand.place(gate ? at.lerp(gate.at, gate.k) : at);
@@ -1026,16 +1086,19 @@ export class Yard {
 
     // 정반: 작업장(1호, 증설하면 2호)마다 인원 또는 로봇, 시니어, 중지, 잔업
     let person = 0;
+    // 내업 지붕은 전경이나 다른 구획을 볼 때만(내업을 가까이 보면 지붕과 철골을 통째로 숨긴다, D38)
+    const roofsOn = this.focus !== "shop";
     f.stations.forEach((st, i) => {
-      const x = STATION_X[i];
       const props = this.stationProps[i];
       const working = st.state === "work" || st.state === "rework";
       const robot = st.crew === "robot";
-      props.extra.forEach((e, k) => {
-        const on = st.units.length > k + 1;
+      const bench = (u: number) => benchAt(i, u, docks);
+      props.mats.forEach((e, u) => {
+        const on = u < st.units.length;
         e.mat.visible = on;
-        e.tag.visible = on;
-        if (this.unitAreas[i][k]) this.unitAreas[i][k].visible = on;
+        e.tag.visible = on && st.units.length > 1 && u > 0;
+        if (this.areas[i][u]) this.areas[i][u].visible = on;
+        if (this.roofs[i][u]) this.roofs[i][u].visible = on && roofsOn;
       });
       props.robots.forEach((r, u) => {
         r.visible = robot && u < st.units.length;
@@ -1046,10 +1109,11 @@ export class Yard {
           const unitWorking = unit.state === "work" || unit.state === "rework";
           // 진수하는 도크의 작업자는 도크 밖(앞쪽)으로 비켜 선다
           const out = i === 3 && launching.some((l) => l.unit === u);
+          const b = bench(u);
           for (let k = 0; k < unit.workers; k++) {
             const side = k % 2 === 0 ? 1 : -1;
-            const at = out ? new THREE.Vector3(x - 2.6 - k * 0.6, 0, unitZ(u) + 1.9)
-              : new THREE.Vector3(x - 0.9 * side, MAT_TOP, unitZ(u) + side * 1.0);
+            const at = out ? new THREE.Vector3(b.x - 2.6 - k * 0.6, 0, b.z + (b.z <= LANE_Z ? 1.9 : -1.9))
+              : new THREE.Vector3(b.x - 0.9 * side, MAT_TOP, b.z + side * 1.0);
             const p = this.people[person++];
             p?.place(at, side > 0 ? Math.PI : 0, unitWorking && !out ? "work" : "stand", jump, within);
             p?.holdKnife(i === 0 && unitWorking);
@@ -1059,7 +1123,8 @@ export class Yard {
       if (st.senior) {
         this.senior.setVisible(true);
         const out = i === 3 && launching.length > 0;
-        this.senior.place(out ? new THREE.Vector3(x - 1.6, 0, 1.9) : new THREE.Vector3(x + 1.3, MAT_TOP, -0.2),
+        const b = bench(0);
+        this.senior.place(out ? new THREE.Vector3(b.x - 1.6, 0, b.z + 1.9) : new THREE.Vector3(b.x + 1.3, MAT_TOP, b.z - 0.2),
           -Math.PI / 2, working && !out ? "work" : "stand", jump, within);
         this.senior.holdKnife(i === 0 && working);
       }
@@ -1068,9 +1133,10 @@ export class Yard {
       const stop = stopped >= 0 ? st.units[stopped].stop : null;
       props.smoke.visible = stop === "breakdown";
       props.tape.visible = stop === "accident";
-      props.smoke.position.z = unitZ(Math.max(0, stopped)) - 0.9;
-      props.tape.position.z = unitZ(Math.max(0, stopped));
-      props.candle.intensity = st.overtime ? 5 : 0;
+      const sb = bench(Math.max(0, stopped));
+      props.smoke.position.set(sb.x + 1.1, 0.4, sb.z - 0.9);
+      props.tape.position.set(sb.x, 0, sb.z);
+      props.light.intensity = st.overtime ? 5 : 0;
       props.flame.visible = st.overtime;
       const chip = st.stop === "accident" ? chipHtml("accident_stop", "사고 · 통제")
         : st.stop === "breakdown" ? chipHtml("breakdown_stop", "고장 · 수리 중")
@@ -1142,19 +1208,20 @@ export class Yard {
    * 샛길: 2호·3호 작업장으로 들어갈 때는 공정 왼쪽 샛길로, 나올 때는 오른쪽 샛길로 돌아간다(벽을 뚫고 지나가지 않게).
    * 로트의 자리(place·공정·작업장)가 바뀐 순간에만 경로를 정한다. 날짜를 건너뛰면(jump) 바로 옮긴다.
    */
-  private planPath(lot: Lot, view: LotView, jump: boolean): void {
+  private planPath(lot: Lot, view: LotView, jump: boolean, docks: number): void {
     const now = { place: view.place, station: view.station, unit: view.unit };
     const before = lot.prev;
     lot.prev = now;
     if (jump || !before) { lot.path = []; return; }
     if (before.place === now.place && before.station === now.station && before.unit === now.unit) return;
     const y = MAT_TOP;
-    if (now.place === "bench" && now.unit > 0 && before.place !== "bench") {
-      const sx = SPUR_X[now.station];
-      lot.path = [new THREE.Vector3(sx, y, LANE_Z), new THREE.Vector3(sx, y, unitZ(now.unit))];
-    } else if (before.place === "bench" && before.unit > 0 && now.place !== "bench" && before.station < STATION_X.length - 1) {
-      const sx = SPUR_X[before.station + 1];
-      lot.path = [new THREE.Vector3(sx, y, unitZ(before.unit)), new THREE.Vector3(sx, y, LANE_Z)];
+    const to = benchAt(now.station, now.unit, docks), from = benchAt(before.station, before.unit, docks);
+    if (now.place === "bench" && !nearLane(to.z) && before.place !== "bench") {
+      const sx = SPUR_X[SPUR_IN[now.station]];
+      lot.path = [new THREE.Vector3(sx, y, LANE_Z), new THREE.Vector3(sx, y, to.z)];
+    } else if (before.place === "bench" && !nearLane(from.z) && now.place !== "bench") {
+      const sx = SPUR_X[SPUR_OUT[before.station]];
+      lot.path = [new THREE.Vector3(sx, y, from.z), new THREE.Vector3(sx, y, LANE_Z)];
     } else {
       lot.path = [];
     }
@@ -1191,7 +1258,7 @@ export class Yard {
   /** 진수하는 배의 자리: 도크 바닥 → 물에 떠오름 → 문 밖 → 바다의 제자리. */
   private launchPosition(unit: number, frac: number, sea: THREE.Vector3): THREE.Vector3 {
     const dock = this.docks[unit];
-    const cx = STATION_X[3], z = unitZ(unit);
+    const cx = STATION_X[3], z = dockZ(unit);
     const float = phase(frac, LAUNCH.fill) * WATER_TOP;
     const t = phase(frac, LAUNCH.sail);
     const inDock = new THREE.Vector3(cx, MAT_TOP + float, z);
@@ -1204,7 +1271,10 @@ export class Yard {
   private lotPosition(view: LotView, frac: number, f: Frame): THREE.Vector3 {
     const x = STATION_X[view.station];
     switch (view.place) {
-      case "bench": return new THREE.Vector3(x, MAT_TOP, unitZ(view.unit));
+      case "bench": {
+        const b = benchAt(view.station, view.unit, this.layoutDocks);
+        return new THREE.Vector3(b.x, MAT_TOP, b.z);
+      }
       case "queue":
       case "outbound": {
         // 공용 적치장 칸(탑재 앞 대기는 예외: 도크 앞)
@@ -1224,7 +1294,8 @@ export class Yard {
         lot.floatPhase += 0.016;
         const i = f.lots.filter((l) => l.place === "sea").indexOf(view);
         // 안벽 앞 바다에 세 척씩 두 줄로 띄운다.
-        return new THREE.Vector3(SHORE_X + 1.9 + (i % 3) * 2.9, SEA_Y + 0.02 + Math.sin(lot.floatPhase * 1.6) * 0.03, -1.6 + Math.floor(i / 3) * 2.1);
+        const at = seaSpot(i);
+        return new THREE.Vector3(at.x, SEA_Y + 0.02 + Math.sin(lot.floatPhase * 1.6) * 0.03, at.z);
       }
       default: return new THREE.Vector3(DEPOT.x, -5, 0);
     }
