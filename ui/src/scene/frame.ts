@@ -81,6 +81,8 @@ export interface Frame {
   research: ResearchView;
   /** 오늘 진수하는 배: 어제 탑재를 끝내 오늘 인도된 배와 그 도크(0 = 1호). 현장 3D의 진수 장면용(그림만) */
   launches: { ship: string; unit: number }[];
+  /** 오늘 입고(하루의 맨 처음): 자재마다 들어온 양. 납품 마차 장면용(그림만, 3.2) */
+  arrivals: { material: string; name: string; quantity: number }[];
 }
 
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
@@ -201,10 +203,18 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
       ? [{ ship: ship.id, unit: (before.unit ?? 1) - 1 }] : [];
   }) : [];
 
+  // 입고: 오늘 들어온 자재를 자재마다 합친다(배마다 따로 발주해도 마차 한 대에 싣는다)
+  const arrivals = scenario.materials.flatMap((m) => {
+    const quantity = result.events.filter((ev) => ev.type === "arrival" && ev.day === day && ev.material === m.id)
+      .reduce((sum, ev) => sum + (ev.type === "arrival" ? ev.quantity : 0), 0);
+    return quantity > 0 ? [{ material: m.id, name: m.name, quantity }] : [];
+  });
+
   return {
     day,
     lots,
     launches,
+    arrivals,
     stations,
     transporters,
     idleWorkers: day > 0 ? result.workforce.daily[index].idle : result.workforce.pool,
