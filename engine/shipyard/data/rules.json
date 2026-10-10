@@ -3,7 +3,7 @@
   "stations": [
     {"id": "sub_assembly", "name": "소조립", "real": "소조립 정반: 부재를 붙여 작은 블록 12개", "material": "paper"},
     {"id": "block_assembly", "name": "중조립", "real": "중조립 정반: 블록 12개 → 6개", "material": null},
-    {"id": "grand_assembly", "name": "대조립", "real": "대조립 정반: 블록 6개 → 3개, 도장", "material": "paint"},
+    {"id": "grand_assembly", "name": "PE장", "real": "PE장(선행탑재장, 도크 옆 옥외 조립장): 블록 6개 → 3개, 도장", "material": "paint"},
     {"id": "erection", "name": "탑재", "real": "골리앗 크레인: 블록 3개 → 배 1척, 의장", "material": "flag"}
   ],
   "materials": [
