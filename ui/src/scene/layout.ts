@@ -222,12 +222,25 @@ export function polyline(points: { x: number; z: number }[]): Route {
 export const KIT_PICK = { x: SHELF_X[1], z: SHELF_Z + 1.5 };
 /** 뒷길(4.0.1): 물류창고 앞, 공장 뒷벽과 창고 사이의 가로 도로. 샛길이 모두 여기까지 이어진다. T1이 창고와 공장 사이를 이 길로 다닌다 */
 export const BACK_LANE_Z = KIT_PICK.z;
+/**
+ * T1이 키트를 내려놓는 자리. 대부분은 그 공정 앞 큰길 위. 안벽의장은 해안선 너머(매립 안벽)라 큰길 끝은 바다다:
+ * 안벽 작업 구역 안에 내려놓는다(4.1.2).
+ */
+export function kitDrop(station: number): { x: number; z: number } {
+  if (station === ST.quay) return { x: STATION_X[ST.quay] - 1.0, z: QUAY.z0 + 1.7 };
+  return { x: STATION_X[station] - 1.4, z: LANE_Z };
+}
 export function kitRoutes(station: number): { pick: Route; drop: Route } {
   // 차고(큰길 왼쪽 끝) → 가공 공장 왼쪽 샛길 → 뒷길 → 창고 앞. 내릴 때는 뒷길에서 그 공정의 들어가는 샛길로 내려와 큰길로
-  const first = SPUR_X[0], down = SPUR_X[Math.max(0, SPUR_IN[station] ?? 0)];
+  const first = SPUR_X[0], down = SPUR_X[SPUR_IN[station] >= 0 ? SPUR_IN[station] : 5];
+  const end = kitDrop(station);
+  // 안벽의장: 큰길에서 PE장·도크 사이 샛길로 내려가 야드 앞쪽으로, 거기서 매립 안벽으로
+  const tail = station === ST.quay
+    ? [{ x: SPUR_X[6], z: LANE_Z }, { x: SPUR_X[6], z: end.z }, end]
+    : [end];
   return {
     pick: polyline([{ x: DEPOT.x, z: LANE_Z }, { x: first, z: LANE_Z }, { x: first, z: BACK_LANE_Z }, KIT_PICK]),
-    drop: polyline([KIT_PICK, { x: down, z: BACK_LANE_Z }, { x: down, z: LANE_Z }, { x: STATION_X[station] - 1.4, z: LANE_Z }]),
+    drop: polyline([KIT_PICK, { x: down, z: BACK_LANE_Z }, { x: down, z: LANE_Z }, ...tail]),
   };
 }
 

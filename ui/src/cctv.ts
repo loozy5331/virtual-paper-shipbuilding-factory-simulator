@@ -17,7 +17,7 @@ import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot } from "./scene/
 // 배치는 현장 3D와 같은 scene/layout.ts
 import { areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
   along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, quayQueueSpot, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_X, SHELF_Z, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
-  BACK_LANE_Z, CONVEYORS, DOCK2_AREA, FORKLIFT_HOME, QUAY_WORK_Z, STOCK_NAME, type SectorId } from "./scene/layout";
+  BACK_LANE_Z, CONVEYORS, DOCK2_AREA, FORKLIFT_HOME, kitDrop, QUAY_WORK_Z, STOCK_NAME, type SectorId } from "./scene/layout";
 
 // ----- 투영: 위에서 30도 기운 정사영 -----
 const S = 30;                        // 1 단위 = 30px
@@ -500,9 +500,10 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   // ----- 트랜스포터(4.0): T1 자재 키트는 그날 가져다 놓은 공정 앞, T2 블록은 실은 블록과 함께 -----
   frame.transporters.forEach((tr, k) => {
     const carried = tr.role === "block" && tr.state === "move" && tr.ship ? frame.lots.find((l) => l.ship === tr.ship && l.place === "carried") : undefined;
-    const kitAt = tr.role === "material" && tr.state === "move" && tr.kitTo !== null ? STATION_X[tr.kitTo] - 1.4 : null;
-    const x = carried ? (STATION_X[carried.station] + (STATION_X[carried.station + 1] ?? STATION_X[carried.station] + 4)) / 2 : kitAt ?? DEPOT.x + 0.6;
-    const z = carried || kitAt !== null ? LANE_Z : LANE_Z - 0.3 + k * 1.15;
+    // T1은 키트를 내려놓는 자리(안벽의장은 매립 안벽 위, 4.1.2), T2는 운반 중인 두 공정 사이 큰길
+    const kitAt = tr.role === "material" && tr.state === "move" && tr.kitTo !== null ? kitDrop(tr.kitTo) : null;
+    const x = carried ? (STATION_X[carried.station] + (STATION_X[carried.station + 1] ?? STATION_X[carried.station] + 4)) / 2 : kitAt?.x ?? DEPOT.x + 0.6;
+    const z = carried ? LANE_Z : kitAt ? kitAt.z : LANE_Z - 0.3 + k * 1.15;
     const body = tr.state === "breakdown_stop" ? (STATE_INFO.breakdown_stop?.color ?? "#8e2e42") : "#5f6b73";
     add(z, box(x, z, 2.0, 0.8, 0.3, body, "#3f474d"));
     if (carried) {
