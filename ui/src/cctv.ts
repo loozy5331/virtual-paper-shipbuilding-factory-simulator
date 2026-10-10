@@ -1,39 +1,31 @@
-// 관제실 작업 현황 전경(2.1): 높은 곳에서 조선소를 내려다본 2D 정지 화면. 기호도를 대신한다.
+// 관제실 작업 현황(2.1): 높은 곳에서 조선소를 내려다본 2D 정지 화면. 기호도를 대신한다.
+// 3.2(D38): 전경은 없다. 구획(내업, 1도크, 2도크, 안벽) 하나를 화면 가득 그린다. 공정이 늘어도 구획 안만 커진다.
 // 화면에는 "CCTV"라는 말을 쓰지 않는다(감시처럼 느껴져서, 사용자 결정). 파일 이름만 옛 이름이다.
 // 바로 위에서 30도쯤 기운 시점이다(바닥은 위에서, 사람·블록·선반은 앞면이 조금 보인다).
 // 배치는 현장 3D(scene/yard.ts)와 같은 좌표를 쓴다. 작업모를 쓰고 나가면 같은 자리가 3D로 보인다.
-// 공정을 누르면 같은 그림을 그 자리로 확대한다(그림을 따로 그리지 않는다).
+// 구획을 바꾸면 같은 그림의 viewBox만 그 구획으로 옮긴다(그림을 따로 그리지 않는다).
 //
 // 사람은 단색 기호(둥근 몸 + 고깔모자, 역할 색)로만 그린다. 얼굴·체격·이름을 그릴 자리가 없어 익명이 구조로 보장된다.
 // 애니메이션은 넣지 않는다: 날짜가 바뀔 때만 다시 그린다. 3D와 같은 scene/frame.ts의 Frame을 그리기만 한다.
 
 import type { Scenario } from "./api";
 import { s } from "./dom";
-import { HAT, STATE_INFO, STATION_COLOR } from "./labels";
+import { HAT, STATE_INFO, STATION_COLOR, STATION_TRADE, TRADE_HAT } from "./labels";
 import type { Frame, LotView } from "./scene/frame";
-import { STOCK_D, STOCK_HALF, STOCK_STATIONS, STOCK_Z0, stockAssign, stockSpot } from "./scene/stock";
-
-// ----- 현장 3D와 같은 배치(yard.ts) -----
-const STATION_X = [-9, -3.5, 2, 8.5];
-const MAT_W = 3.2, MAT_D = 2.6, MAT2_D = 2.3;
-const UNIT_Z = [0, -2.85, -5.65];   // 1호·2호·3호 작업장 줄(3.0)
-const QUEUE_Z = 2.2, LANE_Z = 3.7, DEPOT_X = -16;
-const LOUNGE = { x: -15.6, z: -4.4 };
-const SHELF_X = [-7.2, -4.7, -2.2], SHELF_Z = -9.6;
-const LAB = { x: 4.6, z: -10.4 };
-// 샛길: 큰길에서 공정 사이로 3호 뒤까지(yard.ts의 SPUR_X와 같은 자리)
-const SPUR_X = [STATION_X[0] - MAT_W / 2 - 1.45, (STATION_X[0] + STATION_X[1]) / 2,
-  (STATION_X[1] + STATION_X[2] - 0.05) / 2, (STATION_X[2] + MAT_W / 2 + 0.4 + STATION_X[3] - MAT_W / 2 - 0.6) / 2];
-// 해안(coast.ts): 야드 오른쪽 만, 곶 끝의 등대
-const SHORE_X = 11.2, MOUTH_X = 23.5, BAY_MOUTH = 3.5;
+import type { TrackPick } from "./track";
+import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot } from "./scene/stock";
+// 배치는 현장 3D와 같은 scene/layout.ts
+import { areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
+  along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, quayQueueSpot, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_X, SHELF_Z, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
+  CONVEYOR, QUAY_WORK_Z, STOCK_NAME, type SectorId } from "./scene/layout";
 
 // ----- 투영: 위에서 30도 기운 정사영 -----
 const S = 30;                        // 1 단위 = 30px
 const DEPTH = Math.cos(Math.PI / 6); // 바닥 깊이는 0.87배로 줄고
 const RISE = Math.sin(Math.PI / 6);  // 높이는 0.5배로 보인다
-const X0 = -18.5, Z0 = -12.2, TOP = 34;
-const VIEW_W = (26 - X0) * S;
-const VIEW_H = TOP + (STOCK_Z0 + STOCK_D + 1.1 - Z0) * S * DEPTH + 8;   // 공용 적치장(큰길 건너편)까지
+const X0 = -34.5, Z0 = -12.2, TOP = 34;
+/** 작업 현황 한 화면의 깊이(야드 단위). 모든 구획이 같은 배율이다(3.2.1) */
+const VIEW_D = 22;
 
 const px = (x: number) => (x - X0) * S;
 const py = (z: number, h = 0) => TOP + (z - Z0) * S * DEPTH - h * S * RISE;
@@ -116,16 +108,26 @@ function ship(x: number, z: number, kind: string, scale = 1): SVGElement {
 function lot(x: number, z: number, form: number, scale = 1, kind = "VLCC"): SVGElement {
   const stage = Math.min(4, Math.floor(form + 1e-6));
   const g = s("g", { class: "cc-lot" });
+  // 보이지 않는 누름 영역: 블록 조각 사이를 눌러도 정반(확대)이 아니라 블록(추적 상자)이 잡히게(3.1)
+  const hw = (stage === 4 ? 1.5 : 0.85) * scale, hd = 0.6 * scale;
+  g.append(s("rect", { x: px(x - hw), y: py(z - hd, 0.7 * scale), width: hw * 2 * S, height: py(z + hd) - py(z - hd, 0.7 * scale), fill: "transparent" }));
   const b = (bx: number, bz: number, w: number, d: number, h: number) =>
     g.append(box(x + bx * scale, z + bz * scale, w * scale, d * scale, h * scale, PAPER, PAPER_SIDE));
-  if (stage === 0) {
+  // 단계(D43): −2 종이 묶음, −1 평평한 판 8장, 0 굽힌 판, 1 블록 8개, 2 블록 4개, 3 블록 2개, 4 배.
+  // 굽힌 뒤(0 이상)에는 선수·선미 열이 가운데 쪽으로 좁아져 선체 곡면이 보인다.
+  const taper = (c: number, cols: number) => (c === 0 || c === cols - 1 ? 0.72 : 1);
+  if (stage <= -2) {
     b(0, 0, 1.4, 1.0, 0.08);
-  } else if (stage === 1) {
-    for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) b(-0.6 + c * 0.4, -0.4 + r * 0.4, 0.32, 0.32, 0.25);
+  } else if (stage <= 1) {
+    const bent = stage >= 0, h = stage === 1 ? 0.25 : 0.05;
+    for (let r = 0; r < 2; r++) for (let c = 0; c < 4; c++) {
+      const d = 0.4 * (bent ? taper(c, 4) : 1);
+      b(-0.66 + c * 0.44, (r - 0.5) * 0.46 + (bent ? (0.4 - d) / 2 * (r === 0 ? 1 : -1) : 0), 0.38, d, h);
+    }
   } else if (stage === 2) {
-    for (let r = 0; r < 2; r++) for (let c = 0; c < 3; c++) b(-0.5 + c * 0.5, -0.25 + r * 0.5, 0.44, 0.44, 0.35);
+    for (let r = 0; r < 2; r++) for (let c = 0; c < 2; c++) b(-0.42 + c * 0.84, (r - 0.5) * 0.48, 0.8, 0.44, 0.35);
   } else if (stage === 3) {
-    for (let c = 0; c < 3; c++) b(-0.6 + c * 0.6, 0, 0.55, 0.7, 0.5);
+    for (let c = 0; c < 2; c++) b(-0.42 + c * 0.84, 0, 0.8, 0.9, 0.5);
   } else {
     g.append(ship(x, z, kind, scale));
   }
@@ -148,11 +150,14 @@ function tag(x: number, y: number, text: string, cls = "cc-tag"): SVGElement {
   return s("text", { x, y, class: cls }, text);
 }
 
-/** 벽만 있는 작업장·구역(지붕 없음, 앞은 열림): 뒷벽은 앞면이 보이고, 옆벽은 위에서 본 띠. */
-function walls(x0: number, x1: number, z0: number, z1: number, h: number): SVGElement {
+/** 벽만 있는 작업장·구역(지붕 없음, 앞은 열림): 뒷벽은 앞면이 보이고, 옆벽은 위에서 본 띠. door = 뒷벽의 문(물류창고 뒷문) */
+function walls(x0: number, x1: number, z0: number, z1: number, h: number, door?: { x: number; w: number }): SVGElement {
   const t = 0.14, top = "#a3ada6", front = "#7d8a83";
+  const back = door
+    ? [box((x0 + door.x - door.w / 2) / 2, z0, door.x - door.w / 2 - x0, t, h, top, front), box((door.x + door.w / 2 + x1) / 2, z0, x1 - door.x - door.w / 2, t, h, top, front)]
+    : [box((x0 + x1) / 2, z0, x1 - x0, t, h, top, front)];
   return s("g", { class: "cc-walls" },
-    box((x0 + x1) / 2, z0, x1 - x0, t, h, top, front),
+    ...back,
     box(x0, (z0 + z1) / 2, t, z1 - z0, h, top, front),
     box(x1, (z0 + z1) / 2, t, z1 - z0, h, top, front));
 }
@@ -166,35 +171,79 @@ function dock(x0: number, x1: number, z0: number, z1: number): SVGElement {
 }
 
 export interface CctvOptions {
-  /** 확대해서 볼 공정. null이면 전경. */
-  focus: number | null;
-  onStation: (station: number) => void;
+  /** 볼 구획(전경은 없다, D38) */
+  focus: SectorId;
+  /** 구획 가장자리에 보이는 이웃 구획의 작업장을 누르면 그 구획으로 */
+  onSector: (id: SectorId) => void;
+  /** 추적 중인 배(3.1). 그 배의 블록만 진하게, 나머지 블록은 흐리게, 선반에는 그 배 몫 수량 */
+  track: string | null;
+  /** 블록이나 선반을 눌렀다(자재·블록 추적 상자) */
+  onPick: (pick: TrackPick) => void;
 }
 
 export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions): SVGElement {
+  const docks = frame.stations[ST.dock]?.units.length ?? 1;
   const due = Object.fromEntries(scenario.orders.map((o) => [o.id, o.due_day]));
   // 지연 표시는 오늘 기준(최종 결과를 미리 알려 주지 않게).
   const lateNow = (l: LotView) => (l.place === "sea" ? l.late : frame.day > due[l.ship]);
   const items: Item[] = [];
   const add = (z: number, el: SVGElement) => items.push({ z, el });
+  // 누를 수 있는 것(자재·블록 추적, 3.1): 정반을 누르면 확대지만, 블록이나 선반을 누르면 정보 상자다.
+  const pickable = (el: SVGElement, pick: TrackPick, label: string): SVGElement => {
+    el.classList.add("cc-pick");
+    el.setAttribute("role", "button");
+    el.setAttribute("tabindex", "0");
+    el.setAttribute("aria-label", label);
+    el.addEventListener("click", (e) => { e.stopPropagation(); opts.onPick(pick); });
+    el.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") { e.stopPropagation(); opts.onPick(pick); } });
+    return el;
+  };
+  // 블록 하나(그림 + 이름표 등)를 묶어 누를 수 있게 하고, 추적 중이면 그 배만 진하게
+  const block = (l: LotView, ...els: SVGElement[]): SVGElement => {
+    const g = s("g", { class: opts.track === null ? "" : opts.track === l.ship ? "tracked" : "untracked" }, ...els);
+    return pickable(g, { kind: "ship", ship: l.ship }, `${l.ship} 블록. 눌러서 위치 보기`);
+  };
 
   // ----- 바닥: 만(바다), 곶과 등대, 운반로, 작업대기소 -----
   add(-100, s("rect", { x: px(SHORE_X), y: -2000, width: 4000, height: 6000, fill: "#2f4a5a" }));
   add(-100, s("line", { x1: px(SHORE_X), x2: px(SHORE_X), y1: -2000, y2: 4000, stroke: "#8fa7b4", "stroke-width": 1.5 }));
-  for (const side of [-1, 1]) {
-    add(-99, s("ellipse", { cx: px(MOUTH_X + 1.5), cy: py(side * (BAY_MOUTH + 3.4)), rx: 3.4 * S, ry: 3.2 * S * DEPTH, fill: "#33402f", stroke: "#4f6147" }));
+  // 매립한 안벽(3.2): 앞쪽 곶과 야드 사이를 메운 땅, 만 쪽 가장자리에 계선주
+  add(-100, s("rect", { x: px(QUAY.x0) - 1, y: py(QUAY.z0), width: (QUAY.x1 - QUAY.x0) * S + 1, height: 4000, class: "cc-bg" }));
+  add(-100, s("line", { x1: px(QUAY.x0), x2: px(QUAY.x1), y1: py(QUAY.z0), y2: py(QUAY.z0), stroke: "#8fa7b4", "stroke-width": 1.5 }));
+  add(-100, s("line", { x1: px(QUAY.x1), x2: px(QUAY.x1), y1: py(QUAY.z0), y2: 4000, stroke: "#8fa7b4", "stroke-width": 1.5 }));
+  for (let x = QUAY.x0 + 0.8; x < QUAY.x1 - 0.3; x += 1.3) add(-99, s("circle", { cx: px(x), cy: py(QUAY.z0 + 0.35), r: 2.2, fill: "#8f8a80" }));
+  // 자재 납품 길: 등대 곶에서 굽어 들어와 물류창고 뒤까지, 그리고 왼쪽으로 빠지는 길(위에서 본 굵은 선)
+  // 등대 곶 바깥 부두(해상 납품)
+  add(-99, box((PIER.x0 + PIER.x1) / 2, PIER.z, PIER.x1 - PIER.x0, 1.1, 0.1, "#8a6a4a", "#5d4632"));
+  for (const pts of [SUPPLY_ROUTE, LAND_ROUTE, SUPPLY_EXIT]) {
+    const d = route(pts, 0.8).pts.map((p, i) => `${i ? "L" : "M"}${px(p.x).toFixed(1)} ${py(p.z).toFixed(1)}`).join(" ");
+    add(-99, s("path", { d, fill: "none", stroke: "#4a4536", "stroke-width": 0.9 * S * DEPTH, "stroke-linejoin": "round", "stroke-linecap": "round" }));
   }
-  const lx = px(MOUTH_X), ly = py(-(BAY_MOUTH + 2.6));
+  for (const side of [-1, 1]) {
+    add(-99, s("ellipse", { cx: px(MOUTH_X + 1.5), cy: py(BAY_C + side * (BAY_MOUTH + 3.4)), rx: 3.4 * S, ry: 3.2 * S * DEPTH, fill: "#33402f", stroke: "#4f6147" }));
+  }
+  const lx = px(MOUTH_X), ly = py(BAY_C - (BAY_MOUTH + 2.6));
   add(-98, s("g", { class: "cc-lighthouse" },
     s("rect", { x: lx - 5, y: ly - 34, width: 10, height: 34, fill: "#f3f1ea" }),
     s("rect", { x: lx - 5, y: ly - 26, width: 10, height: 6, fill: "#b8322d" }),
     s("path", { d: `M${lx - 7} ${ly - 34} L${lx} ${ly - 44} L${lx + 7} ${ly - 34} Z`, fill: "#b8322d" })));
   add(-98, tag(lx, ly + 14, "등대", "cc-tag mid"));
-  add(-99, box((DEPOT_X - 1.5 + SHORE_X - 0.3) / 2, LANE_Z, SHORE_X - 0.3 - (DEPOT_X - 1.5), 1.0, 0.02, "#3a423d", "#3a423d"));
+  add(-99, box((DEPOT.x - 1.5 + SHORE_X - 0.3) / 2, LANE_Z, SHORE_X - 0.3 - (DEPOT.x - 1.5), 1.0, 0.02, "#3a423d", "#3a423d"));
   add(-99, box(LOUNGE.x, LOUNGE.z, 3.2, 2.6, 0.02, "#2c3530", "#2c3530"));
-  for (const sx of SPUR_X) {
+  SPUR_X.forEach((sx, k) => {
     const back = UNIT_Z[2] - MAT2_D / 2 - 0.4, front = LANE_Z - 0.5;
     add(-99, box(sx, (front + back) / 2, 0.8, front - back, 0.02, "#3a423d", "#3a423d"));
+    // PE장 양옆 샛길은 큰길 앞(2도크 구획)으로도
+    const far = benchAt(ST.pe, 2, 2).z + MAT2_D / 2 + 0.4;
+    if (k >= 4) add(-99, box(sx, (LANE_Z + 0.5 + far) / 2, 0.8, far - LANE_Z - 0.5, 0.02, "#3a423d", "#3a423d"));
+  });
+  // 구획 윤곽(점선)과 이름: 이웃 구획이 가장자리에 걸쳐 보일 때 어디까지인지. 2도크 구획은 도크가 하나면 증설 예정지
+  for (const sec of SECTORS.map((sc) => sectorBounds(sc.id, docks))) {
+    if (sec.id === "quay") continue;
+    const empty = sec.id === "dock2" && docks < 2;
+    add(-98, s("rect", { x: px(sec.x0), y: py(sec.z0), width: (sec.x1 - sec.x0) * S, height: (sec.z1 - sec.z0) * S * DEPTH,
+      fill: "none", stroke: "#8f9a93", "stroke-width": 1.2, "stroke-dasharray": "3 6", opacity: empty ? 0.5 : 0.8 }));
+    if (empty) add(-98, tag(px((sec.x0 + sec.x1) / 2), py((sec.z0 + sec.z1) / 2), "2도크 구획 · 증설 예정지", "cc-place"));
   }
 
   // ----- 자재창고 선반 -----
@@ -202,6 +251,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     const x = SHELF_X[i];
     if (x === undefined) return;
     const g = s("g", { class: "cc-shelf" }, box(x, SHELF_Z, 2.1, 0.5, 1.6, "#4d4238", "#5c4f42"));
+    pickable(g, { kind: "material", material: sh.material }, `${sh.name} 선반. 눌러서 어느 배 몫인지 보기`);
     const shown = Math.min(sh.qty, 8);
     for (let k = 0; k < shown; k++) {
       const bx = px(x - 0.85 + (k % 4) * 0.45), by = py(SHELF_Z + 0.25, 1.35 - Math.floor(k / 4) * 0.6);
@@ -210,48 +260,109 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     const empty = sh.qty <= 0;
     g.append(tag(px(x), py(SHELF_Z + 0.25) + 14, `${sh.name} ${empty ? (sh.nextArrival ? `입고 D-${sh.nextArrival - frame.day}` : "없음") : sh.qty}`,
       empty ? "cc-tag mid warn" : "cc-tag mid"));
+    // 추적 중이면 그 배 몫 수량을 한 줄 더(자재 페깅)
+    if (opts.track !== null) {
+      const mine = sh.pegs.find((pg) => pg.ship === opts.track)?.quantity ?? 0;
+      g.append(tag(px(x), py(SHELF_Z + 0.25) + 28, `${opts.track} 몫 ${mine}`, mine ? "cc-tag mid track" : "cc-tag mid"));
+    }
     add(SHELF_Z, g);
   });
+  // 납품 마차(3.2): 정지 화면이라 그날 끝 자리. 입고일 마차는 창고 뒤(뒷문)에, 사흘 안의 입고는 납품 길 위에.
+  // 상자 색은 선반 상자 뚜껑과 같다. 창고 뒤 마차만 무엇이 몇 개인지 적고, 길 위 마차는 "입고 D-n"만.
+  // 해상(종이): 입고 사흘 전 날 끝에는 배가 부두에, 이틀·하루 전 날 끝에는 마차가 해상 길 위에. 육로(물감·깃발): 산길 위에.
+  const roadSea = route(SUPPLY_ROUTE), roadLand = route(LAND_ROUTE), roadOut = route(SUPPLY_EXIT), shipLane = route(SHIP_ROUTE, 1);
+  const crateColor = (m: string) => ["#f7f3ea", "#c8553d", "#c0392b"][frame.shelves.findIndex((sh) => sh.material === m)] ?? PAPER;
+  for (const dv of frame.deliveries) {
+    const left = dv.day - frame.day, today = left === 0;
+    const label = today ? `입고 · ${dv.items.map((a) => `${a.name} ${a.quantity}`).join(" · ")}` : `입고 D-${left} · ${dv.route === "sea" ? "해상" : "육로"}`;
+    if (dv.route === "sea" && left === 3) {
+      // 배가 부두에 닿아 있다(철판 = 종이 묶음)
+      const at = along(shipLane, 1), cx = px(at.x), cy = py(at.z);
+      add(at.z + 0.5, s("g", { class: "cc-supply-ship" },
+        s("path", { d: `M${cx - 48} ${cy - 10} L${cx + 40} ${cy - 10} L${cx + 52} ${cy - 3} L${cx + 40} ${cy + 4} L${cx - 48} ${cy + 4} Z`, fill: "#3f4f5a", stroke: "#26313a" }),
+        s("rect", { x: cx + 26, y: cy - 22, width: 16, height: 12, fill: "#e9e4d8" }),
+        ...dv.items.map((a, k) => s("rect", { x: cx - 40 + k * 20, y: cy - 16, width: 16, height: 7, fill: crateColor(a.material), stroke: "#4a3a2c", "stroke-width": 0.6 }))));
+      add(at.z + 0.5, tag(cx, cy - 28, label, "cc-tag mid"));
+      continue;
+    }
+    const at = today ? along(roadOut, 0)
+      : dv.route === "sea" ? along(roadSea, left === 2 ? 0.7 / 1.7 : 1)
+      : along(roadLand, (SUPPLY_DAYS - left + 1) / SUPPLY_DAYS);
+    const cx = px(at.x), cy = py(at.z);
+    const flip = Math.cos(at.angle) < 0 ? -1 : 1;   // 왼쪽으로 가면 좌우를 뒤집는다
+    const g = s("g", { class: "cc-supply", transform: `translate(${cx} ${cy}) scale(${flip} 1)` },
+      s("ellipse", { cx: -4, cy: 2, rx: 30, ry: 4, fill: "rgba(0,0,0,0.35)" }),
+      s("rect", { x: -30, y: -10, width: 30, height: 10, rx: 1, fill: "#a07e58", stroke: "#4a3a2c", "stroke-width": 0.8 }),
+      s("circle", { cx: -15, cy: 1, r: 4, fill: "#4a3a2c" }),
+      // 말: 몸과 머리, 다리
+      s("rect", { x: 6, y: -14, width: 18, height: 8, rx: 3, fill: "#8a5a3b" }),
+      s("rect", { x: 21, y: -20, width: 8, height: 6, rx: 2, fill: "#8a5a3b" }),
+      s("line", { x1: 9, x2: 9, y1: -6, y2: 1, stroke: "#8a5a3b", "stroke-width": 2 }),
+      s("line", { x1: 21, x2: 21, y1: -6, y2: 1, stroke: "#8a5a3b", "stroke-width": 2 }),
+      s("line", { x1: 0, x2: 6, y1: -8, y2: -10, stroke: "#6b4a2b", "stroke-width": 1.5 }));
+    if (!today) dv.items.forEach((a, k) => g.append(s("rect", { x: -28 + k * 9, y: -18, width: 8, height: 8, fill: crateColor(a.material), stroke: "#4a3a2c", "stroke-width": 0.6 })));
+    add(at.z + 0.5, g);
+    // 이름표는 마차 위(아래쪽은 물류창고 이름과 겹친다)
+    add(at.z + 0.5, tag(cx, cy - 26, label, "cc-tag mid"));
+  }
+
   // 물류창고 구역: 선반 셋을 벽으로 묶는다(앞은 열림)
-  add(SHELF_Z - 2, walls(SHELF_X[0] - 1.5, SHELF_X[2] + 1.5, SHELF_Z - 0.9, SHELF_Z + 1.0, 1.9));
+  add(SHELF_Z - 2, walls(SHELF_X[0] - 1.5, SHELF_X[2] + 1.5, SHELF_Z - 0.9, SHELF_Z + 1.0, 1.9, { x: SHELF_X[1], w: 1.3 }));
   add(SHELF_Z - 1, tag(px(SHELF_X[1]), py(SHELF_Z - 0.9, 1.9) - 8, "물류창고 구역", "cc-place"));
 
-  // ----- 연구소 -----
+  // ----- 연구소: 둘레의 나무(보안, 큰길 쪽 출입구만) -----
+  for (const t of LAB_TREES) {
+    add(t.z, s("g", { class: "cc-tree" },
+      s("ellipse", { cx: px(t.x), cy: py(t.z), rx: 9, ry: 3.5, fill: "rgba(0,0,0,0.35)" }),
+      s("path", { d: `M${px(t.x) - 9} ${py(t.z)} L${px(t.x)} ${py(t.z, 1.7)} L${px(t.x) + 9} ${py(t.z)} Z`, fill: "#3f6b47", stroke: "#2c4a32", "stroke-width": 0.8 })));
+  }
   const r = frame.research;
-  add(LAB.z, s("g", null,
-    box(LAB.x, LAB.z, 2.2, 2.0, 1.6, "#55636b", "#6c7a82"),
-    tag(px(LAB.x), py(LAB.z - 1, 1.6) - 8, "연구소", "cc-place"),
-    tag(px(LAB.x), py(LAB.z + 1) + 14, r.current ? `${r.current.name} ${r.current.done}/${r.current.total}일` : r.finished.length ? `완료 ${r.finished.length}개` : "쉬는 중", "cc-tag mid")));
+  add(LAB.z, box(LAB.x, LAB.z, 2.2, 2.0, 1.6, "#55636b", "#6c7a82"));
+  // 이름과 상태는 건물 바로 앞, 앞줄 나무보다 위에(뒤쪽 나무 줄은 큰길·차고와 가깝다)
+  // 이름과 상태는 나무 바깥 오른쪽(화면 아래쪽이 잘려도 보이게)
+  add(LAB.z + 3, s("g", null,
+    tag(px(LAB.x + 3.6), py(LAB.z) - 4, "연구소", "cc-place start"),
+    tag(px(LAB.x + 3.6), py(LAB.z) + 11, r.current ? `${r.current.name} ${r.current.done}/${r.current.total}일` : r.finished.length ? `완료 ${r.finished.length}개` : "쉬는 중", "cc-tag")));
 
   // ----- 작업대기소: 벤치 둘과 쉬는 사람 -----
   for (const row of [0, 1]) add(LOUNGE.z - 0.6 + row * 1.2 - 0.01, box(LOUNGE.x, LOUNGE.z - 0.6 + row * 1.2, 2.6, 0.3, 0.3, "#6b5a48", "#5a4a3a"));
-  for (let i = 0; i < Math.min(frame.idleWorkers, 8); i++) {
+  // 직종마다 모자 색(4.0, D42). 많으면 12명까지만 그린다
+  const idleHats = Object.entries(frame.idleByTrade).flatMap(([t, n]) => Array.from({ length: n }, () => TRADE_HAT[t] ?? HAT.worker));
+  for (let i = 0; i < Math.min(idleHats.length, 12); i++) {
     const row = Math.floor(i / 4), col = i % 4;
     const z = LOUNGE.z - 0.6 + row * 1.2;
-    add(z + 0.01, person(LOUNGE.x - 1.2 + col * 0.8, z, HAT.worker, true));
+    add(z + 0.01, person(LOUNGE.x - 1.2 + col * 0.8, z, idleHats[i], true));
   }
   add(LOUNGE.z + 2, tag(px(LOUNGE.x), py(LOUNGE.z + 1.3) + 16, "작업대기소", "cc-place"));
   add(LOUNGE.z + 2, tag(px(LOUNGE.x), py(LOUNGE.z + 1.3) + 31, `쉬는 인원 ${frame.idleWorkers}명`, "cc-tag mid"));
 
   // ----- 공정 -----
   scenario.stations.forEach((st, p) => {
-    const x = STATION_X[p];
+    if (p === ST.trial) return;   // 시운전은 먼바다라 그리지 않는다(화면 오른쪽 아래 말풍선)
     const view = frame.stations[p];
     const color = STATION_COLOR[st.id];
+    const b0 = benchAt(p, 0, docks);
+    const x = b0.x;
     view.units.forEach((unit, k) => {
-      const z = UNIT_Z[k] ?? 0;
-      const d = k === 0 ? MAT_D : MAT2_D;
-      // 작업장마다: 소조립·중조립은 벽(뒤·옆), 대조립은 노란 구획선, 탑재는 드라이 도크(바다 쪽 문)
-      const z0 = z - d / 2 - 0.3, z1 = z + d / 2 + (k === 0 ? 0.35 : 0.05);
-      if (p < 2) add(z0 - 0.01, walls(x - MAT_W / 2 - 0.45, x + MAT_W / 2 + 0.45, z0, z1, 1.0));
-      else if (p === 2) add(z0 - 0.01, s("rect", { x: px(x - MAT_W / 2 - 0.4), y: py(z0), width: (MAT_W + 0.8) * S, height: (z1 - z0) * S * DEPTH, fill: "none", stroke: "#e0b43a", "stroke-width": 1.5, "stroke-dasharray": "6 4" }));
-      else add(z0 - 0.01, dock(x - MAT_W / 2 - 0.6, x + MAT_W / 2 + 0.6, z0, z1));
+      const { z, d } = benchAt(p, k, docks);
+      // 작업장마다: 소조립·중조립은 벽(뒤·옆), PE장은 노란 구획선, 탑재는 드라이 도크(바다 쪽 문)
+      const { x0, x1, z0, z1 } = areaBounds(p, k, docks);
+      const water = p >= ST.quay;   // 안벽의장(정박 자리)·시운전(만 밖 바다): 물 위라 정반 대신 점선 테두리
+      if (isShop(p)) add(z0 - 0.01, walls(x0, x1, z0, z1, 1.0));
+      else if (p === ST.pe) add(z0 - 0.01, s("rect", { x: px(x0), y: py(z0), width: (x1 - x0) * S, height: (z1 - z0) * S * DEPTH, fill: "none", stroke: "#e0b43a", "stroke-width": 1.5, "stroke-dasharray": "6 4" }));
+      else if (p === ST.dock) add(z0 - 0.01, dock(x0, x1, z0, z1));
+      if (p === ST.quay) {   // 안벽 위 작업 구역(노란 구획선)
+        const a = areaBounds(p, k, docks);
+        add(a.z0 - 0.01, s("rect", { x: px(a.x0), y: py(a.z0), width: (a.x1 - a.x0) * S, height: (a.z1 - a.z0) * S * DEPTH, fill: "none", stroke: "#e0b43a", "stroke-width": 1.5, "stroke-dasharray": "6 4" }));
+      }
       const g = s("g", {
         class: "cc-station pick", role: "button", tabindex: 0,
-        "aria-label": `${st.name} ${unit.unit}호. 눌러서 확대`,
-        onclick: () => opts.onStation(p),
-        onkeydown: (e: KeyboardEvent) => { if (e.key === "Enter") opts.onStation(p); },
-      }, box(x, z, MAT_W, d, 0.08, color, color));
+        "aria-label": `${st.name} ${unit.unit}호. 눌러서 그 구획 보기`,
+        onclick: () => opts.onSector(sectorOf(p, k, docks)),
+        onkeydown: (e: KeyboardEvent) => { if (e.key === "Enter") opts.onSector(sectorOf(p, k, docks)); },
+      }, water
+        ? s("rect", { x: px(x - MAT_W / 2), y: py(z - d / 2), width: MAT_W * S, height: d * S * DEPTH, fill: "none", stroke: color, "stroke-width": 2, "stroke-dasharray": "5 4" })
+        : box(x, z, MAT_W, d, 0.08, color, color));
       if (unit.stop) {
         // 중지: 통제선(빗금 테두리). 정지 화면이라 연기·깜빡임 없이.
         const info = STATE_INFO[unit.state];
@@ -265,17 +376,18 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
       // 나눠 하는 배는 부분이 든 작업장마다 작게 그린다. 먼저 끝난 부분은 공용 적치장에서 짝을 기다린다(아래).
       const here = frame.lots.find((l) => l.place === "bench" && l.station === p && l.ship === unit.ship);
       if (here) {
-        add(z, lot(x, z, here.form, here.parts && here.parts.length > 1 ? 0.75 : 1, here.type));
         // 배 이름표는 정반 뒤 가장자리 바로 위(정반 안의 글과 겹치지 않게)
-        add(z + 0.02, chip(x, z - d / 2, 0, here, lateNow(here)));
+        add(z + 0.02, block(here, lot(x, z, here.form, here.parts && here.parts.length > 1 ? 0.75 : 1, here.type), chip(x, z - d / 2, 0, here, lateNow(here))));
       }
       if (view.crew === "robot") {
         if (here) { add(z + 0.1, robot(x - MAT_W / 2 + 0.35, z + 0.3)); add(z + 0.1, robot(x + MAT_W / 2 - 0.35, z + 0.3)); }
       } else {
-        const hat = view.senior ? HAT.senior : HAT.worker;
+        // 모자 색은 직종(숙련공은 원래대로 보라). 안벽의장 작업자는 배 옆 안벽 위
+        const hat = view.senior ? HAT.senior : TRADE_HAT[STATION_TRADE[st.id]] ?? HAT.worker;
         for (let i = 0; i < unit.workers; i++) {
           const wx = x + (i === 0 ? -1 : 1) * (MAT_W / 2 - 0.4);
-          add(z + 0.4, person(wx, z + 0.4, hat));
+          const wz = p === ST.quay ? QUAY_WORK_Z : z + 0.4;
+          add(wz, person(wx, wz, hat));
         }
       }
       if (unit.stop) {
@@ -286,32 +398,47 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     const first = view.units.find((u) => u.state !== "idle") ?? view.units[0];
     const info = first.state === "work" || first.state === "idle" ? null : STATE_INFO[first.state];
     const status = first.state === "work" ? "작업 중" : first.state === "idle" ? "비어 있음" : info?.name ?? first.state;
-    const extra = [view.overtime && view.crew !== "robot" ? "잔업" : "", { normal: "", skilled: "숙련공", robot: "로봇" }[view.crew]].filter(Boolean).join(" · ");
-    const ty = py(MAT_D / 2) - 6;
-    add(MAT_D / 2 + 0.05, s("g", { class: "cc-mat-text" },
+    const extra = [view.overtime && view.crew !== "robot" ? "잔업" : "", { normal: "", skilled: "숙련공", robot: "로봇", external: "외부팀" }[view.crew]].filter(Boolean).join(" · ");
+    const ty = py(b0.z + MAT_D / 2) - 6;
+    add(b0.z + MAT_D / 2 + 0.05, s("g", { class: "cc-mat-text" },
       tag(px(x - MAT_W / 2) + 5, ty, st.name, "cc-name"),
       tag(px(x + MAT_W / 2) - 5, ty, status, info ? "cc-tag end loss" : "cc-tag end"),
-      extra ? tag(px(x + MAT_W / 2) - 5, py(-MAT_D / 2) + 14, extra, "cc-tag end") : s("g")));
+      extra ? tag(px(x + MAT_W / 2) - 5, py(b0.z - MAT_D / 2) + 14, extra, "cc-tag end") : s("g")));
     // 탑재 앞 대기 줄(탑재는 적치장 예외: 도크 앞에서 기다린다)
-    if (p >= STOCK_STATIONS) {
+    if (p >= ST.quay) {
+      frame.lots.filter((l) => l.place === "queue" && l.station === p).sort((a, b) => a.slot - b.slot).slice(0, 3).forEach((l) => {
+        const q = quayQueueSpot(l.slot);
+        add(q.z + 0.01, block(l, lot(q.x, q.z, l.form, 0.55, l.type), chip(q.x, q.z - 0.2, 0.4, l, lateNow(l))));
+      });
+    }
+    if (p === ST.dock) {
       frame.lots.filter((l) => l.place === "queue" && l.station === p).sort((a, b) => a.slot - b.slot).slice(0, 3).forEach((l, i) => {
         const qx = x - 1 + i * 1.0;
-        add(QUEUE_Z, lot(qx, QUEUE_Z, l.form, 0.55));
-        add(QUEUE_Z + 0.01, chip(qx, QUEUE_Z - 0.2, 0.4, l, lateNow(l)));
+        add(QUEUE_Z + 0.01, block(l, lot(qx, QUEUE_Z, l.form, 0.55), chip(qx, QUEUE_Z - 0.2, 0.4, l, lateNow(l))));
       });
     }
   });
 
-  // ----- 공용 적치장: 큰길 건너편, 공정마다 맞은편 칸 -----
+  // ----- 컨베이어벨트(D43): 가공 공장 → 소조립 공장. 가공이 일하는 날은 판이 실려 있다 -----
+  {
+    const c = CONVEYOR;
+    add(c.z - 0.05, box((c.x0 + c.x1) / 2, c.z, c.x1 - c.x0 + 1.2, c.w, c.y, "#5d6661", "#3a3f3c"));
+    const proc = frame.stations[ST.proc];
+    if (proc && (proc.state === "work" || proc.state === "rework")) {
+      for (let k = 0; k < 3; k++) add(c.z + 0.01, box(c.x0 + (k + 0.5) * (c.x1 - c.x0) / 3, c.z, 0.34, 0.26, c.y + 0.04, PAPER, PAPER_SIDE));
+    }
+  }
+
+  // ----- 적치장: 공정마다 칸(내업 공정은 큰길 건너편, PE장은 1도크 구획) -----
   for (let p = 0; p < STOCK_STATIONS; p++) {
-    const x = STATION_X[p];
-    add(-97, s("rect", { x: px(x - STOCK_HALF), y: py(STOCK_Z0), width: STOCK_HALF * 2 * S, height: STOCK_D * S * DEPTH,
+    const at = STOCK_AT[p];
+    const far = at.z0 + at.dir * STOCK_D, zTop = Math.min(at.z0, far);
+    add(-97, s("rect", { x: px(at.x - STOCK_HALF), y: py(zTop), width: STOCK_HALF * 2 * S, height: STOCK_D * S * DEPTH,
       fill: "#2a332e", stroke: "#8f9a93", "stroke-width": 1.2, "stroke-dasharray": "5 4" }));
     add(-96, s("g", { class: "cc-mat-text" },
-      s("rect", { x: px(x - STOCK_HALF) + 6, y: py(STOCK_Z0 + STOCK_D) - 17, width: 9, height: 9, rx: 2, fill: STATION_COLOR[scenario.stations[p].id] }),
-      tag(px(x - STOCK_HALF) + 19, py(STOCK_Z0 + STOCK_D) - 8, "적치장", "cc-tag")));
+      s("rect", { x: px(at.x - STOCK_HALF) + 6, y: py(zTop + STOCK_D) - 17, width: 9, height: 9, rx: 2, fill: STATION_COLOR[scenario.stations[STOCK_COLOR_OF[p]].id] }),
+      tag(px(at.x - STOCK_HALF) + 19, py(zTop + STOCK_D) - 8, STOCK_NAME[p], "cc-tag")));
   }
-  add(-96, tag(px(STATION_X[1]), py(STOCK_Z0 + STOCK_D) + 16, "공용 적치장", "cc-place"));
   const stock = stockAssign(frame);
   for (const l of frame.lots) {
     const keys = [`q:${l.ship}`, `o:${l.ship}`, ...(l.parts ?? []).map((pt) => `w:${l.ship}:${pt.unit}`)];
@@ -319,28 +446,27 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
       const spot = stock.get(key);
       if (!spot) continue;
       const at = stockSpot(spot.station, spot.index);
-      add(at.z, lot(at.x, at.z, l.form, 0.55, l.type));
-      add(at.z + 0.01, chip(at.x, at.z - 0.2, 0.4, l, lateNow(l)));
       const why = spot.reason === "pair" ? "짝 대기" : spot.reason === "outbound" ? "운반 대기" : null;
-      if (why) add(at.z + 0.02, tag(px(at.x), py(at.z) + 13, why, "cc-tag mid pair"));
+      add(at.z + 0.01, block(l, lot(at.x, at.z, l.form, 0.55, l.type), chip(at.x, at.z - 0.2, 0.4, l, lateNow(l)),
+        why ? tag(px(at.x), py(at.z) + 13, why, "cc-tag mid pair") : s("g")));
     }
   }
 
-  // ----- 골리앗 크레인 위험 반경(3.0 안전, 현장 3D와 같은 반경 2.9): 도크마다 점선 원, 그 도크가 탑재 중이면 진하게 -----
+  // ----- 골리앗 크레인 위험 반경(3.0 안전, 현장 3D와 같은 CRANE_R): 도크마다 점선 원, 그 도크가 탑재 중이면 진하게 -----
   // 도크마다 크레인이 하나다(D36): 2호 도크가 있으면 2호 크레인의 틀과 반경도 그린다.
-  const docks = frame.stations[3]?.units ?? [];
-  docks.forEach((dock, u) => {
+  const dockUnits = frame.stations[ST.dock]?.units ?? [];
+  dockUnits.forEach((dock, u) => {
     const busy = dock.state === "work" || dock.state === "rework";
-    const zc = UNIT_Z[u] ?? 0;
-    add(-95, s("ellipse", { cx: px(STATION_X[3]), cy: py(zc), rx: 2.9 * S, ry: 2.9 * S * DEPTH, fill: "none",
+    const zc = dockZ(u);
+    add(-95, s("ellipse", { cx: px(STATION_X[ST.dock]), cy: py(zc), rx: CRANE_R * S, ry: CRANE_R * S * DEPTH, fill: "none",
       stroke: "#e0b43a", "stroke-width": busy ? 2.2 : 1.2, "stroke-dasharray": "7 5", opacity: busy ? 0.95 : 0.5 }));
   });
-  add(-95, tag(px(STATION_X[3] - 2.9) + 4, py(2.6) + 4, "반경 10m 출입 금지", "cc-tag warn"));
+  add(-95, tag(px(STATION_X[ST.dock] - CRANE_R) + 4, py(2.6) + 4, "반경 10m 출입 금지", "cc-tag warn"));
 
   // ----- 골리앗 크레인(탑재 위, 틀만): 도크마다 하나 -----
-  const cx = STATION_X[3];
-  docks.forEach((_, u) => {
-    const zc = UNIT_Z[u] ?? 0;
+  const cx = STATION_X[ST.dock];
+  dockUnits.forEach((_, u) => {
+    const zc = dockZ(u);
     const crane = s("g", { class: "cc-crane", opacity: 0.85 });
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) crane.append(s("line", { x1: px(cx + sx * 2), y1: py(zc + sz * 1.8), x2: px(cx + sx * 2), y2: py(zc + sz * 1.8, 3.4), stroke: "#c9a640", "stroke-width": 3 }));
@@ -348,47 +474,43 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     }
     crane.append(s("rect", { x: px(cx - 2.2), y: py(zc, 3.5) - 4, width: 4.4 * S, height: 8, fill: "#c9a640" }));
     add(zc + 1.9, crane);
+    // 도크가 구획마다 하나라 크레인 이름도 크레인마다(1도크 = 1호, 2도크 = 2호). 큰길 쪽에는 적지 않는다(이웃 구획과 겹친다).
+    const name = dockUnits.length > 1 ? `골리앗 크레인 ${u + 1}호` : "골리앗 크레인";
+    add(zc - 6, zc <= LANE_Z ? tag(px(cx), py(zc - 1.8, 3.5) - 10, name, "cc-place") : tag(px(cx), py(zc + 1.8) + 22, name, "cc-place"));
   });
-  // 이름은 맨 뒤 크레인 위에 한 번만(겹친 틀 사이에 적으면 뒤 도크를 가린다). 도크 번호는 정반의 "1호·2호" 팻말.
-  const backZ = UNIT_Z[docks.length - 1] ?? 0;
-  add(backZ - 6, tag(px(cx), py(backZ - 1.8, 3.5) - 10, docks.length > 1 ? "골리앗 크레인 1·2호" : "골리앗 크레인", "cc-place"));
 
-  // ----- 트랜스포터 -----
+  // ----- 트랜스포터(4.0): T1 자재 키트는 그날 가져다 놓은 공정 앞, T2 블록은 실은 블록과 함께 -----
   frame.transporters.forEach((tr, k) => {
-    const carried = tr.state === "move" && tr.ship ? frame.lots.find((l) => l.ship === tr.ship && l.place === "carried") : undefined;
-    const x = carried ? (STATION_X[carried.station] + (STATION_X[carried.station + 1] ?? STATION_X[carried.station] + 4)) / 2 : DEPOT_X + 0.6;
-    const z = carried ? LANE_Z : LANE_Z - 0.3 + k * 1.15;
+    const carried = tr.role === "block" && tr.state === "move" && tr.ship ? frame.lots.find((l) => l.ship === tr.ship && l.place === "carried") : undefined;
+    const kitAt = tr.role === "material" && tr.state === "move" && tr.kitTo !== null ? STATION_X[tr.kitTo] - 1.4 : null;
+    const x = carried ? (STATION_X[carried.station] + (STATION_X[carried.station + 1] ?? STATION_X[carried.station] + 4)) / 2 : kitAt ?? DEPOT.x + 0.6;
+    const z = carried || kitAt !== null ? LANE_Z : LANE_Z - 0.3 + k * 1.15;
     const body = tr.state === "breakdown_stop" ? (STATE_INFO.breakdown_stop?.color ?? "#8e2e42") : "#5f6b73";
     add(z, box(x, z, 2.0, 0.8, 0.3, body, "#3f474d"));
     if (carried) {
-      add(z + 0.01, lot(x, z, carried.form, 0.7));
-      add(z + 0.02, chip(x, z - 0.3, 0.9, carried, lateNow(carried)));
+      add(z + 0.02, block(carried, lot(x, z, carried.form, 0.7), chip(x, z - 0.3, 0.9, carried, lateNow(carried))));
     }
-    add(z + 0.5, tag(px(x), py(z + 0.4) + 13, tr.state === "breakdown_stop" ? `${tr.id} 고장` : tr.id, tr.state === "breakdown_stop" ? "cc-tag mid stop" : "cc-tag mid"));
+    if (kitAt !== null) add(z + 0.03, box(x, z, 0.6, 0.5, 0.65, "#c9a26b", "#a8865a"));   // 실어 온 키트 상자
+    const name = `${tr.id} ${tr.role === "material" ? "자재" : "블록"}`;
+    add(z + 0.5, tag(px(x), py(z + 0.4) + 13, tr.state === "breakdown_stop" ? `${name} 고장` : name, tr.state === "breakdown_stop" ? "cc-tag mid stop" : "cc-tag mid"));
   });
 
-  // ----- 안벽 앞 바다(인도): 현장 3D와 같은 자리, 세 척씩 두 줄 -----
-  const sea = frame.lots.filter((l) => l.place === "sea").sort((a, b) => a.slot - b.slot);
-  sea.slice(0, 6).forEach((l, i) => {
-    const bx = SHORE_X + 1.9 + (i % 3) * 2.9, bz = -1.6 + Math.floor(i / 3) * 2.1;
-    add(bz, s("g", null, lot(bx, bz, 4, 0.75, l.type),
-      s("text", { x: px(bx), y: py(bz) + 12, class: l.late ? "cc-sea-name late" : "cc-sea-name" }, l.ship)));
-  });
+  // 인도한 배는 조선소를 떠난다(관제실 모니터 오른쪽 위 인도 완료 로그). 착수 전 배만 안벽에 적어 둔다
   const waiting = frame.lots.filter((l) => l.place === "hidden").map((l) => l.ship);
-  add(9, tag(px(SHORE_X + 4.8), py(3.6) + 14, `안벽 · 인도 ${sea.length}척${waiting.length ? ` · 착수 전 ${waiting.join(" ")}` : ""}`, "cc-tag mid"));
+  if (waiting.length) add(9, tag(px((QUAY.x0 + QUAY.x1) / 2), py(QUAY.z0 + 1.8), `착수 전 ${waiting.join(" ")}`, "cc-tag mid"));
 
-  // ----- 그리기 -----
-  const focus = opts.focus;
-  let viewBox = `0 0 ${VIEW_W} ${VIEW_H}`;
-  if (focus !== null) {
-    // 공정 확대: 정반 둘(2호는 뒤)과 대기 줄이 세로로 들어가게. 가로는 화면 비율대로 이웃 공정까지 보인다.
-    const top = py(-7.2, 1), bottom = py(STOCK_Z0 + STOCK_D + 0.3);
-    const w = 9 * S;
-    viewBox = `${px(STATION_X[focus]) - w / 2} ${top} ${w} ${bottom - top}`;
-  }
+  // ----- 그리기: 고른 구획을 화면 가득 -----
+  const sec = sectorBounds(opts.focus, docks);
+  // 모든 구획을 같은 배율로 그린다(구획 크기에 맞춰 확대하면 큰 내업은 멀고 작은 도크는 너무 가깝다).
+  // 화면은 구획 가운데에 맞추고, 구획보다 넓으면 이웃(큰길, 마주 보는 도크)이 함께 보인다.
+  const d = VIEW_D, w = VIEW_D * 1.8;
+  // 내업은 깊이가 화면보다 길어(창고 뒤 길 ~ 연구소 앞 나무) 가운데를 창고와 연구소 사이에 맞춘다
+  const vx = (sec.x0 + sec.x1) / 2, vz = opts.focus === "shop" ? -0.6 : (sec.z0 + sec.z1) / 2;
+  const top = py(vz - d / 2, 2.8), bottom = py(vz + d / 2);
+  const viewBox = `${px(vx - w / 2)} ${top} ${w * S} ${bottom - top}`;
   const svg = s("svg", {
-    class: focus === null ? "cc-feed" : "cc-feed zoom", viewBox, preserveAspectRatio: "xMidYMid meet", role: "img",
-    "aria-label": `작업 현황 ${focus === null ? "전경" : scenario.stations[focus].name}, ${frame.day}일`,
+    class: "cc-feed zoom", viewBox, preserveAspectRatio: "xMidYMid meet", role: "img",
+    "aria-label": `작업 현황 ${sec.name}, ${frame.day}일`,
   });
   svg.append(s("rect", { x: -2000, y: -2000, width: 6000, height: 6000, class: "cc-bg" }));
   items.sort((a, b) => a.z - b.z).forEach((it) => svg.append(it.el));

@@ -1,4 +1,4 @@
-// 간트 차트. 가로축은 1~60일.
+// 간트 차트. 가로축은 1일부터 시나리오의 작업일(4.0 반기는 120일)까지.
 // 위쪽은 배 4척: 배마다 두 줄, 위는 작업장을 차지한 구간(작업장 색, 재작업은 빗금, 운반은 점선 틀), 아래 얇은 줄은 손실 구간.
 // 아래쪽은 설비: 연구소, 트랜스포터(대별), 골리앗 크레인(탑재 작업장).
 // 배 탭(renderShipGantt)은 한 척을 공정별 줄로 펼치고, 같은 공정을 쓰던 다른 배를 옅게 함께 그린다.
@@ -122,7 +122,7 @@ export function renderGantt(result: Result, scenario: Scenario, today: number, o
   // 날짜 축과 눈금
   const axis = s("g", { class: "axis" });
   for (let d = 1; d <= days; d++) {
-    if (d === 1 || d % 5 === 0) {
+    if (d === 1 || d % (days > 60 ? 10 : 5) === 0) {
       axis.append(
         s("line", { x1: x(d), x2: x(d), y1: TOP - 6, y2: height - 4, class: d % 10 === 0 ? "grid major" : "grid" }),
         s("text", { x: x(d) + dayW / 2, y: TOP - 14, class: "tick" }, d));
@@ -225,9 +225,10 @@ export function renderGantt(result: Result, scenario: Scenario, today: number, o
     }
   });
 
-  // 트랜스포터: 나른 날은 실은 배 이름으로, 고장은 중지 색으로
+  // 트랜스포터: 나른 날은 실은 배 이름으로, 고장은 중지 색으로. T1 자재 키트, T2 블록(4.0, D39)
   for (const tr of result.transporters) {
-    eqRow(`트랜스포터 ${tr.id}`, ended ? `운행 ${tr.moves}일 · 고장 ${tr.breakdowns}건` : "공정 사이 운반", (g, y) => {
+    const kit = tr.role === "material";
+    eqRow(`트랜스포터 ${tr.id} · ${kit ? "자재" : "블록"}`, ended ? `운행 ${tr.moves}일 · 고장 ${tr.breakdowns}건` : kit ? "물류창고 → 작업장" : "공정 사이 블록", (g, y) => {
       const key = (day: number) => {
         const rec = tr.daily[day - 1];
         if (rec.state === "move") return `move:${rec.ships.join("+")}`;
@@ -241,7 +242,7 @@ export function renderGantt(result: Result, scenario: Scenario, today: number, o
           g.append(bar(x(run.start), y, w, EQ_BAR, STOP_COLOR, `${tr.id} 고장 중지 · ${span}`, { label: "고장", hatch: true }));
         } else {
           const ships = run.key.slice(5);
-          g.append(bar(x(run.start), y, w, EQ_BAR, "#6d7a72", `${tr.id} · ${ships} 운반 · ${span}`, { label: ships }));
+          g.append(bar(x(run.start), y, w, EQ_BAR, "#6d7a72", `${tr.id} · ${ships} ${kit ? "자재 키트" : "블록"} 운반 · ${span}`, { label: ships }));
         }
       }
     });
@@ -315,7 +316,7 @@ export function renderShipGantt(result: Result, scenario: Scenario, shipId: stri
 
   const axis = s("g", { class: "axis" });
   for (let d = 1; d <= days; d++) {
-    if (d === 1 || d % 5 === 0) {
+    if (d === 1 || d % (days > 60 ? 10 : 5) === 0) {
       axis.append(
         s("line", { x1: x(d), x2: x(d), y1: TOP - 6, y2: height - 4, class: d % 10 === 0 ? "grid major" : "grid" }),
         s("text", { x: x(d) + dayW / 2, y: TOP - 14, class: "tick" }, d));

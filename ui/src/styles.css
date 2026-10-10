@@ -416,6 +416,9 @@ select.priority { max-width: 84px; }
 .scene-host canvas { display: block; }
 .scene-labels { position: absolute; inset: 0; z-index: 1; pointer-events: none; }   /* 라벨의 z-index를 이 안에 가둔다(전환 막 아래로) */
 .scene-labels > div { font-family: inherit; }
+/* 구획 이름(3.2, D38): 바닥에 적힌 먹색 글. 전경에서는 이것만 보이고 나머지 글(이름표, 수량, 팻말)은 숨긴다 */
+.sector-tag { padding: 4px 12px; border-radius: 6px; background: rgba(51, 65, 58, 0.82); color: #f7f5ee; font-size: 14px; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; }
+.scene-labels.overview > div:not(.sector-tag) { visibility: hidden !important; }
 /* 현장 이름표(2.1, 가상의 이름): 작업복 가슴의 명찰처럼 흰 바탕에 작은 글자 */
 .name-tag { background: #fff; color: #33413a; border: 1px solid #33413a; border-radius: 2px; font-size: 10px; font-weight: 700; padding: 0 4px; line-height: 15px; white-space: nowrap; }
 .station-tag, .place-tag, .shelf-tag, .lot-tag {
@@ -814,6 +817,7 @@ body { background: var(--desk); }
 .cc-feed .cc-bg { fill: #1f2622; }
 .cc-feed text { font-family: inherit; fill: #c9d3cc; }
 .cc-feed .cc-place { font-size: 13px; font-weight: 700; fill: #eef2ee; text-anchor: middle; }
+.cc-feed .cc-place.start { text-anchor: start; }
 .cc-feed .cc-name { font-size: 14px; font-weight: 800; fill: #fff; }
 /* 정반(공정 색) 위 글: 바탕색이 제각각이라 어두운 테두리로 읽히게 */
 .cc-feed .cc-mat-text text { fill: #fff; paint-order: stroke; stroke: rgba(20, 26, 22, 0.75); stroke-width: 3px; stroke-linejoin: round; }
@@ -834,6 +838,58 @@ body { background: var(--desk); }
 .cc-feed .pick { cursor: pointer; }
 .cc-feed .pick:hover > g > rect:first-child, .cc-feed .pick:focus-visible > g > rect:first-child { stroke: #f3f1ea; stroke-width: 2; }
 .cc-feed .pick:focus { outline: none; }
+/* 자재·블록 추적(3.1): 블록·선반을 누르면 상자. 추적 중이면 그 배만 진하게, 나머지 블록은 흐리게 */
+.cc-feed .cc-pick { cursor: pointer; }
+.cc-feed .cc-pick:focus { outline: none; }
+.cc-feed .cc-pick:hover .cc-chip rect:first-of-type, .cc-feed .cc-pick:focus-visible .cc-chip rect:first-of-type { stroke: #e0b43a; stroke-width: 2; }
+.cc-feed .untracked { opacity: 0.25; }
+.cc-feed .tracked .cc-chip rect:first-of-type { stroke: #e0b43a; stroke-width: 2.5; }
+.cc-feed .tracked .cc-sea-name { fill: #e0b43a; }
+.cc-feed .cc-tag.track { fill: #e0b43a; font-weight: 800; }
+.cam-track { position: absolute; right: 10px; bottom: 8px; z-index: 2; display: flex; align-items: center; gap: 5px; background: rgba(20, 24, 20, 0.62); color: #f3f1ea; font-size: 11px; font-weight: 700; padding: 2px 4px 2px 8px; border-radius: 3px; }
+.cam-track select { font: inherit; font-size: 11px; color: #1f2622; background: #f3f1ea; border: 0; border-radius: 2px; padding: 1px 2px; }
+.track-host { position: absolute; right: 10px; top: 40px; z-index: 3; width: min(340px, calc(100% - 20px)); max-height: calc(100% - 80px); overflow-y: auto; }
+.track-host:empty { display: none; }
+/* 인도 완료 로그(4.0): 오른쪽 위, 최근 것부터. 지연은 빨간 글 */
+.delivered-log { position: absolute; right: 10px; top: 8px; z-index: 2; margin: 0; padding: 4px 8px; list-style: none; max-height: 40%; overflow-y: auto;
+  background: rgba(20, 24, 20, 0.78); color: #f3f1ea; font-size: 11px; border-radius: 3px; min-width: 190px; }
+.delivered-log[hidden] { display: none; }
+.delivered-log li { display: grid; grid-template-columns: 2.4em 1fr auto auto; gap: 6px; padding: 1px 0; align-items: baseline; }
+.delivered-log li.head { display: block; font-weight: 700; color: #cfd8d2; padding-bottom: 2px; border-bottom: 1px solid rgba(243, 241, 234, 0.2); margin-bottom: 2px; }
+.delivered-log em { font-style: normal; color: #9fd8b4; }
+.delivered-log li.late em { color: #ff8a95; }
+.field-screen .delivered-log { top: 10px; }
+.trial-bubble { position: absolute; right: 14px; bottom: 40px; z-index: 2; background: var(--paper); color: var(--ink); border: 1px solid #c9cfc9;
+  border-radius: 8px; padding: 5px 9px 6px; font-size: 11px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); min-width: 170px; }
+.trial-bubble[hidden] { display: none; }
+/* 말풍선 꼬리: 오른쪽 아래, 화면 밖 먼바다 쪽을 가리킨다 */
+.trial-bubble::after { content: ""; position: absolute; right: -7px; bottom: 10px; width: 12px; height: 12px; background: var(--paper);
+  border-right: 1px solid #c9cfc9; border-top: 1px solid #c9cfc9; transform: rotate(45deg); }
+.trial-head { font-weight: 700; color: #0b6f95; margin-bottom: 2px; }
+.trial-bubble ul { list-style: none; margin: 0; padding: 0; }
+.trial-bubble li { display: grid; grid-template-columns: 2.4em 1fr auto auto; gap: 6px; align-items: baseline; }
+.trial-bubble em { font-style: normal; color: #c0262d; font-weight: 700; }
+.field-host .trial-bubble { bottom: 14px; right: 18px; }
+.field-head .cam-track { position: static; }
+.scene-labels .pickable { pointer-events: auto; cursor: pointer; }
+.scene-labels .tracked { outline: 2px solid #e0b43a; outline-offset: 1px; }
+.scene-labels .untracked { opacity: 0.35; }
+.shelf-tag small.track { color: #9a6a00; font-weight: 800; }
+.track-card { background: var(--paper); color: var(--ink); border: 1px solid #c9cfc9; border-radius: 4px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3); padding: 10px 12px; font-size: 12px; line-height: 1.45; }
+.track-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.track-head b { font-size: 13px; }
+.track-kind { color: var(--ink-3); font-size: 11px; }
+.track-x { margin-left: auto; border: 0; background: transparent; font: inherit; color: var(--ink-2); cursor: pointer; padding: 0 2px; }
+.track-card dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; }
+.track-card dt { color: var(--ink-3); font-weight: 700; white-space: nowrap; }
+.track-card dd { margin: 0; }
+.track-card dd.late { color: #c0262d; font-weight: 700; }
+.track-sub { margin-top: 8px; padding-top: 6px; border-top: 1px solid #e3e0d6; font-weight: 700; color: var(--ink-2); }
+.track-mats { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 2px; }
+.track-mats li { display: grid; grid-template-columns: 3em 1fr; gap: 6px; }
+.track-actions { display: flex; gap: 6px; margin-top: 9px; }
+.track-link { border: 0; background: transparent; padding: 0; font: inherit; color: var(--accent); font-weight: 700; text-decoration: underline; cursor: pointer; }
+.track-hint { margin: 7px 0 0; color: var(--ink-3); font-size: 11px; }
 .right-top .cam-anon { top: 34px; }
 .cam-back { position: absolute; right: 10px; top: 8px; z-index: 2; background: #fff; border: 1px solid #c9cfc9; font: inherit; font-size: 12px; padding: 3px 9px; border-radius: 4px; font-weight: 700; color: var(--accent); cursor: pointer; }
 /* 익명 표시(2.1): 관제실 화면은 개인을 구분하지 않는다는 표시. 화면 이름 바로 아래, 눈에 띄지만 조용하게. */
@@ -852,6 +908,11 @@ body { background: var(--desk); }
 /* 책상: 생산계획서, 두 손, 작업모 */
 .room-desk { position: absolute; left: 0; right: 0; bottom: 0; height: 185px; }
 .desk-top { position: absolute; inset: 0; background: var(--desk-top); border-top: 3px solid #b3a895; }
+/* 듀얼 모니터암: 기둥(모니터 뒤, 두 모니터 사이로 보임)과 책상 모서리의 클램프. 테두리와 같은 먹색 단색 */
+.monitor-arm { position: absolute; left: 50%; top: 120px; bottom: 185px; width: 12px; transform: translateX(-50%); background: #2b332e; border-radius: 3px 3px 0 0; }
+/* 기둥 위 마디: 양쪽 팔이 모니터 뒤로 들어가는 자리(두 모니터 사이로 보이는 만큼만) */
+.monitor-arm::before { content: ""; position: absolute; left: 50%; top: 0; width: 22px; height: 12px; transform: translateX(-50%); background: #2b332e; border-radius: 3px; }
+.arm-clamp { position: absolute; left: 50%; top: -5px; width: 40px; height: 16px; transform: translateX(-50%); background: #2b332e; border-radius: 2px 2px 4px 4px; }
 .desk-clip { position: absolute; left: 80px; top: 26px; width: 120px; height: 150px; padding: 13px 7px 0; cursor: pointer; font: inherit; text-align: left;
   background: var(--board); border: 1px solid var(--board-edge); border-radius: 5px; transition: transform 0.15s ease; }
 .desk-clip::before { content: ""; position: absolute; top: -5px; left: 50%; transform: translateX(-50%); width: 40px; height: 10px; background: #8c9195; border-radius: 2px; }

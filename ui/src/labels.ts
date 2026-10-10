@@ -4,19 +4,49 @@
 /** 고깔모자(작업모) 색: 역할. 3D 소인과 2D 작업 현황 기호가 함께 쓴다. */
 export const HAT = { worker: "#d6a400", manager: "#d9480f", senior: "#6f42c1" } as const;
 
+/** 공정의 직종(rules.json의 trade와 같다). 시운전은 외부팀이라 없다 */
+export const STATION_TRADE: Record<string, string> = {
+  cutting: "processing", processing: "processing", sub_assembly: "assembly", block_assembly: "assembly", painting: "painting", pre_outfitting: "outfitting",
+  grand_assembly: "assembly", erection: "erection", quay_outfitting: "outfitting",
+};
+
+/** 직종별 작업모 색(4.0, D42). 조립은 원래 작업자 색. 모자 색만으로 구분하지 않게 현장 이름표와 대기소 글에 직종을 적는다 */
+export const TRADE_HAT: Record<string, string> = {
+  processing: "#5b6770",   // 가공(절단·가공, D43): 강철 회색. 새로 나빠지는 모자 색 쌍이 없다
+  assembly: "#d6a400",
+  erection: "#2a78d6",
+  painting: "#00a07a",
+  outfitting: "#c0569e",
+};
+
+// 공정 10색(4.0): 검증기 인접 쌍 통과(CVD 최소 7.1 = 안벽의장↔시운전, 정상시 최소 17.0 = 가공↔소조립). 손실 색(주황·노랑·빨강)과 겹치지 않게
+// 새 공정은 청록·남색·자두·하늘, 절단 짙은 초록·가공 보라(D43). 10색이면 색 공간이 차서, 절단은 PE장·도장과, 가공은 탑재와
+// 멀리 떨어진 공정끼리 가깝다(정상시 ΔE 8~12). 그래서 막대 안 공정 이름과 막대 사이 틈을 함께 쓴다(보조 표시).
 export const STATION_COLOR: Record<string, string> = {
+  cutting: "#007e54",
+  processing: "#844ea8",
   sub_assembly: "#2a78d6",
   block_assembly: "#e87ba4",
+  painting: "#00a07a",
+  pre_outfitting: "#1c5cab",
   grand_assembly: "#008300",
   erection: "#4a3aa7",
+  quay_outfitting: "#c0569e",
+  sea_trial: "#0095c8",
 };
 
 // 막대 안 글자색. 중조립 분홍은 밝아서 흰 글자가 안 읽히므로 어두운 글자를 쓴다.
 export const STATION_TEXT: Record<string, string> = {
+  cutting: "#ffffff",
+  processing: "#ffffff",
   sub_assembly: "#ffffff",
   block_assembly: "#1f2a24",
   grand_assembly: "#ffffff",
   erection: "#ffffff",
+  painting: "#ffffff",
+  pre_outfitting: "#ffffff",
+  quay_outfitting: "#ffffff",
+  sea_trial: "#ffffff",
 };
 
 export interface StateInfo {
@@ -52,7 +82,7 @@ export const LEAD_TIME_STATES: StateInfo[] = [WORK_STATE, TRANSPORT_STATE, ...LO
 export const STATE_INFO: Record<string, StateInfo> = Object.fromEntries(LEAD_TIME_STATES.map((s) => [s.state, s]));
 
 export const COST_ITEMS: { key: string; name: string; note: string }[] = [
-  { key: "labor", name: "인건비", note: "대기소 인원 일당 × 60일, 숙련공 할증(배정 인원 일당 +5) 포함" },
+  { key: "labor", name: "인건비", note: "대기소 인원 일당 × 작업일, 숙련공 할증(배정 인원 일당 +5) 포함" },
   { key: "overtime", name: "잔업수당", note: "잔업한 날마다 배정 인원 일당의 50%" },
   { key: "maintenance", name: "정비비", note: "정비한 공정의 작업장마다 100" },
   { key: "material", name: "자재비", note: "BOM 수량 × 단가" },
@@ -61,7 +91,7 @@ export const COST_ITEMS: { key: string; name: string; note: string }[] = [
   { key: "rework", name: "재작업비", note: "불량 1건에 200" },
   { key: "accident", name: "사고", note: "사고 1건에 300" },
   { key: "breakdown", name: "고장 수리비", note: "고장 1건에 150 (작업장, 트랜스포터)" },
-  { key: "transporter", name: "트랜스포터", note: "대당 5/일, 정비하면 대당 50" },
+  { key: "transporter", name: "트랜스포터", note: "T1 자재·T2 블록 2대, 대당 5/일, 정비하면 대당 50" },
   { key: "investment", name: "설비 투자비", note: "증설(정반 300, 크레인 800), 로봇 도입(작업장마다 700), 신공법 도입(공정마다 150)" },
   { key: "research", name: "연구비", note: "대기열에 넣은 연구 비용" },
   { key: "late_penalty", name: "지연 배상", note: "계약금의 3%/일" },

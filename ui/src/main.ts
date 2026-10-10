@@ -14,11 +14,13 @@ import { renderDesk } from "./desk";
 import { planLabel, renderForm, renderPlanBar, renderPlanNotes, renderPlanTabs, updatePreview, type FormContext } from "./form";
 import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
 import { docHead, REVIEWER } from "./paper";
-import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, PAIR_WAIT_STATE, STATION_COLOR, TRANSPORT_STATE } from "./labels";
+import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, TRANSPORT_STATE } from "./labels";
 import { breakdownBar, breakdownLegend, eventText, renderReport } from "./report";
 import { renderCctv } from "./cctv";
-import { buildFrame } from "./scene/frame";
+import { renderTrackCard, type TrackPick } from "./track";
+import { buildFrame, type Frame } from "./scene/frame";
 import type { Yard } from "./scene/yard";
+import { sector, sectorOf, SECTORS, ST, type SectorId } from "./scene/layout";
 
 const SPEEDS = [1, 4];   // 관제실 배속. 기본 4배속(사용자 결정). 현장은 따로 1배속 고정(FIELD_MS_PER_DAY).
 const BASE_MS_PER_DAY = 500;   // 1배속은 하루에 0.5초, 60일이 30초다.
@@ -77,12 +79,16 @@ interface State {
   playing: boolean;
   speed: number;
   board: BoardState;
-  /** 오른쪽 모니터 위쪽 작업 현황에서 확대한 공정 번호. null이면 전경. (이름은 옛 CCTV에서 왔다) */
-  cctv: number | null;
+  /** 오른쪽 모니터 위쪽 작업 현황에서 보는 구획(3.2, D38: 전경은 없다). (이름은 옛 CCTV에서 왔다) */
+  cctv: SectorId;
   /** 크게 보고 있는 모니터 */
   zoomed: "left" | "right" | null;
-  /** 현장에서 가까이 보는 공정. null이면 전경. */
-  fieldFocus: number | null;
+  /** 현장에서 가까이 보는 구획. null이면 전경. */
+  fieldFocus: SectorId | null;
+  /** 자재·블록 추적(3.1): 진하게 볼 배(나머지는 흐리게). null이면 끔 */
+  track: string | null;
+  /** 떠 있는 추적 상자(누른 블록이나 선반). 떠 있는 동안 재생은 멈춰 있다 */
+  pick: TrackPick | null;
   /** 현장에서 관리자가 선 자리: 안전한 자리, 또는 버튼으로 순간이동한 설비 옆(3.0) */
   managerSpot: "safe" | "crane" | "cart";
   /** 마지막으로 서명한 사람(이 브라우저가 기억한다). */
@@ -97,7 +103,7 @@ let previewSeq = 0;
 let previewTimer: number | undefined;
 
 const els = {
-  desk: h("section", { class: "desk", "aria-label": "분기 고르기" }),
+  desk: h("section", { class: "desk", "aria-label": "반기 고르기" }),
   plan: h("section", { class: "plan-screen", "aria-label": "생산계획서" }),
   room: h("section", { class: "room", "aria-label": "관제실" }),
   field: h("section", { class: "field-screen", "aria-label": "현장" }),
@@ -122,6 +128,15 @@ const els = {
   osdRight: h("div", { class: "osd osd-right", "data-group": "speed-right" }),
   ganttScreen: h("div", { class: "gantt-screen" }),
   rightTop: h("div", { class: "right-top" }),
+  /** 자재·블록 추적 상자 자리: 작업 현황 위(관제실) */
+  trackRoom: h("div", { class: "track-host" }),
+  /** 자재·블록 추적 상자 자리: 현장 3D 위 */
+  trackField: h("div", { class: "track-host" }),
+  /** 인도 완료 로그: 작업 현황(관제실)과 현장 3D의 오른쪽 위. 인도한 배는 조선소를 떠나 그림에 없다 */
+  deliveredRoom: h("ol", { class: "delivered-log", "aria-label": "인도 완료" }),
+  deliveredField: h("ol", { class: "delivered-log", "aria-label": "인도 완료" }),
+  trialRoom: h("div", { class: "trial-bubble", role: "status", hidden: true }),
+  trialField: h("div", { class: "trial-bubble", role: "status", hidden: true }),
   log: h("ol", { class: "log", "aria-label": "사건 기록" }),
   deskClip: h("button", { class: "desk-clip", type: "button", title: "생산계획서로 돌아가 계획을 고칩니다" }),
   hat: h("button", { class: "desk-hat", type: "button", title: "작업모를 쓰고 현장으로 나갑니다" }),
@@ -436,7 +451,7 @@ async function switchScenario(id: string): Promise<void> {
   previewSeq++;
   Object.assign(state, {
     data, config: structuredClone(first.config), presetId: first.id, edited: false, preview: null, errors: [],
-    current: last ?? null, ganttShip: null, cctv: null, board: "none",
+    current: last ?? null, ganttShip: null, cctv: "shop", board: "none",
     day: last !== undefined && state.runs[last].finished ? data.scenario.days : 0,
   });
   drawForm();
@@ -591,7 +606,7 @@ async function run(signer: Signer | null = null): Promise<void> {
   }
   state.runs.push({ n: state.runs.length + 1, scenario: state.data.scenario.id, label: runLabel(), config, result, finished: false, signer });
   state.current = state.runs.length - 1;
-  Object.assign(state, { day: 0, ganttShip: null, cctv: null, board: "none", playing: false });
+  Object.assign(state, { day: 0, ganttShip: null, cctv: "shop", board: "none", playing: false });
 
   const source = els.plan.querySelector<HTMLElement>(".board-left");
   // 생산계획서 클립보드를 띄워 두고(복제), 관제실을 보이지 않게 그려 책상 위 자리를 잰다.
@@ -622,6 +637,8 @@ function currentRun(): Run | null {
 function play(): void {
   const r = currentRun();
   if (!r) return;
+  // 추적 상자는 떠 있는 동안 재생을 멈춰 둔다(읽기 쉽게, 사용자 결정). 재생하면 닫는다.
+  if (state.pick) { state.pick = null; drawTrackCard(); }
   if (state.day >= r.result.days) state.day = 0;
   state.playing = true;
   restartTimer();
@@ -714,7 +731,7 @@ function tick(jump: boolean): void {
   const feed = els.rightTop.querySelector(".cc-host");
   if (feed) {
     mount(feed, renderCctv(buildFrame(result, scenario, r.config, state.day, 1), scenario, {
-      focus: state.cctv, onStation: (p) => openCctv(p),
+      focus: state.cctv, onSector: openSector, track: state.track, onPick: openTrack,
     }));
   }
   const cam = els.rightTop.querySelector(".cam-label");
@@ -729,7 +746,92 @@ function tick(jump: boolean): void {
     : h("li", { class: "quiet" }, state.day ? "아직 기록할 사건이 없습니다." : "재생하면 1일부터 사건이 여기에 쌓입니다."));
   els.log.scrollTop = keep;
 
+  drawTrackCard();
+  const today = buildFrame(result, scenario, r.config, state.day, 1);
+  drawDelivered(today);
+  drawSeaTrial(today);
   syncScene(jump);
+}
+
+// ---------------------------------------------------------------------------
+// 자재·블록 추적 (3.1): 블록이나 선반을 누르면 상자, "이 배 전부 보기"면 그 배만 진하게
+// ---------------------------------------------------------------------------
+
+/** 블록이나 선반을 눌렀다: 재생을 멈추고 상자를 띄운다. */
+function openTrack(pick: TrackPick): void {
+  if (state.playing) pause();
+  state.pick = pick;
+  drawTrackCard();
+}
+
+function closeTrack(): void {
+  state.pick = null;
+  drawTrackCard();
+}
+
+function setTrack(ship: string | null): void {
+  state.track = ship;
+  yard?.setTrack(ship);
+  drawRightTop();
+  if (state.screen === "field") drawField();
+  tick(true);
+}
+
+/** 추적할 배 고르기(작업 현황 전경 오른쪽 아래, 현장 머리줄) */
+function trackSelect(): HTMLElement {
+  return h("label", { class: "cam-track" }, "추적",
+    h("select", { onchange: (e: Event) => setTrack((e.target as HTMLSelectElement).value || null) },
+      h("option", { value: "" }, "없음"),
+      (currentRun()?.result.ships ?? []).map((sh) => h("option", { value: sh.id, selected: state.track === sh.id }, sh.id))));
+}
+
+/** 인도 완료 로그: 오늘까지 인도한 배를 최근 것부터. 추적 상자가 떠 있으면 그 자리를 비켜 감춘다 */
+function drawDelivered(frame: Frame): void {
+  const { scenario } = state.data;
+  const rows = frame.delivered.map((d) => h("li", { class: d.late ? "late" : "" },
+    h("b", null, d.ship),
+    h("span", null, scenario.ship_types[d.type]?.name ?? d.type),
+    h("span", null, `${d.day}일 인도`),
+    h("em", null, d.late ? `${d.late}일 지연` : "납기 준수")));
+  for (const host of [els.deliveredRoom, els.deliveredField]) {
+    host.hidden = !!state.pick || rows.length === 0;
+    mount(host, rows.length ? [h("li", { class: "head" }, `인도 완료 ${rows.length}척`), ...rows.map((r) => r.cloneNode(true) as HTMLElement)] : []);
+  }
+}
+
+/** 시운전 말풍선: 시운전은 먼바다라 그림 밖이다. 시운전 중인 배가 있을 때만 오른쪽 아래에 뜬다 */
+function drawSeaTrial(frame: Frame): void {
+  const { scenario } = state.data;
+  const rows = frame.seaTrial.map((t) => {
+    const loss = t.state === "work" ? "" : STATE_INFO[t.state]?.name ?? "";
+    return h("li", null,
+      h("b", null, t.ship),
+      h("span", null, scenario.ship_types[t.type]?.name ?? t.type),
+      h("span", null, `${t.day}/${t.days}일째`),
+      loss ? h("em", null, loss) : null);
+  });
+  for (const host of [els.trialRoom, els.trialField]) {
+    host.hidden = rows.length === 0;
+    mount(host, rows.length ? [h("div", { class: "trial-head" }, "시운전 중 · 먼바다"),
+      h("ul", null, rows.map((r) => r.cloneNode(true) as HTMLElement))] : []);
+  }
+}
+
+function drawTrackCard(): void {
+  // 추적 상자는 인도 완료 로그 자리(오른쪽 위)에 겹쳐 뜨므로, 떠 있는 동안 로그를 감춘다
+  for (const log of [els.deliveredRoom, els.deliveredField]) log.hidden = !!state.pick || log.childElementCount === 0;
+  const r = currentRun();
+  const field = state.screen === "field";
+  const host = field ? els.trackField : els.trackRoom;
+  mount(field ? els.trackRoom : els.trackField);
+  if (!r || !state.pick) return mount(host);
+  const frame = buildFrame(r.result, state.data.scenario, r.config, state.day, 1);
+  mount(host, renderTrackCard(state.pick, r.result, state.data.scenario, frame, {
+    track: setTrack,
+    pick: openTrack,
+    close: closeTrack,
+    gantt: field ? undefined : (ship) => { state.ganttShip = ship; drawGanttScreen(); tick(true); },
+  }, state.track));
 }
 
 // ---------------------------------------------------------------------------
@@ -737,17 +839,26 @@ function tick(jump: boolean): void {
 // ---------------------------------------------------------------------------
 
 function camLabel(): string {
-  const where = state.cctv === null ? "작업 현황 전경" : `작업 현황 · ${state.data.scenario.stations[state.cctv].name}`;
-  return `${where} · ${state.day}일`;
+  return `작업 현황 · ${sector(state.cctv).name} · ${state.day}일`;
 }
 
-/** 오른쪽 모니터 작업 현황을 그 공정으로 확대한다. 재생 중에도 오늘을 본다(결과를 미리 알려 주지 않는다). */
-function openCctv(station: number, day?: number): void {
+/** 오른쪽 모니터 작업 현황을 그 구획으로. 재생 중에도 오늘을 본다(결과를 미리 알려 주지 않는다). */
+function openSector(id: SectorId, day?: number): void {
   if (!currentRun()) return;
-  state.cctv = station;
+  state.cctv = id;
   drawRightTop();
   if (day !== undefined) seek(day);
   else tick(true);
+}
+
+/** 그 공정이 있는 구획으로(간트 막대, 평가서 의문점). PE장·탑재는 그날 그 배가 있던 작업장의 구획. */
+function openCctv(station: number, day: number, ship: string | null): void {
+  const r = currentRun();
+  if (!r) return;
+  const frame = buildFrame(r.result, state.data.scenario, r.config, day, 1);
+  const docks = frame.stations[ST.dock]?.units.length ?? 1;
+  const lot = ship ? frame.lots.find((l) => l.ship === ship && l.place === "bench" && l.station === station) : undefined;
+  openSector(sectorOf(station, lot?.unit ?? 0, docks), day);
 }
 
 /** 현장 카메라: 전경 또는 고른 공정. */
@@ -764,11 +875,6 @@ function aimCamera(): void {
   else void yardLoading?.then(apply);
 }
 
-function closeCctv(): void {
-  state.cctv = null;
-  drawRightTop();
-  tick(true);
-}
 
 /** 3D를 그릴 자리: 현장이면 화면 전체. 관제실은 2D라 3D가 없다. */
 function sceneHost(): HTMLElement | null {
@@ -786,6 +892,7 @@ function syncScene(jump: boolean): void {
   if (!yard) {
     yardLoading ??= import("./scene/yard").then((y) => {
       yard = new y.Yard();
+      yard.setPickHandler(openTrack);
     });
     void yardLoading.then(() => {
       aimCamera();
@@ -795,6 +902,7 @@ function syncScene(jump: boolean): void {
   }
   yard.attach(host);
   yard.setManagerName(r.signer?.nickname ?? "생산관리자");
+  yard.setTrack(state.track);
   if (yardRun !== r) {
     yard.load(r.result.ships.map((s) => ({ id: s.id, type: s.type })));
     yardRun = r;
@@ -815,7 +923,7 @@ function syncScene(jump: boolean): void {
 function pickBar(pick: GanttPick): void {
   const station = state.data.scenario.stations.findIndex((st) => st.id === pick.station);
   pause();
-  openCctv(station, pick.start);
+  openCctv(station, pick.start, pick.ship);
 }
 
 /** 평가서의 의문점 카드: 간트는 왼쪽 모니터를 그 배·날짜로, 작업 현황은 오른쪽 모니터를 그 공정 확대로. 보드는 내려 둔다. */
@@ -830,7 +938,7 @@ function openFinding(f: Finding, where: "field" | "gantt"): void {
     return;
   }
   const station = state.data.scenario.stations.findIndex((st) => st.id === f.station);
-  openCctv(station, f.start);
+  openCctv(station, f.start, f.ship);
 }
 
 // ---------------------------------------------------------------------------
@@ -870,7 +978,7 @@ function drawPlates(): void {
         onclick: () => {
           pause();
           state.current = i;
-          Object.assign(state, { day: run.finished ? run.result.days : 0, ganttShip: null, cctv: null, board: run.finished ? "down" : "none" });
+          Object.assign(state, { day: run.finished ? run.result.days : 0, ganttShip: null, cctv: "shop", board: run.finished ? "down" : "none" });
           drawRoom();
         },
       }, `${run.n}`, run.finished ? gradeChip(run.result.grade.grade, "chip-grade") : null))) : null);
@@ -940,21 +1048,23 @@ function drawGanttScreen(): void {
     h("div", { class: "ship-detail zoom-only" }));
 }
 
-/** 오른쪽 모니터 위쪽: 작업 현황 전경(공정을 누르면 확대) 또는 공정 확대. 그림은 tick이 채운다. */
+/** 오른쪽 모니터 위쪽: 작업 현황, 구획 하나(위 단추로 바꾼다). 그림은 tick이 채운다. */
 function drawRightTop(): void {
   const label = els.monitorRight.querySelector(".win-title");
-  const stations = state.data.scenario.stations;
   mount(els.rightTop,
     h("div", { class: "cc-host" }),
     h("span", { class: "cam-label" }, camLabel()),
     h("span", { class: "cam-anon", title: "관제실 화면은 사람을 기호로만 보여 줍니다. 얼굴과 이름은 현장에 직접 나가야 보입니다." },
       "익명 표시 · 개인을 구분하지 않습니다"),
-    state.cctv !== null ? h("button", { class: "cam-back", type: "button", onclick: closeCctv }, "← 전경") : null,
-    h("div", { class: "cam-switch", role: "group", "aria-label": "확대할 공정" },
-      h("button", { type: "button", class: state.cctv === null ? "active" : "", onclick: closeCctv }, "전경"),
-      stations.map((st, i) =>
-        h("button", { type: "button", class: i === state.cctv ? "active" : "", onclick: () => openCctv(i) }, st.name))));
-  if (label) label.textContent = state.cctv === null ? "작업 현황 전경 · 공정을 누르면 확대" : `작업 현황 · ${stations[state.cctv].name}`;
+    els.trackRoom,
+    els.deliveredRoom,
+    els.trialRoom,
+    // 추적할 배 고르기(3.1): 고른 배의 블록만 진하게, 선반에는 그 배 몫
+    trackSelect(),
+    h("div", { class: "cam-switch", role: "group", "aria-label": "볼 구획" },
+      SECTORS.map((sec) =>
+        h("button", { type: "button", class: sec.id === state.cctv ? "active" : "", onclick: () => openSector(sec.id) }, sec.name))));
+  if (label) label.textContent = `작업 현황 · ${sector(state.cctv).name}`;
 }
 
 /** 책상 위: 생산계획서 클립보드(누르면 계획 고치기). 평가서를 보고 있으면 손은 보이지 않는다(CSS). */
@@ -1041,7 +1151,7 @@ const introSeen = new Set<number>();
 function goField(): void {
   const r = currentRun();
   if (!r) return;
-  state.fieldFocus = state.cctv;   // 작업 현황에서 확대해 보던 공정이 있으면 그 앞으로 나간다.
+  state.fieldFocus = state.cctv;   // 작업 현황에서 보던 구획으로 나간다.
   pause();   // 현장에 나가면 시간이 멈춰 있다. 재생하면 1배속(하루 2초)으로 흐른다.
   r.safetyWarnings ??= 0;
   setScreen("field");
@@ -1068,19 +1178,21 @@ function backToRoom(): void {
 
 function drawField(): void {
   const r = currentRun();
-  const { scenario } = state.data;
   mount(els.fieldHead,
     h("button", { class: "field-back", type: "button", onclick: backToRoom }, "← 관제실로"),
     h("b", null, "현장"),
     h("span", { class: "hint" }, r ? `${r.n}회차 ${r.label} · 생산관리자의 눈으로 봅니다` : ""),
     h("div", { class: "field-cams", role: "group", "aria-label": "볼 곳" },
       h("button", { type: "button", class: state.fieldFocus === null ? "active" : "", onclick: () => { state.fieldFocus = null; drawField(); aimCamera(); } }, "전경"),
-      scenario.stations.map((st, i) =>
-        h("button", { type: "button", class: state.fieldFocus === i ? "active" : "", onclick: () => { state.fieldFocus = i; drawField(); aimCamera(); } }, `${st.name} 가까이`))),
+      SECTORS.map((sec) =>
+        h("button", { type: "button", class: state.fieldFocus === sec.id ? "active" : "", onclick: () => { state.fieldFocus = sec.id; drawField(); aimCamera(); } }, sec.name))),
     // 관리자 순간이동(3.0 안전): 설비 옆으로 가면 위험 반경 경고. 1인칭 이동은 나중에(D35)
     h("div", { class: "field-cams", role: "group", "aria-label": "관리자 이동" },
       h("button", { type: "button", onclick: () => moveManager("crane") }, "골리앗 주변으로"),
-      h("button", { type: "button", onclick: () => moveManager("cart") }, "트랜스포터 주변으로")));
+      h("button", { type: "button", onclick: () => moveManager("cart") }, "트랜스포터 주변으로")),
+    // 자재·블록 추적(3.1): 블록이나 선반을 누르면 상자, 고른 배는 노란 고리
+    h("span", { class: "hint" }, "블록·선반을 누르면 추적"),
+    trackSelect());
   drawOsd(els.fieldOsd);
 }
 
@@ -1149,6 +1261,10 @@ function drawTopbar(): void {
 function onKey(e: KeyboardEvent): void {
   if (e.key === "Escape" && planUp) {
     closePlanBoard();
+    return;
+  }
+  if (e.key === "Escape" && state.pick) {
+    closeTrack();
     return;
   }
   if (e.key === "Escape" && state.zoomed) {
@@ -1230,9 +1346,11 @@ async function start(): Promise<void> {
     playing: false,
     speed: 4,
     board: "none",
-    cctv: null,
+    cctv: "shop",
     zoomed: null,
     fieldFocus: null,
+    track: null,
+    pick: null,
     managerSpot: "safe",
     signer: loadSigner(),
     classBest: {},
@@ -1279,10 +1397,13 @@ async function start(): Promise<void> {
   });
   mount(els.room,
     els.plate, els.plateRight,
+    // 듀얼 모니터암(가운데 기둥 하나): 기둥은 모니터 뒤로 지나가 두 모니터 사이와 아래로만 보이고, 책상에 클램프로 물린다
+    h("div", { class: "monitor-arm", "aria-hidden": "true" }),
     h("div", { class: "monitors" }, els.monitorLeft, els.monitorRight),
-    h("div", { class: "room-desk" }, h("div", { class: "desk-top" }), els.deskClip, els.hands, els.hat),
+    h("div", { class: "room-desk" }, h("div", { class: "desk-top" }), h("div", { class: "arm-clamp", "aria-hidden": "true" }), els.deskClip, els.hands, els.hat),
     els.reportBoard, els.planBoard);
 
+  els.sceneField.append(els.trackField, els.deliveredField, els.trialField);
   mount(els.field, els.fieldHead, els.sceneField, els.fieldOsd);
   mount(root, els.desk, els.plan, els.room, els.field);
 

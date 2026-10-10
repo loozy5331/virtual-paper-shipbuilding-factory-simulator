@@ -13,7 +13,7 @@ export interface StationConfig {
   split?: boolean;
 }
 
-export type Crew = "normal" | "skilled" | "robot";
+export type Crew = "normal" | "skilled" | "robot" | "external";
 
 export interface ShipConfig {
   priority: number;
@@ -30,8 +30,12 @@ export interface Config {
   ordering?: Ordering;
   ships: Record<string, ShipConfig>;
   stations: Record<string, StationConfig>;
+  /** 대기소 전체 인원. 4.0부터는 pools의 합이다(옛 설정은 조립 인원으로 읽는다) */
   pool: number;
-  transporters: { count: number; maintenance: boolean };
+  /** 4.0(D42): 직종별 대기소 인원. 사람은 자기 직종 공정에만 간다. 시운전은 외부팀이라 없다 */
+  pools?: Record<string, number>;
+  /** 4.0(D39): 역할마다 한 대로 고정(T1 자재, T2 블록). count는 옛 설정에서만 읽고 엔진이 쓰지 않는다 */
+  transporters: { count?: number; maintenance: boolean };
   research: string[];
   /** 1.x 설정의 시니어. 2.0부터는 공정의 crew = "skilled"로 쓴다(엔진이 둘 다 읽는다). */
   skilled_station?: string | null;
@@ -51,6 +55,20 @@ export interface StationInfo {
   name: string;
   real: string;
   material: string | null;
+  /** 4.0(D41·D42): 앞 공정(모두 마쳐야 들어간다), 직종, 자리(같은 자리면 운반 없이 다음 날), 받는 방법, 나눠 하기 가능 */
+  after?: string[];
+  trade?: string;
+  site?: string;
+  arrive?: "crane" | "tow";
+  split?: boolean;
+}
+
+export interface TradeInfo {
+  name: string;
+  max?: number;
+  /** 시운전: 외부 전문팀(대기소 밖) */
+  external?: boolean;
+  cost_per_team_day?: number;
 }
 
 export interface MaterialInfo {
@@ -124,6 +142,9 @@ export interface Scenario {
   period: string;
   days: number;
   stations: StationInfo[];
+  /** 직종(4.0, D42). _comment 같은 밑줄 키는 설명 */
+  trades: Record<string, TradeInfo | string>;
+  default_pools: Record<string, number | string>;
   materials: MaterialInfo[];
   ship_types: Record<string, ShipType>;
   orders: Order[];
@@ -135,12 +156,36 @@ export interface Scenario {
     crews: Record<Crew, CrewInfo>;
     overtime: { speed: number };
   };
-  transporter: { max_count: number; capacity: number; lot_weight: number };
+  transporter: { max_count: number; capacity: number; lot_weight: number; roles: ("material" | "block")[]; kits_per_day: number };
   expansion: { name: string; max_units: number; max_units_by_station?: Record<string, number>; summary: string; cost: Record<string, number> };
   material_grades: Record<"standard" | "cheap", { name: string; price_factor: number; defect_add: number }>;
   research: Record<string, ResearchInfo>;
   ordering: Record<Ordering, { name: string; summary: string }>;
   kpi: { revenue: number; profit: number; on_time_rate: number; first_pass_yield: number };
+}
+
+/** 사람을 보내는 직종(시운전 외부팀 제외)과 그 정보 */
+export function staffTrades(scenario: Scenario): [string, TradeInfo][] {
+  return Object.entries(scenario.trades)
+    .filter((e): e is [string, TradeInfo] => !e[0].startsWith("_") && typeof e[1] === "object" && !e[1].external);
+}
+
+/**
+ * 엔진의 complete_config와 같은 기본값으로 설정을 채운다(4.0). 3.x 프리셋·회차를 생산계획서에 그대로 올릴 수 있게.
+ * 없는 공정은 표준·잔업 없음·정비, pools가 없으면 pool을 조립 인원으로 읽고 나머지 직종은 default_pools.
+ */
+export function completeConfig(config: Config, scenario: Scenario): Config {
+  for (const st of scenario.stations) {
+    config.stations[st.id] ??= { method: "standard", overtime: false, maintenance: true };
+  }
+  if (!config.pools) {
+    config.pools = Object.fromEntries(staffTrades(scenario).map(([t]) => {
+      const d = scenario.default_pools[t];
+      return [t, t === "assembly" ? config.pool : typeof d === "number" ? d : 1];
+    }));
+  }
+  config.pool = Object.values(config.pools).reduce((a, b) => a + b, 0);
+  return config;
 }
 
 export interface ScenarioSummary {
@@ -263,9 +308,12 @@ export interface StationResult {
 
 export interface TransporterResult {
   id: string;
+  /** 4.0: material = T1 자재 키트(물류창고 → 작업장), block = T2 블록(공정 사이) */
+  role: "material" | "block";
   moves: number;
   breakdowns: number;
-  daily: { state: "move" | "idle" | "breakdown_stop"; ships: string[] }[];
+  /** kits: T1이 그날 실은 키트(배, 그 자재를 쓰는 공정, 자재) */
+  daily: { state: "move" | "idle" | "breakdown_stop"; ships: string[]; kits?: { ship: string; station: string; material: string }[] }[];
 }
 
 export interface Finding {
@@ -296,7 +344,7 @@ export interface Grade {
 
 export type SimEvent =
   | { day: number; type: "arrival"; material: string; quantity: number; ship: string }
-  | { day: number; type: "issue"; material: string; quantity: number; ship: string; station: string }
+  | { day: number; type: "issue"; material: string; quantity: number; ship: string; station: string; from: Peg[]; transporter?: string }
   | { day: number; type: "enter" | "complete" | "defect"; ship: string; station: string; unit?: number; units?: number[] }
   | { day: number; type: "accident"; station: string; ship: string }
   | { day: number; type: "breakdown"; station?: string; transporter?: string; ship?: string }
@@ -319,12 +367,15 @@ export interface Result {
   total_cost: number;
   revenue: number;
   profit: number;
-  workforce: { pool: number; man_days: number; idle_man_days: number; utilization: number; daily: { assigned: number; idle: number }[] };
+  workforce: { pool: number; pools?: Record<string, number>; man_days: number; idle_man_days: number; utilization: number;
+    daily: { assigned: number; idle: number; trades?: Record<string, { assigned: number; idle: number }> }[] };
   ships: ShipResult[];
   stations: StationResult[];
   transporters: TransporterResult[];
   research: ResearchSlot[];
   inventory_daily: Record<string, number>[];
+  /** 그날 끝의 창고 재고를 몫(발주한 배)별로. 몫이 null이면 공용(처음 재고). 먼저 들어온 몫이 앞(자재 페깅, 3.1) */
+  pegging_daily: Record<string, Peg[]>[];
   inventory_value_daily: number[];
   events: SimEvent[];
   findings: Finding[];
@@ -396,3 +447,9 @@ export const api = {
   simulate: (config: Config) => post<Result>("/api/simulate", config),
   preview: (config: Config) => post<Preview>("/api/preview", config),
 };
+
+/** 자재 페깅(3.1): 어느 배 몫의 자재가 몇 개인가. ship이 null이면 공용 */
+export interface Peg {
+  ship: string | null;
+  quantity: number;
+}

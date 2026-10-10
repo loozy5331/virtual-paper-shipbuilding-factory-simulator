@@ -14,7 +14,9 @@ const SKIN = ["#f0c8a0", "#e2b48c", "#c99a74", "#f5d2b0", "#d8a982"];
 const HAIR = ["#e9e5dc", "#2b2018", "#9a9a9a", "#6b4a2f", "#b5562b", "#1a1a1a", "#4a3222", "#2f2a26"];
 const BUILD = [[1.0, 1.0], [1.06, 0.96], [0.94, 1.06], [1.03, 1.08], [0.97, 0.94]] as const;   // [키, 체격]
 // 가상 인물 이름. 실제 사람이 아니다.
-export const WORKER_NAMES = ["김하늘", "이도윤", "박서연", "최민준", "정지우", "강예린", "조현우", "윤서진"];
+export const WORKER_NAMES = ["김하늘", "이도윤", "박서연", "최민준", "정지우", "강예린", "조현우", "윤서진",
+  "한지민", "오세훈", "서다은", "임태양", "신유나", "권도현", "황보람", "안시우",
+  "송하린", "류준서", "배수아", "노을", "문채원", "홍지호", "전아린", "고은찬"];
 export const SENIOR_NAME = "한정호 반장";
 
 import { HAT } from "../labels";
@@ -208,6 +210,7 @@ export class Person {
 
     // 고깔모자 + 어두운 테두리, 시니어는 흰 띠
     const hat = mesh(hatGeometry(), HAT[role]);
+    this.hat = hat;
     hat.position.y = 0.02 + HAT_H / 2;
     const brim = mesh(new THREE.TorusGeometry(0.092, 0.013, 8, 32), "#2b2b2b");
     brim.rotation.x = Math.PI / 2;
@@ -282,6 +285,15 @@ export class Person {
    * 가야 할 자리와 자세. snap이면 걷지 않고 바로 옮긴다(배속이 빠르거나 날짜를 건너뛸 때).
    * within(초)을 주면 새 자리까지 그 시간 안에 도착하도록 걸음을 빨리한다(작업이 시작되기 전에 도착).
    */
+  /** 작업모(고깔모자) — 직종 색을 바꿀 수 있다(4.0, D42) */
+  private hat: THREE.Mesh | null = null;
+
+  /** 작업모 색: 그날 간 공정의 직종(조립·탑재·도장·의장) */
+  setHat(color: string): void {
+    const m = this.hat?.material as THREE.MeshStandardMaterial | undefined;
+    if (m && "#" + m.color.getHexString() !== color.toLowerCase()) m.color.set(color);
+  }
+
   place(at: THREE.Vector3, facing: number, pose: Pose, snap: boolean, within?: number): void {
     if (within && this.target.distanceToSquared(at) > 1e-4) {
       const dx = at.x - this.root.position.x, dz = at.z - this.root.position.z;
