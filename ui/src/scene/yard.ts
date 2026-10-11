@@ -18,7 +18,7 @@ import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot, stockUsed } fro
 import { buildDock, buildLand, buildRoof, buildSectorOutline, buildWalls, buildYardLines, GiantHand, Gulliver, SEA_Y, type DockParts } from "./coast";
 import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_TOP, MAT_W, MAT2_D,
   nearLane, QUEUE_Z, SAFE_SPOT, seaSpot, SECTORS, sector, sectorBounds, DOCK2_AREA, SHELF_X, SHELF_Z, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_IN, SPUR_OUT, SPUR_X, STATION_X,
-  STOCK_AT, STOCK_D, STOCK_HALF, STOCK_NAME, CONVEYORS, BACK_LANE_Z, shipSize, garageSpot, FORKLIFT_GARAGE, KIT_PICK, kitDrop, LANE_X0, roadPath, type RoadSide, QUAY_WORK_Z, ST, isShop, quayQueueSpot, along, groundY, LAB_TREES, LAND_ROUTE, route, SHIP_ROUTE, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
+  STOCK_AT, STOCK_D, STOCK_HALF, STOCK_NAME, CONVEYORS, BACK_LANE_Z, shipSize, garageSpot, FORKLIFT_GARAGE, KIT_PICK, kitDrop, LANE_X0, roadPath, palletPath, SPUR_ROADS, type RoadSide, QUAY_WORK_Z, ST, isShop, quayQueueSpot, along, groundY, LAB_TREES, LAND_ROUTE, route, SHIP_ROUTE, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
 import { clamp01, ease, flatOf, hullTris, type Tri } from "./model";
 import { STATE_INFO, STATION_COLOR, STATION_TRADE, TRADE_HAT } from "../labels";
 import type { TrackPick } from "../track";
@@ -820,6 +820,7 @@ export class Yard {
     back.castShadow = false;
     this.scene.add(back);
     SPUR_X.forEach((sx, k) => {
+      if (!SPUR_ROADS.includes(k)) return;   // 가공 ↔ 소조립 사이는 길이 없다(4.7.1)
       spur(sx, k <= 5 ? BACK_LANE_Z : unitZ(2) - MAT2_D / 2 - 0.4, LANE_Z - 0.5);
       if (k >= 4) spur(sx, LANE_Z + 0.5, benchAt(ST.pe, 2, 2).z + MAT2_D / 2 + 0.4);
     });
@@ -1673,7 +1674,9 @@ export class Yard {
           const pick = { x: bench.x + 0.9, z: bench.z };
           const drop = lot ? { x: lot.target.x, z: lot.target.z } : kitDrop(ST.sub);
           picks.set(job, { x: bench.x, z: bench.z });
-          legs.push({ r: roadPath(at, side, pick, "lane"), job: null }, { r: roadPath(pick, "lane", drop, "lane"), job });
+          // 소조립 정반에 바로 들어가면 그 작업장 번호(아니면 적치장)
+          const sub = f.lots.find((l) => l.ship === job.ship && l.station === ST.sub && l.place === "bench");
+          legs.push({ r: roadPath(at, side, pick, "lane"), job: null }, { r: palletPath(job.unit, drop, sub ? sub.unit : null, this.layoutDocks), job });
           at = drop; side = "lane";
         }
       }
