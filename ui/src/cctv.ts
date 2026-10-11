@@ -124,7 +124,7 @@ function mooring(x: number, z: number, kind: string): SVGElement {
   const g = s("g", { class: "cc-mooring" });
   for (const [from, to] of [[0.85 * L, L + 0.8], [-0.85 * L, -L - 0.8], [0.35 * L, -0.3 * L], [-0.35 * L, 0.3 * L]]) {
     const bx = bollardX(x + to);
-    g.append(s("line", { x1: px(x + from), y1: deckY, x2: px(bx), y2: py(BOLLARD.z, BOLLARD.top), stroke: "#8a6a4a", "stroke-width": 1.2 }),
+    g.append(s("line", { x1: px(x + from), y1: deckY, x2: px(bx), y2: py(BOLLARD.z, BOLLARD.top), stroke: "#6b4f2a", "stroke-width": 1.8 }),
       s("circle", { cx: px(bx), cy: py(BOLLARD.z, BOLLARD.top), r: 2, fill: "#3a3f3c" }));
   }
   return g;
