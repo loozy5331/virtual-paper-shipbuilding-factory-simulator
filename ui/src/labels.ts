@@ -72,8 +72,10 @@ export const LOSS_STATES: StateInfo[] = [
   { state: "breakdown_stop", name: "고장 중지", color: STOP, hatch: true },
 ];
 
-/** 나눠 하기(3.0)에서 먼저 끝난 부분이 나머지를 기다리는 상태. 부분 기록에만 있다(배 리드타임에는 없음). 대기 회색 + 빗금, 라벨로 구분 */
-export const PAIR_WAIT_STATE: StateInfo = { state: "pair_wait", name: "짝 대기", color: WAIT, hatch: true };
+/** 나눠 하기(3.0)에서 먼저 끝난 부분이 나머지를 기다리는 상태. 부분 기록에만 있다(배 리드타임에는 없음).
+ * 손실이 아니므로 손실 회색(운반 대기와 같은 빗금)과 다르게, 모든 공정에서 같은 옅은 종이색 + 대기 회색 테두리(4.12.3) */
+export const PAIR_WAIT_STATE: StateInfo = { state: "pair_wait", name: "짝 대기", color: "#e6e1d4" };
+export const PAIR_WAIT_EDGE = WAIT;
 
 // 리드타임 분해의 아홉 칸. 작업은 작업장 색과 섞이지 않게 짙은 먹색, 운반은 손실이 아니라 옅은 중립색이다.
 export const WORK_STATE: StateInfo = { state: "work", name: "작업", color: "#33413a" };
