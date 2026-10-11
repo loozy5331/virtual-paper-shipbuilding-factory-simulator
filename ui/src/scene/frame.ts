@@ -26,6 +26,11 @@ export interface LotView {
   parts?: { unit: number; state: string }[];
   /** 운반 중이면 이번 운반의 진행률(0~1). 운반이 며칠 걸리면 그 날들을 이어서 센다. */
   travel?: number;
+  /**
+   * 탑재 첫날 아침(4.7.5): 걸리버 손이 PE장 정반에서 대블록 둘을 하나씩 도크로 옮기는 중. fromUnit = 어제 PE장 작업장(0 = 1호),
+   * k = 옮긴 정도 0~1(LIFT_END 전까지). 옮기는 동안 탑재 진행은 멈춰 있다
+   */
+  lift?: { fromUnit: number; k: number };
   /** 조립 단계. −2 종이 묶음, −1 평평한 판, 0 굽힌 판, 1 소블록 8개, 2 중블록 4개, 3 대블록 2개, 4 배(D43). 정반 위에서는 진행률만큼 소수가 된다(공정별 FORM). */
   form: number;
   /** 칠한 정도 0~1(4.0: 도장 공정에서 칠한다. 도장을 마친 블록은 1) */
@@ -149,6 +154,8 @@ export const FORM: Record<string, [number, number]> = {
  * 그날 시작한 작업이나 운반은 준비가 끝난 뒤부터 진행한다(도착 전에 일이 진행돼 보이지 않게, 2.1.2).
  */
 export const LEAD_IN = 0.3;
+/** 탑재 첫날 걸리버 손이 PE장에서 대블록 둘을 도크로 옮기는 동안(하루의 앞 55%, 4.7.5) */
+export const LIFT_END = 0.55;
 const afterLead = (frac: number) => clamp01((frac - LEAD_IN) / (1 - LEAD_IN));
 
 /**
@@ -203,8 +210,15 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
         const unit = active ? active.unit : result.stations[p].units.findIndex((u) => u.daily[index].ship === ship.id);
         if (unit < 0) return { ...base, place: "queue", station: p, form: formOf(p, 0), state: rec.state };
         const span = ship.spans[stationIds[p]];
+        // 탑재 첫날: 걸리버 손이 PE장에서 대블록을 옮긴 뒤(LIFT_END)부터 진행한다(4.7.5)
+        const pe = stationIds.indexOf("grand_assembly");
+        const fromUnit = stationIds[p] === "erection" && span && day === span.start && index > 0
+          ? result.stations[pe].units.findIndex((u) => u.daily[index - 1]?.ship === ship.id) : -1;
+        if (fromUnit >= 0 && frac < LIFT_END) {
+          return { ...base, place: "bench", station: p, unit, form: formOf(p, 0), state: rec.state, lift: { fromUnit, k: frac / LIFT_END } };
+        }
         // 첫날은 사람이 도착한 뒤(준비 시간 뒤)부터 진행한다.
-        const into = span && day === span.start ? afterLead(frac) : frac;
+        const into = span && day === span.start ? (fromUnit >= 0 ? (frac - LIFT_END) / (1 - LIFT_END) : afterLead(frac)) : frac;
         const progress = span ? clamp01((day - span.start + into) / (span.end - span.start + 1)) : 0;
         const paint = stationIds[p] === "painting" ? progress : base.paint;
         return { ...base, place: "bench", station: p, unit, form: formOf(p, progress), paint, state: rec.state, ...(parts ? { parts } : {}) };

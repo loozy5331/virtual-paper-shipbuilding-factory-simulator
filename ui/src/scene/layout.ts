@@ -224,8 +224,10 @@ export const PIER = { x0: 38.0, x1: 41.0, z: -5.0 };
 /** 배가 먼바다에서 부두까지 오는 물길(만 입구 너비의 바다 띠 안) */
 export const SHIP_ROUTE = [{ x: 94, z: -2.5 }, { x: 68, z: -3.6 }, { x: 54, z: -4.6 }, { x: PIER.x1 + 0.9, z: PIER.z + 0.05 }];
 export const SUPPLY_ROUTE = [
-  { x: PIER.x0 + 0.8, z: PIER.z }, { x: 36.2, z: -5.4 }, { x: 34.8, z: -8.6 }, { x: 28, z: -9.7 }, { x: 20, z: -9.4 }, { x: 13, z: -9.2 }, { x: 6, z: -10.8 },
-  { x: -2, z: -13.0 }, { x: -9, z: -12.9 }, { x: -14.5, z: -12.7 }, { x: -19.7, z: -12.6 }, { x: -27, z: -12.6 }, { x: -35, z: -12.6 },
+  { x: PIER.x0 + 0.8, z: PIER.z }, { x: 36.2, z: -5.4 }, { x: 34.8, z: -8.6 }, { x: 28, z: -9.7 }, { x: 20, z: -9.6 },
+  // 4.7.5: 조선소 담장 바깥(북쪽)을 돌아 북문으로 들어온다
+  { x: 12.5, z: -15.4 }, { x: 4, z: -15.8 }, { x: -8, z: -15.6 }, { x: -14, z: -15.3 }, { x: -16.6, z: -14.0 }, { x: -18.4, z: -12.9 },
+  { x: -19.7, z: -12.6 }, { x: -27, z: -12.6 }, { x: -35, z: -12.6 },
 ];
 /** 해상 납품(종이)은 강재 적치장 뒤에서 내리고 왼쪽으로 빠져나간다(4.2) */
 export const SEA_EXIT = [{ x: -35, z: -12.6 }, { x: -46, z: -12.4 }, { x: -54, z: -12.2 }];
@@ -389,3 +391,45 @@ export function groundY(x: number, z: number): number {
   }
   return y;
 }
+
+/**
+ * 조선소 담장과 문(4.7.5). 담장은 포장된 야드와 매립 안벽을 두르고 바다 쪽(만)만 열려 있다.
+ * 북문 = 납품 마차가 들어오는 문(산길·해상 길이 만난다), 서문 = 마차가 나가는 문(창고 뒤 길), 남문 = 작업자 출입문(남문 작업대기소).
+ */
+export interface Gate { id: "north" | "west" | "south"; name: string; x: number; z: number }
+export const GATE_W = 2.6;
+export const GATES: Gate[] = [
+  { id: "north", name: "북문", x: -16.6, z: YARD_Z0 },
+  { id: "west", name: "서문", x: YARD_X0, z: -12.3 },
+  { id: "south", name: "남문", x: -3.6, z: YARD_Z1 },
+];
+/** 담장(문 자리는 비운다): 북동쪽 물가 → 북쪽 → 서쪽 → 남쪽 → 안벽 뒤 → 안벽 끝 물가 */
+export function fenceSegments(): { x0: number; z0: number; x1: number; z1: number }[] {
+  const pts = [{ x: SHORE_X, z: BAY_C - BAY_Z }, { x: SHORE_X, z: YARD_Z0 }, { x: YARD_X0, z: YARD_Z0 }, { x: YARD_X0, z: YARD_Z1 },
+    { x: SHORE_X, z: YARD_Z1 }, { x: SHORE_X, z: QUAY.z1 }, { x: QUAY.x1, z: QUAY.z1 }, { x: QUAY.x1, z: QUAY.z0 }];
+  const out: { x0: number; z0: number; x1: number; z1: number }[] = [];
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    const gate = GATES.find((g) => (a.z === b.z && g.z === a.z && g.x > Math.min(a.x, b.x) && g.x < Math.max(a.x, b.x))
+      || (a.x === b.x && g.x === a.x && g.z > Math.min(a.z, b.z) && g.z < Math.max(a.z, b.z)));
+    if (!gate) { out.push({ x0: a.x, z0: a.z, x1: b.x, z1: b.z }); continue; }
+    const h = GATE_W / 2;
+    if (a.z === b.z) {
+      const s = Math.sign(b.x - a.x);
+      out.push({ x0: a.x, z0: a.z, x1: gate.x - s * h, z1: a.z }, { x0: gate.x + s * h, z0: a.z, x1: b.x, z1: b.z });
+    } else {
+      const s = Math.sign(b.z - a.z);
+      out.push({ x0: a.x, z0: a.z, x1: a.x, z1: gate.z - s * h }, { x0: a.x, z0: gate.z + s * h, x1: b.x, z1: b.z });
+    }
+  }
+  return out;
+}
+/** 남문 길: 남문에서 큰길까지(작업자 출입) */
+export const SOUTH_ROAD_X = GATES[2].x;
+/**
+ * 남문 작업대기소(4.7.5): 탑재·의장 직종은 도크·마감동·안벽과 가까운 이곳에서 기다린다(북서 대기소는 동선이 멀다).
+ * 나머지 직종은 북서 작업대기소(LOUNGE)
+ */
+export const LOUNGE_SOUTH = { x: -1.0, z: 8.2 };
+export const SOUTH_TRADES = ["erection", "outfitting"];
+export const loungeOf = (trade: string) => (SOUTH_TRADES.includes(trade) ? LOUNGE_SOUTH : LOUNGE);

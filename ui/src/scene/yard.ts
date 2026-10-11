@@ -16,7 +16,7 @@ import { mesh, Person, SENIOR_NAME, WORKER_NAMES } from "./people";
 import { shipLook } from "./ships";
 import { quayWaiting, STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot, stockUsed } from "./stock";
 import { buildDock, buildLand, buildRoof, buildSectorOutline, buildWalls, buildYardLines, GiantHand, Gulliver, SEA_Y, type DockParts } from "./coast";
-import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_TOP, MAT_W, MAT2_D,
+import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LANE_Z, LOUNGE, LOUNGE_SOUTH, loungeOf, fenceSegments, GATES, GATE_W, SOUTH_ROAD_X, YARD_Z1, MAT_D, MAT_TOP, MAT_W, MAT2_D,
   nearLane, QUEUE_Z, SAFE_SPOT, seaSpot, SECTORS, sector, sectorBounds, DOCK2_AREA, SHELF_X, SHELF_Z, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_IN, SPUR_OUT, SPUR_X, STATION_X,
   STOCK_AT, STOCK_D, STOCK_HALF, STOCK_NAME, CONVEYORS, BACK_LANE_Z, shipSize, garageSpot, FORKLIFT_GARAGE, KIT_PICK, kitDrop, LANE_X0, roadPath, palletPath, SPUR_ROADS, type RoadSide, QUAY_WORK_Z, ST, isShop, QUAY_ROAD_Z, QUAY_STORE, QUAY, DEPOT_WALLS, GARAGE_WALLS, along, groundY, LAB_TREES, LAND_ROUTE, route, SHIP_ROUTE, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
 import { clamp01, ease, flatOf, hullTris, type Tri } from "./model";
@@ -182,6 +182,8 @@ class Lot {
   /** 크레인 훅이 따라갈 로트 기준 x(로컬). 탑재 중이 아니면 null. */
   hookX: number | null = null;
   hookY = 0;
+  /** 훅의 z(로트 기준). 탑재 첫날 PE장 2·3호에서 들어 올 때만 0이 아니다(4.7.5) */
+  hookZ = 0;
   readonly target = new THREE.Vector3();
   floatPhase = 0;
   /** 나눠 하는 중이면 부분마다 로트 기준 자리(로컬)와 짝 대기 여부. 블록을 열(짝) 단위로 나눠 그린다. 3.0 */
@@ -266,8 +268,9 @@ class Lot {
    * form: −2 종이 묶음 … 4 배(frame.ts의 FORM). bench면 그 공정이 진행되는 모습:
    * 절단은 묶음이 줄며 판이 한 장씩 나오고, 가공은 판이 굽고, 소조립은 굽힌 판이 하나씩 블록으로 선다.
    */
-  setForm(form: number, onBench: boolean): void {
+  setForm(form: number, onBench: boolean, lift: { dx: number; dz: number; k: number } | null = null): void {
     this.hookX = null;
+    this.hookZ = 0;
     const stage = Math.floor(form + 1e-9);
     const t = form - stage;
     this.sheet.visible = stage === -2;
@@ -301,9 +304,32 @@ class Lot {
       const px = (pair - 0.5) * (2 * BLOCK_X + gb + gp);
       let x = px + (within - 0.5) * (BLOCK_X + gp) + pileX;
       const z = (r - 0.5) * (BLOCK_Z + gr);
+      let zLift: number | null = null;
       let y = BLOCK_H / 2;
       let visible = u < visibleUnits && stage < 4;
-      if (stage === 3) {
+      if (stage === 3 && lift) {
+        // 탑재 첫날 아침(4.7.5): 걸리버 손이 PE장 정반(dx, dz)에서 대블록 둘을 하나씩 도크로 옮긴다.
+        // 한 번 오갈 때: 앞 35%는 빈손으로 PE장에 가고, 그다음 블록을 들어 도크 쌓는 자리에 내려놓는다.
+        const trip = Math.min(1, Math.floor(lift.k * 2)), kk = lift.k * 2 - trip;
+        const atPE = { x: x + lift.dx, z: z + lift.dz };
+        if (pair > trip || (pair === trip && kk < 0.35)) { x = atPE.x; zLift = atPE.z; }
+        if (pair === trip) {
+          if (kk < 0.35) {
+            const m = ease(kk / 0.35);
+            this.hookX = pileX + (px + lift.dx + pileX - pileX) * m;
+            this.hookZ = lift.dz * m;
+            this.hookY = 2.2 - (2.2 - BLOCK_H - 0.15) * clamp01((kk - 0.25) / 0.1);
+          } else {
+            const m = clamp01((kk - 0.35) / 0.55);
+            x = atPE.x + (x - atPE.x) * ease(m);
+            zLift = atPE.z + (z - atPE.z) * ease(m);
+            y = BLOCK_H / 2 + Math.sin(Math.PI * m) * 2.0;
+            this.hookX = px + pileX + lift.dx * (1 - ease(m));
+            this.hookZ = lift.dz * (1 - ease(m));
+            this.hookY = y + BLOCK_H / 2 + 0.15;
+          }
+        }
+      } else if (stage === 3) {
         if (pair < moving) visible = false;
         else if (pair === moving) {
           // 훅에 매달려 이동: 앞 절반은 들어 옮기고, 뒤 절반이면 이미 배에 붙었다.
@@ -320,7 +346,7 @@ class Lot {
       b.setBend(bend);
       m.visible = visible;
       m.scale.set(1, thick, 1);
-      m.position.set(x, y * thick, z);
+      m.position.set(x, y * thick, zLift ?? z);
     });
 
     // 나눠 하기: 블록을 열(짝) 단위로 부분마다 나눠, 부분이 든 작업장 자리로 옮긴다. 탑재(대블록 → 배)는 나누지 않는다.
@@ -413,6 +439,8 @@ export class Yard {
   private readonly raycaster = new THREE.Raycaster();
   private readonly trackRing: THREE.Mesh;
   private readonly lounge: CSS2DObject;
+  /** 남문 작업대기소 이름표(탑재·의장, 4.7.5) */
+  private readonly loungeS: CSS2DObject;
   private readonly labTag: CSS2DObject;
   private readonly labWindow: THREE.MeshStandardMaterial;
   /** 관리자 자리와 위험 경고 */
@@ -511,6 +539,8 @@ export class Yard {
     this.gulliver2.hand.add(this.craneTag2);
     this.buildLane();
     this.lounge = this.buildLounge();
+    this.loungeS = this.buildLounge(LOUNGE_SOUTH);
+    this.buildFence();
     this.buildShelves();
     const lab = this.buildLab();
     this.labTag = lab.tag;
@@ -897,25 +927,52 @@ export class Yard {
     }
   }
 
-  private buildLounge(): CSS2DObject {
+  /** 작업대기소 하나(벤치 둘). 북서 대기소(LOUNGE)와 남문 대기소(LOUNGE_SOUTH, 4.7.5) */
+  private buildLounge(at: { x: number; z: number } = LOUNGE): CSS2DObject {
     const floor = mesh(new THREE.BoxGeometry(4.2, 0.03, 3.0), "#d9d2c3", { roughness: 1 });
-    floor.position.set(LOUNGE.x, 0.015, LOUNGE.z);
+    floor.position.set(at.x, 0.015, at.z);
     floor.castShadow = false;
     this.scene.add(floor);
     for (const row of [0, 1]) {
       const bench = mesh(new THREE.BoxGeometry(3.4, 0.12, 0.4), "#9c7b55");
-      bench.position.set(LOUNGE.x, 0.3, LOUNGE.z - 0.6 + row * 1.2);
+      bench.position.set(at.x, 0.3, at.z - 0.6 + row * 1.2);
       this.scene.add(bench);
     }
     const tag = label("", "place-tag");
-    tag.position.set(LOUNGE.x, 1.3, LOUNGE.z - 1.2);
+    tag.position.set(at.x, 1.3, at.z - 1.2);
     this.scene.add(tag);
     return tag;
   }
 
-  private loungeSeat(i: number): THREE.Vector3 {
-    const row = Math.floor(i / 4), col = i % 4;
-    return new THREE.Vector3(LOUNGE.x - 1.2 + col * 0.8, 0.2, LOUNGE.z - 0.6 + row * 1.2);
+  private loungeSeat(i: number, at: { x: number; z: number } = LOUNGE): THREE.Vector3 {
+    const row = Math.floor(i / 4) % 2, col = i % 4;   // 8명이 넘으면 같은 자리에 겹쳐 앉는다
+    return new THREE.Vector3(at.x - 1.2 + col * 0.8, 0.2, at.z - 0.6 + row * 1.2);
+  }
+
+  /** 조선소 담장과 문(4.7.5): 낮은 담(바다 쪽은 열림), 문마다 기둥 둘과 이름표. 남문에서 큰길까지 길 */
+  private buildFence(): void {
+    for (const s of fenceSegments()) {
+      const len = Math.hypot(s.x1 - s.x0, s.z1 - s.z0);
+      if (len < 0.05) continue;
+      const wall = mesh(new THREE.BoxGeometry(s.x0 === s.x1 ? 0.14 : len, 0.4, s.x0 === s.x1 ? len : 0.14), "#b9b4a8", { roughness: 0.9 });
+      wall.position.set((s.x0 + s.x1) / 2, 0.2, (s.z0 + s.z1) / 2);
+      this.scene.add(wall);
+    }
+    for (const g of GATES) {
+      const alongX = g.id !== "west";
+      for (const side of [-1, 1]) {
+        const post = mesh(new THREE.BoxGeometry(0.32, 0.9, 0.32), "#8f8a80", { roughness: 0.9 });
+        post.position.set(g.x + (alongX ? side * GATE_W / 2 : 0), 0.45, g.z + (alongX ? 0 : side * GATE_W / 2));
+        this.scene.add(post);
+      }
+      const tag = label(g.name, "place-tag");
+      tag.position.set(g.x, 1.1, g.z);
+      this.scene.add(tag);
+    }
+    const road = mesh(new THREE.BoxGeometry(0.8, 0.02, YARD_Z1 - LANE_Z - 0.5), "#9f9a8f", { roughness: 1 });
+    road.position.set(SOUTH_ROAD_X, 0.012, (YARD_Z1 + LANE_Z + 0.5) / 2);
+    road.castShadow = false;
+    this.scene.add(road);
   }
 
   private buildShelves(): void {
@@ -1226,8 +1283,8 @@ export class Yard {
     if (docks !== this.layoutDocks) this.placeStations(docks);
     // 로트. 기다리는 블록의 적치장 자리를 먼저 정한다.
     this.stock = stockAssign(f);
-    let hook: { x: number; y: number } | null = null;
-    let hook2: { x: number; y: number } | null = null;   // 2호 도크(왼손)
+    let hook: { x: number; y: number; z: number } | null = null;
+    let hook2: { x: number; y: number; z: number } | null = null;   // 2호 도크(왼손)
     // 진수: 재생 중 하루 안의 비율로 단계를 나눈다(멈춰 있으면 frac = 1이라 다 끝난 모습).
     const launching = src.playing && frac < LAUNCH_END ? f.launches : [];
     this.drawLaunchDocks(launching, frac);
@@ -1271,7 +1328,15 @@ export class Yard {
         lot.split = null;
       }
       lot.paint = view.paint;
-      lot.setForm(view.form, view.place === "bench");
+      // 탑재 첫날 아침: PE장 정반(어제 그 배가 있던 작업장)에서 도크로 옮기는 중이면 그 거리(4.7.5)
+      let lift: { dx: number; dz: number; k: number } | null = null;
+      if (view.lift && view.place === "bench" && view.station === ST.dock && !jump) {
+        const from = benchAt(ST.pe, view.lift.fromUnit, docks), to = benchAt(ST.dock, view.unit, docks);
+        lift = { dx: from.x - to.x, dz: from.z - to.z, k: view.lift.k };
+        lot.group.position.copy(pos);   // 로트 자리는 도크, 블록은 PE장에서 손이 옮긴다(미끄러져 가지 않게)
+        lot.path = [];
+      }
+      lot.setForm(view.form, view.place === "bench", lift);
       lot.animateCut(view.place === "bench" && view.station === ST.cut && (view.state === "work" || view.state === "rework"), performance.now() / 1000);
       if (view.place === "sea") {
         lot.group.rotation.set(Math.sin(lot.floatPhase * 1.1) * 0.03, 0, Math.sin(lot.floatPhase * 1.3) * 0.04);
@@ -1280,8 +1345,8 @@ export class Yard {
       }
       // 골리앗 크레인 훅은 1호 탑재 정반의 블록을 따라간다(2호는 같은 크레인 아래 안쪽 자리).
       if (!held && view.place === "bench" && view.station === ST.dock && lot.hookX !== null) {
-        if (view.unit === 0) hook = { x: lot.hookX, y: lot.hookY };
-        else if (view.unit === 1) hook2 = { x: lot.hookX, y: lot.hookY };
+        if (view.unit === 0) hook = { x: lot.hookX, y: lot.hookY, z: lot.hookZ };
+        else if (view.unit === 1) hook2 = { x: lot.hookX, y: lot.hookY, z: lot.hookZ };
       }
       setLabel(lot.tag, this.lotLabel(view));
       lot.tag.position.y = view.form >= 3 ? 1.9 : 1.0;
@@ -1289,13 +1354,13 @@ export class Yard {
 
     // 골리앗 크레인(걸리버의 손): 탑재 중이면 자석판이 블록을 따라간다. 쉴 때는 도크 위에 손을 띄워 둔다.
     // 도크마다 손이 하나: 1호 = 오른손, 2호 = 왼손(2호가 있을 때만). 진수 중이면 그 도크의 손이 문을 열고 닫는다.
-    const hands: [GiantHand, { x: number; y: number } | null, number][] = [[this.gulliver, hook, 0], [this.gulliver2, hook2, 1]];
+    const hands: [GiantHand, { x: number; y: number; z: number } | null, number][] = [[this.gulliver, hook, 0], [this.gulliver2, hook2, 1]];
     for (const [hand, hk, u] of hands) {
       this.craneRings[u].visible = u < docks;
       if (u === 1) this.craneTag2.visible = u < docks;
       // 도크가 하나면 왼팔은 크레인 일을 하지 않고 구름 위에서 턱을 괸다
       if (u >= docks) { hand.rest(); continue; }
-      const at = new THREE.Vector3(STATION_X[ST.dock] + (hk ? hk.x : 0), hk ? hk.y + 0.15 : 3.0, dockZ(u));
+      const at = new THREE.Vector3(STATION_X[ST.dock] + (hk ? hk.x : 0), hk ? hk.y + 0.15 : 3.0, dockZ(u) + (hk ? hk.z : 0));
       const launch = launching.find((l) => l.unit === u);
       const gate = launch ? this.gateHand(u, frac) : null;
       hand.place(gate ? at.lerp(gate.at, gate.k) : at);
@@ -1380,17 +1445,23 @@ export class Yard {
 
     // 작업대기소: 오늘 배정되지 않은 사람은 앉아서 기다린다(인원 과다가 보인다).
     // 직종마다 모자 색으로(4.0, D42)
-    let seat = 0;
+    // 탑재·의장 직종은 남문 작업대기소(4.7.5), 나머지는 북서 작업대기소
+    const seats = new Map<{ x: number; z: number }, number>();
     for (const [trade, n] of Object.entries(f.idleByTrade)) {
+      const at = loungeOf(trade);
       for (let k = 0; k < n && person < this.people.length; k++) {
+        const seat = seats.get(at) ?? 0;
+        seats.set(at, seat + 1);
         this.people[person].holdKnife(false);
         this.people[person].setHat(TRADE_HAT[trade] ?? TRADE_HAT.assembly);
-        this.people[person++].place(this.loungeSeat(seat++), 0, "sit", jump, within);
+        this.people[person++].place(this.loungeSeat(seat, at), 0, "sit", jump, within);
       }
     }
     const used = person;
     this.people.forEach((p, i) => p.setVisible(i < used));
-    setLabel(this.lounge, `작업대기소 · 쉬는 사람 <b>${f.idleWorkers}</b>명`);
+    const idleAt = (at: { x: number; z: number }) => Object.entries(f.idleByTrade).reduce((s, [tr, n]) => s + (loungeOf(tr) === at ? n : 0), 0);
+    setLabel(this.lounge, `작업대기소 · 쉬는 사람 <b>${idleAt(LOUNGE)}</b>명`);
+    setLabel(this.loungeS, `남문 작업대기소(탑재·의장) · 쉬는 사람 <b>${idleAt(LOUNGE_SOUTH)}</b>명`);
 
     // 지게차를 먼저: 날마다 로트의 held를 지우고 팔레트를 잡는다(트랜스포터가 실은 블록의 held는 그 뒤에 잡는다)
     this.driveForklifts(f, src.playing && !jump ? frac : 1);
