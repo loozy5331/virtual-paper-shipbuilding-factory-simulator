@@ -33,7 +33,7 @@ export const isShop = (station: number) => station <= ST.preout;
  * 공정의 가운데 x: 가공 공장의 절단·가공(같은 건물, D43), 소조립·중조립, 블록 마감동의 도장·선행의장(같은 건물, 4.0), PE장, 탑재(도크),
  * 안벽의장(매립 안벽 1번 정박 자리), 시운전(만 밖 바다)
  */
-export const STATION_X = [-36.6, -30.8, -24, -18.5, -12.6, -7.9, 3.4, 8.5, 16.6, 49];
+export const STATION_X = [-36.6, -30.8, -24, -18.5, -12.6, -7.9, 3.4, 8.5, 16.6, 42.6];
 /**
  * 컨베이어벨트(D43): 가공 공장 안 절단 → 가공(잘라 낸 판). from = 벨트에 판을 올리는 공정(그 공정이 일하는 날 판이 흐른다).
  * 가공 → 소조립은 실제 조선소처럼 부재를 배 몫 팔레트에 담아 공용 지게차로 옮긴다(4.0.2, 4.3부터 엔진의 지게차 일감).
@@ -44,8 +44,8 @@ export const CONVEYORS: Conveyor[] = [
 ];
 /** 안벽의장 정박 자리 사이 간격, 안벽 앞 물 위 줄(z) */
 const BERTH_GAP = 3.6, BERTH_Z = 10.6;
-/** 안벽 선석 수(4.7.3): 안벽의장 작업장(최대 3) + 차례를 기다리는 배. 모든 배는 우현(+z)을 안벽에 댄다 */
-export const BERTHS = 6;
+/** 안벽 선석 수(4.7.3, 4.7.4에 안벽을 3/4로 줄여 4곳): 안벽의장 작업장(최대 3) + 차례를 기다리는 배. 모든 배는 우현(+z)을 안벽에 댄다 */
+export const BERTHS = 4;
 export const berthX = (b: number) => STATION_X[ST.quay] + b * BERTH_GAP;
 /** 도크 줄: 1도크는 큰길 뒤, 2도크는 큰길 앞(큰길을 사이에 두고 마주 본다) */
 export const DOCK_Z = [0, 2 * LANE_Z];
@@ -173,7 +173,7 @@ export const SAFE_SPOT = { x: -1.5, z: LANE_Z + 1.9 };
  * 매립한 안벽(3.2): 등대가 없는 앞쪽 곶과 야드 사이 바다를 메운 땅. 큰길 앞쪽 야드에 붙어 있고, 뒤쪽(만 쪽) 가장자리가 안벽이다.
  * 4.0 안벽의장·시운전이 여기서 한다. 지금은 인도한 배를 대 두는 곳(그림만).
  */
-export const QUAY = { x0: SHORE_X, x1: 37, z0: 11.4, z1: 15.7 };
+export const QUAY = { x0: SHORE_X, x1: 30.6, z0: 11.4, z1: 15.7 };
 
 /**
  * 안벽의장 작업 구역(4.0): 정박 자리마다 안벽 위에 노란 구획선. 작업자는 이 안에 서서 배에 의장품을 단다(그림만).
@@ -202,7 +202,7 @@ export function quayQueueSpot(i: number, units: number): { x: number; z: number;
   return { x: ANCHOR.x - (j % 4) * 3.4, z: ANCHOR.z - Math.floor(j / 4) * 1.6, anchored: true };
 }
 /** 등대 곶 안쪽 정박지(묘박지): 안벽이 가득 찼을 때 기다리는 배 */
-export const ANCHOR = { x: 37.5, z: -2.6 };
+export const ANCHOR = { x: 31.1, z: -2.6 };
 
 /**
  * 안벽 도로와 의장품 적치장(4.7.3): 지게차가 물류창고에서 실어 온 의장품(깃발) 키트를 안벽 왼쪽 끝 적치장에 내려 두고,
@@ -220,11 +220,11 @@ export const QUAY_STORE = { x0: QUAY.x0 + 0.4, x1: QUAY.x0 + 3.1, z0: QUAY.z0 + 
  */
 export const SEA_MATERIALS = ["paper"];
 /** 등대 곶 바깥(바다 쪽) 부두: 육지 쪽 끝 x0, 바다 쪽 끝 x1 */
-export const PIER = { x0: 44.4, x1: 47.4, z: -5.0 };
+export const PIER = { x0: 38.0, x1: 41.0, z: -5.0 };
 /** 배가 먼바다에서 부두까지 오는 물길(만 입구 너비의 바다 띠 안) */
 export const SHIP_ROUTE = [{ x: 94, z: -2.5 }, { x: 68, z: -3.6 }, { x: 54, z: -4.6 }, { x: PIER.x1 + 0.9, z: PIER.z + 0.05 }];
 export const SUPPLY_ROUTE = [
-  { x: PIER.x0 + 0.8, z: PIER.z }, { x: 42.6, z: -5.4 }, { x: 41.2, z: -8.6 }, { x: 34, z: -9.7 }, { x: 27, z: -9.6 }, { x: 20, z: -9.4 }, { x: 13, z: -9.2 }, { x: 6, z: -10.8 },
+  { x: PIER.x0 + 0.8, z: PIER.z }, { x: 36.2, z: -5.4 }, { x: 34.8, z: -8.6 }, { x: 28, z: -9.7 }, { x: 20, z: -9.4 }, { x: 13, z: -9.2 }, { x: 6, z: -10.8 },
   { x: -2, z: -13.0 }, { x: -9, z: -12.9 }, { x: -14.5, z: -12.7 }, { x: -19.7, z: -12.6 }, { x: -27, z: -12.6 }, { x: -35, z: -12.6 },
 ];
 /** 해상 납품(종이)은 강재 적치장 뒤에서 내리고 왼쪽으로 빠져나간다(4.2) */
@@ -353,7 +353,7 @@ export const DOCK2_AREA = { x0: -4.5, x1: SHORE_X, z0: LANE_Z + 0.75, z1: 12.4 }
 export const YARD_X0 = -46;
 export const BAY_C = LANE_Z;
 export const BAY_Z = 12;
-export const MOUTH_X = 43;
+export const MOUTH_X = 36.6;
 export const BAY_MOUTH = 3.5;
 /** 포장된 야드의 앞뒤 끝(z) */
 export const YARD_Z0 = -14, YARD_Z1 = 15;
@@ -369,7 +369,7 @@ export const HILLS: Hill[] = (() => {
   // 오른쪽 두 팔: 만을 따라 뻗다가 끝에서 안쪽으로 굽는다(곶). 물길은 남긴다. 뒤쪽 곶 끝에 등대
   for (const side of [-1, 1]) {
     out.push({ x: 18, z: BAY_C + side * (BAY_Z + 6), rx: 8, h: 5, rz: 5, color: 2 });
-    out.push({ x: 30.5, z: BAY_C + side * (BAY_Z + 6.8), rx: 6.5, h: 4.5, rz: 4.5, color: 1 });   // 4.7.3: 만이 길어진 만큼
+    out.push({ x: 27.3, z: BAY_C + side * (BAY_Z + 6.8), rx: 6.5, h: 4.5, rz: 4.5, color: 1 });   // 4.7.3: 만이 길어진 만큼
     out.push({ x: MOUTH_X + 1, z: BAY_C + side * (BAY_Z + 2), rx: 5, h: 3.6, rz: 5, color: 3 });
     out.push({ x: MOUTH_X, z: BAY_C + side * (BAY_MOUTH + 3.2), rx: 2.6, h: 2.2, rz: 3.2, color: 4 });
   }
