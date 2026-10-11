@@ -896,22 +896,23 @@ SIMPLE = {p["id"]: p["config"] for p in load_presets("simple")}
 
 
 class SimpleScenario(unittest.TestCase):
-    """간이공정(4.4, 4.5에 공정 변경, D47): 절단 → 가공 → 소조립 → PE장 → 탑재 다섯 공정만 쓰는 입문 시나리오. 나머지 다섯 공정은 처음부터 마친 것으로 건너뛴다."""
+    """간이공정(4.4, 4.5·4.7에 공정 변경, D47): 절단 → 가공 → 소조립 → PE장 → 탑재 → 시운전 여섯 공정만 쓰는 입문 시나리오. 나머지 네 공정은 처음부터 마친 것으로 건너뛴다."""
 
-    ACTIVE = ["cutting", "processing", "sub_assembly", "grand_assembly", "erection"]
+    ACTIVE = ["cutting", "processing", "sub_assembly", "grand_assembly", "erection", "sea_trial"]
 
     def test_skipped_stations_never_run(self):
         sc = load_scenario("simple")
-        self.assertEqual(sc["skip"], ["block_assembly", "painting", "pre_outfitting", "quay_outfitting", "sea_trial"])
+        self.assertEqual(sc["skip"], ["block_assembly", "painting", "pre_outfitting", "quay_outfitting"])
         self.assertEqual([st["id"] for st in sc["stations"] if st.get("skipped")], sc["skip"])
         r = simulate(SIMPLE["managed"], baseline=False)
         for ship in r["ships"]:
             self.assertEqual(list(ship["spans"]), self.ACTIVE)
-        # 소조립을 마치면 중조립·마감동을 건너뛰고 바로 PE장(블록은 T2가 나른다). 탑재를 마친 날이 인도일이다. 착수일 = 절단에 들어간 날
+        # 소조립을 마치면 중조립·마감동을 건너뛰고 바로 PE장(블록은 T2가 나른다). 탑재를 마치면 안벽의장을 건너뛰고 다음 날 시운전(4.7),
+        # 시운전을 마친 날이 인도일이다. 착수일 = 절단에 들어간 날
         s1 = r["ships"][0]
         self.assertEqual({k: (v["start"], v["end"]) for k, v in s1["spans"].items()},
-                         {"cutting": (3, 4), "processing": (5, 5), "sub_assembly": (6, 7), "grand_assembly": (9, 10), "erection": (11, 13)})
-        self.assertEqual((s1["delivered_day"], s1["started_day"]), (13, 3))
+                         {"cutting": (3, 4), "processing": (5, 5), "sub_assembly": (6, 7), "grand_assembly": (9, 10), "erection": (11, 13), "sea_trial": (14, 14)})
+        self.assertEqual((s1["delivered_day"], s1["started_day"]), (14, 3))
         skipped = [st for st in r["stations"] if st["id"] not in self.ACTIVE]
         self.assertTrue(all(st["busy_days"] == 0 and st["oee"]["oee"] is None for st in skipped))
 
@@ -926,24 +927,24 @@ class SimpleScenario(unittest.TestCase):
         self.assertEqual(jobs[:2], [(6, "pallet", "S1"), (7, "kit", "S1")])
 
     def test_only_used_trades_are_staffed_and_paid(self):
-        # 가공 2 + 조립 4 + 탑재 2 = 8명 × 10 × 60일 = 4,800. 도장·의장 직종과 시운전 외부팀은 없고, 정비비는 쓰는 공정 다섯 곳만(5 × 100).
+        # 가공 2 + 조립 4 + 탑재 2 = 8명 × 10 × 60일 = 4,800 + 시운전 외부팀 120. 도장·의장 직종은 없고, 정비비는 쓰는 공정 여섯 곳만(6 × 100).
         r = simulate(SIMPLE["managed"], baseline=False)
         self.assertEqual(r["workforce"]["pools"], {"processing": 2, "assembly": 4, "erection": 2})
-        self.assertEqual((r["costs"]["labor"], r["costs"]["maintenance"]), (4800.0, 500))
+        self.assertEqual((r["costs"]["labor"], r["costs"]["maintenance"]), (4920.0, 600))
         # 쓰지 않는 직종 인원을 적어도 읽지 않는다
         cfg = copy.deepcopy(SIMPLE["managed"])
         cfg["pools"]["painting"] = 2
-        self.assertEqual(simulate(cfg, baseline=False)["costs"]["labor"], 4800.0)
+        self.assertEqual(simulate(cfg, baseline=False)["costs"]["labor"], 4920.0)
         self.assertEqual(list(preview(SIMPLE["managed"])["plan"]["ships"]["S1"]), self.ACTIVE)
 
     def test_presets(self):
-        cases = {"unmanaged": (-3728.0, 46.7, "F", 2), "managed": (5449.8, 92.5, "A", 4), "all_in": (-5868.4, 58.9, "C", 4)}
+        cases = {"unmanaged": (-4338.0, 47.4, "F", 2), "managed": (5169.8, 91.8, "A", 4), "all_in": (-6148.4, 59.3, "C", 4)}
         for pid, (profit, score, grade, on_time) in cases.items():
             r = simulate(SIMPLE[pid])
             self.assertEqual((r["profit"], r["grade"]["score"], r["grade"]["grade"], r["qcd"]["delivery"]["on_time"]), (profit, score, grade, on_time), pid)
 
     def test_small_ships(self):
-        # 입문용 작은 배(4.6): 예인선 2척과 피더 컨테이너선 2척. 작업량이 VLCC의 절반 안팎이라 한 척이 13일 만에 끝난다.
+        # 입문용 작은 배(4.6): 예인선 2척과 피더 컨테이너선 2척. 작업량이 VLCC의 절반 안팎이라 한 척이 14일 만에 끝난다(시운전 포함).
         sc = load_scenario("simple")
         self.assertEqual([(o["id"], o["type"], sc["ship_types"][o["type"]]["name"], o["price"]) for o in sc["orders"]],
                          [("S1", "TUG", "예인선", 3000), ("S2", "FEEDER", "피더 컨테이너선", 4000), ("S3", "TUG", "예인선", 3000), ("S4", "FEEDER", "피더 컨테이너선", 4000)])

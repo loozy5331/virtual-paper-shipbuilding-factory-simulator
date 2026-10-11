@@ -1,7 +1,7 @@
 {
   "id": "simple",
   "name": "간이공정 분기",
-  "summary": "수주 4척(예인선 2, 피더 컨테이너선 2). 작은 배라 공정을 절단 → 가공 → 소조립 → PE장 → 탑재 다섯 개로 줄였다. 착수 분산, 발주 방식, 인원, 정비로 있는 자원을 잘 쓰는 법을 처음 익힌다.",
+  "summary": "수주 4척(예인선 2, 피더 컨테이너선 2). 작은 배라 공정을 절단 → 가공 → 소조립 → PE장 → 탑재 → 시운전 여섯 개로 줄였다. 착수 분산, 발주 방식, 인원, 정비로 있는 자원을 잘 쓰는 법을 처음 익힌다.",
   "level": 1,
   "period": "2026년 4분기",
   "days": 60,
@@ -42,7 +42,7 @@
   },
   "kpi": {
     "revenue": 14000,
-    "profit": 6700,
+    "profit": 6500,
     "on_time_rate": 1.0,
     "first_pass_yield": 0.9
   },
@@ -50,14 +50,13 @@
     "block_assembly",
     "painting",
     "pre_outfitting",
-    "quay_outfitting",
-    "sea_trial"
+    "quay_outfitting"
   ],
   "station_material": {
     "grand_assembly": "paint",
     "erection": "flag"
   },
-  "unlocks": "공정은 절단·가공·소조립·PE장·탑재만 씁니다. 일정, 자재 발주, 사람, 정비, 잔업만 정하면 됩니다. 공법·인력 종류·작업장 증설·로봇은 다음 분기부터 열립니다.",
+  "unlocks": "공정은 절단·가공·소조립·PE장·탑재·시운전(외부팀)만 씁니다. 일정, 자재 발주, 사람, 정비, 잔업만 정하면 됩니다. 공법·인력 종류·작업장 증설·로봇은 다음 분기부터 열립니다.",
   "options": {
     "crews": [
       "normal"

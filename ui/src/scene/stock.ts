@@ -12,6 +12,9 @@ export const STOCK_STATIONS = STOCK_AT.length;
 /** 칸마다 이름표 색을 빌려 올 공정(가공 공장은 절단, 소조립, 중조립, 마감동은 도장, PE장) */
 export const STOCK_COLOR_OF: number[] = [ST.cut, ST.sub, ST.block, ST.paint, ST.pe];
 
+/** 그 칸을 쓰는 공정이 하나라도 있는가(간이공정은 중조립·마감동 칸을 쓰지 않는다, 4.4) */
+export const stockUsed = (f: Frame, cell: number) => STOCK_OF.some((c, p) => c === cell && !f.stations[p]?.skipped);
+
 /** 칸 안의 자리: 3열 × 2줄(큰길 쪽부터), 넘치면 같은 자리에 겹친다. */
 export function stockSpot(station: number, index: number): { x: number; z: number } {
   const k = index % 6, at = STOCK_AT[station];
