@@ -1087,7 +1087,8 @@ function drawGanttScreen(): void {
     // 공정 색은 전체 탭에만. 배 탭은 줄마다 공정 이름이 있다(4.12.7).
     state.ganttShip ? null : activeStations(scenario).map((st) => h("span", null, h("i", { style: { background: STATION_COLOR[st.id] } }), st.name)),
     h("span", null, h("i", { class: "hatch" }), "재작업(빗금)"),
-    h("span", null, h("i", { class: "transport-mark" }), TRANSPORT_STATE.name),
+    // 배 탭의 운반은 공정 줄이 아니라 아래 운반 설비 줄에 있다(4.12.10)
+    state.ganttShip ? null : h("span", null, h("i", { class: "transport-mark" }), TRANSPORT_STATE.name),
     h("span", { class: "break" }),
     sameColor.map((l) => h("span", null, h("i", { class: `thin${l.hatch ? " hatch-over" : ""}`, style: { background: l.color } }), l.name)),
     // 나눠 하기(3.0)를 쓰는 분기에서만: 막대가 작업장 줄로 갈라지고 먼저 끝난 줄은 짝 대기
