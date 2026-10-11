@@ -352,7 +352,7 @@ const SUB_BAR = 15;
 const OTHER = "#d3dbd6";
 
 /**
- * 나눠 한 공정의 작업장 하위 줄(배 탭, 4.12.5). 줄마다 엔진의 작업장 기록 그대로: 이 배는 공정 색, 다른 배는 옅은 회색,
+ * 작업장이 2곳 이상인 공정의 작업장 하위 줄(배 탭, 4.12.5 나눠 한 공정 → 4.12.11 증설한 공정 모두). 줄마다 엔진의 작업장 기록 그대로: 이 배는 공정 색, 다른 배는 옅은 회색,
  * 사고·고장은 이 배가 겪었으면 중지 색 막대, 다른 배·빈 작업장이면 아래 얇은 띠(4.12.6). 먼저 끝난 부분은 작업장을 비우고 적치장에서 기다리므로(그 작업장은 다른 배가 쓸 수 있다)
  * 짝 대기는 작업장 줄이 아니라 아래 얇은 줄에 이 배의 손실과 함께 그린다.
  */
@@ -363,7 +363,8 @@ function drawUnitRows(g: SVGElement, ship: Ship, st: Scenario["stations"][number
     s("rect", { x: 0, y: y - 8, width: W, height: hgt - 4, class: row % 2 ? "band odd" : "band" }),
     s("rect", { x: 12, y: y + 4, width: 10, height: 10, rx: 3, fill: STATION_COLOR[st.id] }),
     s("text", { x: 28, y: y + 14, class: "eq-id" }, st.name),
-    s("text", { x: 12, y: y + 32, class: "ship-sub" }, "나눠 하기"));
+    s("text", { x: 12, y: y + 32, class: "ship-sub" },
+      ship.daily.some((rec) => rec.station === st.id && rec.parts) ? "나눠 하기" : `작업장 ${units.length}곳`));
   const segAt = (day: number) => ship.segments.find((sg) => sg.station === st.id && sg.start <= day && day <= sg.end);
   units.forEach((u, j) => {
     const uy = y + j * SUB_H;
@@ -497,9 +498,10 @@ export function renderShipGantt(result: Result, scenario: Scenario, shipId: stri
   const x = (day: number) => LEFT + (day - 1) * dayW;
   const width = (start: number, end: number) => (end - start + 1) * dayW;
   const stations = activeStations(scenario);
-  // 나눠 한 공정(작업장 2곳 이상)은 작업장마다 하위 줄로 펼친다(4.12.5). 줄 수는 작업장 수라 블록이 더 나뉘어도 늘지 않는다.
+  // 작업장이 2곳 이상인 공정은 나눠 했든 안 했든 작업장마다 하위 줄로 펼친다(4.12.5, 4.12.11). 다른 배가 겹쳐 보이지 않고,
+  // 줄 수는 작업장 수라 블록이 더 나뉘어도 늘지 않는다.
   const unitsOf = (sid: string) => result.stations.find((rs) => rs.id === sid)!.units;
-  const expanded = (sid: string) => unitsOf(sid).length > 1 && ship.daily.some((rec) => rec.station === sid && rec.parts);
+  const expanded = (sid: string) => unitsOf(sid).length > 1;
   const rowH = (sid: string) => expanded(sid) ? Math.max(S_ROW_H, unitsOf(sid).length * SUB_H + LOSS_GAP + LOSS_H + 16) : S_ROW_H;
   const rowY: number[] = [];
   let acc = TOP;
