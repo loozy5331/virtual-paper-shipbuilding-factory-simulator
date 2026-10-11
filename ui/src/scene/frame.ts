@@ -58,6 +58,8 @@ export interface StationView extends Omit<UnitView, "unit"> {
   overtime: boolean;
   /** 호이스트(4.9): 소조립·중조립 정반 위 천장 크레인. 모든 작업장에 단다 */
   hoist: boolean;
+  /** 기본 설비 이름(4.12.1, 고장 나는 것). 설비가 없는 공정(시운전)은 null */
+  equipment: string | null;
   units: UnitView[];
   /** 간이공정이 쓰지 않는 공정(4.4). 그림에서 작업장·이름표·적치장 칸을 숨긴다 */
   skipped: boolean;
@@ -267,6 +269,7 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
       crew: st.crew,
       overtime: config.stations[st.id].overtime,
       hoist: !!config.stations[st.id].hoist,
+      equipment: typeof scenario.stations[p]?.equipment === "string" ? scenario.stations[p].equipment as string : null,
       units,
       skipped: !!scenario.stations[p]?.skipped,
     };

@@ -567,7 +567,8 @@ def is_skipped(station: dict[str, Any]) -> bool:
 
 
 def has_equipment(station: dict[str, Any]) -> bool:
-    """조선소 설비가 있는 공정. 시운전(외부팀)은 없어서 고장·정비·미정비 불량이 없다(4.12)."""
+    """조선소 설비가 있는 공정. rules.json 공정의 equipment는 기본 설비 이름(4.12.1), 시운전(외부팀)은 false라
+    고장·정비·미정비 불량이 없다(4.12)."""
     return station.get("equipment", True) is not False
 
 

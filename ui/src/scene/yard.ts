@@ -1339,7 +1339,7 @@ export class Yard {
       props.light.intensity = st.overtime ? 5 : 0;
       props.flame.visible = st.overtime;
       const chip = st.stop === "accident" ? chipHtml("accident_stop", "사고 · 통제")
-        : st.stop === "breakdown" ? chipHtml("breakdown_stop", "고장 · 수리 중")
+        : st.stop === "breakdown" ? chipHtml("breakdown_stop", `${st.equipment ?? "설비"} 고장 · 수리 중`)
         : st.state === "labor_wait" ? chipHtml("labor_wait", "인력 대기")
         : st.state === "material_wait" ? chipHtml("material_wait", "자재 대기")
         : i === ST.cut && working ? `<span class="chip cut">절단 중</span>`

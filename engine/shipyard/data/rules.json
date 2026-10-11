@@ -4,6 +4,7 @@
     {
       "id": "cutting",
       "name": "절단",
+      "equipment": "플라즈마 절단기",
       "real": "가공 공장 절단장: 종이(철판)를 부재 모양으로 자른다",
       "material": "paper",
       "trade": "processing",
@@ -14,6 +15,7 @@
     {
       "id": "processing",
       "name": "가공",
+      "equipment": "벤딩 프레스",
       "real": "가공 공장 곡가공장: 절단에서 컨베이어벨트로 받은 부재를 선체 곡면에 맞게 굽힌다",
       "material": null,
       "trade": "processing",
@@ -27,6 +29,7 @@
     {
       "id": "sub_assembly",
       "name": "소조립",
+      "equipment": "취부·용접 정반",
       "real": "소조립 정반: 굽힌 부재를 붙여 작은 블록 8개(가공 공장에서 부재 팔레트를 지게차로 받는다)",
       "material": null,
       "trade": "assembly",
@@ -41,6 +44,7 @@
     {
       "id": "block_assembly",
       "name": "중조립",
+      "equipment": "취부·용접 정반",
       "real": "중조립 정반: 블록 8개 → 4개",
       "material": null,
       "trade": "assembly",
@@ -54,6 +58,7 @@
     {
       "id": "painting",
       "name": "도장",
+      "equipment": "도장 부스",
       "real": "블록 마감동 도장장: 블록에 칠을 한다",
       "material": "paint",
       "trade": "painting",
@@ -66,6 +71,7 @@
     {
       "id": "pre_outfitting",
       "name": "선행의장",
+      "equipment": "의장 작업대",
       "real": "블록 마감동 의장장: 블록에 배관·받침을 미리 단다",
       "material": null,
       "trade": "outfitting",
@@ -78,6 +84,7 @@
     {
       "id": "grand_assembly",
       "name": "PE장",
+      "equipment": "크롤러 크레인",
       "real": "PE장(선행탑재장, 도크 옆 옥외 조립장): 블록 4개 → 2개",
       "material": null,
       "trade": "assembly",
@@ -91,6 +98,7 @@
     {
       "id": "erection",
       "name": "탑재",
+      "equipment": "골리앗 크레인",
       "real": "골리앗 크레인: 블록 2개 → 배 1척",
       "material": null,
       "trade": "erection",
@@ -104,6 +112,7 @@
     {
       "id": "quay_outfitting",
       "name": "안벽의장",
+      "equipment": "안벽 크레인",
       "real": "안벽: 진수한 배의 마무리 의장",
       "material": "flag",
       "trade": "outfitting",

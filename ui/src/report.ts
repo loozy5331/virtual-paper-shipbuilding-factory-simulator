@@ -7,6 +7,11 @@ import { COST_ITEMS, EVENT_NAME, GRADE_COLOR, GRADE_NOTE, GRADE_TEXT, LEAD_TIME_
 
 export function eventText(ev: SimEvent, scenario: Scenario): string {
   const station = (id: string) => scenario.stations.find((st) => st.id === id)?.name ?? id;
+  // 고장 나는 것은 공정의 설비다(4.12.1): "PE장 크롤러 크레인"
+  const equipment = (id: string) => {
+    const eq = scenario.stations.find((st) => st.id === id)?.equipment;
+    return typeof eq === "string" ? `${station(id)} ${eq}` : `${station(id)} 설비`;
+  };
   const material = (id: string) => scenario.materials.find((m) => m.id === id)?.name ?? id;
   switch (ev.type) {
     case "arrival": return `${material(ev.material)} ${ev.quantity}개 입고 (${ev.ship}용)`;
@@ -19,7 +24,7 @@ export function eventText(ev: SimEvent, scenario: Scenario): string {
       ? `지게차 ${ev.forklift} 고장 → 2일 중지`
       : ev.transporter
       ? `트랜스포터 고장 → 2일 중지`
-      : `${station(ev.station ?? "")} 설비 고장 → 2일 중지`;
+      : `${equipment(ev.station ?? "")} 고장 → 2일 중지`;
     case "transport_start": return `${ev.ship} ${station(ev.from)} → ${station(ev.to)} 운반 시작`;
     case "transport_end": return `${ev.ship} ${station(ev.to)}에 도착`;
     case "research_done": {

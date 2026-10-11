@@ -67,8 +67,8 @@ export interface StationInfo {
   split?: boolean;
   /** 4.9: 호이스트를 달 수 있는 공정(소조립·중조립) */
   hoist?: boolean;
-  /** 4.12: false면 조선소 설비가 없는 공정(시운전, 외부팀). 고장·정비·미정비 불량이 없다 */
-  equipment?: boolean;
+  /** 4.12: 기본 설비 이름(4.12.1, 고장 나는 것). false면 조선소 설비가 없는 공정(시운전, 외부팀): 고장·정비·미정비 불량이 없다 */
+  equipment?: string | false;
   /** 4.4(D47): 이 시나리오가 쓰지 않는 공정(간이공정). 번호는 그대로이고 처음부터 마친 것으로 건너뛴다 */
   skipped?: boolean;
 }

@@ -936,6 +936,11 @@ class TrialHasNoEquipment(unittest.TestCase):
     def test_rule_marks_only_sea_trial(self):
         sc = load_scenario("basic")
         self.assertEqual([st["id"] for st in sc["stations"] if st.get("equipment") is False], ["sea_trial"])
+        # 나머지 공정은 기본 설비 이름(4.12.1, 규칙 문서 공정 표의 "설비·자리")
+        self.assertEqual({st["id"]: st["equipment"] for st in sc["stations"] if st["equipment"]},
+                         {"cutting": "플라즈마 절단기", "processing": "벤딩 프레스", "sub_assembly": "취부·용접 정반",
+                          "block_assembly": "취부·용접 정반", "painting": "도장 부스", "pre_outfitting": "의장 작업대",
+                          "grand_assembly": "크롤러 크레인", "erection": "골리앗 크레인", "quay_outfitting": "안벽 크레인"})
 
     def test_no_maintenance_cost_or_penalty(self):
         on, off = copy.deepcopy(PRESETS["managed"]), copy.deepcopy(PRESETS["managed"])
