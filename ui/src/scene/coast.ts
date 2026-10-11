@@ -9,7 +9,7 @@
 
 import * as THREE from "three";
 import { mesh } from "./people";
-import { BAY_C, BAY_MOUTH, BAY_Z, groundY, HILL_BASE, HILLS, MOUTH_X, QUAY, LAND_ROUTE, PIER, route, SHORE_X, STATION_X, SUPPLY_EXIT, SUPPLY_ROUTE, ST, YARD_X0, YARD_Z0, YARD_Z1, type Sector } from "./layout";
+import { BAY_C, BOLLARD, BOLLARD_COUNT, BAY_MOUTH, BAY_Z, groundY, HILL_BASE, HILLS, MOUTH_X, QUAY, LAND_ROUTE, PIER, route, SHORE_X, STATION_X, SUPPLY_EXIT, SUPPLY_ROUTE, ST, YARD_X0, YARD_Z0, YARD_Z1, type Sector } from "./layout";
 
 export const SEA_Y = -0.32;
 
@@ -41,9 +41,9 @@ export function buildLand(scene: THREE.Scene): void {
   edge.position.set((QUAY.x0 + QUAY.x1) / 2, 0.05, QUAY.z0 + 0.125);
   edge.castShadow = false;
   scene.add(edge);
-  for (let x = QUAY.x0 + 0.8; x < QUAY.x1 - 0.3; x += 1.3) {
-    const bollard = mesh(new THREE.CylinderGeometry(0.09, 0.11, 0.22, 12), "#3a3f3c");
-    bollard.position.set(x, 0.11, QUAY.z0 + 0.35);
+  for (let k = 0; k < BOLLARD_COUNT; k++) {
+    const bollard = mesh(new THREE.CylinderGeometry(0.09, 0.11, BOLLARD.top, 12), "#3a3f3c");
+    bollard.position.set(BOLLARD.x0 + k * BOLLARD.gap, BOLLARD.top / 2, BOLLARD.z);
     scene.add(bollard);
   }
   // 자재 납품 길(3.2): 등대 곶에서 굽어 들어와 물류창고 뒤까지, 그리고 왼쪽으로 빠지는 길. 땅(언덕) 높이를 따라 깐 흙길

@@ -16,7 +16,7 @@ import type { TrackPick } from "./track";
 import { quayWaiting, STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot, stockUsed } from "./scene/stock";
 // 배치는 현장 3D와 같은 scene/layout.ts
 import { shipSize, areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, LOUNGE_SOUTH, loungeOf, fenceSegments, GATES, OUTER_ROAD, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
-  along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, QUAY_ROAD_Z, QUAY_STORE, BERTHS, berthX, DEPOT_WALLS, GARAGE_WALLS, depotSpot, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_Z, shelfAt, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_ROADS, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
+  along, BOLLARD, bollardX, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, QUAY_ROAD_Z, QUAY_STORE, BERTHS, berthX, DEPOT_WALLS, GARAGE_WALLS, depotSpot, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_Z, shelfAt, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_ROADS, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
   BACK_LANE_Z, CONVEYORS, DOCK2_AREA, FORKLIFT_GARAGE, garageSpot, kitDrop, QUAY_WORK_Z, STOCK_NAME, type SectorId } from "./scene/layout";
 
 // ----- 투영: 위에서 30도 기운 정사영 -----
@@ -69,7 +69,7 @@ function robot(x: number, z: number): SVGElement {
 function ship(x: number, z: number, kind: string, scale = 1): SVGElement {
   const k = scale * S;   // 크기는 호출하는 lot()가 선종 크기(shipSize)를 이미 곱했다
   const cx = px(x), cy = py(z);
-  const len = kind === "VLCC" ? 1.45 : kind === "LNG" ? 1.35 : kind === "TUG" ? 1.0 : kind === "FEEDER" ? 1.15 : 1.3;   // 반 길이(단위)
+  const len = shipLen(kind);   // 반 길이(단위)
   const half = 0.42;                                                     // 반 폭
   const deckY = cy - 0.3 * k;                                            // 갑판 높이만큼 위로
   const g = s("g", { class: "cc-ship" });
@@ -108,6 +108,25 @@ function ship(x: number, z: number, kind: string, scale = 1): SVGElement {
   blk(-len + 0.42, 0.34, 0.62, 0.55, PAPER);
   const wy = deckMid - 0.31 * k * DEPTH - 0.55 * k * RISE + 0.62 * k * DEPTH;
   g.append(s("line", { x1: cx + (-len + 0.27) * k, x2: cx + (-len + 0.57) * k, y1: wy + 0.12 * k * RISE, y2: wy + 0.12 * k * RISE, stroke: "#3a3f3c", "stroke-width": 1 }));
+  return g;
+}
+
+/** 2D 배의 반 길이(단위, 선종 크기 곱하기 전). ship()과 같은 값 */
+const shipLen = (kind: string) => (kind === "VLCC" ? 1.45 : kind === "LNG" ? 1.35 : kind === "TUG" ? 1.0 : kind === "FEEDER" ? 1.15 : 1.3);
+
+/**
+ * 계류줄(4.8.1): 선석에 댄 배의 우현(앞쪽)에서 안벽 계선주로 넷. 선수줄·선미줄은 바깥쪽, 스프링 둘은 엇갈린다(현장 3D와 같은 자리).
+ * 배 그림 위에 그려 갑판 가장자리에서 시작한다.
+ */
+function mooring(x: number, z: number, kind: string): SVGElement {
+  const L = shipLen(kind) * shipSize(kind);
+  const deckY = py(z) - 0.3 * S * shipSize(kind);
+  const g = s("g", { class: "cc-mooring" });
+  for (const [from, to] of [[0.85 * L, L + 0.8], [-0.85 * L, -L - 0.8], [0.35 * L, -0.3 * L], [-0.35 * L, 0.3 * L]]) {
+    const bx = bollardX(x + to);
+    g.append(s("line", { x1: px(x + from), y1: deckY, x2: px(bx), y2: py(BOLLARD.z, BOLLARD.top), stroke: "#8a6a4a", "stroke-width": 1.2 }),
+      s("circle", { cx: px(bx), cy: py(BOLLARD.z, BOLLARD.top), r: 2, fill: "#3a3f3c" }));
+  }
   return g;
 }
 
@@ -456,6 +475,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
       if (here) {
         // 배 이름표는 정반 뒤 가장자리 바로 위(정반 안의 글과 겹치지 않게)
         add(z + 0.02, block(here, lot(x, z, here.form, here.parts && here.parts.length > 1 ? 0.75 : 1, here.type), chip(x, z - d / 2, 0, here, lateNow(here))));
+        if (p === ST.quay) add(z + 0.03, mooring(x, z, here.type));
       }
       if (view.crew === "robot") {
         if (here) { add(z + 0.1, robot(x - MAT_W / 2 + 0.35, z + 0.3)); add(z + 0.1, robot(x + MAT_W / 2 - 0.35, z + 0.3)); }
@@ -490,6 +510,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
         const q = waiting.get(l.ship)!;
         add(q.z + 0.01, block(l, lot(q.x, q.z, l.form, 1, l.type), chip(q.x, q.z - 0.2, 0.4, l, lateNow(l)),
           q.anchored ? tag(px(q.x), py(q.z) + 16, "정박지 대기", "cc-tag mid pair") : s("g")));
+        if (!q.anchored) add(q.z + 0.02, mooring(q.x, q.z, l.type));
       });
     }
     if (p === ST.dock) {
