@@ -316,6 +316,21 @@ export class Person {
     }
   }
 
+  /** 걸음 빠르기(야드 단위/초). 1인칭에서 관리자가 정해진 지점으로 걸을 때 */
+  pace(speed: number): void {
+    this.walkSpeed = speed;
+  }
+
+  /** 발밑에서 눈까지 높이(1인칭 카메라) */
+  eyeHeight(): number {
+    return (HEAD_Y + 0.01) * this.root.scale.y;
+  }
+
+  /** 목표 자리까지 남은 거리(0.05 안이면 멈춰 있다) */
+  distanceToTarget(): number {
+    return Math.hypot(this.target.x - this.root.position.x, this.target.z - this.root.position.z);
+  }
+
   update(dt: number): void {
     this.phase += dt;
     const pos = this.root.position;

@@ -443,3 +443,43 @@ export const OUTER_ROAD = { north: YARD_Z0 - 1.2, west: YARD_X0 - 1.2, south: YA
 export const LOUNGE_SOUTH = { x: -2.3, z: 8.2 };   // 4.7.6: 남문 샛길(SPUR_X[4])과 PE장 옆 샛길(SPUR_X[5]) 사이
 export const SOUTH_TRADES = ["erection", "outfitting"];
 export const loungeOf = (trade: string) => (SOUTH_TRADES.includes(trade) ? LOUNGE_SOUTH : LOUNGE);
+
+/**
+ * 1인칭 현장(4.10, D9): 관리자가 걸어갈 곳. 처음에는 정해진 지점 사이만 걷는다.
+ * 길(zone): lane = 공장 앞 통로(벽과 큰길 사이, 큰길 트랜스포터 반경 밖), front = 큰길 앞(안전한 자리), quay = 안벽 도로.
+ * 길끼리는 남문 샛길(SPUR_X[4])로 건너다닌다. 도크 쪽 샛길(SPUR_X[6])은 2도크 크레인 반경을 지나므로 쓰지 않는다.
+ * look = 도착해서 바라보는 방향(xz 평면 각도, atan2(dx, dz)와 같은 뜻: 0이면 +z, π면 −z(공장 안쪽)).
+ * station = 그 공정을 쓰지 않는 반기(간이공정)에서는 숨긴다.
+ */
+export type WalkZone = "lane" | "front" | "quay";
+export interface WalkSpot { id: string; name: string; group: string; x: number; z: number; zone: WalkZone; look: number; station?: number }
+/** 공장 앞 통로: 첫 줄 작업장 벽 앞(areaBounds의 z1 = 1.65)에서 조금 앞 */
+export const WALK_LANE_Z = MAT_D / 2 + 0.35 + 0.2;
+const WALK_CROSS_X = SPUR_X[4];
+const FACE_IN = Math.PI;
+export const WALK_SPOTS: WalkSpot[] = [
+  { id: "safe", name: "안전한 자리", group: "큰길", x: SAFE_SPOT.x, z: SAFE_SPOT.z, zone: "front", look: Math.atan2(10, -5.6) },
+  ...([["cut", "절단"], ["proc", "가공"], ["sub", "소조립"], ["block", "중조립"], ["paint", "도장"], ["preout", "선행의장"]] as const)
+    .map(([id, name]) => ({ id, name: `${name} 작업장 앞`, group: "내업 구획", x: STATION_X[ST[id]], z: WALK_LANE_Z, zone: "lane" as const, look: FACE_IN, station: ST[id] })),
+  { id: "pe", name: "PE장 앞", group: "도크 구획", x: STATION_X[ST.pe], z: WALK_LANE_Z, zone: "lane", look: FACE_IN, station: ST.pe },
+  // 도크 옆: 골리앗 크레인 반경(CRANE_R) 밖에서 도크를 바라본다
+  { id: "dock", name: "1도크 옆", group: "도크 구획", x: STATION_X[ST.dock] - CRANE_R - 0.6, z: WALK_LANE_Z, zone: "lane", look: Math.PI / 2 + 0.35, station: ST.dock },
+  { id: "quay", name: "안벽 선석 앞", group: "안벽 구획", x: STATION_X[ST.quay] + 1.8, z: QUAY.z0 + 1.9, zone: "quay", look: FACE_IN, station: ST.quay },
+];
+export const walkSpot = (id: string) => WALK_SPOTS.find((s) => s.id === id) ?? WALK_SPOTS[0];
+
+/** 길 위에서 샛길까지 나가는 꺾인 점들(샛길 위 점으로 끝난다) */
+function walkExit(p: { x: number; z: number }, zone: WalkZone): { x: number; z: number }[] {
+  if (zone === "lane") return [{ x: p.x, z: WALK_LANE_Z }, { x: WALK_CROSS_X, z: WALK_LANE_Z }];
+  if (zone === "quay") return [{ x: p.x, z: QUAY_ROAD_Z }, { x: WALK_CROSS_X, z: QUAY_ROAD_Z }];
+  return [{ x: WALK_CROSS_X, z: p.z }];
+}
+
+/** from(지금 자리, 그 길)에서 to까지 걸을 점들. 같은 길이면 길을 따라 바로, 다르면 남문 샛길로 건넌다. */
+export function walkPath(from: { x: number; z: number }, fromZone: WalkZone, to: WalkSpot): { x: number; z: number }[] {
+  const pts = fromZone === to.zone
+    ? (to.zone === "front" ? [] : [{ x: from.x, z: to.zone === "lane" ? WALK_LANE_Z : QUAY_ROAD_Z }, { x: to.x, z: to.zone === "lane" ? WALK_LANE_Z : QUAY_ROAD_Z }])
+    : [...walkExit(from, fromZone), ...walkExit(to, to.zone).reverse()];
+  pts.push({ x: to.x, z: to.z });
+  return pts.filter((p, i) => Math.hypot(p.x - (i ? pts[i - 1].x : from.x), p.z - (i ? pts[i - 1].z : from.z)) > 0.05);
+}
