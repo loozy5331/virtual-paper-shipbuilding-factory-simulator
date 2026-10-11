@@ -20,7 +20,7 @@ import { renderCctv } from "./cctv";
 import { renderTrackCard, type TrackPick } from "./track";
 import { buildFrame, type Frame } from "./scene/frame";
 import type { FieldView, Yard } from "./scene/yard";
-import { sector, sectorOf, SECTORS, ST, WALK_SPOTS, type SectorId } from "./scene/layout";
+import { sector, sectorOf, SECTORS, ST, type SectorId } from "./scene/layout";
 
 const SPEEDS = [1, 4];   // 관제실 배속. 기본 4배속(사용자 결정). 현장은 따로 1배속 고정(FIELD_MS_PER_DAY).
 const BASE_MS_PER_DAY = 500;   // 1배속은 하루에 0.5초, 60일이 30초다.
@@ -1240,6 +1240,7 @@ function goField(): void {
 }
 
 function backToRoom(): void {
+  releaseMoveKeys();
   pause();   // 하루 길이가 달라지므로 멈춘 채로 돌아온다(관제실 배속으로 다시 재생).
   setScreen("room");
   drawRoom();
@@ -1251,15 +1252,15 @@ function drawField(): void {
   mount(els.fieldHead,
     h("button", { class: "field-back", type: "button", onclick: backToRoom }, "← 관제실로"),
     h("b", null, "현장"),
-    h("span", { class: "hint" }, r ? `${r.n}회차 ${r.label} · ${first ? "끌어서 둘러보기 · 휠로 당겨 보기" : "생산관리자의 눈으로 봅니다"}` : ""),
+    h("span", { class: "hint" }, r ? `${r.n}회차 ${r.label} · 생산관리자의 눈으로 봅니다` : ""),
     first
-      ? walkSelect()
+      ? h("span", { class: "hint fp-keys" }, h("kbd", null, "W A S D"), " 걷기 · ", h("kbd", null, "Shift"), " 빨리 · 끌어서 둘러보기 · 휠로 당겨 보기")
       : [
         h("div", { class: "field-cams", role: "group", "aria-label": "볼 곳" },
           h("button", { type: "button", class: state.fieldFocus === null ? "active" : "", onclick: () => { state.fieldFocus = null; drawField(); aimCamera(); } }, "전경"),
           shownSectors().map((sec) =>
             h("button", { type: "button", class: state.fieldFocus === sec.id ? "active" : "", onclick: () => { state.fieldFocus = sec.id; drawField(); aimCamera(); } }, sec.name))),
-        // 관리자 순간이동(3.0 안전): 설비 옆으로 가면 위험 반경 경고. 1인칭에서는 걸어서 다닌다(4.10)
+        // 관리자 순간이동(3.0 안전): 설비 옆으로 가면 위험 반경 경고. 1인칭에서는 W·A·S·D로 걸어서 다닌다(4.11)
         h("div", { class: "field-cams", role: "group", "aria-label": "관리자 이동" },
           h("button", { type: "button", onclick: () => moveManager("crane") }, "골리앗 주변으로"),
           h("button", { type: "button", onclick: () => moveManager("cart") }, "트랜스포터 주변으로")),
@@ -1277,22 +1278,40 @@ function drawField(): void {
 
 function setFieldView(view: FieldView): void {
   if (state.fieldView === view) return;
+  releaseMoveKeys();
   state.fieldView = view;
   yard?.setView(view);
   drawField();
 }
 
-/** 1인칭에서 걸어갈 곳(정해진 지점, D9). 그 반기에 쓰지 않는 공정 앞은 뺀다. */
-function walkSelect(): HTMLElement {
-  const stations = state.data.scenario.stations;
-  const spots = WALK_SPOTS.filter((sp) => sp.station === undefined || !stations[sp.station]?.skipped);
-  const groups = [...new Set(spots.map((sp) => sp.group))];
-  const at = yard?.walkingTo() ?? "safe";
-  return h("label", { class: "cam-track walk-to" }, "걸어가기",
-    h("select", { onchange: (e: Event) => { yard?.walkTo((e.target as HTMLSelectElement).value); } },
-      at === "" ? h("option", { value: "", selected: true, disabled: true }, "설비 옆") : null,
-      groups.map((g) => h("optgroup", { label: g },
-        spots.filter((sp) => sp.group === g).map((sp) => h("option", { value: sp.id, selected: sp.id === at }, sp.name))))));
+/**
+ * 1인칭 걷기(4.11, D54): W·A·S·D와 Shift. 한글 자판에서도 되게 글자(key) 대신 자리(code)로 본다.
+ * 누르고 있는 키를 모아 yard에 앞뒤·옆 방향으로 넘긴다. 경고 카드가 떠 있으면 걷지 않는다.
+ */
+const MOVE_KEYS: Record<string, [number, number]> = { KeyW: [1, 0], KeyS: [-1, 0], KeyA: [0, -1], KeyD: [0, 1] };
+const held = new Set<string>();
+
+function onMoveKey(e: KeyboardEvent, down: boolean): boolean {
+  const move = e.code in MOVE_KEYS || e.key === "Shift";
+  if (!move) return false;
+  if (down && (state.screen !== "field" || state.fieldView !== "first" || els.field.querySelector(".safety-alert"))) return false;
+  if (down) held.add(e.code); else held.delete(e.code);
+  pushMove();
+  return e.code in MOVE_KEYS;
+}
+
+function pushMove(): void {
+  let forward = 0, strafe = 0;
+  for (const code of held) {
+    const m = MOVE_KEYS[code];
+    if (m) { forward += m[0]; strafe += m[1]; }
+  }
+  yard?.setMove(forward, strafe, held.has("ShiftLeft") || held.has("ShiftRight"));
+}
+
+function releaseMoveKeys(): void {
+  held.clear();
+  pushMove();
 }
 
 function moveManager(spot: "safe" | "crane" | "cart"): void {
@@ -1308,6 +1327,7 @@ function warnHazard(hazard: { id: string; label: string }): void {
   if (!r || state.screen !== "field" || els.field.querySelector(".safety-alert")) return;
   const wasPlaying = state.playing;
   pause();
+  releaseMoveKeys();
   r.safetyWarnings = (r.safetyWarnings ?? 0) + 1;
   const overlay = h("div", { class: "safety-alert", role: "alertdialog", "aria-label": "현장 안전 경고" },
     h("div", { class: "safety-card" },
@@ -1318,7 +1338,6 @@ function warnHazard(hazard: { id: string; label: string }): void {
         h("button", { class: "btn primary", type: "button", onclick: () => {
           overlay.remove();
           moveManager("safe");
-          if (state.fieldView === "first") drawField();   // 걸어가기 칸을 "안전한 자리"로
           if (wasPlaying) play();
         } }, "안전한 자리로 돌아가기"))));
   els.field.append(overlay);
@@ -1360,6 +1379,10 @@ function drawTopbar(): void {
 }
 
 function onKey(e: KeyboardEvent): void {
+  if (!(e.target as HTMLElement).closest("input, select, textarea") && onMoveKey(e, true)) {
+    e.preventDefault();
+    return;
+  }
   if (e.key === "Escape" && planUp) {
     closePlanBoard();
     return;
@@ -1510,6 +1533,8 @@ async function start(): Promise<void> {
   mount(root, els.desk, els.plan, els.room, els.field);
 
   document.addEventListener("keydown", onKey);
+  document.addEventListener("keyup", (e) => { onMoveKey(e, false); });
+  window.addEventListener("blur", releaseMoveKeys);   // 키를 누른 채 창을 떠나면 keyup이 오지 않는다
   drawForm();
   schedulePreview();
   showDesk();
