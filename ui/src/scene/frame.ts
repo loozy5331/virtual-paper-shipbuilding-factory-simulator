@@ -118,6 +118,8 @@ export interface Frame {
   seaTrial: { ship: string; type: string; day: number; days: number; state: ShipState }[];
   /** 지게차가 오늘 나르는 부재 팔레트(4.0.2, 4.3부터 지게차 일감에서): 오늘 소조립(정반이나 적치장)에 온 배. unit = 가공 작업장, forklift = 지게차 번호 */
   palletMoves: { ship: string; unit: number; forklift: number }[];
+  /** 안벽 의장품 적치장에 내려 둔 키트(4.7.3): 지게차가 실어 온 날부터 그 배가 안벽의장에 들어가기 전날까지(배 이름) */
+  quayKits: string[];
   /** 직종별 쉬는 인원(4.0, D42). 대기소의 모자 색 */
   idleByTrade: Record<string, number>;
   shelves: ShelfView[];
@@ -302,6 +304,11 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
     day,
     lots,
     launches,
+    quayKits: day > 0 ? result.ships.flatMap((ship) => {
+      const kit = result.events.find((ev) => ev.type === "issue" && ev.ship === ship.id && ev.station === "quay_outfitting");
+      const start = ship.spans["quay_outfitting"]?.start;
+      return kit && kit.day <= day && (start === undefined || day < start) ? [ship.id] : [];
+    }) : [],
     arrivals,
     deliveries,
     stations,

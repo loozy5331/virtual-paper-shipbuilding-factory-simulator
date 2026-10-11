@@ -37,6 +37,11 @@ export type Pose = "work" | "sit" | "stand";
 /** 몸통: 아래가 넓고 배가 둥근 노움 체형. 회전체라 이음매 없이 매끈하다. */
 const BODY = [[0, 0.12], [0.1, 0.13], [0.125, 0.18], [0.13, 0.25], [0.115, 0.32], [0.085, 0.37], [0.05, 0.395], [0, 0.4]] as const;
 const HEAD_Y = 0.46;
+/**
+ * 소인 크기(4.7.3): 배와 블록이 커 보이게 사람만 줄인다(모자·수염·칼·이름표 자리까지 같은 비율).
+ * 자리와 걸음 속도(야드 단위)는 그대로라, 다리는 1/PERSON_SIZE배 빨리 놀린다(미끄러져 보이지 않게).
+ */
+export const PERSON_SIZE = 0.6;
 const HAT_H = 0.24;
 
 /** 몸통 반지름(높이 y에서). 하네스 끈이 몸에 붙어 지나가게 한다. */
@@ -244,7 +249,8 @@ export class Person {
     this.armR.add(this.knife);
     this.root.add(this.torso);
     const [height, width] = this.build;
-    this.root.scale.set(1.8 * width, 1.8 * height, 1.8 * width);
+    const k = 1.8 * PERSON_SIZE;
+    this.root.scale.set(k * width, k * height, k * width);
 
     // 이름표: 고깔모자 끝 바로 위 작은 팻말. 머리에 붙여 앉거나 숙여도 따라간다. 가상 인물이다.
     const tag = document.createElement("div");
@@ -337,6 +343,7 @@ export class Person {
     if (walking) {
       const stride = Math.min(1, this.speed / 2);
       if (this.speed > 4) this.phase += dt * Math.min(2, this.speed / 4);   // 빨리 걸으면 발도 빨리
+      this.phase += dt * (1 / PERSON_SIZE - 1);   // 작은 다리는 종종걸음
       const swing = Math.sin(p * 10) * 0.7 * stride;
       legL = swing;
       legR = -swing;
