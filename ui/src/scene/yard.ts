@@ -47,6 +47,8 @@ const WALK_SPEED = 2.6, BADGE_R = 5.5, FP_FOV = 62;
 const FP_LABEL_R = 12;
 /** 내업 공장 벽 높이(4.11.1: 1.0 → 1.6, 1인칭에서 소인 키의 두 배 남짓이면 공장 벽 같지 않았다) */
 const SHOP_WALL_H = 1.6;
+/** 호이스트 레일 높이(4.11.3): 지붕 철골(벽 위) 바로 아래. 트롤리 윗면이 벽 높이를 넘지 않는다 */
+const HOIST_H = SHOP_WALL_H - 0.25;
 
 export interface DaySource {
   /** 그날 안에서 흐른 비율(0~1)을 받아 장면을 돌려준다. */
@@ -440,7 +442,7 @@ export class Yard {
 
       // 호이스트(4.9): 블록을 뒤집는 조립 정반(소조립·중조립)에만
       const hoists = i === ST.sub || i === ST.block ? [0, 1, 2].map((u) => {
-        const hoist = buildHoist(u === 0 ? MAT_D : MAT2_D);
+        const hoist = buildHoist(u === 0 ? MAT_D : MAT2_D, HOIST_H);
         hoist.visible = false;
         this.scene.add(hoist);
         return hoist;
@@ -1272,8 +1274,9 @@ export class Yard {
 
     // 정반: 작업장(1호, 증설하면 2호)마다 인원 또는 로봇, 시니어, 중지, 잔업
     let person = 0;
-    // 내업 지붕은 전경이나 다른 구획을 볼 때만(내업을 가까이 보면 지붕과 철골을 통째로 숨긴다, D38)
-    const roofsOn = this.view === "third" && this.focus !== "shop";
+    // 내업 지붕은 전경이나 다른 구획을 볼 때(내업을 가까이 보면 지붕과 철골을 통째로 숨긴다, D38)와
+    // 1인칭(공장 안에서 지붕과 호이스트를 올려다본다, D56)
+    const roofsOn = this.view === "first" || this.focus !== "shop";
     // 간이공정(4.4): 쓰지 않는 공정의 작업장·이름표·적치장 칸은 숨겨 빈 땅으로 둔다(공장 벽·지붕도)
     this.stockCells.forEach((cell, p) => { for (const o of cell) o.visible = stockUsed(f, p); });
     const quayTag = this.sectorMarks.get("quay")?.tag;
