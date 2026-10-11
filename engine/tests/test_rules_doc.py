@@ -896,43 +896,48 @@ SIMPLE = {p["id"]: p["config"] for p in load_presets("simple")}
 
 
 class SimpleScenario(unittest.TestCase):
-    """간이공정(4.4, D47): 소조립 → 중조립 → PE장 → 탑재 네 공정만 쓰는 입문 시나리오. 나머지 여섯 공정은 처음부터 마친 것으로 건너뛴다."""
+    """간이공정(4.4, 4.5에 공정 변경, D47): 절단 → 가공 → 소조립 → PE장 → 탑재 다섯 공정만 쓰는 입문 시나리오. 나머지 다섯 공정은 처음부터 마친 것으로 건너뛴다."""
 
-    ACTIVE = ["sub_assembly", "block_assembly", "grand_assembly", "erection"]
+    ACTIVE = ["cutting", "processing", "sub_assembly", "grand_assembly", "erection"]
 
     def test_skipped_stations_never_run(self):
         sc = load_scenario("simple")
-        self.assertEqual(sc["skip"], ["cutting", "processing", "painting", "pre_outfitting", "quay_outfitting", "sea_trial"])
+        self.assertEqual(sc["skip"], ["block_assembly", "painting", "pre_outfitting", "quay_outfitting", "sea_trial"])
         self.assertEqual([st["id"] for st in sc["stations"] if st.get("skipped")], sc["skip"])
         r = simulate(SIMPLE["managed"], baseline=False)
         for ship in r["ships"]:
             self.assertEqual(list(ship["spans"]), self.ACTIVE)
-        # 탑재를 마친 날이 인도일이다(안벽의장·시운전이 없다). 착수일 = 소조립에 들어간 날
+        # 소조립을 마치면 중조립·마감동을 건너뛰고 바로 PE장(블록은 T2가 나른다). 탑재를 마친 날이 인도일이다. 착수일 = 절단에 들어간 날
         s1 = r["ships"][0]
-        self.assertEqual((s1["spans"]["erection"]["end"], s1["delivered_day"], s1["started_day"]), (27, 27, 3))
+        self.assertEqual({k: (v["start"], v["end"]) for k, v in s1["spans"].items()},
+                         {"cutting": (3, 5), "processing": (6, 7), "sub_assembly": (8, 11), "grand_assembly": (13, 16), "erection": (17, 23)})
+        self.assertEqual((s1["delivered_day"], s1["started_day"]), (23, 3))
         skipped = [st for st in r["stations"] if st["id"] not in self.ACTIVE]
         self.assertTrue(all(st["busy_days"] == 0 and st["oee"]["oee"] is None for st in skipped))
 
-    def test_materials_follow_the_scenario_not_the_rules(self):
-        # 3.x 시나리오 1처럼 종이는 소조립, 물감은 PE장, 깃발은 탑재에서 쓴다.
-        # 종이(강재 적치장)는 소조립에 들어가는 날 컨베이어로, 물감·깃발은 앞 공정에 들어간 다음 날 지게차가 싣는다.
+    def test_materials_follow_the_scenario(self):
+        # 종이는 절단(강재 적치장에서 컨베이어로 들어가는 날), 물감은 PE장, 깃발은 탑재에서 쓴다(시나리오의 station_material).
+        # 물감·깃발은 앞 공정에 들어간 다음 날 지게차가 싣는다: PE장의 앞 공정은 소조립(8일), 탑재의 앞 공정은 PE장(13일).
         r = simulate(SIMPLE["managed"], baseline=False)
         issues = [(e["day"], e["material"], e["station"], e.get("forklift")) for e in r["events"] if e["type"] == "issue" and e["ship"] == "S1"]
-        self.assertEqual(issues, [(3, "paper", "sub_assembly", None), (9, "paint", "grand_assembly", "F1"), (18, "flag", "erection", "F1")])
+        self.assertEqual(issues, [(3, "paper", "cutting", None), (9, "paint", "grand_assembly", "F1"), (14, "flag", "erection", "F1")])
+        # 가공 → 소조립 부재 팔레트도 지게차 일감이다(가공을 마친 7일의 다음 날)
+        jobs = [(d, j["kind"], j["ship"]) for d, rec in enumerate(r["forklifts"][0]["daily"], start=1) for j in rec["jobs"]]
+        self.assertEqual(jobs[:2], [(8, "pallet", "S1"), (9, "kit", "S1")])
 
     def test_only_used_trades_are_staffed_and_paid(self):
-        # 조립 6 + 탑재 3 = 9명 × 10 × 60일 = 5,400. 가공·도장·의장 직종은 없고 정비비도 쓰는 공정 4곳만(4 × 100).
+        # 가공 2 + 조립 4 + 탑재 3 = 9명 × 10 × 60일 = 5,400. 도장·의장 직종과 시운전 외부팀은 없고, 정비비는 쓰는 공정 다섯 곳만(5 × 100).
         r = simulate(SIMPLE["managed"], baseline=False)
-        self.assertEqual(r["workforce"]["pools"], {"assembly": 6, "erection": 3})
-        self.assertEqual((r["costs"]["labor"], r["costs"]["maintenance"]), (5400.0, 400))
+        self.assertEqual(r["workforce"]["pools"], {"processing": 2, "assembly": 4, "erection": 3})
+        self.assertEqual((r["costs"]["labor"], r["costs"]["maintenance"]), (5400.0, 500))
         # 쓰지 않는 직종 인원을 적어도 읽지 않는다
         cfg = copy.deepcopy(SIMPLE["managed"])
-        cfg["pools"]["processing"] = 2
+        cfg["pools"]["painting"] = 2
         self.assertEqual(simulate(cfg, baseline=False)["costs"]["labor"], 5400.0)
         self.assertEqual(list(preview(SIMPLE["managed"])["plan"]["ships"]["S1"]), self.ACTIVE)
 
     def test_presets(self):
-        cases = {"unmanaged": (-5684.8, 40.1, "F", 2), "managed": (12009.2, 97.5, "A", 4), "all_in": (2818.0, 58.8, "C", 2)}
+        cases = {"unmanaged": (-1900.6, 46.7, "F", 2), "managed": (12080.6, 98.4, "A", 4), "all_in": (39.2, 54.0, "C", 3)}
         for pid, (profit, score, grade, on_time) in cases.items():
             r = simulate(SIMPLE[pid])
             self.assertEqual((r["profit"], r["grade"]["score"], r["grade"]["grade"], r["qcd"]["delivery"]["on_time"]), (profit, score, grade, on_time), pid)
@@ -940,7 +945,7 @@ class SimpleScenario(unittest.TestCase):
     def test_options_are_the_most_closed(self):
         # 일반 인력·표준 공법·표준 자재·작업장 1·나눠 하기 없음·지게차 2대 고정
         cfg = copy.deepcopy(SIMPLE["managed"])
-        cfg["stations"]["block_assembly"]["method"] = "fast"
+        cfg["stations"]["cutting"]["method"] = "fast"
         with self.assertRaises(ConfigError):
             simulate(cfg)
         cfg = copy.deepcopy(SIMPLE["managed"])
