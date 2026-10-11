@@ -59,6 +59,12 @@ function barEl(x0: number, y: number, w: number, hgt: number, fill: string, titl
 
 type Ship = Result["ships"][number];
 
+/** 이 배가 그 공정을 마지막으로 쓴 날(운반·대기 포함). 그 뒤의 다른 배·빈 작업장 중지는 이 배와 무관해 배 탭에 그리지 않는다(4.12.8). 아직 안 왔으면 끝 없음 */
+function lastDayAt(ship: Ship, station: string): number {
+  const ends = ship.segments.filter((sg) => sg.station === station).map((sg) => sg.end);
+  return ends.length ? Math.max(...ends) : Infinity;
+}
+
 /** 나눠 한 구간의 부분 수(가장 많이 나눈 날) */
 function splitCount(ship: Ship, seg: Segment): number {
   let k = 1;
@@ -389,9 +395,10 @@ function drawUnitRows(g: SVGElement, ship: Ship, st: Scenario["stations"][number
       }
     }
     // 다른 배나 빈 작업장의 중지: 옅은 막대 아래 얇은 띠(한 줄 공정과 같은 표시)
+    const done = lastDayAt(ship, st.id);
     const otherStop = (day: number) => {
       const rec = u.daily[day - 1];
-      return stopped(rec) && rec.ship !== ship.id ? `${rec.state}:${rec.ship ?? ""}` : null;
+      return day <= done && stopped(rec) && rec.ship !== ship.id ? `${rec.state}:${rec.ship ?? ""}` : null;
     };
     for (const run of runs(u.daily, otherStop, today)) {
       const [state, who] = run.key.split(":");
@@ -481,11 +488,13 @@ export function renderShipGantt(result: Result, scenario: Scenario, shipId: stri
     // 같은 공정을 쓰던 다른 배와 그 공정의 중지(사고·고장): 이 배가 왜 기다렸는지 보인다.
     // 증설한 공정은 작업장을 합쳐 본다: 다른 배가 하나라도 있으면 그 배들, 모든 작업장이 멈췄으면 중지.
     const units = result.stations.find((rs) => rs.id === st.id)!.units;
+    // 중지는 이 배가 그 공정을 마친 날까지만(그 뒤는 이 배와 무관, 4.12.8)
     const daily = units[0].daily;
+    const done = lastDayAt(ship, st.id);
     const key = (day: number) => {
       const recs = units.map((u) => u.daily[day - 1]);
       const stopped = recs.filter((rec) => rec.state === "accident_stop" || rec.state === "breakdown_stop");
-      if (stopped.length === recs.length) return `${stopped[0].state}:`;
+      if (day <= done && stopped.length === recs.length) return `${stopped[0].state}:`;
       const others = recs.map((rec) => rec.ship).filter((sid) => sid && sid !== ship.id);
       return others.length ? `other:${others.join("·")}` : null;
     };
