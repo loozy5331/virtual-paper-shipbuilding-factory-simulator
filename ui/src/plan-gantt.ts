@@ -4,7 +4,7 @@
 // 막대 앞 위에 착수 예정일을 숫자로 적는다. 끄는 동안에도 그 숫자가 따라 바뀐다.
 // 끄는 동안에는 줄만 옮겨 보이고, 놓을 때 onMove로 알린다. 새 막대는 다음 미리보기에서 다시 그린다.
 
-import type { Plan, Scenario } from "./api";
+import { activeStations, type Plan, type Scenario } from "./api";
 import { s } from "./dom";
 import { STATE_INFO, STATION_COLOR } from "./labels";
 
@@ -69,7 +69,7 @@ export function renderPlanGantt(ctx: PlanGanttContext): SVGElement {
     });
     // 줄 전체를 잡을 수 있게 투명한 바탕을 깐다.
     row.append(s("rect", { x: LEFT, y, width: W - LEFT - RIGHT, height: ROW_H, class: "plan-hit" }));
-    for (const st of scenario.stations) {
+    for (const st of activeStations(scenario)) {
       const sp = spans[st.id];
       if (!sp || sp.start > days) continue;
       const end = Math.min(sp.end, days);
@@ -78,7 +78,8 @@ export function renderPlanGantt(ctx: PlanGanttContext): SVGElement {
         fill: STATION_COLOR[st.id],
       }, s("title", null, `${sid} ${stationName[st.id]} ${sp.start}~${sp.end}일`)));
     }
-    const last = spans[scenario.stations[scenario.stations.length - 1].id];
+    const act = activeStations(scenario);
+    const last = spans[act[act.length - 1].id];
     if (last && last.end > order.due_day) {
       row.append(s("text", { x: Math.min(x(last.end + 1) + 3, W - RIGHT), y: barY + BAR_H - 3, class: "plan-late" }, "!"));
     }
@@ -160,7 +161,7 @@ export function conflictText(scenario: Scenario, plan: Plan): string {
   const name = Object.fromEntries(scenario.stations.map((st) => [st.id, st.name]));
   // 많으면(전부 1일 착수 같은 경우) 공정별 개수만 적는다.
   if (plan.conflicts.length > 5) {
-    const count = scenario.stations
+    const count = activeStations(scenario)
       .map((st) => [name[st.id], plan.conflicts.filter((c) => c.station === st.id).length] as const)
       .filter(([, n]) => n > 0);
     return `겹침 ${plan.conflicts.length}곳: ${count.map(([st, n]) => `${st} ${n}`).join(", ")}`;

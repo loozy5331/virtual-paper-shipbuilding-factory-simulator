@@ -5,7 +5,7 @@
 // 막대를 누르면 onPick으로 그 배·공정·기간을 넘긴다(현장 들어가는 길, D7).
 // 재생 중에는 today까지만 그린다. 엔진이 준 segments와 daily를 자르고 묶기만 하고 새로 계산하지 않는다.
 
-import type { ForkliftJob, Result, Scenario, Segment } from "./api";
+import { activeStations, type ForkliftJob, type Result, type Scenario, type Segment } from "./api";
 import { s } from "./dom";
 import { PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, STATION_TEXT } from "./labels";
 
@@ -325,7 +325,7 @@ export function renderShipGantt(result: Result, scenario: Scenario, shipId: stri
   const dayW = (W - LEFT - RIGHT) / days;
   const x = (day: number) => LEFT + (day - 1) * dayW;
   const width = (start: number, end: number) => (end - start + 1) * dayW;
-  const stations = scenario.stations;
+  const stations = activeStations(scenario);
   const matRowY = TOP + stations.length * S_ROW_H + 6;
   const height = matRowY + 40;
   const clip = (end: number) => Math.min(end, today);
@@ -361,7 +361,7 @@ export function renderShipGantt(result: Result, scenario: Scenario, shipId: stri
 
     // 같은 공정을 쓰던 다른 배와 그 공정의 중지(사고·고장): 이 배가 왜 기다렸는지 보인다.
     // 증설한 공정은 작업장을 합쳐 본다: 다른 배가 하나라도 있으면 그 배들, 모든 작업장이 멈췄으면 중지.
-    const units = result.stations[row].units;
+    const units = result.stations.find((rs) => rs.id === st.id)!.units;
     const daily = units[0].daily;
     const key = (day: number) => {
       const recs = units.map((u) => u.daily[day - 1]);

@@ -216,6 +216,7 @@ export function renderReport(result: Result, scenario: Scenario, maxRate: number
   const fastest = Math.max(...Object.values(rules.methods).map((m) => m.speed));
   // 나눠 하기를 쓴 회차만 짝 대기 칸을 보인다(3.0)
   const split = result.stations.some((st) => (st.pair_wait_days ?? 0) > 0);
+  const skipped = new Set(scenario.skip ?? []);
   const oeeCard = card("공정별 OEE",
     h("table", { class: "oee" },
       h("thead", null, h("tr", null,
@@ -223,7 +224,7 @@ export function renderReport(result: Result, scenario: Scenario, maxRate: number
         h("th", { class: "r" }, "시간가동률"), h("th", { class: "r" }, "성능가동률"), h("th", { class: "r" }, "양품률"),
         h("th", null, "OEE"),
         split ? h("th", { class: "r", title: "나눠 하기에서 먼저 끝난 부분이 나머지를 기다린 날(작업장마다 합)" }, "짝 대기") : null)),
-      h("tbody", null, result.stations.map((st) => h("tr", null,
+      h("tbody", null, result.stations.filter((st) => !skipped.has(st.id)).map((st) => h("tr", null,
         h("td", null, h("span", { class: "dot", style: { background: STATION_COLOR[st.id] } }), st.name),
         h("td", { class: "r" }, num(st.max_rate, 3)),
         h("td", { class: "r" }, pct(st.defect_rate, 0)),

@@ -63,6 +63,8 @@ export interface StationInfo {
   site?: string;
   arrive?: "crane" | "tow";
   split?: boolean;
+  /** 4.4(D47): 이 시나리오가 쓰지 않는 공정(간이공정). 번호는 그대로이고 처음부터 마친 것으로 건너뛴다 */
+  skipped?: boolean;
 }
 
 export interface TradeInfo {
@@ -146,6 +148,8 @@ export interface Scenario {
   period: string;
   days: number;
   stations: StationInfo[];
+  /** 쓰지 않는 공정 id(간이공정, 4.4) */
+  skip?: string[];
   /** 직종(4.0, D42). _comment 같은 밑줄 키는 설명 */
   trades: Record<string, TradeInfo | string>;
   default_pools: Record<string, number | string>;
@@ -169,10 +173,16 @@ export interface Scenario {
   kpi: { revenue: number; profit: number; on_time_rate: number; first_pass_yield: number };
 }
 
-/** 사람을 보내는 직종(시운전 외부팀 제외)과 그 정보 */
+/** 이 시나리오가 쓰는 공정(간이공정은 일부가 빠진다, 4.4) */
+export function activeStations(scenario: Scenario): StationInfo[] {
+  return scenario.stations.filter((st) => !st.skipped);
+}
+
+/** 사람을 보내는 직종(시운전 외부팀 제외, 쓰는 공정이 있는 직종만)과 그 정보 */
 export function staffTrades(scenario: Scenario): [string, TradeInfo][] {
+  const used = new Set(activeStations(scenario).map((st) => st.trade ?? "assembly"));
   return Object.entries(scenario.trades)
-    .filter((e): e is [string, TradeInfo] => !e[0].startsWith("_") && typeof e[1] === "object" && !e[1].external);
+    .filter((e): e is [string, TradeInfo] => !e[0].startsWith("_") && typeof e[1] === "object" && !e[1].external && used.has(e[0]));
 }
 
 /**
