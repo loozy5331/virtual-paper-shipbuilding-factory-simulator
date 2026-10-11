@@ -1,5 +1,6 @@
 // 간트 차트. 가로축은 1일부터 시나리오의 작업일(4.0 반기는 120일)까지.
 // 위쪽은 배 4척: 배마다 두 줄, 위는 작업장을 차지한 구간(작업장 색, 재작업은 빗금, 운반은 점선 틀), 아래 얇은 줄은 손실 구간.
+// 나눠 한 날은 막대를 작업장 줄로 가르고, 먼저 끝나 기다리는 줄(짝 대기)은 공정 색을 옅게 그린다.
 // 아래쪽은 설비: 연구소, 트랜스포터(대별), 골리앗 크레인(탑재 작업장).
 // 배 탭(renderShipGantt)은 한 척을 공정별 줄로 펼치고, 같은 공정을 쓰던 다른 배를 옅게 함께 그린다.
 // 막대를 누르면 onPick으로 그 배·공정·기간을 넘긴다(현장 들어가는 길, D7).
@@ -79,17 +80,29 @@ function drawParts(g: SVGElement, ship: Result["ships"][number], station: string
         let d1 = d0;
         while (d1 < end && key(d1 + 1) === key(d0)) d1++;
         const st = key(d0)!;
-        const info = st === "work" ? null : st === "pair_wait" ? PAIR_WAIT_STATE : STATE_INFO[st];
-        const fill = info ? info.color : STATION_COLOR[rec.station!];
+        // 짝 대기는 손실이 아니라 공정 안에서 기다리는 것: 손실 회색(운반 대기와 같은 모양) 대신 공정 색을 옅게
+        const pair = st === "pair_wait";
+        const info = st === "work" ? null : pair ? PAIR_WAIT_STATE : STATE_INFO[st];
+        const color = STATION_COLOR[rec.station!];
+        const fill = pair ? pale(color) : info ? info.color : color;
         const what = st === "work" ? "작업" : info?.name ?? st;
-        g.append(barEl(x(d0), y + j * lane, width(d0, d1), lane - 1, fill,
+        const el = barEl(x(d0), y + j * lane, width(d0, d1), lane - 1, fill,
           `${ship.id} · ${stationName[rec.station!]} ${unit}호 · ${what} · ${d0}~${d1}일 (나눠 하기 ${k}곳)`,
-          { hatch: info?.hatch }));
+          { hatch: info?.hatch });
+        if (pair) el.querySelector("rect")!.setAttribute("stroke", color);
+        g.append(el);
         d0 = d1 + 1;
       }
     }
     day = end;
   }
+}
+
+/** 공정 색을 종이 쪽으로 옅게(짝 대기). 35%만 남긴다 */
+export function pale(hex: string): string {
+  const n = parseInt(hex.slice(1), 16);
+  const mix = (c: number) => Math.round(c * 0.35 + 255 * 0.65).toString(16).padStart(2, "0");
+  return `#${mix(n >> 16)}${mix((n >> 8) & 255)}${mix(n & 255)}`;
 }
 
 /** 이 구간에 나눠 한 날이 있는가 */

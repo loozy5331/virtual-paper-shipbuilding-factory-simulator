@@ -365,6 +365,7 @@ select.priority { max-width: 84px; }
 .gantt .section-label { font-size: 12px; font-weight: 700; fill: var(--ink-2); }
 .gantt .eq-id { font-size: 12px; font-weight: 700; fill: var(--ink); }
 .gantt .band.eq { fill: rgba(31, 42, 36, 0.02); }
+.legend i.pair-mark { border: 1px solid; }
 .legend i.transport-mark { background: transparent; border: 1.5px dashed var(--ink-3); }
 .legend i.hatch-over, .stack-part.hatch {
   background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.55) 0 2px, transparent 2px 5px) !important;
