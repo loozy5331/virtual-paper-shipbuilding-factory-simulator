@@ -340,7 +340,7 @@ const OTHER = "#d3dbd6";
 
 /**
  * 나눠 한 공정의 작업장 하위 줄(배 탭, 4.12.5). 줄마다 엔진의 작업장 기록 그대로: 이 배는 공정 색, 다른 배는 옅은 회색,
- * 사고·고장은 중지 색. 먼저 끝난 부분은 작업장을 비우고 적치장에서 기다리므로(그 작업장은 다른 배가 쓸 수 있다)
+ * 사고·고장은 이 배가 겪었으면 중지 색 막대, 다른 배·빈 작업장이면 아래 얇은 띠(4.12.6). 먼저 끝난 부분은 작업장을 비우고 적치장에서 기다리므로(그 작업장은 다른 배가 쓸 수 있다)
  * 짝 대기는 작업장 줄이 아니라 아래 얇은 줄에 이 배의 손실과 함께 그린다.
  */
 function drawUnitRows(g: SVGElement, ship: Ship, st: Scenario["stations"][number], units: { unit: number; daily: { state: string; ship: string | null }[] }[],
@@ -357,10 +357,11 @@ function drawUnitRows(g: SVGElement, ship: Ship, st: Scenario["stations"][number
     g.append(
       s("text", { x: LEFT - 6, y: uy + SUB_BAR - 3, class: "unit-id" }, `${u.unit}호`),
       s("rect", { x: LEFT, y: uy, width: laneW, height: SUB_BAR, class: "lane" }));
+    const stopped = (rec: { state: string }) => rec.state === "accident_stop" || rec.state === "breakdown_stop";
+    // 다른 배는 중지와 상관없이 한 막대로(배 이름이 잘리지 않게). 중지 띠는 아래에서 따로 덧그린다.
     const key = (day: number) => {
       const rec = u.daily[day - 1];
-      if (rec.state === "accident_stop" || rec.state === "breakdown_stop") return `stop:${rec.state}:${rec.ship ?? ""}`;
-      if (rec.ship === ship.id) return `me:${rec.state}`;
+      if (rec.ship === ship.id) return stopped(rec) ? `stop:${rec.state}:${rec.ship}` : `me:${rec.state}`;
       return rec.ship ? `other:${rec.ship}` : null;
     };
     for (const run of runs(u.daily, key, today)) {
@@ -372,9 +373,10 @@ function drawUnitRows(g: SVGElement, ship: Ship, st: Scenario["stations"][number
       if (kind === "other") {
         g.append(barEl(x0, uy, w, SUB_BAR, OTHER, `${where}을 ${a}가 쓰는 중 · ${span}`, { label: a, textColor: "#4b5a51" }));
       } else if (kind === "stop") {
+        // 이 배가 겪은 중지는 진하게
         const info = STATE_INFO[a];
-        g.append(barEl(x0, uy, w, SUB_BAR, info.color, `${where} ${info.name}${b ? ` (${b} 작업 중)` : ""} · ${span}`,
-          { hatch: info.hatch, label: info.name.slice(0, 2) }));
+        const title = `${where} ${info.name}${b ? ` (${b} 작업 중)` : ""} · ${span}`;
+        g.append(barEl(x0, uy, w, SUB_BAR, info.color, title, { hatch: info.hatch, label: info.name.slice(0, 2) }));
       } else if (a === "work" || a === "rework") {
         const seg = segAt(run.start);
         const pick = onPick && seg && (() => onPick({ ship: ship.id, station: st.id, start: seg.start, end: seg.end }));
@@ -385,6 +387,17 @@ function drawUnitRows(g: SVGElement, ship: Ship, st: Scenario["stations"][number
         const info = STATE_INFO[a];
         g.append(barEl(x0, uy, w, SUB_BAR, info.color, `${ship.id} · ${where} ${info.name} · ${span}`, { hatch: info.hatch }));
       }
+    }
+    // 다른 배나 빈 작업장의 중지: 옅은 막대 아래 얇은 띠(한 줄 공정과 같은 표시)
+    const otherStop = (day: number) => {
+      const rec = u.daily[day - 1];
+      return stopped(rec) && rec.ship !== ship.id ? `${rec.state}:${rec.ship ?? ""}` : null;
+    };
+    for (const run of runs(u.daily, otherStop, today)) {
+      const [state, who] = run.key.split(":");
+      const info = STATE_INFO[state];
+      g.append(barEl(x(run.start), uy + SUB_BAR - 5, width(run.start, run.end), 5, info.color,
+        `${st.name} ${u.unit}호 ${info.name}${who ? ` (${who} 작업 중)` : ""} · ${run.start}~${run.end}일`, { hatch: info.hatch }));
     }
   });
   // 아래 얇은 줄: 이 배의 손실(운반 대기 등)과 짝 대기. 운반은 위 첫 줄에 점선 틀.
