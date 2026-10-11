@@ -278,7 +278,10 @@ function commonPane(ctx: FormContext): HTMLElement {
             : robot
               ? h("span", { class: "hint", title: scenario.rules.crews.robot.summary }, "로봇은 잔업 없음")
               : toggle("잔업", cfg.overtime, (on) => { cfg.overtime = on; ctx.onEdit(false); }),
-          toggle("정비", cfg.maintenance, (on) => { cfg.maintenance = on; ctx.onEdit(false); }),
+          // 설비가 없는 공정(시운전, 4.12)은 정비를 고르지 않는다
+          st.equipment === false
+            ? h("span", { class: "hint" }, "설비 없음 · 정비 없음")
+            : toggle("정비", cfg.maintenance, (on) => { cfg.maintenance = on; ctx.onEdit(false); }),
           // 나눠 하기(3.0): 탑재·안벽의장·시운전은 배 한 척이 통째로 들어가서 나누지 않는다(공정의 split).
           st.split === false || !opts.split
             ? null

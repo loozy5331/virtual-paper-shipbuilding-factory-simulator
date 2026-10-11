@@ -84,7 +84,7 @@ export const STATE_INFO: Record<string, StateInfo> = Object.fromEntries(LEAD_TIM
 export const COST_ITEMS: { key: string; name: string; note: string }[] = [
   { key: "labor", name: "인건비", note: "대기소 인원 일당 × 작업일, 숙련공 할증(배정 인원 일당 +5) 포함" },
   { key: "overtime", name: "잔업수당", note: "잔업한 날마다 배정 인원 일당의 50%" },
-  { key: "maintenance", name: "정비비", note: "정비한 공정의 작업장마다 100" },
+  { key: "maintenance", name: "정비비", note: "정비한 공정의 작업장마다 100 (시운전은 설비 없음)" },
   { key: "material", name: "자재비", note: "BOM 수량 × 단가" },
   { key: "holding", name: "재고비", note: "창고 재고 금액의 1%/일" },
   { key: "wip", name: "재공비", note: "착수~인도 사이 척당 10/일" },

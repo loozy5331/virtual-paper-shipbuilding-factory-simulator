@@ -125,7 +125,8 @@
       ],
       "site": "sea",
       "arrive": "tow",
-      "split": false
+      "split": false,
+      "equipment": false
     }
   ],
   "materials": [
