@@ -910,37 +910,46 @@ class SimpleScenario(unittest.TestCase):
         # 소조립을 마치면 중조립·마감동을 건너뛰고 바로 PE장(블록은 T2가 나른다). 탑재를 마친 날이 인도일이다. 착수일 = 절단에 들어간 날
         s1 = r["ships"][0]
         self.assertEqual({k: (v["start"], v["end"]) for k, v in s1["spans"].items()},
-                         {"cutting": (3, 5), "processing": (6, 7), "sub_assembly": (8, 11), "grand_assembly": (13, 16), "erection": (17, 23)})
-        self.assertEqual((s1["delivered_day"], s1["started_day"]), (23, 3))
+                         {"cutting": (3, 4), "processing": (5, 5), "sub_assembly": (6, 7), "grand_assembly": (9, 10), "erection": (11, 13)})
+        self.assertEqual((s1["delivered_day"], s1["started_day"]), (13, 3))
         skipped = [st for st in r["stations"] if st["id"] not in self.ACTIVE]
         self.assertTrue(all(st["busy_days"] == 0 and st["oee"]["oee"] is None for st in skipped))
 
     def test_materials_follow_the_scenario(self):
         # 종이는 절단(강재 적치장에서 컨베이어로 들어가는 날), 물감은 PE장, 깃발은 탑재에서 쓴다(시나리오의 station_material).
-        # 물감·깃발은 앞 공정에 들어간 다음 날 지게차가 싣는다: PE장의 앞 공정은 소조립(8일), 탑재의 앞 공정은 PE장(13일).
+        # 물감·깃발은 앞 공정에 들어간 다음 날 지게차가 싣는다: PE장의 앞 공정은 소조립(6일), 탑재의 앞 공정은 PE장(9일)이다(작은 배라 공정이 짧다).
         r = simulate(SIMPLE["managed"], baseline=False)
         issues = [(e["day"], e["material"], e["station"], e.get("forklift")) for e in r["events"] if e["type"] == "issue" and e["ship"] == "S1"]
-        self.assertEqual(issues, [(3, "paper", "cutting", None), (9, "paint", "grand_assembly", "F1"), (14, "flag", "erection", "F1")])
-        # 가공 → 소조립 부재 팔레트도 지게차 일감이다(가공을 마친 7일의 다음 날)
+        self.assertEqual(issues, [(3, "paper", "cutting", None), (7, "paint", "grand_assembly", "F1"), (11, "flag", "erection", "F1")])
+        # 가공 → 소조립 부재 팔레트도 지게차 일감이다(가공을 마친 5일의 다음 날)
         jobs = [(d, j["kind"], j["ship"]) for d, rec in enumerate(r["forklifts"][0]["daily"], start=1) for j in rec["jobs"]]
-        self.assertEqual(jobs[:2], [(8, "pallet", "S1"), (9, "kit", "S1")])
+        self.assertEqual(jobs[:2], [(6, "pallet", "S1"), (7, "kit", "S1")])
 
     def test_only_used_trades_are_staffed_and_paid(self):
-        # 가공 2 + 조립 4 + 탑재 3 = 9명 × 10 × 60일 = 5,400. 도장·의장 직종과 시운전 외부팀은 없고, 정비비는 쓰는 공정 다섯 곳만(5 × 100).
+        # 가공 2 + 조립 4 + 탑재 2 = 8명 × 10 × 60일 = 4,800. 도장·의장 직종과 시운전 외부팀은 없고, 정비비는 쓰는 공정 다섯 곳만(5 × 100).
         r = simulate(SIMPLE["managed"], baseline=False)
-        self.assertEqual(r["workforce"]["pools"], {"processing": 2, "assembly": 4, "erection": 3})
-        self.assertEqual((r["costs"]["labor"], r["costs"]["maintenance"]), (5400.0, 500))
+        self.assertEqual(r["workforce"]["pools"], {"processing": 2, "assembly": 4, "erection": 2})
+        self.assertEqual((r["costs"]["labor"], r["costs"]["maintenance"]), (4800.0, 500))
         # 쓰지 않는 직종 인원을 적어도 읽지 않는다
         cfg = copy.deepcopy(SIMPLE["managed"])
         cfg["pools"]["painting"] = 2
-        self.assertEqual(simulate(cfg, baseline=False)["costs"]["labor"], 5400.0)
+        self.assertEqual(simulate(cfg, baseline=False)["costs"]["labor"], 4800.0)
         self.assertEqual(list(preview(SIMPLE["managed"])["plan"]["ships"]["S1"]), self.ACTIVE)
 
     def test_presets(self):
-        cases = {"unmanaged": (-1900.6, 46.7, "F", 2), "managed": (12080.6, 98.4, "A", 4), "all_in": (39.2, 54.0, "C", 3)}
+        cases = {"unmanaged": (-3728.0, 46.7, "F", 2), "managed": (5449.8, 92.5, "A", 4), "all_in": (-5868.4, 58.9, "C", 4)}
         for pid, (profit, score, grade, on_time) in cases.items():
             r = simulate(SIMPLE[pid])
             self.assertEqual((r["profit"], r["grade"]["score"], r["grade"]["grade"], r["qcd"]["delivery"]["on_time"]), (profit, score, grade, on_time), pid)
+
+    def test_small_ships(self):
+        # 입문용 작은 배(4.6): 예인선 2척과 피더 컨테이너선 2척. 작업량이 VLCC의 절반 안팎이라 한 척이 13일 만에 끝난다.
+        sc = load_scenario("simple")
+        self.assertEqual([(o["id"], o["type"], sc["ship_types"][o["type"]]["name"], o["price"]) for o in sc["orders"]],
+                         [("S1", "TUG", "예인선", 3000), ("S2", "FEEDER", "피더 컨테이너선", 4000), ("S3", "TUG", "예인선", 3000), ("S4", "FEEDER", "피더 컨테이너선", 4000)])
+        self.assertEqual([(s["id"], s["ship_mix"]) for s in list_scenarios() if s["id"] == "simple"], [("simple", {"예인선": 2, "피더 컨테이너선": 2})])
+        for kind in ("TUG", "FEEDER"):
+            self.assertLess(sc["ship_types"][kind]["work"]["erection"], sc["ship_types"]["VLCC"]["work"]["erection"])
 
     def test_options_are_the_most_closed(self):
         # 일반 인력·표준 공법·표준 자재·작업장 1·나눠 하기 없음·지게차 2대 고정

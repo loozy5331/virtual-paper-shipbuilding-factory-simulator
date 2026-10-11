@@ -2,13 +2,15 @@
 //   VLCC       길고 낮은 선체, 평평한 갑판에 배관 한 줄, 선미 선실
 //   컨테이너선  갑판 위 상자 층, 선미 선실
 //   LNG선      둥근 탱크 4개(모스형), 선미 선실
+//   예인선(4.6)  짧고 뭉툭한 선체에 높은 조타실과 굴뚝, 이물의 방현재(검은 둥근 완충재)와 예인 말뚝
+//   피더선(4.6)  작은 컨테이너선: 상자 층 둘, 선미 선실
 // 모두 흰 종이(선실은 창문 선만). 색은 공정·손실색과 겹치지 않게 쓰지 않는다. 컨테이너만 종이 색 두어 가지.
 // 선체 좌표(proto/model.ts의 hullTris): 갑판 y 0.4, 갑판 폭 z ±0.4, 평평한 갑판 x −0.45~0.45, 이물·고물 끝 x ±1.15.
 // 고물(선미)은 −x 쪽이다.
 
 import * as THREE from "three";
 
-export type ShipKind = "VLCC" | "CONT" | "LNG";
+export type ShipKind = "VLCC" | "CONT" | "LNG" | "TUG" | "FEEDER";
 
 export interface ShipLook {
   /** 선체 비율 [길이, 높이, 폭] */
@@ -57,14 +59,45 @@ function deckhouse(x: number, tall: number): { group: THREE.Group; top: number }
 
 export function shipLook(kind: string): ShipLook {
   const parts: THREE.Object3D[] = [];
-  if (kind === "CONT") {
-    // 상자 층: 3열(앞뒤) × 2단, 열마다 종이 색을 조금씩 달리
-    for (let bay = 0; bay < 3; bay++) {
+  if (kind === "TUG") {
+    // 예인선: 이물의 방현재, 예인 말뚝 둘, 높은 조타실과 그 뒤 굴뚝(조타실이 마지막 부품이라 깃발이 거기에 붙는다)
+    const fender = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.5, 14), new THREE.MeshStandardMaterial({ color: INK, roughness: 0.9 })));
+    fender.rotation.x = Math.PI / 2;
+    fender.position.set(0.5, DECK + 0.04, 0);
+    parts.push(fender);
+    const bitts = new THREE.Group();
+    for (const z of [-0.16, 0.16]) {
+      const bitt = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.1, 12), paper("#e6dcc6")));
+      bitt.position.set(-0.3, DECK + 0.05, z);
+      bitts.add(bitt);
+    }
+    parts.push(bitts);
+    const house = new THREE.Group();
+    const lower = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.26, 0.56), paper()));
+    lower.position.set(0.05, DECK + 0.13, 0);
+    const upper = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.2, 0.46), paper()));
+    upper.position.set(0.06, DECK + 0.36, 0);
+    const funnel = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.26, 0.16), paper()));
+    funnel.position.set(-0.2, DECK + 0.5, 0);
+    const ink = new THREE.MeshBasicMaterial({ color: INK });
+    for (const [y, w, fx] of [[DECK + 0.17, 0.46, 0.05 + 0.171], [DECK + 0.38, 0.38, 0.06 + 0.121]] as const) {
+      const line = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.028, w), ink);
+      line.position.set(fx, y, 0);
+      house.add(line);
+    }
+    house.add(lower, upper, funnel);
+    parts.push(house);
+    return { hull: [0.85, 1.05, 0.95], parts, flagAt: new THREE.Vector3(0.06, DECK + 0.46, 0) };
+  }
+  if (kind === "CONT" || kind === "FEEDER") {
+    // 상자 층: 3열(앞뒤) × 2단(피더선은 2열), 열마다 종이 색을 조금씩 달리
+    const bays = kind === "FEEDER" ? 2 : 3;
+    for (let bay = 0; bay < bays; bay++) {
       const g = new THREE.Group();
       for (let tier = 0; tier < 2; tier++) {
         for (const z of [-0.18, 0.18]) {
           const box = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.34), paper(KRAFT[(bay + tier) % KRAFT.length])));
-          box.position.set(-0.12 + bay * 0.25, DECK + 0.06 + tier * 0.125, z);
+          box.position.set((kind === "FEEDER" ? -0.02 : -0.12) + bay * 0.25, DECK + 0.06 + tier * 0.125, z);
           g.add(box);
         }
       }
@@ -72,7 +105,7 @@ export function shipLook(kind: string): ShipLook {
     }
     const house = deckhouse(-0.5, 1.05);
     parts.push(house.group);
-    return { hull: [1.1, 1, 0.95], parts, flagAt: new THREE.Vector3(-0.5, house.top, 0) };
+    return { hull: kind === "FEEDER" ? [1.0, 0.95, 0.9] : [1.1, 1, 0.95], parts, flagAt: new THREE.Vector3(-0.5, house.top, 0) };
   }
   if (kind === "LNG") {
     // 모스형 탱크 4개: 갑판 위로 반구가 솟는다

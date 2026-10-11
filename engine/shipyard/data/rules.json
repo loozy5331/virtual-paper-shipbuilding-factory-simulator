@@ -212,6 +212,46 @@
         "paint": 4,
         "flag": 6
       }
+    },
+    "TUG": {
+      "name": "예인선",
+      "work": {
+        "cutting": 2,
+        "processing": 2,
+        "sub_assembly": 4,
+        "block_assembly": 6,
+        "painting": 2,
+        "pre_outfitting": 2,
+        "grand_assembly": 4,
+        "erection": 6,
+        "quay_outfitting": 2,
+        "sea_trial": 2
+      },
+      "bom": {
+        "paper": 4,
+        "paint": 2,
+        "flag": 1
+      }
+    },
+    "FEEDER": {
+      "name": "피더 컨테이너선",
+      "work": {
+        "cutting": 2,
+        "processing": 3,
+        "sub_assembly": 6,
+        "block_assembly": 10,
+        "painting": 3,
+        "pre_outfitting": 3,
+        "grand_assembly": 6,
+        "erection": 10,
+        "quay_outfitting": 3,
+        "sea_trial": 3
+      },
+      "bom": {
+        "paper": 5,
+        "paint": 3,
+        "flag": 2
+      }
     }
   },
   "ordering": {
