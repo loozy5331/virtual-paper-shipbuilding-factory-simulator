@@ -159,11 +159,11 @@ export function buildSupplyCart(): { root: THREE.Group; crates: THREE.Mesh[]; ta
 /** 로봇 팔: 받침, 돌아가는 기둥, 위팔, 아래팔, 집게. 무광 회색(장식은 절제). */
 /**
  * 호이스트(4.9): 정반 위 천장 크레인. 정반 앞뒤로 기둥 넷과 주행 레일 둘, 그 위를 x로 오가는 노란 거더,
- * 거더 위를 z로 오가는 트롤리와 훅. 내업 지붕(높이 1.0) 아래에 들어간다. depth = 정반 깊이
+ * 거더 위를 z로 오가는 트롤리와 훅. depth = 정반 깊이, height = 레일 높이(4.11.3: 공장 지붕 철골 바로 아래)
  */
-export function buildHoist(depth: number): THREE.Group {
+export function buildHoist(depth: number, height: number): THREE.Group {
   const g = new THREE.Group();
-  const H = 0.92, half = MAT_W / 2 + 0.15, zr = depth / 2 + 0.18;
+  const H = height, half = MAT_W / 2 + 0.15, zr = depth / 2 + 0.18;
   for (const z of [-zr, zr]) {
     const rail = mesh(new THREE.BoxGeometry(half * 2, 0.07, 0.07), "#5d6661");
     rail.position.set(0, H, z);
@@ -180,10 +180,10 @@ export function buildHoist(depth: number): THREE.Group {
   const trolley = new THREE.Group();
   const carriage = mesh(new THREE.BoxGeometry(0.2, 0.08, 0.18), "#3a3f3c");
   carriage.position.y = H + 0.16;
-  const cable = mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.36, 6), "#2b2b2b");
-  cable.position.y = H - 0.08;
+  const cable = mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.6, 6), "#2b2b2b");
+  cable.position.y = H - 0.2;
   const hook = mesh(new THREE.BoxGeometry(0.09, 0.07, 0.07), "#3a3f3c");
-  hook.position.y = H - 0.28;
+  hook.position.y = H - 0.52;
   trolley.add(carriage, cable, hook);
   bridge.add(girder, trolley);
   g.add(bridge);
