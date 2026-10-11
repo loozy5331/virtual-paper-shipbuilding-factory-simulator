@@ -356,8 +356,50 @@ const SUB_BAR = 15;
 const OTHER = "#d3dbd6";
 
 /**
+ * 배 탭의 작업장 한 줄(4.12.13): 위 막대는 그 작업장을 누가 썼나만. 이 배는 공정 색(재작업은 빗금), 다른 배는 옅은 회색에 배 이름.
+ * 사고·고장 난 날도 막대를 끊지 않고 막대 아래에 얇은 띠: 이 배가 쓰던 중이면 늘, 다른 배·빈 작업장이면 이 배가 그 공정을 기다리던 날만.
+ * 이 배가 겪은 손실(고장 포함)은 공정 종류와 상관없이 아래 손실 줄에 있다.
+ */
+function drawOccupancy(g: SVGElement, ship: Ship, st: Scenario["stations"][number], daily: { state: string; ship: string | null }[],
+  where: string, y: number, hgt: number, x: (day: number) => number, width: (a: number, b: number) => number, today: number,
+  segAt: (day: number) => Segment | undefined, onPick?: OnPick): void {
+  const key = (day: number) => {
+    const rec = daily[day - 1];
+    if (rec.ship === ship.id) return `me:${rec.state === "rework" ? "rework" : "work"}`;
+    return rec.ship ? `other:${rec.ship}` : null;
+  };
+  for (const run of runs(daily, key, today)) {
+    const [kind, a] = run.key.split(":");
+    const x0 = x(run.start);
+    const w = width(run.start, run.end);
+    const span = `${run.start}~${run.end}일`;
+    if (kind === "other") {
+      g.append(barEl(x0, y, w, hgt, OTHER, `${where}을 ${a}가 쓰는 중 · ${span}`, { label: a, textColor: "#4b5a51" }));
+    } else {
+      const seg = segAt(run.start);
+      const pick = onPick && seg && (() => onPick({ ship: ship.id, station: st.id, start: seg.start, end: seg.end }));
+      g.append(barEl(x0, y, w, hgt, STATION_COLOR[st.id], `${ship.id} · ${where}${a === "rework" ? " 재작업" : ""} · ${span}`,
+        { label: a === "rework" ? "재작업" : ship.id, textColor: STATION_TEXT[st.id], hatch: a === "rework", onPick: pick }));
+    }
+  }
+  const stripH = hgt > SUB_BAR ? 8 : 5;
+  const stop = (day: number) => {
+    const rec = daily[day - 1];
+    if (rec.state !== "accident_stop" && rec.state !== "breakdown_stop") return null;
+    if (rec.ship !== ship.id && !waitedOn(ship, day, "station_wait", st.id)) return null;
+    return `${rec.state}:${rec.ship ?? ""}`;
+  };
+  for (const run of runs(daily, stop, today)) {
+    const [state, who] = run.key.split(":");
+    const info = STATE_INFO[state];
+    g.append(barEl(x(run.start), y + hgt - stripH, width(run.start, run.end), stripH, info.color,
+      `${where} ${info.name}${who ? ` (${who === ship.id ? "이 배" : who} 작업 중)` : ""} · ${run.start}~${run.end}일`, { hatch: info.hatch }));
+  }
+}
+
+/**
  * 작업장이 2곳 이상인 공정의 작업장 하위 줄(배 탭, 4.12.5 나눠 한 공정 → 4.12.11 증설한 공정 모두). 줄마다 엔진의 작업장 기록 그대로: 이 배는 공정 색, 다른 배는 옅은 회색,
- * 사고·고장은 이 배가 겪었으면 중지 색 막대, 다른 배·빈 작업장이면 이 배가 기다리던 날만 아래 얇은 띠(4.12.6, 4.12.12). 먼저 끝난 부분은 작업장을 비우고 적치장에서 기다리므로(그 작업장은 다른 배가 쓸 수 있다)
+ * 줄마다 그리는 규칙은 drawOccupancy(4.12.13). 먼저 끝난 부분은 작업장을 비우고 적치장에서 기다리므로(그 작업장은 다른 배가 쓸 수 있다)
  * 짝 대기는 작업장 줄이 아니라 아래 얇은 줄에 이 배의 손실과 함께 그린다.
  */
 function drawUnitRows(g: SVGElement, ship: Ship, st: Scenario["stations"][number], units: { unit: number; daily: { state: string; ship: string | null }[] }[],
@@ -375,48 +417,7 @@ function drawUnitRows(g: SVGElement, ship: Ship, st: Scenario["stations"][number
     g.append(
       s("text", { x: LEFT - 6, y: uy + SUB_BAR - 3, class: "unit-id" }, `${u.unit}호`),
       s("rect", { x: LEFT, y: uy, width: laneW, height: SUB_BAR, class: "lane" }));
-    const stopped = (rec: { state: string }) => rec.state === "accident_stop" || rec.state === "breakdown_stop";
-    // 다른 배는 중지와 상관없이 한 막대로(배 이름이 잘리지 않게). 중지 띠는 아래에서 따로 덧그린다.
-    const key = (day: number) => {
-      const rec = u.daily[day - 1];
-      if (rec.ship === ship.id) return stopped(rec) ? `stop:${rec.state}:${rec.ship}` : `me:${rec.state}`;
-      return rec.ship ? `other:${rec.ship}` : null;
-    };
-    for (const run of runs(u.daily, key, today)) {
-      const [kind, a, b] = run.key.split(":");
-      const x0 = x(run.start);
-      const w = width(run.start, run.end);
-      const span = `${run.start}~${run.end}일`;
-      const where = `${st.name} ${u.unit}호`;
-      if (kind === "other") {
-        g.append(barEl(x0, uy, w, SUB_BAR, OTHER, `${where}을 ${a}가 쓰는 중 · ${span}`, { label: a, textColor: "#4b5a51" }));
-      } else if (kind === "stop") {
-        // 이 배가 겪은 중지는 진하게
-        const info = STATE_INFO[a];
-        const title = `${where} ${info.name}${b ? ` (${b} 작업 중)` : ""} · ${span}`;
-        g.append(barEl(x0, uy, w, SUB_BAR, info.color, title, { hatch: info.hatch, label: info.name.slice(0, 2) }));
-      } else if (a === "work" || a === "rework") {
-        const seg = segAt(run.start);
-        const pick = onPick && seg && (() => onPick({ ship: ship.id, station: st.id, start: seg.start, end: seg.end }));
-        g.append(barEl(x0, uy, w, SUB_BAR, STATION_COLOR[st.id], `${ship.id} · ${where}${a === "rework" ? " 재작업" : ""} · ${span}`,
-          { label: a === "rework" ? "재작업" : ship.id, textColor: STATION_TEXT[st.id], hatch: a === "rework", onPick: pick }));
-      } else if (STATE_INFO[a]) {
-        // 이 배가 이 작업장을 잡고 기다린 날(인력·자재 대기)
-        const info = STATE_INFO[a];
-        g.append(barEl(x0, uy, w, SUB_BAR, info.color, `${ship.id} · ${where} ${info.name} · ${span}`, { hatch: info.hatch }));
-      }
-    }
-    // 다른 배나 빈 작업장의 중지: 옅은 막대 아래 얇은 띠(한 줄 공정과 같은 표시)
-    const otherStop = (day: number) => {
-      const rec = u.daily[day - 1];
-      return waitedOn(ship, day, "station_wait", st.id) && stopped(rec) && rec.ship !== ship.id ? `${rec.state}:${rec.ship ?? ""}` : null;
-    };
-    for (const run of runs(u.daily, otherStop, today)) {
-      const [state, who] = run.key.split(":");
-      const info = STATE_INFO[state];
-      g.append(barEl(x(run.start), uy + SUB_BAR - 5, width(run.start, run.end), 5, info.color,
-        `${st.name} ${u.unit}호 ${info.name}${who ? ` (${who} 작업 중)` : ""} · ${run.start}~${run.end}일`, { hatch: info.hatch }));
-    }
+    drawOccupancy(g, ship, st, u.daily, `${st.name} ${u.unit}호`, uy, SUB_BAR, x, width, today, segAt, onPick);
   });
   // 아래 얇은 줄: 이 배의 손실(운반 대기 등)과 짝 대기. 운반은 위 첫 줄에 점선 틀.
   const ly = y + units.length * SUB_H + LOSS_GAP;
@@ -433,6 +434,19 @@ function drawUnitRows(g: SVGElement, ship: Ship, st: Scenario["stations"][number
       const info = STATE_INFO[seg.state];
       g.append(barEl(x0, ly, w, LOSS_H, info.color, `${ship.id} · ${info.name} (${st.name}) · ${span}`, { hatch: info.hatch }));
     }
+  }
+  // 나눠 하기에서 한 작업장만 겪은 손실(배는 작업 중): 전체 탭처럼 얇게
+  const partLoss = (day: number) => {
+    const rec = ship.daily[day - 1];
+    if (rec.station !== st.id || rec.state !== "work") return null;
+    const pt = rec.parts?.find((p) => p.state !== "work" && p.state !== "rework" && p.state !== "pair_wait" && STATE_INFO[p.state]);
+    return pt ? `${pt.state}:${pt.unit}` : null;
+  };
+  for (const run of runs(ship.daily, partLoss, today)) {
+    const [state, unit] = run.key.split(":");
+    const info = STATE_INFO[state];
+    g.append(barEl(x(run.start), ly + 3, width(run.start, run.end), LOSS_H - 6, info.color,
+      `${ship.id} · ${st.name} ${unit}호 작업장만 ${info.name} · ${run.start}~${run.end}일 (나머지 부분은 작업)`, { hatch: info.hatch }));
   }
   const pairKey = (day: number) => {
     const rec = ship.daily[day - 1];
@@ -554,39 +568,19 @@ export function renderShipGantt(result: Result, scenario: Scenario, shipId: stri
       s("text", { x: 12, y: y + 32, class: "ship-sub" }, st.real.split(":")[0]),
       s("rect", { x: LEFT, y, width: days * dayW, height: BAR_H, class: "lane" }));
 
-    // 같은 공정을 쓰던 다른 배와 그 공정의 중지(사고·고장): 이 배가 왜 기다렸는지 보인다.
-    // 증설한 공정은 작업장을 합쳐 본다: 다른 배가 하나라도 있으면 그 배들, 모든 작업장이 멈췄으면 중지.
+    // 위 막대: 이 작업장을 누가 썼나(이 배는 공정 색, 다른 배는 옅은 회색). 중지는 막대 아래 얇은 띠(4.12.13).
     const units = result.stations.find((rs) => rs.id === st.id)!.units;
-    // 중지는 이 배가 이 공정을 기다리던 날만(4.12.12)
-    const daily = units[0].daily;
-    const key = (day: number) => {
-      const recs = units.map((u) => u.daily[day - 1]);
-      const stopped = recs.filter((rec) => rec.state === "accident_stop" || rec.state === "breakdown_stop");
-      if (waitedOn(ship, day, "station_wait", st.id) && stopped.length === recs.length) return `${stopped[0].state}:`;
-      const others = recs.map((rec) => rec.ship).filter((sid) => sid && sid !== ship.id);
-      return others.length ? `other:${others.join("·")}` : null;
-    };
-    for (const run of runs(daily, key, today)) {
-      const [kind, who] = run.key.split(":");
-      const w = width(run.start, run.end);
-      const span = `${run.start}~${run.end}일`;
-      if (kind === "other") {
-        g.append(barEl(x(run.start), y, w, BAR_H, OTHER, `${st.name}을 ${who}가 쓰는 중 · ${span}`, { label: who, textColor: "#4b5a51" }));
-      } else {
-        const info = STATE_INFO[kind];
-        g.append(barEl(x(run.start), y + BAR_H - 8, w, 8, info.color, `${st.name} ${info.name} · ${span}`, { hatch: info.hatch }));
-      }
-    }
+    const segAt = (day: number) => ship.segments.find((sg) => sg.station === st.id && sg.start <= day && day <= sg.end);
+    drawOccupancy(g, ship, st, units[0].daily, st.name, y, BAR_H, x, width, today, segAt, onPick);
 
-    // 이 배의 구간
+    // 이 배의 운반과 손실(아래 얇은 줄). 이 배가 겪은 사고·고장도 여기(4.12.13)
     for (const seg of ship.segments.filter((sg) => sg.station === st.id && sg.start <= today)) {
       const x0 = x(seg.start);
       const w = width(seg.start, clip(seg.end));
       const span = `${seg.start}~${seg.end}일 (${seg.end - seg.start + 1}일)`;
       const pick = onPick && (() => onPick({ ship: ship.id, station: st.id, start: seg.start, end: seg.end }));
       if (seg.state === "work" || seg.state === "rework") {
-        g.append(barEl(x0, y, w, BAR_H, STATION_COLOR[st.id], `${ship.id} · ${st.name}${seg.state === "rework" ? " 재작업" : ""} · ${span}`,
-          { label: seg.state === "rework" ? "재작업" : ship.id, textColor: STATION_TEXT[st.id], hatch: seg.state === "rework", onPick: pick }));
+        continue;   // 위 막대는 drawOccupancy가 작업장 기록으로 그렸다
       } else if (seg.state === "transport") {
         if (byEquipment(seg, carried)) continue;   // 트랜스포터가 나른 날은 아래 운반 설비 줄에
         g.append(s("g", null,
