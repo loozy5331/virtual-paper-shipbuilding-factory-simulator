@@ -446,7 +446,7 @@ export class Yard {
   private readonly seaExit: Route = route(SEA_EXIT);
   /** 진수 예인선(4.8.1): 도크마다 둘(0 = 앞에서 끄는 배, 1 = 뒤에서 잡는 배)과 예인줄 */
   private readonly tugs = [0, 1].map(() => [0, 1].map(() => buildTug()));
-  private readonly towLines = [0, 1].map(() => [0, 1].map(() => new Rope("#3a3f3c", 0.012)));
+  private readonly towLines = [0, 1].map(() => [0, 1].map(() => new Rope("#3a3f3c", 0.03)));
   /** 계류줄(4.8.1): 선석에 댄 배마다 넷(선수줄·선미줄·앞뒤 스프링). 모자라면 늘린다 */
   private readonly moorings: Rope[][] = [];
   /** 강재 롤러 컨베이어 위 철판(절단이 일하는 날 흐른다) */
@@ -1809,7 +1809,7 @@ export class Yard {
       return atBerth && !towing;
     });
     while (this.moorings.length < moored.length) {
-      const set = [0, 1, 2, 3].map(() => new Rope("#a07f45", 0.02));
+      const set = [0, 1, 2, 3].map(() => new Rope("#6b4f2a", 0.045));
       for (const r of set) this.scene.add(r.root);
       this.moorings.push(set);
     }
