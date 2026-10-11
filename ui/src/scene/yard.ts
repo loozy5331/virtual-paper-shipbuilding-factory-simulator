@@ -19,7 +19,7 @@ import { buildDock, buildLand, buildRoof, buildSectorOutline, buildWalls, buildY
 import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_TOP, MAT_W, MAT2_D,
   nearLane, QUEUE_Z, SAFE_SPOT, seaSpot, SECTORS, sector, sectorBounds, DOCK2_AREA, SHELF_X, SHELF_Z, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_IN, SPUR_OUT, SPUR_X, STATION_X,
   STOCK_AT, STOCK_D, STOCK_HALF, STOCK_NAME, CONVEYORS, BACK_LANE_Z, shipSize, garageSpot, FORKLIFT_GARAGE, KIT_PICK, kitDrop, LANE_X0, roadPath, type RoadSide, QUAY_WORK_Z, ST, isShop, quayQueueSpot, along, groundY, LAB_TREES, LAND_ROUTE, route, SHIP_ROUTE, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
-import { clamp01, ease, flatOf, hullTris, type Tri } from "../proto/model";
+import { clamp01, ease, flatOf, hullTris, type Tri } from "./model";
 import { STATE_INFO, STATION_COLOR, STATION_TRADE, TRADE_HAT } from "../labels";
 import type { TrackPick } from "../track";
 
