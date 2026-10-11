@@ -200,7 +200,7 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
 function openOptions(scenario: FormContext["scenario"]): ScenarioOptions {
   return scenario.options ?? {
     crews: Object.keys(scenario.rules.crews) as Crew[], methods: Object.keys(scenario.rules.methods),
-    material_grades: Object.keys(scenario.material_grades), max_units: scenario.expansion.max_units, split: true,
+    material_grades: Object.keys(scenario.material_grades), max_units: scenario.expansion.max_units, split: true, hoist: true,
   };
 }
 
@@ -245,6 +245,7 @@ function commonPane(ctx: FormContext): HTMLElement {
   const unitCap = (pid: string) => Math.min(opts.max_units, scenario.expansion.max_units_by_station?.[pid] ?? opts.max_units);
   const crews = (Object.entries(scenario.rules.crews) as [Crew, { name: string; summary: string; install_cost?: number }][])
     .filter(([id]) => opts.crews.includes(id));
+  const hoist = scenario.rules.hoist;
   const stationCards = activeStations(scenario).map((st) => {
     const cfg = config.stations[st.id];
     // 1.x 설정의 시니어는 그 공정의 숙련공으로 옮겨 적는다(엔진도 같이 읽는다).
@@ -281,7 +282,13 @@ function commonPane(ctx: FormContext): HTMLElement {
           // 나눠 하기(3.0): 탑재·안벽의장·시운전은 배 한 척이 통째로 들어가서 나누지 않는다(공정의 split).
           st.split === false || !opts.split
             ? null
-            : toggle("나눠 하기", cfg.split ?? false, (on) => { if (on) cfg.split = true; else delete cfg.split; ctx.onEdit(false); })),
+            : toggle("나눠 하기", cfg.split ?? false, (on) => { if (on) cfg.split = true; else delete cfg.split; ctx.onEdit(false); }),
+          // 호이스트(4.9): 소조립·중조립 정반 위 천장 크레인. 수주 증가부터(작업장마다 도입비)
+          !st.hoist || !opts.hoist
+            ? null
+            : h("span", { title: hoist.summary },
+              toggle(`호이스트 (+${num(hoist.install_cost * (cfg.units ?? 1))})`, cfg.hoist ?? false,
+                (on) => { if (on) cfg.hoist = true; else delete cfg.hoist; ctx.onEdit(false); }))),
         unitCap(st.id) > 1 ? h("span", { class: "field-label" }, "작업장") : null,
         unitCap(st.id) <= 1 ? null : segmented(`units-${st.id}`,
           Array.from({ length: unitCap(st.id) }, (_, k) => ({

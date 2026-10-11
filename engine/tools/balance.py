@@ -4,7 +4,7 @@
     cd engine && python -m tools.balance growth -n 30  # 수주 증가, 시작점 30개
     cd engine && python -m tools.balance -j 1          # 프로세스 하나로(기본은 코어 수만큼 나눠 돈다)
 
-선택지 공간이 커서(공정 10개마다 인력·공법·잔업·정비·작업장 수·나눠 하기, 자재 등급, 직종별 인원, 연구, 발주, 착수 간격)
+선택지 공간이 커서(공정 10개마다 인력·공법·잔업·정비·작업장 수·나눠 하기·호이스트, 자재 등급, 직종별 인원, 연구, 발주, 착수 간격)
 전수 대신 무작위 시작점에서 한 칸씩 바꿔 점수가 오르면 옮기는 언덕 오르기를 여러 번 한다.
 4.0부터는 이웃(한 칸씩 바꾼 설정)을 섞어 돌다가 처음 오르는 칸으로 옮긴다(공정이 10개라 매번 이웃을 다 돌면 너무 느리다). 결과로
   1. 찾은 최고 설정과 점수
@@ -57,6 +57,8 @@ def space(sc: dict[str, Any]) -> dict[str, list[Any]]:
         out[f"{pid}.units"] = list(range(1, min(opts["max_units"], cap) + 1))
         # 나눠 하기(3.0): 나눌 수 있는 공정(rules.json의 split)만
         out[f"{pid}.split"] = [False, True] if opts["split"] and st.get("split", True) else [False]
+        # 호이스트(4.9): 분기가 열었고 달 수 있는 공정(rules.json의 hoist)만
+        out[f"{pid}.hoist"] = [False, True] if opts.get("hoist") and st.get("hoist") else [False]
     for m in sc["materials"]:
         out[f"material.{m['id']}"] = list(opts["material_grades"])
     # 직종별 대기소 인원(4.0, D42)
@@ -81,7 +83,7 @@ def to_config(sc: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
         "scenario": sc["id"],
         "ordering": plan["ordering"],
         "ships": {o["id"]: {"priority": k + 1, "start_day": min(sc["days"], 1 + k * plan["gap"])} for k, o in enumerate(by_due)},
-        "stations": {st["id"]: {key: plan[f"{st['id']}.{key}"] for key in ("crew", "method", "overtime", "maintenance", "units", "split")}
+        "stations": {st["id"]: {key: plan[f"{st['id']}.{key}"] for key in ("crew", "method", "overtime", "maintenance", "units", "split", "hoist")}
                      for st in active_stations(sc)},
         "materials": {m["id"]: plan[f"material.{m['id']}"] for m in sc["materials"]},
         "pools": {name.split(".", 1)[1]: v for name, v in plan.items() if name.startswith("pool.")},
@@ -171,14 +173,14 @@ def run(scenario_id: str, starts: int, seed: int, report: Callable[[str], None] 
            f"직행률 {r['qcd']['quality']['first_pass_yield']:.2f}")
     for st in active_stations(sc):
         c = cfg["stations"][st["id"]]
-        report(f"  {st['name']}: 인력 {c['crew']}, 공법 {c['method']}, 잔업 {c['overtime']}, 정비 {c['maintenance']}, 작업장 {c['units']}, 나눠 {c['split']}")
+        report(f"  {st['name']}: 인력 {c['crew']}, 공법 {c['method']}, 잔업 {c['overtime']}, 정비 {c['maintenance']}, 작업장 {c['units']}, 나눠 {c['split']}, 호이스트 {c['hoist']}")
     report(f"  자재 {cfg['materials']}, 직종별 인원 {cfg['pools']}, 트랜스포터 {cfg['transporters']['count']}대(정비 {cfg['transporters']['maintenance']}), 지게차 {cfg['forklifts']['count']}대(정비 {cfg['forklifts']['maintenance']}), 연구 {cfg['research']}, "
            f"발주 {cfg['ordering']}, 착수 간격 {best_plan['gap']}일")
 
     # 상위 설정에서 선택지 사용 비율
     top = [p for s, p in found if s >= best_score - 5]
     report(f"\n최고와 5점 안의 설정 {len(top)}개에서 고른 값 (공정 칸은 {len(sc['stations'])}공정을 합쳐 셈)")
-    for kind in ("crew", "method", "overtime", "maintenance", "units", "split"):
+    for kind in ("crew", "method", "overtime", "maintenance", "units", "split", "hoist"):
         counts = Counter(p[f"{st['id']}.{kind}"] for p in top for st in active_stations(sc))
         report(f"  {kind:12s} " + ", ".join(f"{k}: {v}" for k, v in counts.most_common()))
     for name in [n for n in sp if n.startswith("material.") or n.startswith("pool.")] + ["research", "ordering"]:
@@ -189,7 +191,9 @@ def run(scenario_id: str, starts: int, seed: int, report: Callable[[str], None] 
     # 모든 공정을 한 값으로 고정했을 때의 최고 점수
     # 시작점은 상위 2개 설정(3.x는 5개). 고를 수 없는 공정(시운전 인력, 나눌 수 없는 공정)은 고정하지 않는다
     report("\n모든 공정을 한 값으로 고정했을 때의 최고 (최고와의 차이)")
-    cases = [(kind, v) for kind in ("crew", "method", "units", "split") for v in sp[f"{active_stations(sc)[0]['id']}.{kind}"]]
+    # 값은 공정마다 고를 수 있는 값을 모두 모은다(호이스트는 소조립·중조립에만 있다)
+    cases = [(kind, v) for kind in ("crew", "method", "units", "split", "hoist")
+             for v in dict.fromkeys(v for st in active_stations(sc) for v in sp[f"{st['id']}.{kind}"])]
     tops = [p for _, p in found[:2]]
     jobs = []
     for kind, v in cases:

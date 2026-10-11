@@ -35,7 +35,8 @@
       ],
       "site": "sub",
       "arrive": "forklift",
-      "split": true
+      "split": true,
+      "hoist": true
     },
     {
       "id": "block_assembly",
@@ -47,7 +48,8 @@
         "sub_assembly"
       ],
       "site": "block",
-      "split": true
+      "split": true,
+      "hoist": true
     },
     {
       "id": "painting",
@@ -314,6 +316,14 @@
       "accident_stop_days": 3
     },
     "no_maintenance_defect_add": 0.15,
+    "hoist": {
+      "name": "호이스트",
+      "work_factor": 0.8,
+      "install_cost": 200,
+      "maintenance_cost": 50,
+      "breakdown_every_busy_days": 6,
+      "summary": "조립 정반 위 천장 크레인(4.9). 블록을 들고 뒤집는 시간이 줄어 작업량이 80%가 된다. 작업장마다 도입비와 정비비가 들고, 설비가 늘어 고장 판정이 일한 날 8일마다에서 6일마다로 잦아진다."
+    },
     "rework_ratio": 0.5,
     "costs": {
       "wage_per_day": 10,

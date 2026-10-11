@@ -11,6 +11,8 @@ export interface StationConfig {
   crew?: Crew;
   /** 나눠 하기(3.0): 배 한 척의 작업량을 빈 작업장 여러 곳에 나눈다. 없으면 끔. 탑재는 나누지 않는다. */
   split?: boolean;
+  /** 호이스트(4.9): 조립 정반 위 천장 크레인(소조립·중조립만). 작업량이 줄고 도입비·정비비·고장 판정이 는다. 없으면 없음 */
+  hoist?: boolean;
 }
 
 export type Crew = "normal" | "skilled" | "robot" | "external";
@@ -63,6 +65,8 @@ export interface StationInfo {
   site?: string;
   arrive?: "crane" | "tow";
   split?: boolean;
+  /** 4.9: 호이스트를 달 수 있는 공정(소조립·중조립) */
+  hoist?: boolean;
   /** 4.4(D47): 이 시나리오가 쓰지 않는 공정(간이공정). 번호는 그대로이고 처음부터 마친 것으로 건너뛴다 */
   skipped?: boolean;
 }
@@ -135,7 +139,12 @@ export interface ScenarioOptions {
   forklift_counts?: number[];
   /** 4.8: 고를 수 있는 블록 트랜스포터 대수. 하나뿐이면 고정 */
   transporter_counts?: number[];
+  /** 4.9: 호이스트를 달 수 있는가(수주 증가부터) */
+  hoist?: boolean;
 }
+
+/** 호이스트(4.9): 작업량 배수, 작업장마다 도입비·정비비, 고장 판정 간격(일한 날) */
+export interface HoistInfo { name: string; work_factor: number; install_cost: number; maintenance_cost: number; breakdown_every_busy_days: number; summary: string }
 
 export interface Scenario {
   id: string;
@@ -165,6 +174,7 @@ export interface Scenario {
     methods: Record<string, Method>;
     crews: Record<Crew, CrewInfo>;
     overtime: { speed: number };
+    hoist: HoistInfo;
   };
   transporter: { max_count: number; default_count?: number; capacity: number; lot_weight: number; roles: "block"[] };
   forklift: { default_count: number; max_count: number; jobs_per_day: number; cost_per_day: number; maintenance_cost: number };

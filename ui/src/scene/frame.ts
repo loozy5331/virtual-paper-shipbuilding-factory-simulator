@@ -56,6 +56,8 @@ export interface StationView extends Omit<UnitView, "unit"> {
   senior: boolean;
   crew: Crew;
   overtime: boolean;
+  /** 호이스트(4.9): 소조립·중조립 정반 위 천장 크레인. 모든 작업장에 단다 */
+  hoist: boolean;
   units: UnitView[];
   /** 간이공정이 쓰지 않는 공정(4.4). 그림에서 작업장·이름표·적치장 칸을 숨긴다 */
   skipped: boolean;
@@ -259,6 +261,7 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
       senior: st.crew === "skilled",
       crew: st.crew,
       overtime: config.stations[st.id].overtime,
+      hoist: !!config.stations[st.id].hoist,
       units,
       skipped: !!scenario.stations[p]?.skipped,
     };
