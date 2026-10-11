@@ -900,7 +900,8 @@ function aimCamera(): void {
     state.managerSpot = "safe";
     yard?.setManagerSpot("safe", state.fieldFocus);
     // 이름표는 현장에서 공정을 가까이 볼 때만.
-    yard?.showNameTags(state.screen === "field" && state.fieldFocus !== null);
+    // 이름표는 3인칭 현장에서는 보이지 않는다(4.7.3, 사용자). 1인칭(4.8)에서는 명찰로 사람을 분명히 구분한다
+    yard?.showNameTags(false);
   };
   if (yard) apply();
   else void yardLoading?.then(apply);

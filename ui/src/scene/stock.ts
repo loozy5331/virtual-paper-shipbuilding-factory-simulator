@@ -5,7 +5,7 @@
 // 현장 3D(yard.ts)와 작업 현황 전경 2D(cctv.ts)가 같은 자리를 쓴다. Three.js를 모른다.
 
 import type { Frame } from "./frame";
-import { ST, STOCK_AT, STOCK_OF } from "./layout";
+import { quayQueueSpot, ST, STOCK_AT, STOCK_OF } from "./layout";
 
 /** 적치장 칸 수. 칸의 자리와 크기는 layout.ts의 STOCK_AT, 공정마다 쓰는 칸은 STOCK_OF(도장·선행의장은 마감동 칸 하나, 4.0) */
 export const STOCK_STATIONS = STOCK_AT.length;
@@ -43,4 +43,15 @@ export function stockAssign(f: Frame): Map<string, { station: number; index: num
     }
   }
   return out;
+}
+
+/**
+ * 안벽의장·시운전 차례를 기다리는 배의 자리(4.7.3): 두 공정의 대기 줄을 하나로 이어(안벽의장 먼저, 같은 공정은 우선순위 순)
+ * 빈 선석부터 채우고, 넘치면 등대 곶 안쪽 정박지. 배 이름 → 자리
+ */
+export function quayWaiting(f: Frame): Map<string, { x: number; z: number; anchored: boolean }> {
+  const units = f.stations[ST.quay]?.units.length ?? 1;
+  const waiting = f.lots.filter((l) => (l.place === "queue" || l.place === "outbound") && l.station >= ST.quay)
+    .sort((a, b) => a.station - b.station || a.slot - b.slot);
+  return new Map(waiting.map((l, i) => [l.ship, quayQueueSpot(i, units)]));
 }

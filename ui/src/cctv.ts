@@ -13,10 +13,10 @@ import { s } from "./dom";
 import { HAT, STATE_INFO, STATION_COLOR, STATION_TRADE, TRADE_HAT } from "./labels";
 import { nextStation, type Frame, type LotView } from "./scene/frame";
 import type { TrackPick } from "./track";
-import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot, stockUsed } from "./scene/stock";
+import { quayWaiting, STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot, stockUsed } from "./scene/stock";
 // 배치는 현장 3D와 같은 scene/layout.ts
 import { shipSize, areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
-  along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, quayQueueSpot, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_Z, shelfAt, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_ROADS, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
+  along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, QUAY_ROAD_Z, QUAY_STORE, BERTHS, berthX, DEPOT_WALLS, GARAGE_WALLS, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_Z, shelfAt, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_ROADS, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
   BACK_LANE_Z, CONVEYORS, DOCK2_AREA, FORKLIFT_GARAGE, garageSpot, kitDrop, LANE_X0, QUAY_WORK_Z, STOCK_NAME, type SectorId } from "./scene/layout";
 
 // ----- 투영: 위에서 30도 기운 정사영 -----
@@ -159,11 +159,12 @@ function tag(x: number, y: number, text: string, cls = "cc-tag"): SVGElement {
 }
 
 /** 벽만 있는 작업장·구역(지붕 없음, 앞은 열림): 뒷벽은 앞면이 보이고, 옆벽은 위에서 본 띠. door = 뒷벽의 문(물류창고 뒷문) */
-function walls(x0: number, x1: number, z0: number, z1: number, h: number, door?: { x: number; w: number }): SVGElement {
+function walls(x0: number, x1: number, z0: number, z1: number, h: number, door?: { x: number; w: number }, backAtFront = false): SVGElement {
   const t = 0.14, top = "#a3ada6", front = "#7d8a83";
+  const bz = backAtFront ? z1 : z0;   // 큰길 건너편 차고는 앞(z1)이 막히고 뒤가 열린다(4.7.3)
   const back = door
-    ? [box((x0 + door.x - door.w / 2) / 2, z0, door.x - door.w / 2 - x0, t, h, top, front), box((door.x + door.w / 2 + x1) / 2, z0, x1 - door.x - door.w / 2, t, h, top, front)]
-    : [box((x0 + x1) / 2, z0, x1 - x0, t, h, top, front)];
+    ? [box((x0 + door.x - door.w / 2) / 2, bz, door.x - door.w / 2 - x0, t, h, top, front), box((door.x + door.w / 2 + x1) / 2, bz, x1 - door.x - door.w / 2, t, h, top, front)]
+    : [box((x0 + x1) / 2, bz, x1 - x0, t, h, top, front)];
   return s("g", { class: "cc-walls" },
     ...back,
     box(x0, (z0 + z1) / 2, t, z1 - z0, h, top, front),
@@ -237,12 +238,15 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     s("path", { d: `M${lx - 7} ${ly - 34} L${lx} ${ly - 44} L${lx + 7} ${ly - 34} Z`, fill: "#b8322d" })));
   add(-98, tag(lx, ly + 14, "등대", "cc-tag mid"));
   add(-99, box((LANE_X0 - 1.5 + SHORE_X - 0.3) / 2, LANE_Z, SHORE_X - 0.3 - (LANE_X0 - 1.5), 1.0, 0.02, "#3a423d", "#3a423d"));
-  // 차고(4.3, D46): 트랜스포터는 소조립·중조립 사이 큰길 건너편, 지게차는 물류창고 왼쪽 뒷길 가
+  // 차고(4.3, D46, 4.7.3): 트랜스포터는 중조립·마감동 적치장 사이 큰길 건너편, 지게차는 물류창고 왼쪽 뒷길 가.
+  // 정비하는 설비라 뒤·옆에 벽(지붕 없음), 길 쪽만 열린다
   add(-99, box(DEPOT.x, DEPOT.z, 1.15, 1.9, 0.02, "#46504a", "#46504a"));
+  add(DEPOT_WALLS.z1, walls(DEPOT_WALLS.x0, DEPOT_WALLS.x1, DEPOT_WALLS.z0, DEPOT_WALLS.z1, 0.8, undefined, true));
   // 트랜스포터가 차고에 서 있으면 그 이름표가 대신한다
-  if (!frame.transporters.some((tr) => tr.state !== "move")) add(DEPOT.z + 1.2, tag(px(DEPOT.x), py(DEPOT.z + 1.0) + 12, "트랜스포터 차고", "cc-tag mid"));
+  if (!frame.transporters.some((tr) => tr.state !== "move")) add(DEPOT_WALLS.z1 + 0.1, tag(px(DEPOT.x), py(DEPOT_WALLS.z1) + 14, "트랜스포터 차고", "cc-tag mid"));
   add(-99, box(FORKLIFT_GARAGE.x + FORKLIFT_GARAGE.gap, FORKLIFT_GARAGE.z, FORKLIFT_GARAGE.gap * 3, 1.1, 0.02, "#46504a", "#46504a"));
-  add(FORKLIFT_GARAGE.z - 0.6, tag(px(FORKLIFT_GARAGE.x + FORKLIFT_GARAGE.gap), py(FORKLIFT_GARAGE.z - 0.6) - 4, "지게차 차고", "cc-tag mid"));
+  add(GARAGE_WALLS.z0 - 0.01, walls(GARAGE_WALLS.x0, GARAGE_WALLS.x1, GARAGE_WALLS.z0, GARAGE_WALLS.z1, 0.8));
+  add(GARAGE_WALLS.z0, tag(px(FORKLIFT_GARAGE.x + FORKLIFT_GARAGE.gap), py(GARAGE_WALLS.z0, 0.8) - 6, "지게차 차고", "cc-tag mid"));
   add(-99, box(LOUNGE.x, LOUNGE.z, 3.2, 2.6, 0.02, "#2c3530", "#2c3530"));
   // 뒷길(4.0.1): 물류창고 앞 가로 도로, 샛길은 뒷길까지
   add(-99, box((SPUR_X[0] + SPUR_X[5]) / 2, BACK_LANE_Z, SPUR_X[5] - SPUR_X[0] + 0.8, 0.9, 0.02, "#3a423d", "#3a423d"));
@@ -251,9 +255,30 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     const back = k <= 5 ? BACK_LANE_Z : UNIT_Z[2] - MAT2_D / 2 - 0.4, front = LANE_Z - 0.5;
     add(-99, box(sx, (front + back) / 2, 0.8, front - back, 0.02, "#3a423d", "#3a423d"));
     // PE장 양옆 샛길은 큰길 앞(2도크 구획)으로도
-    const far = benchAt(ST.pe, 2, 2).z + MAT2_D / 2 + 0.4;
+    const far = k === 6 ? QUAY_ROAD_Z + 0.45 : benchAt(ST.pe, 2, 2).z + MAT2_D / 2 + 0.4;
     if (k >= 4) add(-99, box(sx, (LANE_Z + 0.5 + far) / 2, 0.8, far - LANE_Z - 0.5, 0.02, "#3a423d", "#3a423d"));
   });
+  // 안벽 도로(4.7.3): PE장·도크 사이 샛길에서 야드 앞쪽을 지나 안벽 뒤를 따라간다(안벽의장을 쓰는 반기만)
+  if (!frame.stations[ST.quay]?.skipped) add(-99, box((SPUR_X[6] + QUAY.x1 - 0.4) / 2, QUAY_ROAD_Z, QUAY.x1 - 0.4 - SPUR_X[6], 0.9, 0.02, "#3a423d", "#3a423d"));
+  // 의장품 적치장(4.7.3): 안벽 왼쪽 끝. 지게차가 내려 둔 키트(배마다 상자 하나)를 작업자가 선석으로 나른다
+  if (!frame.stations[ST.quay]?.skipped) {
+    const st = QUAY_STORE;
+    add(st.z0 - 0.01, s("rect", { x: px(st.x0), y: py(st.z0), width: (st.x1 - st.x0) * S, height: (st.z1 - st.z0) * S * DEPTH, fill: "none", stroke: "#e0b43a", "stroke-width": 1.5, "stroke-dasharray": "6 4" }));
+    frame.quayKits.slice(0, 8).forEach((ship, k) => {
+      const cx = st.x0 + 0.5 + (k % 4) * 0.56, cz = st.z0 + 0.8 + Math.floor(k / 4) * 0.7;
+      add(cz, s("g", null, s("title", null, `${ship} 의장품 키트`), box(cx, cz, 0.42, 0.42, 0.32, "#c9a26b", "#a8865a")));
+    });
+    add(st.z1, tag(px((st.x0 + st.x1) / 2), py(st.z1) + 14, frame.quayKits.length ? `의장품 적치장 · ${frame.quayKits.join(" ")}` : "의장품 적치장", "cc-tag mid"));
+  }
+  // 선석(4.7.3): 안벽의장 작업장 다음 자리는 차례를 기다리는 배가 댄다(흐린 점선)
+  if (!frame.stations[ST.quay]?.skipped) {
+    const units = frame.stations[ST.quay]?.units.length ?? 1;
+    for (let b = units; b < BERTHS; b++) {
+      const x = berthX(b), z = benchAt(ST.quay, 0, 1).z;
+      add(-97, s("rect", { x: px(x - MAT_W / 2), y: py(z - MAT_D / 2), width: MAT_W * S, height: MAT_D * S * DEPTH, fill: "none", stroke: "#8fa7b4", "stroke-width": 1, "stroke-dasharray": "3 5", opacity: 0.6 }));
+    }
+    add(-97, tag(px(berthX(Math.min(units, BERTHS - 1))), py(QUAY.z0) + 14, "대기 선석", "cc-tag mid"));
+  }
   // 구획 윤곽(점선): 이웃 구획이 가장자리에 걸쳐 보일 때 어디까지인지. 도크가 하나면 큰길 앞 2도크 자리는 증설 예정지
   for (const sec of SECTORS) {
     if (sec.id === "quay") continue;
@@ -444,10 +469,13 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
       tag(px(x + MAT_W / 2) - 5, ty, status, info ? "cc-tag end loss" : "cc-tag end"),
       extra ? tag(px(x + MAT_W / 2) - 5, py(b0.z - MAT_D / 2) + 14, extra, "cc-tag end") : s("g")));
     // 탑재 앞 대기 줄(탑재는 적치장 예외: 도크 앞에서 기다린다)
-    if (p >= ST.quay) {
-      frame.lots.filter((l) => l.place === "queue" && l.station === p).sort((a, b) => a.slot - b.slot).slice(0, 3).forEach((l) => {
-        const q = quayQueueSpot(l.slot);
-        add(q.z + 0.01, block(l, lot(q.x, q.z, l.form, 0.55, l.type), chip(q.x, q.z - 0.2, 0.4, l, lateNow(l))));
+    // 안벽의장·시운전 차례를 기다리는 배(4.7.3): 빈 선석에 우현을 대고, 선석이 차면 등대 곶 안쪽 정박지에
+    if (p === ST.quay) {
+      const waiting = quayWaiting(frame);
+      frame.lots.filter((l) => waiting.has(l.ship)).forEach((l) => {
+        const q = waiting.get(l.ship)!;
+        add(q.z + 0.01, block(l, lot(q.x, q.z, l.form, 1, l.type), chip(q.x, q.z - 0.2, 0.4, l, lateNow(l)),
+          q.anchored ? tag(px(q.x), py(q.z) + 16, "정박지 대기", "cc-tag mid pair") : s("g")));
       });
     }
     if (p === ST.dock) {
