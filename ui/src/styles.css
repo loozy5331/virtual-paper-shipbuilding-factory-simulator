@@ -363,6 +363,7 @@ select.priority { max-width: 84px; }
 .gantt .bar-label.small { font-size: 11px; }
 .gantt .transport { fill: none; stroke: var(--ink-3); stroke-width: 1.3; stroke-dasharray: 3 2; }
 .gantt .section-label { font-size: 12px; font-weight: 700; fill: var(--ink-2); }
+.gantt .unit-id { font-size: 10px; fill: var(--ink-3); text-anchor: end; }
 .gantt .eq-id { font-size: 12px; font-weight: 700; fill: var(--ink); }
 .gantt .band.eq { fill: rgba(31, 42, 36, 0.02); }
 .legend i.pair-mark { border: 1px solid; }
