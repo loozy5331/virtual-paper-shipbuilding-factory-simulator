@@ -129,8 +129,11 @@ export interface Frame {
   idleByTrade: Record<string, number>;
   shelves: ShelfView[];
   research: ResearchView;
-  /** 오늘 진수하는 배: 어제 탑재를 끝내 오늘 인도된 배와 그 도크(0 = 1호). 현장 3D의 진수 장면용(그림만) */
-  launches: { ship: string; unit: number }[];
+  /**
+   * 진수 중인 배: 탑재를 끝낸 다음 날(day 0)과 그다음 날(day 1), 그 도크(0 = 1호). 현장 3D의 진수 장면용(그림만).
+   * 4.8.2: 이틀에 걸쳐 보인다. 첫날 도크에서 떠 나가고, 예인선이 끌어 둘째 날 선석에 댄다
+   */
+  launches: { ship: string; unit: number; day: 0 | 1 }[];
   /** 오늘 입고(하루의 맨 처음): 자재마다 들어온 양. 납품 마차 장면용(그림만, 3.2) */
   arrivals: Delivery["items"];
   /** 납품: 오늘부터 사흘 뒤까지의 입고. 입고일·길(해상·육로)마다 한 대, 사흘 전부터 보인다 */
@@ -291,13 +294,14 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
     finished: result.research.filter((r) => r.end < day).map((r) => r.name),
   };
 
-  // 진수: 어제가 탑재의 마지막 날이고 오늘은 탑재가 아닌 배(4.0: 안벽의장으로 예인된다)
+  // 진수: 탑재의 마지막 날 다음 날(day 0)과 그다음 날(day 1). 4.0: 안벽의장으로 예인된다
   const dock = "erection";
-  const launches = day >= 2 ? result.ships.flatMap((ship) => {
-    const today = ship.daily[index], before = ship.daily[index - 1];
+  const launches = result.ships.flatMap((ship) => ([0, 1] as const).flatMap((k) => {
+    const i = index - k;
+    const today = ship.daily[i], before = i >= 1 ? ship.daily[i - 1] : undefined;
     return before?.station === dock && (before.state === "work" || before.state === "rework") && today?.station !== dock
-      ? [{ ship: ship.id, unit: (before.unit ?? 1) - 1 }] : [];
-  }) : [];
+      ? [{ ship: ship.id, unit: (before.unit ?? 1) - 1, day: k }] : [];
+  }));
 
   // 입고: 그날 들어온 자재를 자재마다 합친다(배마다 따로 발주해도 마차 한 대에 싣는다)
   const itemsOn = (d: number) => scenario.materials.flatMap((m) => {
