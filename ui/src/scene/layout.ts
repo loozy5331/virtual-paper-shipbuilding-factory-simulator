@@ -95,6 +95,13 @@ export const SPUR_X = [STATION_X[ST.cut] - MAT_W / 2 - 1.45, (STATION_X[ST.proc]
 /** 공정마다 들어가는 샛길(왼쪽)과 나오는 샛길(오른쪽): SPUR_X 번호. 절단·가공, 도장·선행의장은 같은 건물이라 안에서 옮긴다. −1은 샛길 없음 */
 export const SPUR_IN = [0, 0, 1, 2, 3, 3, 5, 5, -1, -1], SPUR_OUT = [1, 1, 2, 3, 4, 4, 6, 6, -1, -1];
 
+/**
+ * 선종별 그림 크기(4.6, 소인국): 작은 배는 블록과 배를 작게 그려 같은 정반·도크에서 작아 보이게 한다. 없으면 1.
+ * 예인선은 짧고 뭉툭해 더 작게, 피더 컨테이너선은 컨테이너선보다 조금 작게.
+ */
+export const SHIP_SIZE: Record<string, number> = { TUG: 0.7, FEEDER: 0.85 };
+export const shipSize = (kind: string) => SHIP_SIZE[kind] ?? 1;
+
 /** 큰길의 왼쪽 끝(작업대기소·연구소 앞) */
 export const LANE_X0 = -42.6;
 /**

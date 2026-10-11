@@ -15,7 +15,7 @@ import type { Frame, LotView } from "./scene/frame";
 import type { TrackPick } from "./track";
 import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot } from "./scene/stock";
 // 배치는 현장 3D와 같은 scene/layout.ts
-import { areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
+import { shipSize, areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
   along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, quayQueueSpot, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_Z, shelfAt, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
   BACK_LANE_Z, CONVEYORS, DOCK2_AREA, FORKLIFT_GARAGE, garageSpot, kitDrop, LANE_X0, QUAY_WORK_Z, STOCK_NAME, type SectorId } from "./scene/layout";
 
@@ -67,9 +67,9 @@ function robot(x: number, z: number): SVGElement {
 
 /** 다 지은 배를 위에서 비스듬히 본 모양: 선체(앞이 뾰족) + 선종별 갑판 구조물, 선실은 고물(왼쪽). */
 function ship(x: number, z: number, kind: string, scale = 1): SVGElement {
-  const k = scale * S;
+  const k = scale * S;   // 크기는 호출하는 lot()가 선종 크기(shipSize)를 이미 곱했다
   const cx = px(x), cy = py(z);
-  const len = kind === "VLCC" ? 1.45 : kind === "LNG" ? 1.35 : 1.3;   // 반 길이(단위)
+  const len = kind === "VLCC" ? 1.45 : kind === "LNG" ? 1.35 : kind === "TUG" ? 1.0 : kind === "FEEDER" ? 1.15 : 1.3;   // 반 길이(단위)
   const half = 0.42;                                                     // 반 폭
   const deckY = cy - 0.3 * k;                                            // 갑판 높이만큼 위로
   const g = s("g", { class: "cc-ship" });
@@ -84,9 +84,16 @@ function ship(x: number, z: number, kind: string, scale = 1): SVGElement {
       s("rect", { x: x0, y: top, width: w * k, height: d * k * DEPTH, fill, stroke: EDGE, "stroke-width": 0.5 }),
       s("rect", { x: x0, y: top + d * k * DEPTH, width: w * k, height: h * k * RISE, fill: PAPER_SIDE, stroke: EDGE, "stroke-width": 0.5 }));
   };
-  if (kind === "CONT") {
+  if (kind === "TUG") {
+    // 예인선: 가운데 높은 조타실, 그 뒤 굴뚝, 이물 방현재(검은 선). 선미 선실은 따로 그리지 않는다.
+    blk(0.1, 0.36, 0.62, 0.6, PAPER);
+    blk(-0.22, 0.14, 0.24, 0.45, PAPER_SIDE);
+    g.append(s("line", { x1: cx + (len - 0.35) * k, x2: cx + (len - 0.35) * k, y1: deckMid - 0.25 * k * DEPTH, y2: deckMid + 0.25 * k * DEPTH, stroke: "#3a3f3c", "stroke-width": Math.max(2, 0.1 * k) }));
+    return g;
+  } else if (kind === "CONT" || kind === "FEEDER") {
     const kraft = ["#efe7d4", "#d9cba8", "#e6dcc6"];
-    for (let bay = 0; bay < 4; bay++) blk(-0.35 + bay * 0.38, 0.32, 0.7, 0.3, kraft[bay % kraft.length]);
+    const bays = kind === "FEEDER" ? 3 : 4;
+    for (let bay = 0; bay < bays; bay++) blk(-0.35 + bay * 0.38, 0.32, 0.7, 0.3, kraft[bay % kraft.length]);
   } else if (kind === "LNG") {
     for (let t = 0; t < 4; t++) {
       const tx = cx + (-0.35 + t * 0.4) * k;
@@ -106,6 +113,7 @@ function ship(x: number, z: number, kind: string, scale = 1): SVGElement {
 
 /** 로트: 조립 단계(부재 → 소블록 12 → 중블록 6 → 대블록 3 → 배). 정지 화면이라 정수 단계로만. */
 function lot(x: number, z: number, form: number, scale = 1, kind = "VLCC"): SVGElement {
+  scale *= shipSize(kind);   // 작은 배(예인선·피더선, 4.6)는 블록과 배를 작게
   const stage = Math.min(4, Math.floor(form + 1e-6));
   const g = s("g", { class: "cc-lot" });
   // 보이지 않는 누름 영역: 블록 조각 사이를 눌러도 정반(확대)이 아니라 블록(추적 상자)이 잡히게(3.1)
@@ -443,7 +451,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     if (p === ST.dock) {
       frame.lots.filter((l) => l.place === "queue" && l.station === p).sort((a, b) => a.slot - b.slot).slice(0, 3).forEach((l, i) => {
         const qx = x - 1 + i * 1.0;
-        add(QUEUE_Z + 0.01, block(l, lot(qx, QUEUE_Z, l.form, 0.55), chip(qx, QUEUE_Z - 0.2, 0.4, l, lateNow(l))));
+        add(QUEUE_Z + 0.01, block(l, lot(qx, QUEUE_Z, l.form, 0.55, l.type), chip(qx, QUEUE_Z - 0.2, 0.4, l, lateNow(l))));
       });
     }
   });
@@ -534,7 +542,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     const body = tr.state === "breakdown_stop" ? (STATE_INFO.breakdown_stop?.color ?? "#8e2e42") : "#5f6b73";
     add(z, carried ? box(x, z, 2.0, 0.8, 0.3, body, "#3f474d") : box(x, z, 0.8, 1.7, 0.3, body, "#3f474d"));
     if (carried) {
-      add(z + 0.02, block(carried, lot(x, z, carried.form, 0.7), chip(x, z - 0.3, 0.9, carried, lateNow(carried))));
+      add(z + 0.02, block(carried, lot(x, z, carried.form, 0.7, carried.type), chip(x, z - 0.3, 0.9, carried, lateNow(carried))));
     }
     const text = tr.state === "breakdown_stop" ? "트랜스포터 고장" : carried ? "트랜스포터" : "트랜스포터 · 차고";
     add(z + 0.5, tag(px(x), py(z + (carried ? 0.4 : 1.0)) + 13, text, tr.state === "breakdown_stop" ? "cc-tag mid stop" : "cc-tag mid"));

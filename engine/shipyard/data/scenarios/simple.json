@@ -1,38 +1,38 @@
 {
   "id": "simple",
   "name": "간이공정 분기",
-  "summary": "수주 4척. 공정을 절단 → 가공 → 소조립 → PE장 → 탑재 다섯 개로 줄였다. 착수 분산, 발주 방식, 인원, 정비로 있는 자원을 잘 쓰는 법을 처음 익힌다.",
+  "summary": "수주 4척(예인선 2, 피더 컨테이너선 2). 작은 배라 공정을 절단 → 가공 → 소조립 → PE장 → 탑재 다섯 개로 줄였다. 착수 분산, 발주 방식, 인원, 정비로 있는 자원을 잘 쓰는 법을 처음 익힌다.",
   "level": 1,
   "period": "2026년 4분기",
   "days": 60,
   "orders": [
     {
       "id": "S1",
-      "type": "VLCC",
+      "type": "TUG",
       "order_day": 1,
-      "due_day": 30,
-      "price": 6000
+      "due_day": 22,
+      "price": 3000
     },
     {
       "id": "S2",
-      "type": "CONT",
+      "type": "FEEDER",
       "order_day": 1,
-      "due_day": 38,
-      "price": 5200
+      "due_day": 30,
+      "price": 4000
     },
     {
       "id": "S3",
-      "type": "VLCC",
+      "type": "TUG",
       "order_day": 1,
-      "due_day": 46,
-      "price": 6000
+      "due_day": 38,
+      "price": 3000
     },
     {
       "id": "S4",
-      "type": "CONT",
+      "type": "FEEDER",
       "order_day": 1,
-      "due_day": 56,
-      "price": 5200
+      "due_day": 48,
+      "price": 4000
     }
   ],
   "initial_stock": {
@@ -41,8 +41,8 @@
     "flag": 0
   },
   "kpi": {
-    "revenue": 22400,
-    "profit": 12600,
+    "revenue": 14000,
+    "profit": 6700,
     "on_time_rate": 1.0,
     "first_pass_yield": 0.9
   },
@@ -213,7 +213,7 @@
     {
       "id": "managed",
       "name": "관리",
-      "summary": "납기에서 역산해 착수를 나누고, 자재는 필요일에서 역산해 발주하고, 9명(가공 2, 조립 4, 탑재 3)으로 정비를 한다. 잔업은 하지 않는다.",
+      "summary": "납기에서 역산해 착수를 나누고, 자재는 필요일에서 역산해 발주하고, 8명(가공 2, 조립 4, 탑재 2)으로 정비를 한다. 잔업은 하지 않는다.",
       "config": {
         "scenario": "simple",
         "ordering": "jit",
@@ -238,7 +238,7 @@
         "pools": {
           "processing": 2,
           "assembly": 4,
-          "erection": 3
+          "erection": 2
         },
         "transporters": {
           "maintenance": true

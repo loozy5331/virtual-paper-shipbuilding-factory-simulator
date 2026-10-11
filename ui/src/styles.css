@@ -885,6 +885,7 @@ body { background: var(--desk); }
 .trial-sea .bottom { fill: #c8553d; }
 .trial-sea .deck { fill: #f4f0e6; stroke: #5d6661; stroke-width: 0.7; }
 .trial-sea .funnel { fill: #c8553d; }
+.trial-sea .fender { fill: #3a3f3c; }
 .trial-sea .pipe { stroke: #8f9a93; stroke-width: 2; }
 .trial-sea .box { stroke: #5d6661; stroke-width: 0.5; }
 .trial-sea .b0 { fill: #efe7d4; } .trial-sea .b1 { fill: #d9cba8; } .trial-sea .b2 { fill: #e6dcc6; }
