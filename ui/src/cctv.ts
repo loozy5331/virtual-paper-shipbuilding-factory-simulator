@@ -16,7 +16,7 @@ import type { TrackPick } from "./track";
 import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot, stockUsed } from "./scene/stock";
 // 배치는 현장 3D와 같은 scene/layout.ts
 import { shipSize, areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
-  along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, quayQueueSpot, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_Z, shelfAt, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
+  along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, quayQueueSpot, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_Z, shelfAt, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_ROADS, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
   BACK_LANE_Z, CONVEYORS, DOCK2_AREA, FORKLIFT_GARAGE, garageSpot, kitDrop, LANE_X0, QUAY_WORK_Z, STOCK_NAME, type SectorId } from "./scene/layout";
 
 // ----- 투영: 위에서 30도 기운 정사영 -----
@@ -247,6 +247,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   // 뒷길(4.0.1): 물류창고 앞 가로 도로, 샛길은 뒷길까지
   add(-99, box((SPUR_X[0] + SPUR_X[5]) / 2, BACK_LANE_Z, SPUR_X[5] - SPUR_X[0] + 0.8, 0.9, 0.02, "#3a423d", "#3a423d"));
   SPUR_X.forEach((sx, k) => {
+    if (!SPUR_ROADS.includes(k)) return;   // 가공 ↔ 소조립 사이는 길이 없다(4.7.1)
     const back = k <= 5 ? BACK_LANE_Z : UNIT_Z[2] - MAT2_D / 2 - 0.4, front = LANE_Z - 0.5;
     add(-99, box(sx, (front + back) / 2, 0.8, front - back, 0.02, "#3a423d", "#3a423d"));
     // PE장 양옆 샛길은 큰길 앞(2도크 구획)으로도

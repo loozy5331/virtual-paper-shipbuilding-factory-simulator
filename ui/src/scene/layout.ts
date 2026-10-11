@@ -92,6 +92,11 @@ export function sectorOf(station: number, _unit = 0, _docks = 1): SectorId {
 export const SPUR_X = [STATION_X[ST.cut] - MAT_W / 2 - 1.45, (STATION_X[ST.proc] + MAT_W / 2 + STATION_X[ST.sub] - MAT_W / 2) / 2, (STATION_X[ST.sub] + STATION_X[ST.block]) / 2,
   STATION_X[ST.block] + MAT_W / 2 + 1.05, STATION_X[ST.preout] + MAT_W / 2 + 0.85,
   STATION_X[ST.pe] - MAT_W / 2 - 0.95, (STATION_X[ST.pe] + MAT_W / 2 + 0.4 + STATION_X[ST.dock] - MAT_W / 2 - 0.6) / 2];
+/**
+ * 길을 깐 샛길(SPUR_X 번호). 1번(가공 공장 ↔ 소조립 사이)은 4.7.1에 길을 걷었다: 부재 팔레트는 지게차가 두 작업장 입구 사이를
+ * 바로 오가고(palletPath), 그 틈은 뒷줄 작업장으로 드나드는 맨땅으로만 남는다.
+ */
+export const SPUR_ROADS = [0, 2, 3, 4, 5, 6];
 /** 공정마다 들어가는 샛길(왼쪽)과 나오는 샛길(오른쪽): SPUR_X 번호. 절단·가공, 도장·선행의장은 같은 건물이라 안에서 옮긴다. −1은 샛길 없음 */
 export const SPUR_IN = [0, 0, 1, 2, 3, 3, 5, 5, -1, -1], SPUR_OUT = [1, 1, 2, 3, 4, 4, 6, 6, -1, -1];
 
@@ -180,9 +185,12 @@ export function seaSpot(i: number): { x: number; z: number } {
   return { x: QUAY.x0 + 1.7 + (i % 4) * 2.6, z: QUAY.z0 - 2.2 - Math.floor(i / 4) * 1.3 };
 }
 
-/** 안벽의장·시운전 차례를 기다리는 배: 정박 자리 오른쪽 물 위(만 입구 쪽)에 한 줄 */
+/**
+ * 안벽의장·시운전 차례를 기다리는 배: 정박 자리 바로 바깥(만 안쪽) 물 위에 세 척씩 가로로 줄 선다.
+ * 만 입구의 곶(x 24 남짓부터)과 겹치지 않게 정박 자리 앞(1번 자리 오른쪽부터)에 둔다(4.7.1).
+ */
 export function quayQueueSpot(slot: number): { x: number; z: number } {
-  return { x: QUAY.x1 + 1.6, z: BERTH_Z - slot * 1.3 };
+  return { x: STATION_X[ST.quay] + 1.6 + (slot % 3) * 3.0, z: BERTH_Z - 2.6 - Math.floor(slot / 3) * 1.5 };
 }
 
 /**
@@ -267,13 +275,31 @@ export function roadPath(a: { x: number; z: number }, as: RoadSide, b: { x: numb
   const from = attach(a, as), to = attach(b, bs);
   const mid: { x: number; z: number }[] = [];
   if (from.road !== to.road) {
-    // 뒷길까지 이어진 샛길(0~5) 중 큰길 쪽 끝에 가장 가까운 것
+    // 길을 깐 샛길 중 뒷길까지 이어진 것(0~5)에서 큰길 쪽 끝에 가장 가까운 것
     const laneX = from.road === "lane" ? from.x : to.x;
-    const spur = SPUR_X.slice(0, 6).reduce((best, x) => (Math.abs(x - laneX) < Math.abs(best - laneX) ? x : best));
+    const spur = SPUR_ROADS.filter((k) => k <= 5).map((k) => SPUR_X[k]).reduce((best, x) => (Math.abs(x - laneX) < Math.abs(best - laneX) ? x : best));
     const fz = from.road === "back" ? BACK_LANE_Z : LANE_Z, tz = to.road === "back" ? BACK_LANE_Z : LANE_Z;
     mid.push({ x: spur, z: fz }, { x: spur, z: tz });
   }
   return polyline([...from.pts, ...mid, ...to.pts.slice().reverse()]);
+}
+
+/**
+ * 부재 팔레트(가공 → 소조립, 4.7.1): 가공 작업장 입구에서 나와 공장 앞(큰길과 벽 사이)을 따라 소조립 작업장 입구로 바로 간다.
+ * 입구는 1호 작업장 앞(큰길 쪽)이 열린 곳. 뒷줄(2·3호) 작업장은 두 공장 사이 틈으로 드나든다.
+ * 내려놓을 곳이 적치장(큰길 건너편)이면 소조립 입구 앞에서 큰길을 건넌다.
+ */
+export function palletPath(procUnit: number, drop: { x: number; z: number }, subUnit: number | null, docks: number): Route {
+  const pb = benchAt(ST.proc, procUnit, docks), sb = benchAt(ST.sub, 0, docks);
+  const front = areaBounds(ST.proc, 0, docks).z1 + 0.35;   // 공장 앞 통로(벽과 큰길 사이)
+  const gap = SPUR_X[1];
+  const pts: { x: number; z: number }[] = [{ x: pb.x + 0.9, z: pb.z }];
+  if (procUnit > 0) pts.push({ x: gap, z: pb.z }, { x: gap, z: front });
+  else pts.push({ x: pb.x + 0.9, z: front });
+  if (subUnit !== null && subUnit > 0) pts.push({ x: gap, z: front }, { x: gap, z: drop.z });
+  else pts.push({ x: sb.x - 0.9, z: front });
+  pts.push(drop);
+  return polyline(pts.filter((p, i) => i === 0 || p.x !== pts[i - 1].x || p.z !== pts[i - 1].z));
 }
 
 /** 길 위 u(0~1) 자리와 나아가는 방향(xz 평면 각도, +x가 0) */
