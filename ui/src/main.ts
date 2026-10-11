@@ -15,7 +15,7 @@ import { planLabel, renderForm, renderPlanBar, renderPlanNotes, renderPlanTabs, 
 import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
 import { docHead, REVIEWER } from "./paper";
 import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, PAIR_WAIT_EDGE, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, TRANSPORT_STATE } from "./labels";
-import { breakdownBar, breakdownLegend, eventText, renderReport } from "./report";
+import { eventText, renderReport } from "./report";
 import { renderCctv } from "./cctv";
 import { renderTrackCard, type TrackPick } from "./track";
 import { buildFrame, TRIAL_DEPART, type Frame } from "./scene/frame";
@@ -34,8 +34,6 @@ function msPerDay(): number {
 }
 // 사건 기록에 남기는 사건. 투입, 완료, 출고, 운반은 너무 잦아서 뺀다.
 const LOG_EVENTS = new Set(["arrival", "defect", "accident", "breakdown", "delivery", "research_done"]);
-// 배 탭(크게 보기)의 그 배 사건: 투입, 완료, 입고, 불량, 사고, 운반, 인도
-const SHIP_EVENTS = new Set(["arrival", "enter", "complete", "defect", "accident", "transport_start", "delivery"]);
 
 interface Run {
   n: number;
@@ -706,20 +704,6 @@ function tick(jump: boolean): void {
   const chart = els.ganttScreen.querySelector(".gantt-chart");
   const ship = result.ships.find((sh) => sh.id === state.ganttShip);
   if (chart) mount(chart, ship ? renderShipGantt(result, scenario, ship.id, state.day, pickBar) : renderGantt(result, scenario, state.day, pickBar));
-  const detail = els.ganttScreen.querySelector(".ship-detail");
-  if (detail) {
-    // 그 배의 사건(오늘까지)과, 60일이 끝났으면 리드타임 분해. 크게 볼 때만 보인다.
-    const mine = ship ? result.events.filter((ev) => ev.day <= state.day && "ship" in ev && ev.ship === ship.id && SHIP_EVENTS.has(ev.type)) : [];
-    const ended = state.day >= result.days;
-    mount(detail, ship ? [
-      ended ? h("div", { class: "lead-row" }, h("span", { class: "lead-name" }, h("b", null, ship.id)),
-        breakdownBar(ship, Math.max(1, ship.lead_time)), h("span", { class: "lead-total" }, `${ship.lead_time}일`)) : null,
-      ended ? breakdownLegend() : null,
-      h("ol", { class: "events ship-events" }, mine.length
-        ? mine.map((ev) => h("li", null, h("span", { class: "ev-day" }, `${ev.day}일`), h("span", { class: `ev-type ${ev.type}` }, EVENT_NAME[ev.type]), h("span", null, eventText(ev, scenario))))
-        : h("li", { class: "quiet" }, "아직 이 배의 사건이 없습니다.")),
-    ] : null);
-  }
 
   // 재생 막대(왼쪽 모니터 위, 현장 아래)
   for (const osd of allOsds()) {
@@ -1085,7 +1069,7 @@ function drawOsd(target: HTMLElement = els.osd): void {
       : h("button", { class: "osd-btn end", type: "button", title: "60일 끝으로 건너뛰고 평가서를 받습니다 (End)", onclick: finish }, "끝으로 ⏭"));
 }
 
-/** 왼쪽 모니터: 배 탭과 간트. 범례와 배 상세는 크게 볼 때만 보인다. */
+/** 왼쪽 모니터: 배 탭과 간트. 범례는 크게 볼 때만 보인다. 배의 리드타임 분해와 사건은 평가서와 작업 현황에서 본다(4.12.7). */
 function drawGanttScreen(): void {
   const r = currentRun();
   if (!r) return (mount(els.ganttScreen), mount(els.ganttLegend));
@@ -1098,10 +1082,10 @@ function drawGanttScreen(): void {
   const sameColor = LOSS_STATES.filter((l) => l.state !== "rework");
   mount(els.ganttScreen,
     h("div", { class: "screen-tabs" }, shipTab(null, "전체"), r.result.ships.map((sh) => shipTab(sh.id, sh.id))),
-    h("div", { class: "gantt-chart" }),
-    h("div", { class: "ship-detail zoom-only" }));
+    h("div", { class: "gantt-chart" }));
   mount(els.ganttLegend,
-    activeStations(scenario).map((st) => h("span", null, h("i", { style: { background: STATION_COLOR[st.id] } }), st.name)),
+    // 공정 색은 전체 탭에만. 배 탭은 줄마다 공정 이름이 있다(4.12.7).
+    state.ganttShip ? null : activeStations(scenario).map((st) => h("span", null, h("i", { style: { background: STATION_COLOR[st.id] } }), st.name)),
     h("span", null, h("i", { class: "hatch" }), "재작업(빗금)"),
     h("span", null, h("i", { class: "transport-mark" }), TRANSPORT_STATE.name),
     h("span", { class: "break" }),
