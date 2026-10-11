@@ -1,7 +1,7 @@
 {
   "id": "simple",
   "name": "간이공정 분기",
-  "summary": "수주 4척. 공정을 소조립 → 중조립 → PE장 → 탑재 네 개로 줄였다. 착수 분산, 발주 방식, 인원, 정비로 있는 자원을 잘 쓰는 법을 처음 익힌다.",
+  "summary": "수주 4척. 공정을 절단 → 가공 → 소조립 → PE장 → 탑재 다섯 개로 줄였다. 착수 분산, 발주 방식, 인원, 정비로 있는 자원을 잘 쓰는 법을 처음 익힌다.",
   "level": 1,
   "period": "2026년 4분기",
   "days": 60,
@@ -42,24 +42,22 @@
   },
   "kpi": {
     "revenue": 22400,
-    "profit": 12800,
+    "profit": 12600,
     "on_time_rate": 1.0,
     "first_pass_yield": 0.9
   },
   "skip": [
-    "cutting",
-    "processing",
+    "block_assembly",
     "painting",
     "pre_outfitting",
     "quay_outfitting",
     "sea_trial"
   ],
   "station_material": {
-    "sub_assembly": "paper",
     "grand_assembly": "paint",
     "erection": "flag"
   },
-  "unlocks": "공정은 소조립·중조립·PE장·탑재만 씁니다. 일정, 자재 발주, 사람, 정비, 잔업만 정하면 됩니다. 공법·인력 종류·작업장 증설·로봇은 다음 분기부터 열립니다.",
+  "unlocks": "공정은 절단·가공·소조립·PE장·탑재만 씁니다. 일정, 자재 발주, 사람, 정비, 잔업만 정하면 됩니다. 공법·인력 종류·작업장 증설·로봇은 다음 분기부터 열립니다.",
   "options": {
     "crews": [
       "normal"
@@ -148,7 +146,7 @@
     {
       "id": "unmanaged",
       "name": "무관리",
-      "summary": "전부 한꺼번에 착수하고(우선순위도 납기 반대로, 마지막 배부터), 자재는 필요한 날에야 발주하고, 10명(조립 6, 탑재 4)을 잔업으로 밀어붙인다. 정비는 하지 않는다.",
+      "summary": "전부 한꺼번에 착수하고(우선순위도 납기 반대로, 마지막 배부터), 자재는 필요한 날에야 발주하고, 14명(가공 4, 조립 6, 탑재 4)을 잔업으로 밀어붙인다. 정비는 하지 않는다.",
       "config": {
         "scenario": "simple",
         "ordering": "late",
@@ -171,6 +169,7 @@
           }
         },
         "pools": {
+          "processing": 4,
           "assembly": 6,
           "erection": 4
         },
@@ -183,12 +182,17 @@
         },
         "research": [],
         "stations": {
-          "sub_assembly": {
+          "cutting": {
             "method": "standard",
             "overtime": true,
             "maintenance": false
           },
-          "block_assembly": {
+          "processing": {
+            "method": "standard",
+            "overtime": true,
+            "maintenance": false
+          },
+          "sub_assembly": {
             "method": "standard",
             "overtime": true,
             "maintenance": false
@@ -209,7 +213,7 @@
     {
       "id": "managed",
       "name": "관리",
-      "summary": "납기에서 역산해 착수를 나누고, 자재는 필요일에서 역산해 발주하고, 9명(조립 6, 탑재 3)으로 정비를 한다. 잔업은 하지 않는다.",
+      "summary": "납기에서 역산해 착수를 나누고, 자재는 필요일에서 역산해 발주하고, 9명(가공 2, 조립 4, 탑재 3)으로 정비를 한다. 잔업은 하지 않는다.",
       "config": {
         "scenario": "simple",
         "ordering": "jit",
@@ -220,19 +224,20 @@
           },
           "S2": {
             "priority": 2,
-            "start_day": 7
+            "start_day": 8
           },
           "S3": {
             "priority": 3,
-            "start_day": 15
+            "start_day": 16
           },
           "S4": {
             "priority": 4,
-            "start_day": 25
+            "start_day": 26
           }
         },
         "pools": {
-          "assembly": 6,
+          "processing": 2,
+          "assembly": 4,
           "erection": 3
         },
         "transporters": {
@@ -244,12 +249,17 @@
         },
         "research": [],
         "stations": {
-          "sub_assembly": {
+          "cutting": {
             "method": "standard",
             "overtime": false,
             "maintenance": true
           },
-          "block_assembly": {
+          "processing": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          },
+          "sub_assembly": {
             "method": "standard",
             "overtime": false,
             "maintenance": true
@@ -270,7 +280,7 @@
     {
       "id": "all_in",
       "name": "전부 최대 투입",
-      "summary": "사람을 직종마다 최대로(조립 12, 탑재 6) 두고, 잔업과 정비를 전부 넣고, 자재는 1일에 모두 발주한다. 등급의 기준선이다.",
+      "summary": "사람을 직종마다 최대로(가공 6, 조립 12, 탑재 6) 두고, 잔업과 정비를 전부 넣고, 자재는 1일에 모두 발주한다. 등급의 기준선이다.",
       "config": {
         "scenario": "simple",
         "ordering": "bulk",
@@ -293,6 +303,7 @@
           }
         },
         "pools": {
+          "processing": 6,
           "assembly": 12,
           "erection": 6
         },
@@ -305,12 +316,17 @@
         },
         "research": [],
         "stations": {
-          "sub_assembly": {
+          "cutting": {
             "method": "standard",
             "overtime": true,
             "maintenance": true
           },
-          "block_assembly": {
+          "processing": {
+            "method": "standard",
+            "overtime": true,
+            "maintenance": true
+          },
+          "sub_assembly": {
             "method": "standard",
             "overtime": true,
             "maintenance": true
