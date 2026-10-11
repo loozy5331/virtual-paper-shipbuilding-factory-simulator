@@ -21,6 +21,16 @@
 - MINOR·PATCH(예: 1.2.0)는 `develop`에 태그만 붙인다. MAJOR(예: 2.0.0)가 되면 `develop`을 `main`으로 머지하고 `main`에 태그를 붙인다
 - `main`의 급한 버그는 `main`에서 `hotfix/…`를 따서 고치고, `main`과 `develop` 양쪽에 머지한다(PATCH)
 
+## 4.6.1 (2026-10-11)
+
+정리만 했다. 결과 숫자와 화면은 그대로다(PATCH).
+
+- 2.0 시안(`proto.html`, `proto25d.html`, `src/proto/`)을 지웠다. 현장 3D가 쓰는 종이배 모양과 접힘 보간(`hullTris`·`flatOf`·`ease`·`clamp01`)만 `src/scene/model.ts`로 옮겼다. 시안은 태그 `v4.6.0`까지 남아 있다
+- 빌드(`build.mjs`)가 먼저 `dist`를 비운다. 해시 이름 조각(`yard-*.js`, `chunk-*.js`)이 빌드마다 쌓여 130개가 넘었다
+- 쓰지 않는 `ShipKind` 타입을 지웠다
+- 저장소 맨 위 `memo`를 지우고, 로드맵에 없던 항목(지붕 위 작업자·블록 수 말풍선)을 `docs/roadmap.md` 4.x 이후로 옮겼다
+- 어디서도 가리키지 않는 시안 그림 `docs/mockups/launch`·`safety`·`ship-types`를 지웠다. 결정 기록(D23~D32)이 가리키는 나머지 시안은 남긴다
+
 ## 4.6.0 (2026-10-11)
 
 선종이 둘 늘고 간이공정의 배가 바뀐다(MINOR). 다른 반기의 결과는 그대로다.
