@@ -378,7 +378,9 @@
     }
   },
   "transporter": {
-    "max_count": 1,
+    "_count_note": "블록 트랜스포터 1~max_count대(4.8). 대마다 하루 운행비·정비비, 고장 판정은 난수표를 번호만큼 밀어 읽는다",
+    "max_count": 2,
+    "default_count": 1,
     "roles": [
       "block"
     ],

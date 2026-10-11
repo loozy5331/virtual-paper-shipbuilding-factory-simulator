@@ -607,12 +607,12 @@ class Scenarios(unittest.TestCase):
         self.assertEqual(simulate(cfg)["profit"], simulate(PRESETS["managed"])["profit"])
 
     def test_growth_presets(self):
-        # 4.3.0 조율 값(D40)
-        cases = {'unmanaged': (-31615.4, 44.7, 'F'), 'managed': (18148.2, 88.5, 'A'), 'all_in': (-21037.8, 56.1, 'C')}
+        # 4.3.0 조율 값(D40). 4.8: C안(전부 최대 투입)은 트랜스포터 2대
+        cases = {'unmanaged': (-31615.4, 44.7, 'F'), 'managed': (18148.2, 88.5, 'A'), 'all_in': (-22419.0, 51.1, 'C')}
         for pid, (profit, score, grade) in cases.items():
             r = simulate(GROWTH[pid])
             self.assertEqual((r["profit"], r["grade"]["score"], r["grade"]["grade"]), (profit, score, grade), pid)
-            self.assertEqual(r["grade"]["baseline"]["score"], 56.1)
+            self.assertEqual(r["grade"]["baseline"]["score"], 51.1)
 
     def test_growth_has_lng(self):
         sc = load_scenario("growth")
@@ -714,7 +714,7 @@ class Surge(unittest.TestCase):
 
     def test_presets(self):
         # 4.3.0 조율 값(D40). 블록 운반이 한 대로 줄어 관리안도 한 척 지연(7/8)
-        cases = {'unmanaged': (-42029.2, 44.0, 'F'), 'managed': (25595.8, 89.3, 'A'), 'all_in': (-11140.2, 57.3, 'C')}
+        cases = {'unmanaged': (-42029.2, 44.0, 'F'), 'managed': (25595.8, 89.3, 'A'), 'all_in': (-10540.8, 57.3, 'C')}   # 4.8: C안은 트랜스포터 2대
         for pid, (profit, score, grade) in cases.items():
             r = simulate(SURGE[pid])
             self.assertEqual((r["profit"], r["grade"]["score"], r["grade"]["grade"]), (profit, score, grade), pid)
@@ -890,6 +890,44 @@ class ForkliftPool(unittest.TestCase):
         with self.assertRaises(ConfigError):
             simulate(cfg)
         self.assertEqual(open_sim(cfg, baseline=False)["forklifts"][2]["id"], "F3")
+
+
+class TransporterCount(unittest.TestCase):
+    """블록 트랜스포터 1~2대(4.8): 수주 증가부터 고른다. 두 대는 서로 다른 배를 같은 날 나른다."""
+
+    def test_one_is_the_old_rule(self):
+        # count가 없는 4.7 이전 설정은 1대, 결과도 같다
+        cfg = copy.deepcopy(GROWTH["managed"])
+        cfg["transporters"].pop("count")
+        self.assertEqual(simulate(cfg, baseline=False)["profit"], simulate(GROWTH["managed"], baseline=False)["profit"])
+        self.assertEqual([t["id"] for t in simulate(cfg, baseline=False)["transporters"]], ["TR"])
+
+    def test_two_carry_in_parallel(self):
+        # 수주 증가 B안: 운반 대기(배·날 합) 18일 → 2대면 2일. 그래도 도크가 병목이라 납기는 8 → 6척(앞 공정만 빨라지면 병목 앞이 붐빈다)
+        def waits(r):
+            return sum(1 for s in r["ships"] for d in s["daily"] if d.get("state") == "transport_wait")
+        one = simulate(GROWTH["managed"], baseline=False)
+        cfg = copy.deepcopy(GROWTH["managed"])
+        cfg["transporters"]["count"] = 2
+        two = simulate(cfg, baseline=False)
+        self.assertEqual((waits(one), waits(two)), (18, 2))
+        self.assertEqual([t["id"] for t in two["transporters"]], ["TR", "TR2"])
+        self.assertEqual((one["qcd"]["delivery"]["on_time"], two["qcd"]["delivery"]["on_time"]), (8, 6))
+        # 한 대 = 운행비 5 × 120일 + 정비 50 = 650
+        self.assertEqual(preview(cfg)["fixed_costs"]["transporter"] - preview(GROWTH["managed"])["fixed_costs"]["transporter"], 650)
+
+    def test_limits(self):
+        for n in (0, 3):
+            cfg = copy.deepcopy(GROWTH["managed"])
+            cfg["transporters"]["count"] = n
+            with self.assertRaises(ConfigError):
+                simulate(cfg)
+        # 입문·기본 반기는 1대 고정
+        for presets in (PRESETS, SIMPLE):
+            cfg = copy.deepcopy(presets["managed"])
+            cfg["transporters"]["count"] = 2
+            with self.assertRaises(ConfigError):
+                simulate(cfg)
 
 
 SIMPLE = {p["id"]: p["config"] for p in load_presets("simple")}

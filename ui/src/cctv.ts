@@ -15,9 +15,9 @@ import { nextStation, type Frame, type LotView } from "./scene/frame";
 import type { TrackPick } from "./track";
 import { quayWaiting, STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot, stockUsed } from "./scene/stock";
 // 배치는 현장 3D와 같은 scene/layout.ts
-import { shipSize, areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, LOUNGE_SOUTH, loungeOf, fenceSegments, GATES, SOUTH_ROAD_X, YARD_Z1, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
-  along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, QUAY_ROAD_Z, QUAY_STORE, BERTHS, berthX, DEPOT_WALLS, GARAGE_WALLS, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_Z, shelfAt, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_ROADS, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
-  BACK_LANE_Z, CONVEYORS, DOCK2_AREA, FORKLIFT_GARAGE, garageSpot, kitDrop, LANE_X0, QUAY_WORK_Z, STOCK_NAME, type SectorId } from "./scene/layout";
+import { shipSize, areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, LOUNGE_SOUTH, loungeOf, fenceSegments, GATES, OUTER_ROAD, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
+  along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, QUAY_ROAD_Z, QUAY_STORE, BERTHS, berthX, DEPOT_WALLS, GARAGE_WALLS, depotSpot, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_Z, shelfAt, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_ROADS, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
+  BACK_LANE_Z, CONVEYORS, DOCK2_AREA, FORKLIFT_GARAGE, garageSpot, kitDrop, QUAY_WORK_Z, STOCK_NAME, type SectorId } from "./scene/layout";
 
 // ----- 투영: 위에서 30도 기운 정사영 -----
 const S = 30;                        // 1 단위 = 30px
@@ -237,10 +237,10 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     s("rect", { x: lx - 5, y: ly - 26, width: 10, height: 6, fill: "#b8322d" }),
     s("path", { d: `M${lx - 7} ${ly - 34} L${lx} ${ly - 44} L${lx + 7} ${ly - 34} Z`, fill: "#b8322d" })));
   add(-98, tag(lx, ly + 14, "등대", "cc-tag mid"));
-  add(-99, box((LANE_X0 - 1.5 + SHORE_X - 0.3) / 2, LANE_Z, SHORE_X - 0.3 - (LANE_X0 - 1.5), 1.0, 0.02, "#3a423d", "#3a423d"));
+  add(-99, box((OUTER_ROAD.west + SHORE_X - 0.3) / 2, LANE_Z, SHORE_X - 0.3 - OUTER_ROAD.west, 1.0, 0.02, "#3a423d", "#3a423d"));   // 큰길: 서문을 지나 외곽도로까지
   // 차고(4.3, D46, 4.7.3): 트랜스포터는 중조립·마감동 적치장 사이 큰길 건너편, 지게차는 물류창고 왼쪽 뒷길 가.
   // 정비하는 설비라 뒤·옆에 벽(지붕 없음), 길 쪽만 열린다
-  add(-99, box(DEPOT.x, DEPOT.z, 1.15, 1.9, 0.02, "#46504a", "#46504a"));
+  add(-99, box(DEPOT.x, DEPOT.z, 2.5, 1.9, 0.02, "#46504a", "#46504a"));
   add(DEPOT_WALLS.z1, walls(DEPOT_WALLS.x0, DEPOT_WALLS.x1, DEPOT_WALLS.z0, DEPOT_WALLS.z1, 0.8, undefined, true));
   // 트랜스포터가 차고에 서 있으면 그 이름표가 대신한다
   if (!frame.transporters.some((tr) => tr.state !== "move")) add(DEPOT_WALLS.z1 + 0.1, tag(px(DEPOT.x), py(DEPOT_WALLS.z1) + 14, "트랜스포터 차고", "cc-tag mid"));
@@ -252,7 +252,13 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   // 조선소 담장과 문(4.7.5): 바다 쪽만 열려 있다. 남문에서 큰길까지 작업자 길
   for (const f of fenceSegments()) add(-98, s("line", { x1: px(f.x0), y1: py(f.z0), x2: px(f.x1), y2: py(f.z1), stroke: "#a3ada6", "stroke-width": 3 }));
   for (const g of GATES) add(g.z, tag(px(g.x), py(g.z) + (g.id === "north" ? -6 : 16), g.name, "cc-place"));
-  add(-99, box(SOUTH_ROAD_X, (YARD_Z1 + LANE_Z + 0.5) / 2, 0.8, YARD_Z1 - LANE_Z - 0.5, 0.02, "#3a423d", "#3a423d"));
+  // 외곽도로(4.7.6): 담장 바깥 북·서·남
+  {
+    const o = OUTER_ROAD, c = "#3a423d";
+    add(-99, box((o.west + o.east) / 2, o.north, o.east - o.west + 0.9, 0.9, 0.02, c, c));
+    add(-99, box(o.west, (o.north + o.south) / 2, 0.9, o.south - o.north + 0.9, 0.02, c, c));
+    add(-99, box((o.west + SHORE_X) / 2, o.south, SHORE_X - o.west + 0.9, 0.9, 0.02, c, c));
+  }
   // 뒷길(4.0.1): 물류창고 앞 가로 도로, 샛길은 뒷길까지
   add(-99, box((SPUR_X[0] + SPUR_X[5]) / 2, BACK_LANE_Z, SPUR_X[5] - SPUR_X[0] + 0.8, 0.9, 0.02, "#3a423d", "#3a423d"));
   SPUR_X.forEach((sx, k) => {
@@ -260,7 +266,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     const back = k <= 5 ? BACK_LANE_Z : UNIT_Z[2] - MAT2_D / 2 - 0.4, front = LANE_Z - 0.5;
     add(-99, box(sx, (front + back) / 2, 0.8, front - back, 0.02, "#3a423d", "#3a423d"));
     // PE장 양옆 샛길은 큰길 앞(2도크 구획)으로도
-    const far = k === 6 ? QUAY_ROAD_Z + 0.45 : benchAt(ST.pe, 2, 2).z + MAT2_D / 2 + 0.4;
+    const far = k === 4 ? OUTER_ROAD.south : k === 6 ? QUAY_ROAD_Z + 0.45 : benchAt(ST.pe, 2, 2).z + MAT2_D / 2 + 0.4;
     if (k >= 4) add(-99, box(sx, (LANE_Z + 0.5 + far) / 2, 0.8, far - LANE_Z - 0.5, 0.02, "#3a423d", "#3a423d"));
   });
   // 안벽 도로(4.7.3): PE장·도크 사이 샛길에서 야드 앞쪽을 지나 안벽 뒤를 따라간다(안벽의장을 쓰는 반기만)
@@ -573,17 +579,18 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     add(zc - 6, zc <= LANE_Z ? tag(px(cx), py(zc - 1.8, 3.5) - 10, name, "cc-place") : tag(px(cx), py(zc + 1.8) + 22, name, "cc-place"));
   });
 
-  // ----- 트랜스포터(블록 한 대, 4.3): 나르는 날은 실은 블록과 함께 두 공정 사이 큰길, 쉬는 날은 차고에 큰길과 직각으로 -----
-  frame.transporters.forEach((tr) => {
+  // ----- 블록 트랜스포터(1~2대, 4.8): 나르는 날은 실은 블록과 함께 두 공정 사이 큰길, 쉬는 날은 차고 자기 칸에 큰길과 직각으로 -----
+  frame.transporters.forEach((tr, k) => {
     const carried = tr.state === "move" && tr.ship ? frame.lots.find((l) => l.ship === tr.ship && l.place === "carried") : undefined;
-    const x = carried ? (STATION_X[carried.station] + (STATION_X[nextStation(frame, carried.station)] ?? STATION_X[carried.station] + 4)) / 2 : DEPOT.x;
+    const x = carried ? (STATION_X[carried.station] + (STATION_X[nextStation(frame, carried.station)] ?? STATION_X[carried.station] + 4)) / 2 + k * 1.2 : depotSpot(k).x;
     const z = carried ? LANE_Z : DEPOT.z;
     const body = tr.state === "breakdown_stop" ? (STATE_INFO.breakdown_stop?.color ?? "#8e2e42") : "#5f6b73";
     add(z, carried ? box(x, z, 2.0, 0.8, 0.3, body, "#3f474d") : box(x, z, 0.8, 1.7, 0.3, body, "#3f474d"));
     if (carried) {
       add(z + 0.02, block(carried, lot(x, z, carried.form, 0.7, carried.type), chip(x, z - 0.3, 0.9, carried, lateNow(carried))));
     }
-    const text = tr.state === "breakdown_stop" ? "트랜스포터 고장" : carried ? "트랜스포터" : "트랜스포터 · 차고";
+    const name = frame.transporters.length > 1 ? `트랜스포터 ${k + 1}호` : "트랜스포터";
+    const text = tr.state === "breakdown_stop" ? `${name} 고장` : carried ? name : `${name} · 차고`;
     add(z + 0.5, tag(px(x), py(z + (carried ? 0.4 : 1.0)) + 13, text, tr.state === "breakdown_stop" ? "cc-tag mid stop" : "cc-tag mid"));
   });
 

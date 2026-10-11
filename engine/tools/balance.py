@@ -59,9 +59,10 @@ def space(sc: dict[str, Any]) -> dict[str, list[Any]]:
         out[f"{pid}.split"] = [False, True] if opts["split"] and st.get("split", True) else [False]
     for m in sc["materials"]:
         out[f"material.{m['id']}"] = list(opts["material_grades"])
-    # 직종별 대기소 인원(4.0, D42). 트랜스포터는 블록 한 대로 고정이라 대수는 고르지 않는다(D39·D46)
+    # 직종별 대기소 인원(4.0, D42)
     for t in active_trades(sc):
         out[f"pool.{t}"] = list(range(1, sc["trades"][t]["max"] + 1))
+    out["tr_count"] = list(opts.get("transporter_counts") or [1])   # 블록 트랜스포터(4.8): 분기가 연 대수만
     out["tr_maintenance"] = [False, True]
     # 공용 지게차(4.3, D46): 분기가 연 대수만(기본 반기는 2대 고정)
     fk = sc["forklift"]
@@ -84,7 +85,7 @@ def to_config(sc: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
                      for st in active_stations(sc)},
         "materials": {m["id"]: plan[f"material.{m['id']}"] for m in sc["materials"]},
         "pools": {name.split(".", 1)[1]: v for name, v in plan.items() if name.startswith("pool.")},
-        "transporters": {"maintenance": plan["tr_maintenance"]},
+        "transporters": {"count": plan["tr_count"], "maintenance": plan["tr_maintenance"]},
         "forklifts": {"count": plan["fk_count"], "maintenance": plan["fk_maintenance"]},
         "research": RESEARCH_SETS[plan["research"]],
         "skilled_station": None,
@@ -171,7 +172,7 @@ def run(scenario_id: str, starts: int, seed: int, report: Callable[[str], None] 
     for st in active_stations(sc):
         c = cfg["stations"][st["id"]]
         report(f"  {st['name']}: 인력 {c['crew']}, 공법 {c['method']}, 잔업 {c['overtime']}, 정비 {c['maintenance']}, 작업장 {c['units']}, 나눠 {c['split']}")
-    report(f"  자재 {cfg['materials']}, 직종별 인원 {cfg['pools']}, 트랜스포터 정비 {cfg['transporters']['maintenance']}, 지게차 {cfg['forklifts']['count']}대(정비 {cfg['forklifts']['maintenance']}), 연구 {cfg['research']}, "
+    report(f"  자재 {cfg['materials']}, 직종별 인원 {cfg['pools']}, 트랜스포터 {cfg['transporters']['count']}대(정비 {cfg['transporters']['maintenance']}), 지게차 {cfg['forklifts']['count']}대(정비 {cfg['forklifts']['maintenance']}), 연구 {cfg['research']}, "
            f"발주 {cfg['ordering']}, 착수 간격 {best_plan['gap']}일")
 
     # 상위 설정에서 선택지 사용 비율

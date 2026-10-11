@@ -117,7 +117,9 @@ export const LANE_X0 = -42.6;
  * 큰길 쪽만 연다(지붕 없음). 트랜스포터는 큰길과 직각으로 선다. DEPOT_WALLS = 벽의 바닥 범위
  */
 export const DEPOT = { x: -13.4, z: LANE_Z + 1.6 };
-export const DEPOT_WALLS = { x0: DEPOT.x - 0.85, x1: DEPOT.x + 0.85, z0: LANE_Z + 0.55, z1: LANE_Z + 2.85 };
+export const DEPOT_WALLS = { x0: DEPOT.x - 1.4, x1: DEPOT.x + 1.4, z0: LANE_Z + 0.55, z1: LANE_Z + 2.85 };
+/** 트랜스포터가 서는 칸(4.8: 두 대까지, 왼쪽부터) */
+export const depotSpot = (k: number) => ({ x: DEPOT.x - 0.65 + k * 1.3, z: DEPOT.z });
 /** 지게차 차고(4.3, D46): 물류창고 왼쪽 뒷길 가(창고 쪽). 키트를 싣는 창고 앞이 가깝다. 대마다 한 칸씩 오른쪽으로 */
 export const FORKLIFT_GARAGE = { x: -26.6, z: -9.0, gap: 0.95 };
 export const garageSpot = (k: number) => ({ x: FORKLIFT_GARAGE.x + k * FORKLIFT_GARAGE.gap, z: FORKLIFT_GARAGE.z });
@@ -226,18 +228,20 @@ export const SHIP_ROUTE = [{ x: 94, z: -2.5 }, { x: 68, z: -3.6 }, { x: 54, z: -
 export const SUPPLY_ROUTE = [
   { x: PIER.x0 + 0.8, z: PIER.z }, { x: 36.2, z: -5.4 }, { x: 34.8, z: -8.6 }, { x: 28, z: -9.7 }, { x: 20, z: -9.6 },
   // 4.7.5: 조선소 담장 바깥(북쪽)을 돌아 북문으로 들어온다
-  { x: 12.5, z: -15.4 }, { x: 4, z: -15.8 }, { x: -8, z: -15.6 }, { x: -14, z: -15.3 }, { x: -16.6, z: -14.0 }, { x: -18.4, z: -12.9 },
+  { x: 12.5, z: -15.2 }, { x: 4, z: -15.2 }, { x: -8, z: -15.2 }, { x: -14.5, z: -15.2 }, { x: -16.6, z: -14.0 }, { x: -18.4, z: -12.9 },
   { x: -19.7, z: -12.6 }, { x: -27, z: -12.6 }, { x: -35, z: -12.6 },
 ];
 /** 해상 납품(종이)은 강재 적치장 뒤에서 내리고 왼쪽으로 빠져나간다(4.2) */
-export const SEA_EXIT = [{ x: -35, z: -12.6 }, { x: -46, z: -12.4 }, { x: -54, z: -12.2 }];
+export const SEA_EXIT = [{ x: -35, z: -12.6 }, { x: -27, z: -12.6 }, { x: -19.7, z: -12.6 }, { x: -18.4, z: -12.9 }, { x: -16.6, z: -14.0 },
+  { x: -18, z: -15.2 }, { x: -30, z: -15.2 }, { x: -47.2, z: -15.2 }, { x: -54, z: -15.2 }];   // 4.7.6: 북문으로 나가 외곽도로로
 /** 산길: 뒷산 능선(높이 약 7)을 굽이굽이 넘어 야드 뒤로 내려와 창고 뒷문에 닿는다 */
 export const LAND_ROUTE = [
   { x: -11, z: -54 }, { x: -15, z: -45 }, { x: -12, z: -38 }, { x: -15.5, z: -30 }, { x: -13, z: -22 },
   { x: -15, z: -16 }, { x: -17.5, z: -13.3 }, { x: -19.7, z: -12.6 },
 ];
 /** 창고 뒤에서 왼쪽으로 야드를 빠져나가는 길 */
-export const SUPPLY_EXIT = [{ x: -19.7, z: -12.6 }, { x: -34, z: -12.6 }, { x: -54, z: -12.2 }];
+export const SUPPLY_EXIT = [{ x: -19.7, z: -12.6 }, { x: -18.4, z: -12.9 }, { x: -16.6, z: -14.0 }, { x: -18, z: -15.2 },
+  { x: -30, z: -15.2 }, { x: -47.2, z: -15.2 }, { x: -54, z: -15.2 }];   // 4.7.6: 북문으로 나가 외곽도로로
 /** 납품 길을 지나는 날 수(입고일 며칠 전에 출발하나) */
 export const SUPPLY_DAYS = 3;
 
@@ -393,15 +397,16 @@ export function groundY(x: number, z: number): number {
 }
 
 /**
- * 조선소 담장과 문(4.7.5). 담장은 포장된 야드와 매립 안벽을 두르고 바다 쪽(만)만 열려 있다.
- * 북문 = 납품 마차가 들어오는 문(산길·해상 길이 만난다), 서문 = 마차가 나가는 문(창고 뒤 길), 남문 = 작업자 출입문(남문 작업대기소).
+ * 조선소 담장과 문(4.7.5, 4.7.6에 서문·남문을 옮김). 담장은 포장된 야드와 매립 안벽을 두르고 바다 쪽(만)만 열려 있다.
+ * 북문 = 납품 마차가 드나드는 문(산길·해상 길이 만나고, 나갈 때도 북문에서 외곽도로로), 서문 = 큰길의 연장선(정문),
+ * 남문 = 내업 구획과 도크 구획을 나누는 샛길(SPUR_X[4])의 연장선. 담장 바깥에 외곽도로(OUTER_ROAD)가 북·서·남을 돈다.
  */
 export interface Gate { id: "north" | "west" | "south"; name: string; x: number; z: number }
 export const GATE_W = 2.6;
 export const GATES: Gate[] = [
   { id: "north", name: "북문", x: -16.6, z: YARD_Z0 },
-  { id: "west", name: "서문", x: YARD_X0, z: -12.3 },
-  { id: "south", name: "남문", x: -3.6, z: YARD_Z1 },
+  { id: "west", name: "서문", x: YARD_X0, z: LANE_Z },
+  { id: "south", name: "남문", x: SPUR_X[4], z: YARD_Z1 },
 ];
 /** 담장(문 자리는 비운다): 북동쪽 물가 → 북쪽 → 서쪽 → 남쪽 → 안벽 뒤 → 안벽 끝 물가 */
 export function fenceSegments(): { x0: number; z0: number; x1: number; z1: number }[] {
@@ -424,12 +429,12 @@ export function fenceSegments(): { x0: number; z0: number; x1: number; z1: numbe
   }
   return out;
 }
-/** 남문 길: 남문에서 큰길까지(작업자 출입) */
-export const SOUTH_ROAD_X = GATES[2].x;
+/** 외곽도로(4.7.6): 담장 바깥 북쪽(뒷산 아래 언덕 앞까지)·서쪽·남쪽. 북문·서문·남문을 잇는다 */
+export const OUTER_ROAD = { north: YARD_Z0 - 1.2, west: YARD_X0 - 1.2, south: YARD_Z1 + 1.2, east: 9.5 };
 /**
  * 남문 작업대기소(4.7.5): 탑재·의장 직종은 도크·마감동·안벽과 가까운 이곳에서 기다린다(북서 대기소는 동선이 멀다).
  * 나머지 직종은 북서 작업대기소(LOUNGE)
  */
-export const LOUNGE_SOUTH = { x: -1.0, z: 8.2 };
+export const LOUNGE_SOUTH = { x: -2.3, z: 8.2 };   // 4.7.6: 남문 샛길(SPUR_X[4])과 PE장 옆 샛길(SPUR_X[5]) 사이
 export const SOUTH_TRADES = ["erection", "outfitting"];
 export const loungeOf = (trade: string) => (SOUTH_TRADES.includes(trade) ? LOUNGE_SOUTH : LOUNGE);

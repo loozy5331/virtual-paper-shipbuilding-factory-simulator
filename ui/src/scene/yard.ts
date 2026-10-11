@@ -16,9 +16,9 @@ import { mesh, Person, SENIOR_NAME, WORKER_NAMES } from "./people";
 import { shipLook } from "./ships";
 import { quayWaiting, STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot, stockUsed } from "./stock";
 import { buildDock, buildLand, buildRoof, buildSectorOutline, buildWalls, buildYardLines, GiantHand, Gulliver, SEA_Y, type DockParts } from "./coast";
-import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LANE_Z, LOUNGE, LOUNGE_SOUTH, loungeOf, fenceSegments, GATES, GATE_W, SOUTH_ROAD_X, YARD_Z1, MAT_D, MAT_TOP, MAT_W, MAT2_D,
+import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LANE_Z, LOUNGE, LOUNGE_SOUTH, loungeOf, fenceSegments, GATES, GATE_W, OUTER_ROAD, MAT_D, MAT_TOP, MAT_W, MAT2_D,
   nearLane, QUEUE_Z, SAFE_SPOT, seaSpot, SECTORS, sector, sectorBounds, DOCK2_AREA, SHELF_X, SHELF_Z, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_IN, SPUR_OUT, SPUR_X, STATION_X,
-  STOCK_AT, STOCK_D, STOCK_HALF, STOCK_NAME, CONVEYORS, BACK_LANE_Z, shipSize, garageSpot, FORKLIFT_GARAGE, KIT_PICK, kitDrop, LANE_X0, roadPath, palletPath, SPUR_ROADS, type RoadSide, QUAY_WORK_Z, ST, isShop, QUAY_ROAD_Z, QUAY_STORE, QUAY, DEPOT_WALLS, GARAGE_WALLS, along, groundY, LAB_TREES, LAND_ROUTE, route, SHIP_ROUTE, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
+  STOCK_AT, STOCK_D, STOCK_HALF, STOCK_NAME, CONVEYORS, BACK_LANE_Z, shipSize, garageSpot, FORKLIFT_GARAGE, KIT_PICK, kitDrop, roadPath, palletPath, SPUR_ROADS, type RoadSide, QUAY_WORK_Z, ST, isShop, QUAY_ROAD_Z, QUAY_STORE, QUAY, DEPOT_WALLS, GARAGE_WALLS, depotSpot, along, groundY, LAB_TREES, LAND_ROUTE, route, SHIP_ROUTE, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
 import { clamp01, ease, flatOf, hullTris, type Tri } from "./model";
 import { STATE_INFO, STATION_COLOR, STATION_TRADE, TRADE_HAT } from "../labels";
 import type { TrackPick } from "../track";
@@ -838,8 +838,10 @@ export class Yard {
   }
 
   private buildLane(): void {
-    const lane = mesh(new THREE.BoxGeometry(SHORE_X - 0.3 - (LANE_X0 - 1.5), 0.02, 1.0), "#9f9a8f", { roughness: 1 });
-    lane.position.set((LANE_X0 - 1.5 + SHORE_X - 0.3) / 2, 0.01, LANE_Z);
+    // 큰길은 서문을 지나 외곽도로까지(4.7.6)
+    const laneX0 = OUTER_ROAD.west;
+    const lane = mesh(new THREE.BoxGeometry(SHORE_X - 0.3 - laneX0, 0.02, 1.0), "#9f9a8f", { roughness: 1 });
+    lane.position.set((laneX0 + SHORE_X - 0.3) / 2, 0.01, LANE_Z);
     lane.castShadow = false;
     this.scene.add(lane);
     // 샛길: 큰길에서 공정 사이로 3호 작업장 뒤까지 들어간다(뒤쪽 작업장에 블록을 나르는 길).
@@ -858,7 +860,8 @@ export class Yard {
     SPUR_X.forEach((sx, k) => {
       if (!SPUR_ROADS.includes(k)) return;   // 가공 ↔ 소조립 사이는 길이 없다(4.7.1)
       spur(sx, k <= 5 ? BACK_LANE_Z : unitZ(2) - MAT2_D / 2 - 0.4, LANE_Z - 0.5);
-      if (k >= 4) spur(sx, LANE_Z + 0.5, k === 6 ? QUAY_ROAD_Z + 0.45 : benchAt(ST.pe, 2, 2).z + MAT2_D / 2 + 0.4);
+      // 큰길 앞으로: 4번(내업·도크 구획 경계)은 남문을 지나 외곽도로까지(4.7.6), 6번은 안벽 도로까지
+      if (k >= 4) spur(sx, LANE_Z + 0.5, k === 4 ? OUTER_ROAD.south : k === 6 ? QUAY_ROAD_Z + 0.45 : benchAt(ST.pe, 2, 2).z + MAT2_D / 2 + 0.4);
     });
     // 안벽 도로(4.7.3): PE장·도크 사이 샛길에서 야드 앞쪽을 지나 안벽 뒤를 따라간다(의장품 키트를 나르는 길)
     const quayRoad = mesh(new THREE.BoxGeometry(QUAY.x1 - 0.4 - SPUR_X[6], 0.02, 0.9), "#9f9a8f", { roughness: 1 });
@@ -887,13 +890,13 @@ export class Yard {
       tag.position.set(x, 0.05, tz);
       this.scene.add(m, tag);
     };
-    pad(DEPOT.x, DEPOT.z, 1.15, 1.9, "트랜스포터 차고", DEPOT_WALLS.z1 + 0.3);
+    pad(DEPOT.x, DEPOT.z, 2.5, 1.9, "트랜스포터 차고", DEPOT_WALLS.z1 + 0.3);
     const gw = FORKLIFT_GARAGE.gap * 3;
     pad(FORKLIFT_GARAGE.x + FORKLIFT_GARAGE.gap, FORKLIFT_GARAGE.z, gw, 1.1, "지게차 차고", GARAGE_WALLS.z0 - 0.3);
     // 차고 벽(4.7.3): 정비하는 설비라 뒤·옆에 벽(지붕 없음). 트랜스포터 차고는 큰길 쪽, 지게차 차고는 뒷길 쪽이 열려 있다
     const w = DEPOT_WALLS, gwl = GARAGE_WALLS;
     this.scene.add(buildWalls(w.x0, w.x1, w.z0, w.z1, 0.8, undefined, true), buildWalls(gwl.x0, gwl.x1, gwl.z0, gwl.z1, 0.8));
-    for (let k = 0; k < 1; k++) {
+    for (let k = 0; k < 2; k++) {   // 블록 트랜스포터 두 대까지(4.8)
       const group = new THREE.Group();
       const deck = mesh(new THREE.BoxGeometry(1.7, 0.2, 1.0), "#5d6b78", { metalness: 0.2 });
       deck.position.y = 0.22;
@@ -969,10 +972,17 @@ export class Yard {
       tag.position.set(g.x, 1.1, g.z);
       this.scene.add(tag);
     }
-    const road = mesh(new THREE.BoxGeometry(0.8, 0.02, YARD_Z1 - LANE_Z - 0.5), "#9f9a8f", { roughness: 1 });
-    road.position.set(SOUTH_ROAD_X, 0.012, (YARD_Z1 + LANE_Z + 0.5) / 2);
-    road.castShadow = false;
-    this.scene.add(road);
+    // 외곽도로(4.7.6): 담장 바깥 북·서·남. 북문(납품)·서문(큰길)·남문(샛길)이 닿는다
+    const o = OUTER_ROAD;
+    const road = (x0: number, z0: number, x1: number, z1: number) => {
+      const m = mesh(new THREE.BoxGeometry(Math.abs(x1 - x0) + 0.9, 0.02, Math.abs(z1 - z0) + 0.9), "#a39e92", { roughness: 1 });
+      m.position.set((x0 + x1) / 2, 0.012, (z0 + z1) / 2);
+      m.castShadow = false;
+      this.scene.add(m);
+    };
+    road(o.west, o.north, o.east, o.north);
+    road(o.west, o.north, o.west, o.south);
+    road(o.west, o.south, SHORE_X, o.south);
   }
 
   private buildShelves(): void {
@@ -1191,8 +1201,9 @@ export class Yard {
     this.labels.domElement.classList.toggle("overview", focus === null);
     if (focus === null) {
       // 전경: 높이서 비스듬히. 구획 넷과 큰길, 만 입구의 등대가 함께 들어오게.
-      this.camGoal.target.set(-6, 0, 1);
-      this.camGoal.pos.set(-6, 40, 42);
+      // 4.7.6: 등대 곶 바깥 부두의 납품 배까지 들어오게 조금 멀리
+      this.camGoal.target.set(-3, 0, 0);
+      this.camGoal.pos.set(-3, 54, 57);
       return;
     }
     // 구획 하나를 화면 가득: 구획이 클수록 멀리서, 뒷줄 작업장까지 벽 너머로 보이게 높이 내려다본다.
@@ -1481,10 +1492,13 @@ export class Yard {
         at = lot.place === "carried"
           ? this.lotPosition(lot, frac, f).setY(0)
           : new THREE.Vector3(STATION_X[lot.station] - 1.4, 0, LANE_Z);
+        // 두 대가 같은 구간을 달리면 겹치지 않게 2호는 한 대 길이만큼 뒤에서(4.8)
+        if (k > 0) at.x -= 3.0;
       } else if (tr.state === "breakdown_stop") {
         at = cart.group.position.clone();
       } else {
-        at = new THREE.Vector3(DEPOT.x, 0, DEPOT.z);
+        const spot = depotSpot(k);
+        at = new THREE.Vector3(spot.x, 0, spot.z);
         parked = true;
       }
       cart.group.position.lerp(at, jump ? 1 : 0.2);
@@ -1505,7 +1519,8 @@ export class Yard {
         }
       }
       cart.smoke.visible = tr.state === "breakdown_stop";
-      setLabel(cart.tag, tr.state === "breakdown_stop" ? `트랜스포터 ${chipHtml("breakdown_stop", "고장")}` : "트랜스포터");
+      const name = f.transporters.length > 1 ? `트랜스포터 ${k + 1}호` : "트랜스포터";
+      setLabel(cart.tag, tr.state === "breakdown_stop" ? `${name} ${chipHtml("breakdown_stop", "고장")}` : name);
     });
     for (let k = f.transporters.length; k < this.carts.length; k++) this.carts[k].group.visible = false;
 
