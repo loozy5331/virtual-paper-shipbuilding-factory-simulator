@@ -504,7 +504,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
         }
       }
       if (unit.stop) {
-        add(z + d, tag(px(x), py(z - d / 2, 0.08) - 8, unit.stop === "accident" ? "사고 · 작업 중지" : "고장 · 수리 중", "cc-tag mid stop"));
+        add(z + d, tag(px(x), py(z - d / 2, 0.08) - 8, unit.stop === "accident" ? "사고 · 작업 중지" : `${view.equipment ?? "설비"} 고장 · 수리 중`, "cc-tag mid stop"));
       }
     });
     // 공정 이름과 오늘 상태: 1호 정반 안쪽 아래(왼쪽 이름, 오른쪽 상태), 운영 표시는 안쪽 위 오른쪽

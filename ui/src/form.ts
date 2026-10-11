@@ -272,6 +272,9 @@ function commonPane(ctx: FormContext): HTMLElement {
         h("span", { class: "field-label" }, "공법"),
         segmented(`method-${st.id}`, methods.map(([id, m]) => ({ value: id, label: m.name })),
           cfg.method, (v) => { cfg.method = v; ctx.onEdit(false); }),
+        // 기본 설비(4.12.1, 4M의 설비): 고장은 이 설비가 난다
+        h("span", { class: "field-label" }, "설비"),
+        h("span", { class: "hint" }, st.equipment === false ? "없음 (외부팀)" : st.equipment ?? ""),
         h("span", { class: "field-label" }, "운영"),
         h("div", { class: "toggles" },
           external ? null
@@ -280,7 +283,7 @@ function commonPane(ctx: FormContext): HTMLElement {
               : toggle("잔업", cfg.overtime, (on) => { cfg.overtime = on; ctx.onEdit(false); }),
           // 설비가 없는 공정(시운전, 4.12)은 정비를 고르지 않는다
           st.equipment === false
-            ? h("span", { class: "hint" }, "설비 없음 · 정비 없음")
+            ? h("span", { class: "hint" }, "정비 없음")
             : toggle("정비", cfg.maintenance, (on) => { cfg.maintenance = on; ctx.onEdit(false); }),
           // 나눠 하기(3.0): 탑재·안벽의장·시운전은 배 한 척이 통째로 들어가서 나누지 않는다(공정의 split).
           st.split === false || !opts.split
