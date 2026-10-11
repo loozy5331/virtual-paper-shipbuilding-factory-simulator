@@ -159,6 +159,11 @@ export const FORM: Record<string, [number, number]> = {
  * 그날 시작한 작업이나 운반은 준비가 끝난 뒤부터 진행한다(도착 전에 일이 진행돼 보이지 않게, 2.1.2).
  */
 export const LEAD_IN = 0.3;
+/**
+ * 시운전 출항(4.11.2, 그림만): 시운전 첫날 재생 중에 배가 선석·정박지(또는 막 진수한 도크 문 밖)에서 만 입구를 빠져나간다.
+ * 하루 안의 비율 [from, end]. end에 만 밖에서 사라지고, 그 뒤로 오른쪽 아래 시운전 말풍선에 배가 들어온다(main.ts).
+ */
+export const TRIAL_DEPART = { from: 0.05, end: 0.9 } as const;
 /** 탑재 첫날 걸리버 손이 PE장에서 대블록 둘을 도크로 옮기는 동안(하루의 앞 55%, 4.7.5) */
 export const LIFT_END = 0.55;
 const afterLead = (frac: number) => clamp01((frac - LEAD_IN) / (1 - LEAD_IN));

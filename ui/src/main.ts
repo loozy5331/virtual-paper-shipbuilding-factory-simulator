@@ -18,7 +18,7 @@ import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, PAIR_WAIT
 import { breakdownBar, breakdownLegend, eventText, renderReport } from "./report";
 import { renderCctv } from "./cctv";
 import { renderTrackCard, type TrackPick } from "./track";
-import { buildFrame, type Frame } from "./scene/frame";
+import { buildFrame, TRIAL_DEPART, type Frame } from "./scene/frame";
 import type { FieldView, Yard } from "./scene/yard";
 import { sector, sectorOf, SECTORS, ST, type SectorId } from "./scene/layout";
 
@@ -818,8 +818,11 @@ function drawSeaTrial(frame: Frame): void {
     ships.forEach((t, k) => {
       const cx = 12 + 48 + k * 96;
       const g = svgEl("g", { class: "trial-ship", style: `animation-delay: ${-k * 0.9}s` }, trialShip(t.type, cx, sea + 2));
-      svg.append(g, svgEl("text", { x: cx, y: H - 6, class: t.state === "work" ? "name" : "name loss" },
-        `${t.ship} · ${t.day}/${t.days}일${t.state === "work" ? "" : ` · ${STATE_INFO[t.state]?.name ?? ""}`}`));
+      const name = svgEl("text", { x: cx, y: H - 6, class: t.state === "work" ? "name" : "name loss" },
+        `${t.ship} · ${t.day}/${t.days}일${t.state === "work" ? "" : ` · ${STATE_INFO[t.state]?.name ?? ""}`}`);
+      // 시운전 첫날 현장 재생 중: 3D에서 배가 만을 빠져나간 뒤(TRIAL_DEPART.end) 그림 왼쪽에서 들어온다(4.11.2)
+      const arriving = host === els.trialField && state.screen === "field" && state.playing && t.day === 1;
+      svg.append(arriving ? svgEl("g", { class: "trial-arrive", style: `animation-delay: ${Math.round(msPerDay() * TRIAL_DEPART.end)}ms` }, g, name) : svgEl("g", null, g, name));
     });
     mount(host, h("div", { class: "trial-head" }, "시운전 · 먼바다"), svg);
   }

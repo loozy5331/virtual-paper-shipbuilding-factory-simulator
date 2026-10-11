@@ -144,6 +144,8 @@ export class Lot {
   /** 트랜스포터에 실렸나(그날 운반에서 수레가 실으러 온 뒤). 운반이 아니면 false */
   loaded = false;
   prev: { place: string; station: number; unit: number } | null = null;
+  /** 시운전 출항(4.11.2): 출발한 자리(선석·정박지·도크 문 밖). 출항하지 않을 때는 null */
+  departFrom: THREE.Vector3 | null = null;
   /** 다 지은 배의 반 길이·반 폭·갑판 높이(야드 단위, 선종 크기를 곱함). 예인줄·계류줄을 거는 자리(4.8.1) */
   readonly dims: { halfLen: number; halfW: number; deck: number };
 

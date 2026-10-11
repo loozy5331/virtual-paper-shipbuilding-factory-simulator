@@ -878,6 +878,8 @@ body { background: var(--desk); }
 .trial-head { font-weight: 700; color: #0b6f95; margin-bottom: 3px; }
 /* 시운전 그림: 먼바다 위에 배가 동동 뜬다(천천히 위아래로 흔들림, 움직임 줄이기 설정이면 멈춤) */
 .trial-sea { display: block; border-radius: 4px; }
+.trial-sea .trial-arrive { animation: trial-arrive 0.9s ease-out both; }
+@keyframes trial-arrive { from { transform: translateX(-80px); opacity: 0; } to { transform: none; opacity: 1; } }
 .trial-sea .sky { fill: #e3edf2; }
 .trial-sea .water { fill: #3f6f8c; }
 .trial-sea .wave { fill: none; stroke: #9cc0d4; stroke-width: 1; opacity: 0.7; }

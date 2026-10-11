@@ -11,7 +11,7 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { LEAD_IN, nextStation, type Delivery, type ForkliftJobView, type Frame, type LotView } from "./frame";
+import { LEAD_IN, nextStation, TRIAL_DEPART, type Delivery, type ForkliftJobView, type Frame, type LotView } from "./frame";
 import { buildFirstPersonArms, mesh, Person, SENIOR_NAME, WORKER_NAMES } from "./people";
 import { quayWaiting, STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot, stockUsed } from "./stock";
 import { buildDock, buildLand, buildRoof, buildSectorOutline, buildWalls, buildYardLines, GiantHand, Gulliver, SEA_Y, type DockParts } from "./coast";
@@ -21,8 +21,8 @@ import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LA
 import { clamp01, ease } from "./model";
 import { Lot } from "./lot";
 import { buildHoist, buildRobot, buildSupplyCart, buildSupplyShip, crateTop, type SupplyShip } from "./props";
-import { Harbor, type LaunchPose } from "./harbor";
-import { chipHtml, label, paperMaterial, setLabel } from "./util";
+import { departPose, Harbor, LAUNCH, type LaunchPose } from "./harbor";
+import { chipHtml, label, paperMaterial, phase, setLabel } from "./util";
 import { STATE_INFO, STATION_COLOR, STATION_TRADE, TRADE_HAT } from "../labels";
 import type { TrackPick } from "../track";
 
@@ -1145,14 +1145,48 @@ export class Yard {
     const docking = launching.filter((l) => l.day === 0);
     this.harbor.drawLaunchDocks(docking);
     const towed: ({ lot: Lot; pose: LaunchPose; g: number } | null)[] = [null, null];
+    const departing: { lot: Lot; pose: LaunchPose }[] = [];
     for (const view of f.lots) {
       const lot = this.lots.get(view.ship);
       if (!lot) continue;
       // 인도한 배(sea)는 선주에게 넘어가 조선소를 떠났다(화면 오른쪽 위 인도 완료 로그에 남는다)
-      // 인도한 배는 떠났고, 시운전 중인 배는 먼바다에 나가 있다(화면 오른쪽 아래 말풍선)
-      lot.group.visible = view.place !== "hidden" && view.place !== "sea" && !(view.place === "bench" && view.station === ST.trial);
-      if (!lot.group.visible) continue;
+      // 인도한 배는 떠났고, 시운전 중인 배는 먼바다에 나가 있다(화면 오른쪽 아래 말풍선). 시운전 첫날 재생 중에는 만을 빠져나가는 모습까지
+      const trial = view.place === "bench" && view.station === ST.trial;
       const launch = launching.find((l) => l.ship === view.ship);
+      const depart = trial && src.playing && !jump && f.seaTrial.find((t) => t.ship === view.ship)?.day === 1 && frac < TRIAL_DEPART.end;
+      lot.group.visible = view.place !== "hidden" && view.place !== "sea" && (!trial || depart);
+      if (!lot.group.visible) {
+        lot.departFrom = null;
+        continue;
+      }
+      if (depart) {
+        // 막 진수한 배(간이공정: 탑재 다음 날 바로 시운전)는 도크 문 밖까지 진수 장면 그대로, 그 뒤 출항
+        const sailEnd = LAUNCH.sail[1] * 2;
+        const fromDock = launch?.day === 0;
+        if (fromDock && launch.g < LAUNCH.sail[1]) {
+          lot.setForm(4, false);
+          const pose = this.harbor.launchPose(launch.unit, launch.g, lot.group.position.clone(), lot);
+          lot.group.rotation.set(0, pose.yaw, 0);
+          lot.group.position.copy(pose.pos);
+          towed[launch.unit] = { lot, pose, g: launch.g };
+          lot.departFrom = pose.out.clone();
+        } else {
+          // 출발 자리: 어제 서 있던 곳(선석·정박지). 처음 보는 프레임의 자리를 잡아 둔다
+          lot.departFrom ??= lot.group.position.clone();
+          const start = fromDock ? sailEnd : TRIAL_DEPART.from;
+          const pose = departPose(lot.departFrom, phase(frac, [start, TRIAL_DEPART.end]));
+          lot.setForm(4, false);
+          lot.group.rotation.set(0, pose.yaw, 0);
+          lot.group.position.copy(pose.pos);
+          departing.push({ lot, pose });
+        }
+        lot.target.copy(lot.group.position);
+        lot.prev = null;
+        lot.path = [];
+        setLabel(lot.tag, `<b>${view.ship}</b><span class="chip">시운전 출항</span>`);
+        continue;
+      }
+      lot.departFrom = null;
       if (launch) {
         // 진수하는 배: 도크에서 물에 뜨고, 예인선이 문 밖으로 끌어내 안벽 선석(또는 정박지)에 댄다
         lot.setForm(4, false);
@@ -1211,6 +1245,11 @@ export class Yard {
       lot.tag.position.y = view.form >= 3 ? 1.9 : 1.0;
     }
 
+    // 출항하는 배는 비어 있는 예인선 한 쌍이 앞뒤로 끌고 나간다(진수 예인과 같은 날이면 남는 쌍)
+    for (const d of departing) {
+      const u = towed.findIndex((t) => t === null);
+      if (u >= 0) towed[u] = { lot: d.lot, pose: d.pose, g: 0.5 };
+    }
     towed.forEach((t, u) => this.harbor.drawTugs(u, t));
     this.harbor.drawMoorings(f, launching);
 
