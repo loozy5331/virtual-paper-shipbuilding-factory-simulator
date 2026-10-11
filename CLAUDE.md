@@ -42,12 +42,14 @@
 ## 확인과 명령
 
 ```bash
-cd engine && python3 -m unittest discover -s tests -t .   # 엔진 테스트
-python3 -m unittest discover -s server/tests -t server    # 저장소 테스트
-cd engine && python3 -m tools.balance growth -n 16        # 균형 점검(분기 하나 약 2분, 출력은 파일로)
+uv venv .venv                                              # 가상환경(Python 3.12, .python-version). 외부 패키지 없음
+cd engine && ../.venv/bin/python -m unittest discover -s tests -t .   # 엔진 테스트
+.venv/bin/python -m unittest discover -s server/tests -t server    # 저장소 테스트
+cd engine && ../.venv/bin/python -m tools.balance growth -n 16        # 균형 점검(분기 하나 약 2분, 출력은 파일로)
 cd ui && npx tsc --noEmit -p . && npm run build            # 타입 검사와 빌드
-python3 server/app.py --no-open                            # 서버 http://localhost:8000 (--host 0.0.0.0: 수업)
+.venv/bin/python server/app.py --no-open                            # 서버 http://localhost:8000 (--host 0.0.0.0: 수업)
 ```
 
+- Python은 시스템 3.9가 아니라 `.venv`(3.12)를 쓴다. 셸 상태가 이어지지 않으니 activate 대신 경로로 부른다. worktree에는 `.venv`가 없으므로(git 제외) 그 안에서 `uv venv .venv`로 만든다.
 - 헤드리스 Chrome: scratchpad에 playwright-core를 설치하고 `/Applications/Google Chrome.app`을 headless로 쓴다(저장소에 넣지 않음). 스크린샷은 볼 부분만 잘라 찍는다. 시험 실행은 worktree 서버(다른 포트)로 해서 사용자 DB에 회차를 남기지 않는다.
 - 병합 뒤에는 메인 체크아웃을 pull + 빌드하고, 엔진·서버가 바뀌었으면 8000번 서버를 재시작한다.
