@@ -9,7 +9,7 @@
 
 import * as THREE from "three";
 import { mesh } from "./people";
-import { BAY_C, BOLLARD, BOLLARD_COUNT, BAY_MOUTH, BAY_Z, groundY, HILL_BASE, HILLS, MOUTH_X, QUAY, LAND_ROUTE, PIER, route, SHORE_X, STATION_X, SUPPLY_EXIT, SUPPLY_ROUTE, ST, YARD_X0, YARD_Z0, YARD_Z1, type Sector } from "./layout";
+import { BAY_C, BOLLARD, BOLLARD_COUNT, BAY_MOUTH, BAY_Z, groundY, HILL_BASE, HILLS, MOUTH_X, QUAY, LAND_ROUTE, PIER, route, SHORE_X, STATION_X, SUPPLY_EXIT, SUPPLY_ROUTE, ST, wallPanels, YARD_X0, YARD_Z0, YARD_Z1, type Sector } from "./layout";
 
 export const SEA_Y = -0.32;
 
@@ -103,17 +103,8 @@ export function buildLand(scene: THREE.Scene): void {
 /** 벽만 있는 작업장(지붕 없음, 앞은 열림): 뒷벽과 양옆 벽. door = 뒷벽에 낸 문(가운데 x와 폭, 물류창고 뒷문 3.2) */
 export function buildWalls(x0: number, x1: number, z0: number, z1: number, height: number, door?: { x: number; w: number }, backAtFront = false): THREE.Group {
   const g = new THREE.Group();
-  const t = 0.14;
-  // 뒷벽은 보통 z0(뒤)에, backAtFront면 z1(앞)에 둔다(큰길 건너편 차고처럼 뒤쪽이 열린 곳, 4.7.3)
-  const bz = backAtFront ? z1 : z0;
-  const back = door
-    ? [{ w: door.x - door.w / 2 - x0, d: t, x: (x0 + door.x - door.w / 2) / 2, z: bz }, { w: x1 - door.x - door.w / 2, d: t, x: (door.x + door.w / 2 + x1) / 2, z: bz }]
-    : [{ w: x1 - x0, d: t, x: (x0 + x1) / 2, z: bz }];
-  const walls = [
-    ...back,
-    { w: t, d: z1 - z0, x: x0, z: (z0 + z1) / 2 },
-    { w: t, d: z1 - z0, x: x1, z: (z0 + z1) / 2 },
-  ];
+  // 뒷벽은 보통 z0(뒤)에, backAtFront면 z1(앞)에 둔다(큰길 건너편 차고처럼 뒤쪽이 열린 곳, 4.7.3). 판 자리는 layout.ts(1인칭 충돌과 같이)
+  const walls = wallPanels(x0, x1, z0, z1, door, backAtFront);
   for (const w of walls) {
     const panel = mesh(new THREE.BoxGeometry(w.w, height, w.d), WALL, { roughness: 0.9 });
     panel.position.set(w.x, height / 2, w.z);
