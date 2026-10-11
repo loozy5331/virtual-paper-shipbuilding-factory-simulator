@@ -167,12 +167,13 @@ export function renderGantt(result: Result, scenario: Scenario, today: number, o
       const span = `${seg.start}~${seg.end}일 (${seg.end - seg.start + 1}일)`;
       const pick = onPick && (() => onPick({ ship: ship.id, station: seg.station, start: seg.start, end: seg.end }));
       if (seg.state === "work" || seg.state === "rework") {
-        // 위 줄: 작업장을 차지한 구간. 나눠 한 구간은 "×2"처럼 부분 수를 붙이고 짝 대기 꼬리를 덧그린다.
+        // 위 줄: 작업장을 차지한 구간. 공정 이름은 쓰지 않는다(아래 범례의 색으로 읽는다, 4.12.9 사용자).
+        // 재작업은 "재작업", 나눠 한 구간은 "×2"처럼 부분 수를 쓰고 짝 대기 꼬리를 덧그린다.
         const label = seg.state === "rework" ? `${name} 재작업` : name;
         const k = isSplit(ship, seg) ? splitCount(ship, seg) : 1;
-        const text = (seg.state === "work" ? name : "재작업") + (k > 1 ? ` ×${k}` : "");
+        const text = [seg.state === "rework" ? "재작업" : "", k > 1 ? `×${k}` : ""].filter(Boolean).join(" ");
         g.append(bar(x0, y, w, BAR_H, STATION_COLOR[seg.station], `${ship.id} · ${label}${k > 1 ? ` (작업장 ${k}곳에 나눠 하기)` : ""} · ${span}`,
-          { label: k > 1 ? undefined : text, textColor: STATION_TEXT[seg.station], hatch: seg.state === "rework", onPick: pick }));
+          { label: k > 1 || !text ? undefined : text, textColor: STATION_TEXT[seg.station], hatch: seg.state === "rework", onPick: pick }));
         if (k > 1) {
           drawSplitSummary(g, ship, seg, name, y, x, width, today);
           // 글자는 꼬리(짝 대기)에 가리지 않게 앞쪽 작업 부분 가운데에
