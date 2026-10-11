@@ -87,8 +87,6 @@ interface State {
   track: string | null;
   /** 떠 있는 추적 상자(누른 블록이나 선반). 떠 있는 동안 재생은 멈춰 있다 */
   pick: TrackPick | null;
-  /** 현장에서 관리자가 선 자리: 안전한 자리, 또는 버튼으로 순간이동한 설비 옆(3.0) */
-  managerSpot: "safe" | "crane" | "cart";
   /** 현장 시점(4.10): 3인칭(기본, 관제실에서 나가면 늘 3인칭) 또는 1인칭(관리자 소인의 눈) */
   fieldView: FieldView;
   /** 마지막으로 서명한 사람(이 브라우저가 기억한다). */
@@ -888,8 +886,7 @@ function aimCamera(): void {
   const apply = () => {
     yard?.setCamera("field", state.fieldFocus);
     // 공정을 바꿔 보면 관리자는 그 공정 앞 안전한 자리로 간다
-    state.managerSpot = "safe";
-    yard?.setManagerSpot("safe", state.fieldFocus);
+    yard?.toSafeSpot();
     // 이름표는 현장에서 공정을 가까이 볼 때만.
     // 이름표는 3인칭 현장에서는 보이지 않는다(4.7.3, 사용자). 1인칭(4.10)에서는 가까운 사람만 명찰(yard.ts)
     yard?.showNameTags(false);
@@ -1250,10 +1247,6 @@ function drawField(): void {
           h("button", { type: "button", class: state.fieldFocus === null ? "active" : "", onclick: () => { state.fieldFocus = null; drawField(); aimCamera(); } }, "전경"),
           shownSectors().map((sec) =>
             h("button", { type: "button", class: state.fieldFocus === sec.id ? "active" : "", onclick: () => { state.fieldFocus = sec.id; drawField(); aimCamera(); } }, sec.name))),
-        // 관리자 순간이동(3.0 안전): 설비 옆으로 가면 위험 반경 경고. 1인칭에서는 W·A·S·D로 걸어서 다닌다(4.11)
-        h("div", { class: "field-cams", role: "group", "aria-label": "관리자 이동" },
-          h("button", { type: "button", onclick: () => moveManager("crane") }, "골리앗 주변으로"),
-          h("button", { type: "button", onclick: () => moveManager("cart") }, "트랜스포터 주변으로")),
       ],
     // 자재·블록 추적(3.1): 블록이나 선반을 누르면 상자, 고른 배는 노란 고리
     h("span", { class: "hint" }, "블록·선반을 누르면 추적"),
@@ -1304,16 +1297,10 @@ function releaseMoveKeys(): void {
   pushMove();
 }
 
-function moveManager(spot: "safe" | "crane" | "cart"): void {
-  state.managerSpot = spot;
-  const hazard = yard?.setManagerSpot(spot, state.fieldFocus) ?? null;
-  if (hazard) warnHazard(hazard);
-}
-
 /** 위험 설비 옆으로 갔다: 재생을 멈추고 알린다. 횟수는 그 회차 평가서에 한 줄(등급과 무관). */
 function warnHazard(hazard: { id: string; label: string }): void {
   const r = currentRun();
-  // 이미 경고 카드가 떠 있으면(순간이동 경고와 자동 경고가 겹칠 때) 한 번만 센다
+  // 이미 경고 카드가 떠 있으면 한 번만 센다
   if (!r || state.screen !== "field" || els.field.querySelector(".safety-alert")) return;
   const wasPlaying = state.playing;
   pause();
@@ -1327,7 +1314,7 @@ function warnHazard(hazard: { id: string; label: string }): void {
       h("div", { class: "safety-actions" },
         h("button", { class: "btn primary", type: "button", onclick: () => {
           overlay.remove();
-          moveManager("safe");
+          yard?.toSafeSpot();
           if (wasPlaying) play();
         } }, "안전한 자리로 돌아가기"))));
   els.field.append(overlay);
@@ -1465,7 +1452,6 @@ async function start(): Promise<void> {
     fieldFocus: null,
     track: null,
     pick: null,
-    managerSpot: "safe",
     fieldView: "third",
     signer: loadSigner(),
     classBest: {},

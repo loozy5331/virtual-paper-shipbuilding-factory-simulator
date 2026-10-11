@@ -29,12 +29,11 @@ import type { TrackPick } from "../track";
 // 배치(야드 좌표)는 layout.ts, 배경은 coast.ts. 증설한 작업장은 1호 뒤로 한 줄씩(2호, 3호, 3.0).
 // 구획(3.2, D38): 카메라는 전경 또는 구획 하나(내업, 1도크, 2도크, 안벽). 전경에서는 구획 이름만 보이고, 내업 공장에는 지붕을 덮는다.
 
-// 현장 안전(3.0, D27·D28·D35): 관리자는 평소 작업장에서 떨어진 안전한 자리에 선다. "골리앗 주변으로"·"트랜스포터 주변으로"를
-// 누르면 그 설비 옆으로 순간이동하고, 위험 반경이라 경고한다(재생 중 저절로 뜨는 경고는 1인칭 이동이 생길 때로 미룬다).
+// 현장 안전(3.0, D27·D28·D35): 관리자는 평소 작업장에서 떨어진 안전한 자리에 선다. 1인칭으로 걸어서 위험 반경에 들면 경고한다
+// (4.10 자동 경고). 3.0의 "골리앗 주변으로"·"트랜스포터 주변으로" 순간이동 단추는 4.12.14에 뺐다(1인칭 이동으로 충분, 사용자).
 // 엔진 규칙이 아니라 현장 화면의 규칙이다. 반경은 팻말에 "반경 10m"로 적는다(소인국 척도라 화면 크기는 보기 좋게만).
 // 반경은 layout.ts의 CRANE_R(걸리버의 손, 탑재 도크 둘레)과 CART_R(트랜스포터).
 // 안전한 자리(layout.ts의 SAFE_SPOT): 내업과 도크 구획 사이 큰길 앞. 크레인 반경과 큰길 트랜스포터 반경 밖이다.
-export type ManagerSpot = "safe" | "crane" | "cart";
 export interface Hazard { id: string; label: string }
 const BG = new THREE.Color("#dbe5ea");   // 하늘
 
@@ -112,8 +111,6 @@ export class Yard {
   private readonly labTag: CSS2DObject;
   private readonly labWindow: THREE.MeshStandardMaterial;
   /** 관리자 자리와 위험 경고 */
-  private managerSpot: ManagerSpot = "safe";
-  private managerStation: SectorId | null = null;
   /** 도크마다 크레인 반경 원(1호, 2호) */
   private readonly craneRings: THREE.Mesh[] = [];
   private readonly cartRings: THREE.Mesh[] = [];
@@ -259,7 +256,7 @@ export class Yard {
     this.fpArms.visible = false;
     this.camera.add(this.fpArms);
     this.scene.add(this.camera);
-    this.manager.place(this.managerAt(), Math.PI, "stand", true);
+    this.manager.place(new THREE.Vector3(SAFE_SPOT.x, 0, SAFE_SPOT.z), Math.PI, "stand", true);
     this.buildSafety();
     this.setupLighting();
   }
@@ -301,34 +298,14 @@ export class Yard {
     for (const p of [...this.people, this.senior, this.manager]) p.showTag(on);
   }
 
-  /**
-   * 관리자 자리. safe = 도크의 큰길 맞은편(어느 공정을 보든 같은 자리).
-   * crane·cart = 그 설비 옆으로 순간이동한다. 위험 반경에 들었으면 무엇인지 돌려준다(화면이 경고).
-   */
-  setManagerSpot(spot: ManagerSpot, station: SectorId | null): Hazard | null {
-    this.managerSpot = spot;
-    this.managerStation = station;
-    const at = this.managerAt();
+  /** 관리자를 안전한 자리(도크의 큰길 맞은편, 어느 공정을 보든 같은 자리)로. 경고 카드의 "안전한 자리로 돌아가기"도 이것 */
+  toSafeSpot(): void {
+    const at = new THREE.Vector3(SAFE_SPOT.x, 0, SAFE_SPOT.z);
     // 멀리 있으면(1인칭으로 걸어간 뒤) 건물을 뚫고 걷지 않게 바로 옮긴다
     const far = this.manager.root.position.distanceTo(at) > 3;
     const first = this.view === "first";
-    this.manager.place(at, first ? SAFE_LOOK : Math.PI, "stand", spot !== "safe" || far || first, 0.4);
+    this.manager.place(at, first ? SAFE_LOOK : Math.PI, "stand", far || first, 0.4);
     if (first) this.lookFrom(SAFE_LOOK);
-    if (spot === "crane") return { id: "crane", label: "골리앗 크레인(걸리버의 손) 작업 반경" };
-    if (spot === "cart") return { id: "cart", label: "트랜스포터 운행 반경" };
-    return null;
-  }
-
-  private managerAt(): THREE.Vector3 {
-    const i = this.managerStation;
-    if (this.managerSpot === "crane") return new THREE.Vector3(STATION_X[ST.dock] - 0.8, 0, MAT_D / 2 + 0.6);
-    if (this.managerSpot === "cart") {
-      // 가장 가까이 있는 트랜스포터 바로 옆(큰길 위)
-      const cart = this.carts.find((c) => c.group.visible)?.group.position ?? new THREE.Vector3(DEPOT.x, 0, LANE_Z);
-      return new THREE.Vector3(cart.x + 0.5, 0, cart.z + 0.7);
-    }
-    void i;
-    return new THREE.Vector3(SAFE_SPOT.x, 0, SAFE_SPOT.z);
   }
 
   /** 위험 반경 표시(노랑·검정 점선 원)와 "반경 10m 출입 금지" 팻말 */
@@ -927,8 +904,6 @@ export class Yard {
     this.fpArms.visible = first;
     this.labels.domElement.classList.toggle("first", first);
     if (first) {
-      // 설비 옆(순간이동한 자리)에 있었으면 안전한 자리에서 시작한다
-      if (this.managerSpot !== "safe") this.setManagerSpot("safe", this.managerStation);
       this.lookFrom(this.manager.root.rotation.y);
       this.camMoving = 0;
       this.labels.domElement.classList.remove("overview");
