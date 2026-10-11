@@ -1104,8 +1104,15 @@ function drawGanttScreen(): void {
     h("div", { class: "ship-detail zoom-only" }));
 }
 
+/** 이 반기가 쓰는 구획. 간이공정(4.4)은 안벽의장이 없어 안벽 구획 단추를 뺀다 */
+function shownSectors(): typeof SECTORS {
+  const skip = new Set(state.data.scenario.skip ?? []);
+  return SECTORS.filter((sec) => sec.id !== "quay" || !skip.has("quay_outfitting"));
+}
+
 /** 오른쪽 모니터 위쪽: 작업 현황, 구획 하나(위 단추로 바꾼다). 그림은 tick이 채운다. */
 function drawRightTop(): void {
+  if (!shownSectors().some((sec) => sec.id === state.cctv)) state.cctv = "shop";
   const label = els.monitorRight.querySelector(".win-title");
   mount(els.rightTop,
     h("div", { class: "cc-host" }),
@@ -1118,7 +1125,7 @@ function drawRightTop(): void {
     // 추적할 배 고르기(3.1): 고른 배의 블록만 진하게, 선반에는 그 배 몫
     trackSelect(),
     h("div", { class: "cam-switch", role: "group", "aria-label": "볼 구획" },
-      SECTORS.map((sec) =>
+      shownSectors().map((sec) =>
         h("button", { type: "button", class: sec.id === state.cctv ? "active" : "", onclick: () => openSector(sec.id) }, sec.name))));
   if (label) label.textContent = `작업 현황 · ${sector(state.cctv).name}`;
 }
@@ -1240,7 +1247,7 @@ function drawField(): void {
     h("span", { class: "hint" }, r ? `${r.n}회차 ${r.label} · 생산관리자의 눈으로 봅니다` : ""),
     h("div", { class: "field-cams", role: "group", "aria-label": "볼 곳" },
       h("button", { type: "button", class: state.fieldFocus === null ? "active" : "", onclick: () => { state.fieldFocus = null; drawField(); aimCamera(); } }, "전경"),
-      SECTORS.map((sec) =>
+      shownSectors().map((sec) =>
         h("button", { type: "button", class: state.fieldFocus === sec.id ? "active" : "", onclick: () => { state.fieldFocus = sec.id; drawField(); aimCamera(); } }, sec.name))),
     // 관리자 순간이동(3.0 안전): 설비 옆으로 가면 위험 반경 경고. 1인칭 이동은 나중에(D35)
     h("div", { class: "field-cams", role: "group", "aria-label": "관리자 이동" },

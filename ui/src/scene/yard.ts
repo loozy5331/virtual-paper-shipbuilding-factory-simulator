@@ -11,10 +11,10 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { LEAD_IN, type Delivery, type ForkliftJobView, type Frame, type LotView } from "./frame";
+import { LEAD_IN, nextStation, type Delivery, type ForkliftJobView, type Frame, type LotView } from "./frame";
 import { mesh, Person, SENIOR_NAME, WORKER_NAMES } from "./people";
 import { shipLook } from "./ships";
-import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot } from "./stock";
+import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot, stockUsed } from "./stock";
 import { buildDock, buildLand, buildRoof, buildSectorOutline, buildWalls, buildYardLines, GiantHand, Gulliver, SEA_Y, type DockParts } from "./coast";
 import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_TOP, MAT_W, MAT2_D,
   nearLane, QUEUE_Z, SAFE_SPOT, seaSpot, SECTORS, sector, sectorBounds, DOCK2_AREA, SHELF_X, SHELF_Z, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_IN, SPUR_OUT, SPUR_X, STATION_X,
@@ -434,6 +434,8 @@ export class Yard {
   private readonly areas: THREE.Group[][] = [];
   /** 내업 공장 지붕(작업장마다). 전경과 다른 구획을 볼 때만 보인다 */
   private readonly roofs: THREE.Group[][] = [];
+  /** 적치장 칸마다 바닥·선·이름표(간이공정이 쓰지 않는 칸은 숨긴다, 4.4) */
+  private readonly stockCells: THREE.Object3D[][] = [];
   /** 구획 윤곽과 이름표. 2도크 구획은 도크가 하나면 흐린 "증설 예정지" */
   private readonly sectorMarks = new Map<SectorId, { outline: THREE.Group | null; tag: CSS2DObject }>();
   /** 지금 배치를 맞춘 도크 수(PE장 작업장의 구획이 도크 수에 따라 달라진다) */
@@ -718,11 +720,13 @@ export class Yard {
       const floor = mesh(new THREE.BoxGeometry(STOCK_HALF * 2, 0.02, STOCK_D), "#b7b2a6", { roughness: 1 });
       floor.position.set(at.x, 0.011, (z0 + z1) / 2);
       floor.castShadow = false;
-      this.scene.add(floor, buildYardLines(at.x - STOCK_HALF, at.x + STOCK_HALF, z0, z1, "#f4f1ea"));
+      const lines = buildYardLines(at.x - STOCK_HALF, at.x + STOCK_HALF, z0, z1, "#f4f1ea");
+      this.scene.add(floor, lines);
       const ids = Object.keys(STATION_COLOR);
       const tag = label(`<i style="background:${STATION_COLOR[ids[STOCK_COLOR_OF[p]]]}"></i>${STOCK_NAME[p]}`, "station-tag small-tag");
       tag.position.set(at.x - STOCK_HALF + 0.9, 0.05, far - at.dir * 0.25);
       this.scene.add(tag);
+      this.stockCells[p] = [floor, lines, tag];
     });
   }
 
@@ -1275,13 +1279,17 @@ export class Yard {
     let person = 0;
     // 내업 지붕은 전경이나 다른 구획을 볼 때만(내업을 가까이 보면 지붕과 철골을 통째로 숨긴다, D38)
     const roofsOn = this.focus !== "shop";
+    // 간이공정(4.4): 쓰지 않는 공정의 작업장·이름표·적치장 칸은 숨겨 빈 땅으로 둔다(공장 벽·지붕도)
+    this.stockCells.forEach((cell, p) => { for (const o of cell) o.visible = stockUsed(f, p); });
+    const quayTag = this.sectorMarks.get("quay")?.tag;
+    if (quayTag) quayTag.visible = !f.stations[ST.quay]?.skipped;
     f.stations.forEach((st, i) => {
       const props = this.stationProps[i];
       const working = st.state === "work" || st.state === "rework";
       const robot = st.crew === "robot";
       const bench = (u: number) => benchAt(i, u, docks);
       props.mats.forEach((e, u) => {
-        const on = u < st.units.length;
+        const on = u < st.units.length && !st.skipped;
         e.mat.visible = on && i <= ST.dock;   // 안벽의장·시운전은 물 위(정반 없음)
         e.tag.visible = on && st.units.length > 1 && u > 0;
         if (this.areas[i][u]) this.areas[i][u].visible = on;
@@ -1335,7 +1343,8 @@ export class Yard {
         : i === ST.cut && working ? `<span class="chip cut">절단 중</span>`
         : i === ST.proc && working ? `<span class="chip cut">굽힘 중</span>` : "";
       const crewNote = robot ? " · 로봇" : st.crew === "skilled" ? " · 숙련공" : "";
-      props.tag.visible = i !== ST.trial;
+      props.tag.visible = i !== ST.trial && !st.skipped;
+      props.candle.visible = !st.skipped;
       setLabel(props.tag, `<i style="background:${STATION_COLOR[st.id]}"></i>${st.name}${st.units.length > 1 ? " 1호" : ""}${crewNote}${st.overtime && !robot ? " · 잔업" : ""}${chip}`);
     });
     if (!f.stations.some((st) => st.senior)) this.senior.setVisible(false);
@@ -1570,7 +1579,7 @@ export class Yard {
         return new THREE.Vector3(x - 0.9 - view.slot * 1.9, 0, QUEUE_Z);
       }
       case "carried": {
-        const from = x + 1.2, to = STATION_X[view.station + 1] - 0.9;
+        const from = x + 1.2, to = STATION_X[nextStation(f, view.station)] - 0.9;
         return new THREE.Vector3(from + (to - from) * ease(view.travel ?? frac), 0.32, LANE_Z);
       }
       case "sea": {

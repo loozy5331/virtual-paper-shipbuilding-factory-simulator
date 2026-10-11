@@ -52,6 +52,8 @@ export interface StationView extends Omit<UnitView, "unit"> {
   crew: Crew;
   overtime: boolean;
   units: UnitView[];
+  /** 간이공정이 쓰지 않는 공정(4.4). 그림에서 작업장·이름표·적치장 칸을 숨긴다 */
+  skipped: boolean;
 }
 
 export interface TransporterView {
@@ -215,7 +217,7 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
     group.sort((a, b) => priority[a.ship] - priority[b.ship]).forEach((lot, i) => { lot.slot = i; });
   }
 
-  const stations: StationView[] = result.stations.map((st) => {
+  const stations: StationView[] = result.stations.map((st, p) => {
     const units: UnitView[] = st.units.map((u) => {
       const rec = day > 0 ? u.daily[index] : { state: "idle", ship: null, workers: 0 };
       return {
@@ -235,6 +237,7 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
       crew: st.crew,
       overtime: config.stations[st.id].overtime,
       units,
+      skipped: !!scenario.stations[p]?.skipped,
     };
   });
 
@@ -314,4 +317,10 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
     shelves,
     research,
   };
+}
+
+/** 운반한 블록이 가는 다음 공정: 간이공정(4.4)은 쓰지 않는 공정을 건너뛴다(소조립 → PE장). 그림의 운반 구간에 쓴다 */
+export function nextStation(f: Frame, p: number): number {
+  for (let q = p + 1; q < f.stations.length; q++) if (!f.stations[q].skipped) return q;
+  return p + 1;
 }

@@ -11,9 +11,9 @@
 import type { Scenario } from "./api";
 import { s } from "./dom";
 import { HAT, STATE_INFO, STATION_COLOR, STATION_TRADE, TRADE_HAT } from "./labels";
-import type { Frame, LotView } from "./scene/frame";
+import { nextStation, type Frame, type LotView } from "./scene/frame";
 import type { TrackPick } from "./track";
-import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot } from "./scene/stock";
+import { STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot, stockUsed } from "./scene/stock";
 // 배치는 현장 3D와 같은 scene/layout.ts
 import { shipSize, areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
   along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, quayQueueSpot, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_Z, shelfAt, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
@@ -377,6 +377,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   scenario.stations.forEach((st, p) => {
     if (p === ST.trial) return;   // 시운전은 먼바다라 그리지 않는다(화면 오른쪽 아래 말풍선)
     const view = frame.stations[p];
+    if (view.skipped) return;     // 간이공정이 쓰지 않는 공정은 빈 땅(4.4)
     const color = STATION_COLOR[st.id];
     const b0 = benchAt(p, 0, docks);
     const x = b0.x;
@@ -486,6 +487,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
 
   // ----- 적치장: 공정마다 칸(내업 공정은 큰길 건너편, PE장은 1도크 구획) -----
   for (let p = 0; p < STOCK_STATIONS; p++) {
+    if (!stockUsed(frame, p)) continue;
     const at = STOCK_AT[p];
     const far = at.z0 + at.dir * STOCK_D, zTop = Math.min(at.z0, far);
     add(-97, s("rect", { x: px(at.x - STOCK_HALF), y: py(zTop), width: STOCK_HALF * 2 * S, height: STOCK_D * S * DEPTH,
@@ -537,7 +539,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   // ----- 트랜스포터(블록 한 대, 4.3): 나르는 날은 실은 블록과 함께 두 공정 사이 큰길, 쉬는 날은 차고에 큰길과 직각으로 -----
   frame.transporters.forEach((tr) => {
     const carried = tr.state === "move" && tr.ship ? frame.lots.find((l) => l.ship === tr.ship && l.place === "carried") : undefined;
-    const x = carried ? (STATION_X[carried.station] + (STATION_X[carried.station + 1] ?? STATION_X[carried.station] + 4)) / 2 : DEPOT.x;
+    const x = carried ? (STATION_X[carried.station] + (STATION_X[nextStation(frame, carried.station)] ?? STATION_X[carried.station] + 4)) / 2 : DEPOT.x;
     const z = carried ? LANE_Z : DEPOT.z;
     const body = tr.state === "breakdown_stop" ? (STATE_INFO.breakdown_stop?.color ?? "#8e2e42") : "#5f6b73";
     add(z, carried ? box(x, z, 2.0, 0.8, 0.3, body, "#3f474d") : box(x, z, 0.8, 1.7, 0.3, body, "#3f474d"));
