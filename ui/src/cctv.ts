@@ -15,7 +15,7 @@ import { nextStation, type Frame, type LotView } from "./scene/frame";
 import type { TrackPick } from "./track";
 import { quayWaiting, STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot, stockUsed } from "./scene/stock";
 // 배치는 현장 3D와 같은 scene/layout.ts
-import { shipSize, areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
+import { shipSize, areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, LOUNGE_SOUTH, loungeOf, fenceSegments, GATES, SOUTH_ROAD_X, YARD_Z1, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
   along, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, QUAY_ROAD_Z, QUAY_STORE, BERTHS, berthX, DEPOT_WALLS, GARAGE_WALLS, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_Z, shelfAt, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_ROADS, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
   BACK_LANE_Z, CONVEYORS, DOCK2_AREA, FORKLIFT_GARAGE, garageSpot, kitDrop, LANE_X0, QUAY_WORK_Z, STOCK_NAME, type SectorId } from "./scene/layout";
 
@@ -248,6 +248,11 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   add(GARAGE_WALLS.z0 - 0.01, walls(GARAGE_WALLS.x0, GARAGE_WALLS.x1, GARAGE_WALLS.z0, GARAGE_WALLS.z1, 0.8));
   add(GARAGE_WALLS.z0, tag(px(FORKLIFT_GARAGE.x + FORKLIFT_GARAGE.gap), py(GARAGE_WALLS.z0, 0.8) - 6, "지게차 차고", "cc-tag mid"));
   add(-99, box(LOUNGE.x, LOUNGE.z, 3.2, 2.6, 0.02, "#2c3530", "#2c3530"));
+  add(-99, box(LOUNGE_SOUTH.x, LOUNGE_SOUTH.z, 3.2, 2.6, 0.02, "#2c3530", "#2c3530"));
+  // 조선소 담장과 문(4.7.5): 바다 쪽만 열려 있다. 남문에서 큰길까지 작업자 길
+  for (const f of fenceSegments()) add(-98, s("line", { x1: px(f.x0), y1: py(f.z0), x2: px(f.x1), y2: py(f.z1), stroke: "#a3ada6", "stroke-width": 3 }));
+  for (const g of GATES) add(g.z, tag(px(g.x), py(g.z) + (g.id === "north" ? -6 : 16), g.name, "cc-place"));
+  add(-99, box(SOUTH_ROAD_X, (YARD_Z1 + LANE_Z + 0.5) / 2, 0.8, YARD_Z1 - LANE_Z - 0.5, 0.02, "#3a423d", "#3a423d"));
   // 뒷길(4.0.1): 물류창고 앞 가로 도로, 샛길은 뒷길까지
   add(-99, box((SPUR_X[0] + SPUR_X[5]) / 2, BACK_LANE_Z, SPUR_X[5] - SPUR_X[0] + 0.8, 0.9, 0.02, "#3a423d", "#3a423d"));
   SPUR_X.forEach((sx, k) => {
@@ -387,17 +392,20 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     tag(px(LAB.x + 3.6), py(LAB.z) - 4, "연구소", "cc-place start"),
     tag(px(LAB.x + 3.6), py(LAB.z) + 11, r.current ? `${r.current.name} ${r.current.done}/${r.current.total}일` : r.finished.length ? `완료 ${r.finished.length}개` : "쉬는 중", "cc-tag")));
 
-  // ----- 작업대기소: 벤치 둘과 쉬는 사람 -----
-  for (const row of [0, 1]) add(LOUNGE.z - 0.6 + row * 1.2 - 0.01, box(LOUNGE.x, LOUNGE.z - 0.6 + row * 1.2, 2.6, 0.3, 0.3, "#6b5a48", "#5a4a3a"));
-  // 직종마다 모자 색(4.0, D42). 많으면 12명까지만 그린다
-  const idleHats = Object.entries(frame.idleByTrade).flatMap(([t, n]) => Array.from({ length: n }, () => TRADE_HAT[t] ?? HAT.worker));
-  for (let i = 0; i < Math.min(idleHats.length, 12); i++) {
-    const row = Math.floor(i / 4), col = i % 4;
-    const z = LOUNGE.z - 0.6 + row * 1.2;
-    add(z + 0.01, person(LOUNGE.x - 1.2 + col * 0.8, z, idleHats[i], true));
+  // ----- 작업대기소: 벤치 둘과 쉬는 사람. 탑재·의장 직종은 남문 작업대기소(4.7.5) -----
+  for (const [at, name] of [[LOUNGE, "작업대기소"], [LOUNGE_SOUTH, "남문 작업대기소(탑재·의장)"]] as const) {
+    for (const row of [0, 1]) add(at.z - 0.6 + row * 1.2 - 0.01, box(at.x, at.z - 0.6 + row * 1.2, 2.6, 0.3, 0.3, "#6b5a48", "#5a4a3a"));
+    // 직종마다 모자 색(4.0, D42). 많으면 8명까지만 그린다
+    const idleHats = Object.entries(frame.idleByTrade).filter(([tr]) => loungeOf(tr) === at)
+      .flatMap(([tr, n]) => Array.from({ length: n }, () => TRADE_HAT[tr] ?? HAT.worker));
+    for (let i = 0; i < Math.min(idleHats.length, 8); i++) {
+      const row = Math.floor(i / 4), col = i % 4;
+      const z = at.z - 0.6 + row * 1.2;
+      add(z + 0.01, person(at.x - 1.2 + col * 0.8, z, idleHats[i], true));
+    }
+    add(at.z + 2, tag(px(at.x), py(at.z + 1.3) + 16, name, "cc-place"));
+    add(at.z + 2, tag(px(at.x), py(at.z + 1.3) + 31, `쉬는 인원 ${idleHats.length}명`, "cc-tag mid"));
   }
-  add(LOUNGE.z + 2, tag(px(LOUNGE.x), py(LOUNGE.z + 1.3) + 16, "작업대기소", "cc-place"));
-  add(LOUNGE.z + 2, tag(px(LOUNGE.x), py(LOUNGE.z + 1.3) + 31, `쉬는 인원 ${frame.idleWorkers}명`, "cc-tag mid"));
 
   // ----- 공정 -----
   scenario.stations.forEach((st, p) => {
