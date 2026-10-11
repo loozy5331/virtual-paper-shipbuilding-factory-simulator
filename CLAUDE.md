@@ -19,7 +19,7 @@
 - 분기별 옵션(D33): 시나리오 `options`에 없는 옵션은 생산계획서(`form.ts` `openOptions`)가 그리지 않고 엔진(`_locked_options`)이 거절한다. 테스트는 `opened()`로 잠금을 푼다.
 - `engine/tests/test_rules_doc.py`: 규칙 문서 10장 값과 버전별 규칙 검증(86개). `engine/tools/balance.py`: 지배 전략 점검.
 - `server/app.py`: 표준 라이브러리 HTTP 서버(API + `ui/dist`). `server/store.py`: sqlite3(users·auth·runs), 파일 `server/data/shipyard.sqlite3`(git 제외).
-- `ui/`: 프레임워크 없는 TypeScript + esbuild. `main.ts`(상태·화면 전환), `form.ts`(생산계획서), `cctv.ts`(관제실 2D 작업 현황), `gantt.ts`, `report.ts`, `api.ts`(타입), `labels.ts`(이름·색). 3D는 `ui/src/scene/`: `frame.ts`(결과 → 그날 장면, 순수 함수), `layout.ts`(모든 자리 좌표, 2D·3D 공용), `yard.ts`(Three.js), `coast.ts`, `people.ts`, `ships.ts`, `stock.ts`.
+- `ui/`: 프레임워크 없는 TypeScript + esbuild. `main.ts`(상태·화면 전환), `form.ts`(생산계획서), `cctv.ts`(관제실 2D 작업 현황), `gantt.ts`, `report.ts`, `api.ts`(타입), `labels.ts`(이름·색). 3D는 `ui/src/scene/`: `frame.ts`(결과 → 그날 장면, 순수 함수), `layout.ts`(모든 자리 좌표, 2D·3D 공용), `yard.ts`(Three.js 장면·카메라·매 프레임 그리기), `harbor.ts`(진수·예인선·계류줄), `lot.ts`(로트·배 모형), `props.ts`(줄·예인선·납품 배와 마차·호이스트·로봇 모형), `util.ts`(종이 재질·이름표·칩), `coast.ts`, `people.ts`, `ships.ts`, `stock.ts`.
 
 ## 지킬 것
 
