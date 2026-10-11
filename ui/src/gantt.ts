@@ -65,6 +65,12 @@ function lastDayAt(ship: Ship, station: string): number {
   return ends.length ? Math.max(...ends) : Infinity;
 }
 
+/** 이 운반 구간을 트랜스포터가 날랐는가(그러면 배 탭은 공정 줄 대신 운반 설비 줄에 그린다, 4.12.10) */
+function byEquipment(seg: Segment, carried: Set<number>): boolean {
+  for (let d = seg.start; d <= seg.end; d++) if (!carried.has(d)) return false;
+  return true;
+}
+
 /** 나눠 한 구간의 부분 수(가장 많이 나눈 날) */
 function splitCount(ship: Ship, seg: Segment): number {
   let k = 1;
@@ -337,7 +343,7 @@ export function renderGantt(result: Result, scenario: Scenario, today: number, o
 
 // ---------------------------------------------------------------------------
 // 배 한 척: 줄 = 공정. 위 막대는 그 배(작업장 색)와 같은 공정을 쓰던 다른 배(옅은 회색),
-// 아래 얇은 줄은 그 배의 손실. 맨 아래 줄은 그 배 몫 자재가 들어온 날.
+// 아래 얇은 줄은 그 배의 손실. 그 아래 줄은 그 배 몫 자재가 들어온 날, 맨 아래는 운반 설비(트랜스포터·지게차).
 // ---------------------------------------------------------------------------
 
 const S_ROW_H = 58;
@@ -352,7 +358,7 @@ const OTHER = "#d3dbd6";
  */
 function drawUnitRows(g: SVGElement, ship: Ship, st: Scenario["stations"][number], units: { unit: number; daily: { state: string; ship: string | null }[] }[],
   hgt: number, row: number, y: number, x: (day: number) => number, width: (a: number, b: number) => number,
-  laneW: number, today: number, onPick?: OnPick): void {
+  laneW: number, today: number, carried: Set<number>, onPick?: OnPick): void {
   g.append(
     s("rect", { x: 0, y: y - 8, width: W, height: hgt - 4, class: row % 2 ? "band odd" : "band" }),
     s("rect", { x: 12, y: y + 4, width: 10, height: 10, rx: 3, fill: STATION_COLOR[st.id] }),
@@ -415,6 +421,7 @@ function drawUnitRows(g: SVGElement, ship: Ship, st: Scenario["stations"][number
     const w = width(seg.start, Math.min(seg.end, today));
     const span = `${seg.start}~${seg.end}일 (${seg.end - seg.start + 1}일)`;
     if (seg.state === "transport") {
+      if (byEquipment(seg, carried)) continue;   // 트랜스포터가 나른 날은 아래 운반 설비 줄에
       g.append(s("g", null,
         s("title", null, `${ship.id} · ${st.name} → 다음 공정 운반 · ${span}`),
         s("rect", { x: x0 + 1.5, y: y + 2, width: Math.max(1, w - 3), height: SUB_BAR - 4, rx: 3, class: "transport" })));
@@ -434,6 +441,55 @@ function drawUnitRows(g: SVGElement, ship: Ship, st: Scenario["stations"][number
   }
 }
 
+/**
+ * 배 탭의 운반 설비(4.12.10): 트랜스포터(공정 사이 블록)와 지게차(자재 키트·부재 팔레트) 한 대에 한 줄.
+ * 이 배를 나른 날은 진한 막대(어디서 어디로는 마우스를 올리면), 다른 배는 옅은 회색, 고장은 아래 얇은 띠.
+ */
+function drawShipEquipment(svg: SVGElement, result: Result, scenario: Scenario, ship: Ship, top: number,
+  x: (day: number) => number, width: (a: number, b: number) => number, laneW: number, today: number): void {
+  svg.append(s("text", { x: 12, y: top - 6, class: "section-label" }, "운반 설비"));
+  const stationName = Object.fromEntries(scenario.stations.map((st) => [st.id, st.name]));
+  const materialName = Object.fromEntries(scenario.materials.map((m) => [m.id, m.name]));
+  // 트랜스포터가 나른 날의 출발 공정: 그날까지 시작한 이 배의 마지막 운반 구간. 운행은 싣는 날과 내려놓는 날 이틀이고,
+  // 내려놓는 날 배는 벌써 다음 공정에서 일한다(엔진 기록).
+  const fromOf = (day: number) => ship.segments.filter((sg) => sg.state === "transport" && sg.start <= day).at(-1)?.station;
+  let ey = top;
+  const row = (title: string, sub: string, daily: { state: string }[],
+    mine: (day: number) => string | null, others: (day: number) => string | null, what: string) => {
+    const g = s("g", { class: "eq-row" });
+    const y = ey + (EQ_H - EQ_BAR) / 2 - 1;
+    g.append(
+      s("rect", { x: 0, y: ey, width: W, height: EQ_H - 2, class: "band eq" }),
+      s("text", { x: 12, y: ey + 15, class: "eq-id" }, title),
+      s("text", { x: 12, y: ey + 27, class: "ship-sub" }, sub),
+      s("rect", { x: LEFT, y, width: laneW, height: EQ_BAR, class: "lane" }));
+    for (const run of runs(daily, (d) => mine(d) ? `me:${mine(d)}` : others(d) ? `other:${others(d)}` : null, today)) {
+      const [kind, text] = [run.key.slice(0, run.key.indexOf(":")), run.key.slice(run.key.indexOf(":") + 1)];
+      const span = `${run.start}~${run.end}일`;
+      if (kind === "me") g.append(barEl(x(run.start), y, width(run.start, run.end), EQ_BAR, "#33413a", `${title} · ${ship.id} ${text} · ${span}`, { label: ship.id }));
+      else g.append(barEl(x(run.start), y, width(run.start, run.end), EQ_BAR, OTHER, `${title} · ${text} ${what} · ${span}`, { label: text.split("+").map((t) => t.split(" ")[0]).join("+"), textColor: "#4b5a51" }));
+    }
+    for (const run of runs(daily, (d) => daily[d - 1].state === "breakdown_stop" ? "stop" : null, today)) {
+      g.append(barEl(x(run.start), y + EQ_BAR - 5, width(run.start, run.end), 5, STOP_COLOR, `${title} 고장 중지 · ${run.start}~${run.end}일`, { hatch: true }));
+    }
+    svg.append(g);
+    ey += EQ_H;
+  };
+  for (const tr of result.transporters) {
+    row("트랜스포터", "공정 사이 블록", tr.daily,
+      (d) => tr.daily[d - 1].ships.includes(ship.id) ? `블록 운반 (${stationName[fromOf(d) ?? ""] ?? "공정"} → 다음 공정)` : null,
+      (d) => tr.daily[d - 1].state === "move" ? tr.daily[d - 1].ships.join("+") : null, "블록 운반");
+  }
+  const jobText = (j: ForkliftJob) => j.kind === "pallet"
+    ? `부재 팔레트 (${stationName[j.from ?? ""] ?? "가공"} → ${stationName[j.station]})`
+    : `${materialName[j.material ?? ""] ?? "자재"} 키트 → ${stationName[j.station]}`;
+  for (const fk of result.forklifts ?? []) {
+    row(`지게차 ${fk.id}`, "자재 키트 · 부재 팔레트", fk.daily,
+      (d) => { const jobs = fk.daily[d - 1].jobs.filter((j) => j.ship === ship.id); return jobs.length ? jobs.map(jobText).join(", ") : null; },
+      (d) => { const jobs = fk.daily[d - 1].jobs.filter((j) => j.ship !== ship.id); return jobs.length ? [...new Set(jobs.map((j) => j.ship))].join("+") : null; }, "운반");
+  }
+}
+
 export function renderShipGantt(result: Result, scenario: Scenario, shipId: string, today: number, onPick?: OnPick): SVGElement {
   const days = result.days;
   const ship = result.ships.find((sh) => sh.id === shipId)!;
@@ -449,7 +505,13 @@ export function renderShipGantt(result: Result, scenario: Scenario, shipId: stri
   let acc = TOP;
   for (const st of stations) { rowY.push(acc); acc += rowH(st.id); }
   const matRowY = acc + 6;
-  const height = matRowY + 40;
+  // 운반 설비(4.12.10): 트랜스포터·지게차 한 대에 한 줄. 이 배를 나른 날은 진하게, 다른 배는 옅게.
+  const eqTop = matRowY + 40 + SECTION_GAP;
+  const eqCount = result.transporters.length + (result.forklifts?.length ?? 0);
+  const height = eqCount ? eqTop + eqCount * EQ_H + 8 : matRowY + 40;
+  // 트랜스포터가 이 배를 나른 날: 공정 줄의 운반 점선 틀 대신 운반 설비 줄에 그린다
+  const carried = new Set<number>();
+  for (const tr of result.transporters) tr.daily.forEach((rec, i) => { if (rec.ships.includes(ship.id)) carried.add(i + 1); });
   const clip = (end: number) => Math.min(end, today);
 
   const svg = s("svg", {
@@ -475,7 +537,7 @@ export function renderShipGantt(result: Result, scenario: Scenario, shipId: stri
     const y = rowY[row] + 8;
     const g = s("g", { class: "ship-row" });
     if (expanded(st.id)) {
-      drawUnitRows(g, ship, st, unitsOf(st.id), rowH(st.id), row, y, x, width, days * dayW, today, onPick);
+      drawUnitRows(g, ship, st, unitsOf(st.id), rowH(st.id), row, y, x, width, days * dayW, today, carried, onPick);
       svg.append(g);
       return;
     }
@@ -521,6 +583,7 @@ export function renderShipGantt(result: Result, scenario: Scenario, shipId: stri
         g.append(barEl(x0, y, w, BAR_H, STATION_COLOR[st.id], `${ship.id} · ${st.name}${seg.state === "rework" ? " 재작업" : ""} · ${span}`,
           { label: seg.state === "rework" ? "재작업" : ship.id, textColor: STATION_TEXT[st.id], hatch: seg.state === "rework", onPick: pick }));
       } else if (seg.state === "transport") {
+        if (byEquipment(seg, carried)) continue;   // 트랜스포터가 나른 날은 아래 운반 설비 줄에
         g.append(s("g", null,
           s("title", null, `${ship.id} · ${st.name} → 다음 공정 운반 · ${span}`),
           s("rect", { x: x0 + 1.5, y: y + 4, width: Math.max(1, w - 3), height: BAR_H - 8, rx: 3, class: "transport" })));
@@ -563,6 +626,7 @@ export function renderShipGantt(result: Result, scenario: Scenario, shipId: stri
       s("text", { x: cx, y: matRowY + 27, class: "arrival-label" }, name[ev.material])));
   }
   svg.append(mat);
+  if (eqCount) drawShipEquipment(svg, result, scenario, ship, eqTop, x, width, days * dayW, today);
 
   if (today >= 1) {
     const cx = x(Math.min(today, days) + 1);
