@@ -59,10 +59,14 @@ function barEl(x0: number, y: number, w: number, hgt: number, fill: string, titl
 
 type Ship = Result["ships"][number];
 
-/** 이 배가 그 공정을 마지막으로 쓴 날(운반·대기 포함). 그 뒤의 다른 배·빈 작업장 중지는 이 배와 무관해 배 탭에 그리지 않는다(4.12.8). 아직 안 왔으면 끝 없음 */
-function lastDayAt(ship: Ship, station: string): number {
-  const ends = ship.segments.filter((sg) => sg.station === station).map((sg) => sg.end);
-  return ends.length ? Math.max(...ends) : Infinity;
+/**
+ * 배 탭에 다른 배·빈 작업장·운반 설비의 고장을 그릴지(4.12.12). 이 배를 직접 멈춘 고장만 그린다:
+ * 그날 이 배가 그 공정을 기다렸거나(작업장 대기, 하루 기록의 공정이 기다린 공정), 운반을 기다렸거나(트랜스포터), 자재를 기다렸을 때(지게차).
+ * 이 배가 작업 중에 겪은 고장은 따로 늘 진하게 그린다.
+ */
+function waitedOn(ship: Ship, day: number, state: "station_wait" | "transport_wait" | "material_wait", station?: string): boolean {
+  const rec = ship.daily[day - 1];
+  return !!rec && rec.state === state && (station === undefined || rec.station === station);
 }
 
 /** 이 운반 구간을 트랜스포터가 날랐는가(그러면 배 탭은 공정 줄 대신 운반 설비 줄에 그린다, 4.12.10) */
@@ -353,7 +357,7 @@ const OTHER = "#d3dbd6";
 
 /**
  * 작업장이 2곳 이상인 공정의 작업장 하위 줄(배 탭, 4.12.5 나눠 한 공정 → 4.12.11 증설한 공정 모두). 줄마다 엔진의 작업장 기록 그대로: 이 배는 공정 색, 다른 배는 옅은 회색,
- * 사고·고장은 이 배가 겪었으면 중지 색 막대, 다른 배·빈 작업장이면 아래 얇은 띠(4.12.6). 먼저 끝난 부분은 작업장을 비우고 적치장에서 기다리므로(그 작업장은 다른 배가 쓸 수 있다)
+ * 사고·고장은 이 배가 겪었으면 중지 색 막대, 다른 배·빈 작업장이면 이 배가 기다리던 날만 아래 얇은 띠(4.12.6, 4.12.12). 먼저 끝난 부분은 작업장을 비우고 적치장에서 기다리므로(그 작업장은 다른 배가 쓸 수 있다)
  * 짝 대기는 작업장 줄이 아니라 아래 얇은 줄에 이 배의 손실과 함께 그린다.
  */
 function drawUnitRows(g: SVGElement, ship: Ship, st: Scenario["stations"][number], units: { unit: number; daily: { state: string; ship: string | null }[] }[],
@@ -403,10 +407,9 @@ function drawUnitRows(g: SVGElement, ship: Ship, st: Scenario["stations"][number
       }
     }
     // 다른 배나 빈 작업장의 중지: 옅은 막대 아래 얇은 띠(한 줄 공정과 같은 표시)
-    const done = lastDayAt(ship, st.id);
     const otherStop = (day: number) => {
       const rec = u.daily[day - 1];
-      return day <= done && stopped(rec) && rec.ship !== ship.id ? `${rec.state}:${rec.ship ?? ""}` : null;
+      return waitedOn(ship, day, "station_wait", st.id) && stopped(rec) && rec.ship !== ship.id ? `${rec.state}:${rec.ship ?? ""}` : null;
     };
     for (const run of runs(u.daily, otherStop, today)) {
       const [state, who] = run.key.split(":");
@@ -444,7 +447,7 @@ function drawUnitRows(g: SVGElement, ship: Ship, st: Scenario["stations"][number
 
 /**
  * 배 탭의 운반 설비(4.12.10): 트랜스포터(공정 사이 블록)와 지게차(자재 키트·부재 팔레트) 한 대에 한 줄.
- * 이 배를 나른 날은 진한 막대(어디서 어디로는 마우스를 올리면), 다른 배는 옅은 회색, 고장은 아래 얇은 띠.
+ * 이 배를 나른 날은 진한 막대(어디서 어디로는 마우스를 올리면), 다른 배는 옅은 회색, 이 배를 기다리게 한 고장은 아래 얇은 띠.
  */
 function drawShipEquipment(svg: SVGElement, result: Result, scenario: Scenario, ship: Ship, top: number,
   x: (day: number) => number, width: (a: number, b: number) => number, laneW: number, today: number): void {
@@ -456,7 +459,7 @@ function drawShipEquipment(svg: SVGElement, result: Result, scenario: Scenario, 
   const fromOf = (day: number) => ship.segments.filter((sg) => sg.state === "transport" && sg.start <= day).at(-1)?.station;
   let ey = top;
   const row = (title: string, sub: string, daily: { state: string }[],
-    mine: (day: number) => string | null, others: (day: number) => string | null, what: string) => {
+    mine: (day: number) => string | null, others: (day: number) => string | null, what: string, waits: "transport_wait" | "material_wait") => {
     const g = s("g", { class: "eq-row" });
     const y = ey + (EQ_H - EQ_BAR) / 2 - 1;
     g.append(
@@ -470,24 +473,25 @@ function drawShipEquipment(svg: SVGElement, result: Result, scenario: Scenario, 
       if (kind === "me") g.append(barEl(x(run.start), y, width(run.start, run.end), EQ_BAR, "#33413a", `${title} · ${ship.id} ${text} · ${span}`, { label: ship.id }));
       else g.append(barEl(x(run.start), y, width(run.start, run.end), EQ_BAR, OTHER, `${title} · ${text} ${what} · ${span}`, { label: text.split("+").map((t) => t.split(" ")[0]).join("+"), textColor: "#4b5a51" }));
     }
-    for (const run of runs(daily, (d) => daily[d - 1].state === "breakdown_stop" ? "stop" : null, today)) {
+    // 고장은 이 배가 그 설비를 기다리던 날만(트랜스포터는 운반 대기, 지게차는 자재 대기, 4.12.12)
+    for (const run of runs(daily, (d) => daily[d - 1].state === "breakdown_stop" && waitedOn(ship, d, waits) ? "stop" : null, today)) {
       g.append(barEl(x(run.start), y + EQ_BAR - 5, width(run.start, run.end), 5, STOP_COLOR, `${title} 고장 중지 · ${run.start}~${run.end}일`, { hatch: true }));
     }
     svg.append(g);
     ey += EQ_H;
   };
-  for (const tr of result.transporters) {
-    row("트랜스포터", "공정 사이 블록", tr.daily,
+  result.transporters.forEach((tr, i) => {
+    row(result.transporters.length > 1 ? `트랜스포터 ${i + 1}호` : "트랜스포터", "공정 사이 블록", tr.daily,
       (d) => tr.daily[d - 1].ships.includes(ship.id) ? `블록 운반 (${stationName[fromOf(d) ?? ""] ?? "공정"} → 다음 공정)` : null,
-      (d) => tr.daily[d - 1].state === "move" ? tr.daily[d - 1].ships.join("+") : null, "블록 운반");
-  }
+      (d) => tr.daily[d - 1].state === "move" ? tr.daily[d - 1].ships.join("+") : null, "블록 운반", "transport_wait");
+  });
   const jobText = (j: ForkliftJob) => j.kind === "pallet"
     ? `부재 팔레트 (${stationName[j.from ?? ""] ?? "가공"} → ${stationName[j.station]})`
     : `${materialName[j.material ?? ""] ?? "자재"} 키트 → ${stationName[j.station]}`;
   for (const fk of result.forklifts ?? []) {
     row(`지게차 ${fk.id}`, "자재 키트 · 부재 팔레트", fk.daily,
       (d) => { const jobs = fk.daily[d - 1].jobs.filter((j) => j.ship === ship.id); return jobs.length ? jobs.map(jobText).join(", ") : null; },
-      (d) => { const jobs = fk.daily[d - 1].jobs.filter((j) => j.ship !== ship.id); return jobs.length ? [...new Set(jobs.map((j) => j.ship))].join("+") : null; }, "운반");
+      (d) => { const jobs = fk.daily[d - 1].jobs.filter((j) => j.ship !== ship.id); return jobs.length ? [...new Set(jobs.map((j) => j.ship))].join("+") : null; }, "운반", "material_wait");
   }
 }
 
@@ -553,13 +557,12 @@ export function renderShipGantt(result: Result, scenario: Scenario, shipId: stri
     // 같은 공정을 쓰던 다른 배와 그 공정의 중지(사고·고장): 이 배가 왜 기다렸는지 보인다.
     // 증설한 공정은 작업장을 합쳐 본다: 다른 배가 하나라도 있으면 그 배들, 모든 작업장이 멈췄으면 중지.
     const units = result.stations.find((rs) => rs.id === st.id)!.units;
-    // 중지는 이 배가 그 공정을 마친 날까지만(그 뒤는 이 배와 무관, 4.12.8)
+    // 중지는 이 배가 이 공정을 기다리던 날만(4.12.12)
     const daily = units[0].daily;
-    const done = lastDayAt(ship, st.id);
     const key = (day: number) => {
       const recs = units.map((u) => u.daily[day - 1]);
       const stopped = recs.filter((rec) => rec.state === "accident_stop" || rec.state === "breakdown_stop");
-      if (day <= done && stopped.length === recs.length) return `${stopped[0].state}:`;
+      if (waitedOn(ship, day, "station_wait", st.id) && stopped.length === recs.length) return `${stopped[0].state}:`;
       const others = recs.map((rec) => rec.ship).filter((sid) => sid && sid !== ship.id);
       return others.length ? `other:${others.join("·")}` : null;
     };
