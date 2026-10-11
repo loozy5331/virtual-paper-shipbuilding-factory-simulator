@@ -18,7 +18,7 @@ import { quayWaiting, STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot, st
 import { buildDock, buildLand, buildRoof, buildSectorOutline, buildWalls, buildYardLines, GiantHand, Gulliver, SEA_Y, type DockParts } from "./coast";
 import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LANE_Z, LOUNGE, LOUNGE_SOUTH, loungeOf, fenceSegments, GATES, GATE_W, OUTER_ROAD, MAT_D, MAT_TOP, MAT_W, MAT2_D,
   nearLane, QUEUE_Z, SAFE_SPOT, seaSpot, SECTORS, sector, sectorBounds, DOCK2_AREA, SHELF_X, SHELF_Z, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_IN, SPUR_OUT, SPUR_X, STATION_X,
-  STOCK_AT, STOCK_D, STOCK_HALF, STOCK_NAME, CONVEYORS, BACK_LANE_Z, shipSize, garageSpot, FORKLIFT_GARAGE, KIT_PICK, kitDrop, roadPath, palletPath, SPUR_ROADS, type RoadSide, QUAY_WORK_Z, ST, isShop, QUAY_ROAD_Z, QUAY_STORE, QUAY, DEPOT_WALLS, GARAGE_WALLS, depotSpot, along, groundY, LAB_TREES, LAND_ROUTE, route, SHIP_ROUTE, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
+  STOCK_AT, STOCK_D, STOCK_HALF, STOCK_NAME, BAY_C, BOLLARD, bollardX, MOUTH_X, CONVEYORS, BACK_LANE_Z, shipSize, garageSpot, FORKLIFT_GARAGE, KIT_PICK, kitDrop, roadPath, palletPath, SPUR_ROADS, type RoadSide, QUAY_WORK_Z, ST, isShop, QUAY_ROAD_Z, QUAY_STORE, QUAY, DEPOT_WALLS, GARAGE_WALLS, depotSpot, along, groundY, LAB_TREES, LAND_ROUTE, route, SHIP_ROUTE, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
 import { clamp01, ease, flatOf, hullTris, type Tri } from "./model";
 import { STATE_INFO, STATION_COLOR, STATION_TRADE, TRADE_HAT } from "../labels";
 import type { TrackPick } from "../track";
@@ -28,8 +28,14 @@ import type { TrackPick } from "../track";
 
 // 진수(그림만, 엔진 규칙 없음): 인도 다음 날 하루 안에 ① 작업자가 나가고 ② 도크에 물을 채우고 ③ 걸리버의 손이 문을 열고
 // ④ 배가 나가고 ⑤ 문을 닫고 ⑥ 물을 뺀다. 그동안 다음 블록은 도크 앞에서 기다린다. 값은 하루 안의 비율(frac).
-const LAUNCH = { fill: [0.1, 0.28], open: [0.28, 0.4], sail: [0.4, 0.62], close: [0.62, 0.74], drain: [0.74, 0.86] } as const;
-const LAUNCH_END = 0.86;
+// 4.8.1: 갓 진수한 배는 아직 동력이 없다. 예인선 둘이 만 입구에서 들어와(come) 앞 배가 문 밖으로 끌어내고(sail),
+// 앞뒤로 줄을 걸어 안벽 앞바다까지 끈 뒤(tow) 옆으로 돌아 선석에 밀어 댄다. 선석에 닿으면 계류줄을 걸고 예인선은 나간다(go).
+const LAUNCH = { fill: [0.04, 0.16], open: [0.16, 0.26], sail: [0.26, 0.4], tow: [0.4, 0.86], close: [0.42, 0.54], drain: [0.56, 0.68] } as const;
+const LAUNCH_END = 1;
+/** 예인선이 만 입구에서 들어오고(come) 나가는(go) 때 */
+const TUG_COME = [0.02, 0.22] as const, TUG_GO = [LAUNCH.tow[1], 1] as const;
+/** tow 안의 나눔: 끌기 [0, TOW_PULL), 옆으로 돌기 [TOW_PULL, TOW_PUSH), 밀어 대기 [TOW_PUSH, 1] */
+const TOW_PULL = 0.6, TOW_PUSH = 0.72;
 const DOOR_OPEN = Math.PI * 0.47;   // 문이 거의 직각으로 열린다
 
 // 현장 안전(3.0, D27·D28·D35): 관리자는 평소 작업장에서 떨어진 안전한 자리에 선다. "골리앗 주변으로"·"트랜스포터 주변으로"를
@@ -162,6 +168,16 @@ class BlockMesh {
   }
 }
 
+/** 접힌 선체를 덮는 갑판 종이 한 장 */
+function deckSheet(color?: THREE.Color): THREE.Mesh {
+  const shape = new THREE.Shape([[-0.62, 0], [-0.45, 0.38], [0.45, 0.38], [0.7, 0], [0.45, -0.38], [-0.45, -0.38]].map(([x, z]) => new THREE.Vector2(x, z)));
+  const deck = new THREE.Mesh(new THREE.ShapeGeometry(shape), paperMaterial(color));
+  deck.rotation.x = Math.PI / 2;
+  deck.position.y = 0.395;
+  deck.receiveShadow = true;
+  return deck;
+}
+
 class Lot {
   readonly group = new THREE.Group();
   private readonly units: BlockMesh[] = [];
@@ -197,6 +213,8 @@ class Lot {
   /** 트랜스포터에 실렸나(그날 운반에서 수레가 실으러 온 뒤). 운반이 아니면 false */
   loaded = false;
   prev: { place: string; station: number; unit: number } | null = null;
+  /** 다 지은 배의 반 길이·반 폭·갑판 높이(야드 단위, 선종 크기를 곱함). 예인줄·계류줄을 거는 자리(4.8.1) */
+  readonly dims: { halfLen: number; halfW: number; deck: number };
 
   constructor(readonly ship: string, kind: string) {
     for (let u = 0; u < 8; u++) {
@@ -224,11 +242,7 @@ class Lot {
     const look = shipLook(kind);
     this.flag.position.copy(look.flagAt);
     this.flag.scale.setScalar(0.6);
-    const deckShape = new THREE.Shape([[-0.62, 0], [-0.45, 0.38], [0.45, 0.38], [0.7, 0], [0.45, -0.38], [-0.45, -0.38]].map(([x, z]) => new THREE.Vector2(x, z)));
-    this.deck = new THREE.Mesh(new THREE.ShapeGeometry(deckShape), paperMaterial());
-    this.deck.rotation.x = Math.PI / 2;
-    this.deck.position.y = 0.395;
-    this.deck.receiveShadow = true;
+    this.deck = deckSheet();
     this.parts = look.parts;
     this.partX = this.parts.map((part) => new THREE.Box3().setFromObject(part).getCenter(new THREE.Vector3()).x);
     const body = new THREE.Group();
@@ -247,6 +261,8 @@ class Lot {
     this.group.add(this.sheet, this.boat, this.tag);
     // 작은 배(예인선·피더선, 4.6)는 블록과 배를 작게(소인국 눈높이로 같은 정반·도크에서 작아 보인다)
     this.group.scale.setScalar(shipSize(kind));
+    const k = 0.85 * shipSize(kind);
+    this.dims = { halfLen: 1.15 * look.hull[0] * k, halfW: 0.4 * look.hull[2] * k, deck: 0.4 * look.hull[1] * k };
   }
 
   /** 절단 중이면 자투리가 종이 둘레에서 튀어 나갔다가 떨어진다. time은 초. */
@@ -428,6 +444,11 @@ export class Yard {
   private readonly shipRoute: Route = route(SHIP_ROUTE, 1);
   private readonly supplyExit: Route = route(SUPPLY_EXIT);
   private readonly seaExit: Route = route(SEA_EXIT);
+  /** 진수 예인선(4.8.1): 도크마다 둘(0 = 앞에서 끄는 배, 1 = 뒤에서 잡는 배)과 예인줄 */
+  private readonly tugs = [0, 1].map(() => [0, 1].map(() => buildTug()));
+  private readonly towLines = [0, 1].map(() => [0, 1].map(() => new Rope("#3a3f3c", 0.012)));
+  /** 계류줄(4.8.1): 선석에 댄 배마다 넷(선수줄·선미줄·앞뒤 스프링). 모자라면 늘린다 */
+  private readonly moorings: Rope[][] = [];
   /** 강재 롤러 컨베이어 위 철판(절단이 일하는 날 흐른다) */
   private readonly steelPlates: THREE.Mesh[] = [];
   private steelOn = false;
@@ -547,10 +568,11 @@ export class Yard {
     this.labWindow = lab.window;
     this.buildSectors();
     this.placeStations(1);
-    for (const cart of [...this.supply, ...this.ships]) {
+    for (const cart of [...this.supply, ...this.ships, ...this.tugs.flat()]) {
       cart.root.visible = false;
       this.scene.add(cart.root);
     }
+    for (const line of this.towLines.flat()) this.scene.add(line.root);
 
     // 대기소 사람(4.0: 직종 넷이라 많게는 30명). 보이는 사람은 최대 24명
     for (let i = 0; i < WORKER_NAMES.length; i++) {
@@ -1299,6 +1321,7 @@ export class Yard {
     // 진수: 재생 중 하루 안의 비율로 단계를 나눈다(멈춰 있으면 frac = 1이라 다 끝난 모습).
     const launching = src.playing && frac < LAUNCH_END ? f.launches : [];
     this.drawLaunchDocks(launching, frac);
+    const towed: ({ lot: Lot; pose: LaunchPose } | null)[] = [null, null];
     for (const view of f.lots) {
       const lot = this.lots.get(view.ship);
       if (!lot) continue;
@@ -1308,10 +1331,12 @@ export class Yard {
       if (!lot.group.visible) continue;
       const launch = launching.find((l) => l.ship === view.ship);
       if (launch) {
-        // 진수하는 배: 도크에서 물에 뜨고, 문으로 나가 바다 자리로
+        // 진수하는 배: 도크에서 물에 뜨고, 예인선이 문 밖으로 끌어내 안벽 선석(또는 정박지)에 댄다
         lot.setForm(4, false);
-        lot.group.rotation.set(0, 0, 0);
-        lot.group.position.copy(this.launchPosition(launch.unit, frac, this.lotPosition(view, frac, f)));
+        const pose = this.launchPose(launch.unit, frac, this.lotPosition(view, frac, f), lot);
+        lot.group.rotation.set(0, pose.yaw, 0);
+        lot.group.position.copy(pose.pos);
+        towed[launch.unit] = { lot, pose };
         lot.target.copy(lot.group.position);
         lot.prev = null;
         setLabel(lot.tag, this.lotLabel(view));
@@ -1362,6 +1387,9 @@ export class Yard {
       setLabel(lot.tag, this.lotLabel(view));
       lot.tag.position.y = view.form >= 3 ? 1.9 : 1.0;
     }
+
+    towed.forEach((t, u) => this.drawTugs(u, t, frac));
+    this.drawMoorings(f, launching, frac);
 
     // 골리앗 크레인(걸리버의 손): 탑재 중이면 자석판이 블록을 따라간다. 쉴 때는 도크 위에 손을 띄워 둔다.
     // 도크마다 손이 하나: 1호 = 오른손, 2호 = 왼손(2호가 있을 때만). 진수 중이면 그 도크의 손이 문을 열고 닫는다.
@@ -1670,17 +1698,129 @@ export class Yard {
     return k > 0.001 ? { at, k } : null;
   }
 
-  /** 진수하는 배의 자리: 도크 바닥 → 물에 떠오름 → 문 밖 → 바다의 제자리. */
-  private launchPosition(unit: number, frac: number, sea: THREE.Vector3): THREE.Vector3 {
+  /**
+   * 진수하는 배의 자리와 뱃머리 방향(yaw, 0 = +x): 도크 바닥 → 물에 떠오름 → 앞 예인선이 문 밖으로 끌어냄(sail) →
+   * 앞뒤 예인선이 선석 앞바다(off)까지 끎 → 예인선이 옆으로 돌아 선석에 밀어 댐(push). 안벽에는 우현(+z)을 댄다.
+   */
+  private launchPose(unit: number, frac: number, berth: THREE.Vector3, lot: Lot): LaunchPose {
     const dock = this.docks[unit];
-    const cx = STATION_X[ST.dock], z = dockZ(unit);
+    const cx = STATION_X[ST.dock], z = dockZ(unit), x1 = dock?.x1 ?? cx + 2;
     const float = phase(frac, LAUNCH.fill) * WATER_TOP;
-    const t = phase(frac, LAUNCH.sail);
     const inDock = new THREE.Vector3(cx, MAT_TOP + float, z);
-    const gate = new THREE.Vector3((dock?.x1 ?? cx + 2) + 1.0, SEA_Y + 0.02, z);
-    if (t <= 0) return inDock;
-    if (t < 0.45) return inDock.lerp(gate, ease(t / 0.45));
-    return gate.lerp(sea, ease((t - 0.45) / 0.55));
+    const out = new THREE.Vector3(x1 + lot.dims.halfLen + 0.5, SEA_Y + 0.02, z);
+    const off = new THREE.Vector3(berth.x, SEA_Y + 0.02, berth.z - 2.2);
+    const ts = phase(frac, LAUNCH.sail), tt = phase(frac, LAUNCH.tow);
+    if (tt <= 0) return { pos: ts <= 0 ? inDock : inDock.lerp(out, ease(ts)), yaw: 0, stage: ts <= 0 ? "dock" : "sail", k: ts, out, x1 };
+    if (tt < TOW_PULL) {
+      // 뱃머리가 +x로 나가 +x로 들어오는 3차 베지에(양 끝 접선이 +x)
+      const a = Math.max(1.5, Math.abs(off.x - out.x) * 0.45);
+      const p1 = out.clone().add(new THREE.Vector3(a, 0, 0)), p2 = off.clone().sub(new THREE.Vector3(a, 0, 0));
+      const u = ease(tt / TOW_PULL);
+      const curve = new THREE.CubicBezierCurve3(out, p1, p2, off);
+      const tan = curve.getTangent(u);
+      return { pos: curve.getPoint(u), yaw: Math.atan2(-tan.z, tan.x), stage: "tow", k: u, out, x1 };
+    }
+    if (tt < TOW_PUSH) return { pos: off, yaw: 0, stage: "turn", k: (tt - TOW_PULL) / (TOW_PUSH - TOW_PULL), out, x1 };
+    return { pos: off.lerp(berth, ease((tt - TOW_PUSH) / (1 - TOW_PUSH))), yaw: 0, stage: tt >= 1 ? "done" : "push", k: tt, out, x1 };
+  }
+
+  /**
+   * 진수 예인선 둘(4.8.1): 만 입구에서 들어와 앞 배(0)는 문 밖에서 줄을 받아 끌고, 뒤 배(1)는 배가 나오면 고물에 줄을 걸어 잡는다.
+   * 선석 앞바다에서 둘 다 좌현 쪽으로 돌아 뱃머리로 밀어 댄 뒤 만 입구로 나간다. 진수가 없는 도크는 숨긴다.
+   */
+  private drawTugs(unit: number, towed: { lot: Lot; pose: LaunchPose } | null, frac: number): void {
+    const tugs = this.tugs[unit], lines = this.towLines[unit];
+    const come = phase(frac, TUG_COME), go = phase(frac, TUG_GO);
+    const on = !!towed && come > 0 && go < 1;
+    tugs.forEach((t) => { t.root.visible = on; });
+    lines.forEach((l) => { l.root.visible = false; });
+    if (!towed || !on) return;
+    const { lot, pose } = towed;
+    const { halfLen, halfW, deck } = lot.dims;
+    const fwd = (yaw: number) => new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+    const y = SEA_Y + 0.02;
+    // 끄는 자리: 앞 배는 뱃머리 앞, 뒤 배는 고물 뒤(뱃머리를 배와 같은 쪽으로)
+    const towAt = (pos: THREE.Vector3, yaw: number, i: number) =>
+      pos.clone().setY(y).addScaledVector(fwd(yaw), i === 0 ? halfLen + 0.9 + TUG_HALF : -(halfLen + 0.7 + TUG_HALF));
+    // 미는 자리: 좌현(-z)에 앞뒤로 하나씩, 뱃머리를 배 쪽(+z)으로
+    const pushAt = (pos: THREE.Vector3, i: number) => new THREE.Vector3(pos.x + (i === 0 ? 0.45 : -0.45) * halfLen, y, pos.z - halfW - TUG_HALF * 0.95);
+    const PUSH_YAW = -Math.PI / 2;
+    // 문이 열리는 동안 문짝에 걸리지 않게 앞 배는 문에서 떨어져 기다린다
+    const leadWait = new THREE.Vector3(pose.x1 + 2.4 + TUG_HALF, y, pose.out.z);
+    const rearWait = new THREE.Vector3(pose.out.x + 0.4, y, pose.out.z - 2.2);
+    const exit = (i: number) => new THREE.Vector3(MOUTH_X + 4, y, BAY_C + (i === 0 ? -0.9 : 0.9));
+    tugs.forEach((tug, i) => {
+      let at: THREE.Vector3, yaw: number, line = false;
+      const wait = i === 0 ? leadWait : rearWait;
+      if (go > 0) {
+        // 선석에서 만 입구로(뱃머리를 가는 쪽으로 돌리며)
+        const from = pushAt(pose.pos, i), to = exit(i);
+        at = from.clone().lerp(to, ease(go));
+        yaw = lerpAngle(PUSH_YAW, heading(from, to), Math.min(1, go * 4));
+      } else if (pose.stage === "dock" || pose.stage === "sail" || come < 1) {
+        // 만 입구에서 문 앞 기다리는 자리로. 앞 배는 배가 나오면 줄이 팽팽해지는 만큼 앞서 간다
+        const from = exit(i);
+        at = from.clone().lerp(wait, ease(come));
+        yaw = come < 1 ? lerpAngle(heading(from, wait), 0, phase(come, [0.8, 1])) : 0;
+        if (i === 0 && pose.stage === "sail") {
+          const pull = towAt(pose.pos, 0, 0);
+          if (pull.x > at.x) at = pull;
+          line = true;
+        }
+      } else if (pose.stage === "tow") {
+        // 뒤 배는 tow 처음에 고물 뒤로 붙는다
+        const k = i === 0 ? 1 : ease(Math.min(1, pose.k / 0.2));
+        at = wait.clone().lerp(towAt(pose.pos, pose.yaw, i), k);
+        yaw = lerpAngle(0, pose.yaw, k);
+        line = k > 0.9;
+      } else {
+        // 옆으로 돌아 좌현에 붙고(turn), 밀어 댄다(push·done)
+        const k = pose.stage === "turn" ? ease(pose.k) : 1;
+        at = towAt(pose.pos, 0, i).lerp(pushAt(pose.pos, i), k);
+        yaw = lerpAngle(0, PUSH_YAW, k);
+      }
+      tug.root.position.copy(at);
+      tug.root.rotation.set(0, yaw, 0);
+      if (!line) return;
+      // 예인줄: 배의 뱃머리(앞 배)·고물(뒤 배)에서 예인선의 말뚝(고물)·뱃머리로
+      const ship = pose.pos.clone().addScaledVector(fwd(pose.yaw), (i === 0 ? 1 : -1) * halfLen * 0.92).setY(pose.pos.y + deck + 0.04);
+      const end = at.clone().addScaledVector(fwd(yaw), (i === 0 ? -1 : 1) * TUG_HALF * 0.6).setY(y + TUG_DECK + 0.04);
+      lines[i].set(ship, end, 0.03);
+      lines[i].root.visible = true;
+    });
+    tugs[0].tag.visible = on;
+  }
+
+  /**
+   * 계류줄(4.8.1): 선석에 댄 배(안벽의장 중이거나 차례를 기다리는 배)는 우현에서 안벽 계선주로 줄 넷을 건다.
+   * 선수줄·선미줄은 바깥쪽으로, 스프링 둘은 배 가운데에서 서로 엇갈려 앞뒤로 밀리지 않게 잡는다. 정박지에 닻을 내린 배와 예인 중인 배는 없다.
+   */
+  private drawMoorings(f: Frame, launching: { ship: string; unit: number }[], frac: number): void {
+    const waiting = quayWaiting(f);
+    const moored = f.lots.filter((view) => {
+      if (!this.lots.get(view.ship)?.group.visible) return false;
+      const atBerth = (view.place === "bench" && view.station === ST.quay)
+        || ((view.place === "queue" || view.place === "outbound") && view.station >= ST.quay && waiting.get(view.ship)?.anchored === false);
+      const towing = launching.some((l) => l.ship === view.ship) && frac < LAUNCH.tow[1];
+      return atBerth && !towing;
+    });
+    while (this.moorings.length < moored.length) {
+      const set = [0, 1, 2, 3].map(() => new Rope("#a07f45", 0.02));
+      for (const r of set) this.scene.add(r.root);
+      this.moorings.push(set);
+    }
+    this.moorings.forEach((set, n) => {
+      const view = moored[n];
+      set.forEach((r) => { r.root.visible = !!view; });
+      if (!view) return;
+      const lot = this.lots.get(view.ship)!;
+      const p = lot.group.position, { halfLen: L, halfW, deck } = lot.dims;
+      const onShip = (dx: number) => new THREE.Vector3(p.x + dx, p.y + deck + 0.02, p.z + halfW * 0.9);
+      const post = (x: number) => new THREE.Vector3(bollardX(x), BOLLARD.top - 0.02, BOLLARD.z);
+      // [배 위 자리, 계선주를 찾을 x]: 선수줄, 선미줄, 앞 스프링(뒤로), 뒤 스프링(앞으로)
+      const lines: [number, number][] = [[0.85 * L, L + 0.8], [-0.85 * L, -L - 0.8], [0.35 * L, -0.3 * L], [-0.35 * L, 0.3 * L]];
+      lines.forEach(([from, to], k) => set[k].set(onShip(from), post(p.x + to), 0.05));
+    });
   }
 
   private lotPosition(view: LotView, frac: number, f: Frame): THREE.Vector3 {
@@ -1926,6 +2066,87 @@ export class Yard {
 const CRATE_COLORS = ["#f7f3ea", "#c8553d", "#c0392b"];   // 선반 상자 뚜껑과 같은 색(종이, 물감, 깃발)
 const crateTops = CRATE_COLORS.map((c) => new THREE.MeshStandardMaterial({ color: c }));
 const crateTop = (i: number) => crateTops[i] ?? crateTops[0];
+
+interface LaunchPose {
+  pos: THREE.Vector3;
+  yaw: number;
+  stage: "dock" | "sail" | "tow" | "turn" | "push" | "done";
+  /** 그 단계 안의 진행(0~1) */
+  k: number;
+  /** 배가 문 밖으로 막 나온 자리와 도크 문(x) */
+  out: THREE.Vector3;
+  x1: number;
+}
+
+/** a에서 b로 갈 때의 뱃머리 방향(yaw, 0 = +x) */
+const heading = (a: THREE.Vector3, b: THREE.Vector3) => Math.atan2(-(b.z - a.z), b.x - a.x);
+/** 각도 보간(짧은 쪽으로 돈다) */
+function lerpAngle(a: number, b: number, t: number): number {
+  const d = Math.atan2(Math.sin(b - a), Math.cos(b - a));
+  return a + d * t;
+}
+
+/** 줄(예인줄·계류줄, 4.8.1): 가는 원기둥 두 토막이라 가운데가 조금 처진다 */
+class Rope {
+  readonly root = new THREE.Group();
+  private readonly parts: THREE.Mesh[];
+  private static readonly UP = new THREE.Vector3(0, 1, 0);
+
+  constructor(color: string, radius: number) {
+    const geo = new THREE.CylinderGeometry(radius, radius, 1, 6);
+    geo.translate(0, 0.5, 0);   // 밑동이 원점: 길이만큼 y로 늘린다
+    this.parts = [0, 1].map(() => {
+      const m = mesh(geo, color, { roughness: 1 });
+      m.castShadow = false;
+      this.root.add(m);
+      return m;
+    });
+    this.root.visible = false;
+  }
+
+  /** a에서 b로, sag = 길이에 대한 처짐 비율 */
+  set(a: THREE.Vector3, b: THREE.Vector3, sag: number): void {
+    const mid = a.clone().lerp(b, 0.5);
+    mid.y -= sag * a.distanceTo(b);
+    this.span(this.parts[0], a, mid);
+    this.span(this.parts[1], mid, b);
+  }
+
+  private span(m: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3): void {
+    const d = b.clone().sub(a);
+    m.position.copy(a);
+    m.scale.set(1, Math.max(1e-3, d.length()), 1);
+    m.quaternion.setFromUnitVectors(Rope.UP, d.normalize());
+  }
+}
+
+/** 예인선 크기(배 한 척 대비)와 반 길이·갑판 높이(야드 단위) */
+const TUG_K = 0.85 * 0.5;
+const TUG_HALF = 1.15 * 0.85 * TUG_K;
+const TUG_DECK = 0.4 * 1.05 * TUG_K;
+const TUG_PAPER = new THREE.Color("#d9cba8");
+
+/**
+ * 조선소 예인선(4.8.1, 그림만): 진수한 배는 아직 동력이 없어 예인선 둘이 끌고 밀어 안벽에 댄다.
+ * 간이공정에서 짓는 예인선(shipLook "TUG")과 같은 모양을 작게, 짓는 배와 구분되게 누런 종이로. 앞이 +x
+ */
+function buildTug(): { root: THREE.Group; tag: CSS2DObject } {
+  const root = new THREE.Group();
+  const look = shipLook("TUG");
+  const hull = new FoldMesh(hullTris(), paperMaterial(TUG_PAPER));
+  hull.set(1);
+  const body = new THREE.Group();
+  body.add(hull.mesh, deckSheet(TUG_PAPER), ...look.parts);
+  body.scale.set(...look.hull);
+  const boat = new THREE.Group();
+  boat.add(body);
+  boat.scale.setScalar(TUG_K);
+  const tag = label("예인선", "place-tag small");
+  tag.position.set(0, 0.8, 0);
+  tag.visible = false;
+  root.add(boat, tag);
+  return { root, tag };
+}
 
 interface SupplyShip { root: THREE.Group; crates: THREE.Mesh[]; tag: CSS2DObject }
 

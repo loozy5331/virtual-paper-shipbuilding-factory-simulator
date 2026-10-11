@@ -176,6 +176,11 @@ export const SAFE_SPOT = { x: -1.5, z: LANE_Z + 1.9 };
  * 4.0 안벽의장·시운전이 여기서 한다. 지금은 인도한 배를 대 두는 곳(그림만).
  */
 export const QUAY = { x0: SHORE_X, x1: 30.6, z0: 11.4, z1: 15.7 };
+/** 안벽 가장자리의 계선주(볼라드): 배를 묶는 쇠기둥. 계류줄은 가까운 계선주에 건다(4.8.1, 그림만) */
+export const BOLLARD = { x0: QUAY.x0 + 0.8, gap: 1.3, z: QUAY.z0 + 0.35, top: 0.22 };
+export const BOLLARD_COUNT = Math.ceil((QUAY.x1 - 0.3 - BOLLARD.x0) / BOLLARD.gap);
+/** x에 가장 가까운 계선주의 x */
+export const bollardX = (x: number) => BOLLARD.x0 + Math.min(BOLLARD_COUNT - 1, Math.max(0, Math.round((x - BOLLARD.x0) / BOLLARD.gap))) * BOLLARD.gap;
 
 /**
  * 안벽의장 작업 구역(4.0): 정박 자리마다 안벽 위에 노란 구획선. 작업자는 이 안에 서서 배에 의장품을 단다(그림만).
