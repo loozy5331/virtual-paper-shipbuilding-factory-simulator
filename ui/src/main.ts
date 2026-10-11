@@ -12,9 +12,9 @@ import { activeStations, api, ApiError, type ClassBest, type Config, type Findin
 import { h, mount, num, pct, s as svgEl } from "./dom";
 import { renderDesk } from "./desk";
 import { planLabel, renderForm, renderPlanBar, renderPlanNotes, renderPlanTabs, updatePreview, type FormContext } from "./form";
-import { pale, renderGantt, renderShipGantt, type GanttPick } from "./gantt";
+import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
 import { docHead, REVIEWER } from "./paper";
-import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, STATE_INFO, STATION_COLOR, TRANSPORT_STATE } from "./labels";
+import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, PAIR_WAIT_EDGE, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, TRANSPORT_STATE } from "./labels";
 import { breakdownBar, breakdownLegend, eventText, renderReport } from "./report";
 import { renderCctv } from "./cctv";
 import { renderTrackCard, type TrackPick } from "./track";
@@ -129,6 +129,8 @@ const els = {
   // 오른쪽 모니터를 크게 볼 때만 보이는 같은 재생 막대
   osdRight: h("div", { class: "osd osd-right", "data-group": "speed-right" }),
   ganttScreen: h("div", { class: "gantt-screen" }),
+  // 간트 범례: 스크롤 영역 밖(모니터 아래 고정). 배가 많아 위쪽을 볼 때도 보이고, 맨 아래 배 상세를 가리지 않는다.
+  ganttLegend: h("div", { class: "legend gantt-legend zoom-only" }),
   rightTop: h("div", { class: "right-top" }),
   /** 자재·블록 추적 상자 자리: 작업 현황 위(관제실) */
   trackRoom: h("div", { class: "track-host" }),
@@ -1086,7 +1088,7 @@ function drawOsd(target: HTMLElement = els.osd): void {
 /** 왼쪽 모니터: 배 탭과 간트. 범례와 배 상세는 크게 볼 때만 보인다. */
 function drawGanttScreen(): void {
   const r = currentRun();
-  if (!r) return mount(els.ganttScreen);
+  if (!r) return (mount(els.ganttScreen), mount(els.ganttLegend));
   const { scenario } = state.data;
   const shipTab = (id: string | null, label: string) =>
     h("button", {
@@ -1097,18 +1099,18 @@ function drawGanttScreen(): void {
   mount(els.ganttScreen,
     h("div", { class: "screen-tabs" }, shipTab(null, "전체"), r.result.ships.map((sh) => shipTab(sh.id, sh.id))),
     h("div", { class: "gantt-chart" }),
-    h("div", { class: "legend zoom-only" },
-      activeStations(scenario).map((st) => h("span", null, h("i", { style: { background: STATION_COLOR[st.id] } }), st.name)),
-      h("span", null, h("i", { class: "hatch" }), "재작업(빗금)"),
-      h("span", null, h("i", { class: "transport-mark" }), TRANSPORT_STATE.name),
-      h("span", { class: "sep" }),
-      sameColor.map((l) => h("span", null, h("i", { class: `thin${l.hatch ? " hatch-over" : ""}`, style: { background: l.color } }), l.name)),
-      // 나눠 하기(3.0)를 쓰는 분기에서만: 막대가 작업장 줄로 갈라지고 먼저 끝난 줄은 짝 대기
-      scenario.options?.split ? h("span", null, h("i", { class: "pair-mark hatch-over", style: { background: pale(STATION_COLOR.sub_assembly), borderColor: STATION_COLOR.sub_assembly } }), "짝 대기(나눠 하기, 공정 색 옅게)") : null,
-      h("span", { class: "sep" }),
-      h("span", null, h("i", { class: "due-mark" }), "납기"),
-      h("span", null, h("i", { class: "deliver-mark" }), "인도")),
     h("div", { class: "ship-detail zoom-only" }));
+  mount(els.ganttLegend,
+    activeStations(scenario).map((st) => h("span", null, h("i", { style: { background: STATION_COLOR[st.id] } }), st.name)),
+    h("span", null, h("i", { class: "hatch" }), "재작업(빗금)"),
+    h("span", null, h("i", { class: "transport-mark" }), TRANSPORT_STATE.name),
+    h("span", { class: "break" }),
+    sameColor.map((l) => h("span", null, h("i", { class: `thin${l.hatch ? " hatch-over" : ""}`, style: { background: l.color } }), l.name)),
+    // 나눠 하기(3.0)를 쓰는 분기에서만: 막대가 작업장 줄로 갈라지고 먼저 끝난 줄은 짝 대기
+    scenario.options?.split ? h("span", null, h("i", { class: "pair-mark", style: { background: PAIR_WAIT_STATE.color, borderColor: PAIR_WAIT_EDGE } }), "짝 대기(나눠 하기)") : null,
+    h("span", { class: "sep" }),
+    h("span", null, h("i", { class: "due-mark" }), "납기"),
+    h("span", null, h("i", { class: "deliver-mark" }), "인도"));
 }
 
 /** 이 반기가 쓰는 구획. 간이공정(4.4)은 안벽의장이 없어 안벽 구획 단추를 뺀다 */
@@ -1499,7 +1501,7 @@ async function start(): Promise<void> {
       h("div", { class: "clipboard board-left" }, els.form),
       h("aside", { class: "plan-notes", "aria-label": "메모" }, els.planNotes, els.goalNote)));
 
-  monitor(els.monitorLeft, "left", "공정 간트", els.ganttScreen, els.osd);
+  monitor(els.monitorLeft, "left", "공정 간트", els.ganttScreen, els.ganttLegend, els.osd);
   monitor(els.monitorRight, "right", "작업 현황 전경", els.rightTop, els.log, els.osdRight);
   els.hands.innerHTML = HANDS_SVG;
   els.hat.innerHTML = `${HAT_SVG}<span class="desk-label">작업모 · 현장으로</span>`;
