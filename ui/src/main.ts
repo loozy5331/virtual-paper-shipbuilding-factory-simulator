@@ -4,7 +4,7 @@
 //   plan  생산계획서 클립보드가 가운데. 왼쪽 인덱스 탭 A안·B안·C안, 맨 아래 펜으로 결재란 "승인" 칸에 서명하고 실행.
 //   room  관제실(생산관리자 1인칭). 정면 벽 모니터 두 대: 왼쪽 = 재생 막대 + 간트, 오른쪽 = 작업 현황 전경(2D, 공정 확대) + 사건 기록.
 //         책상 위에 생산계획서 클립보드(누르면 계획 고치기)와 작업모. 60일이 끝나면 생산실적 평가서 클립보드를 받는다.
-//   field 현장. 작업모를 쓰고 직접 나간 생산관리자의 눈(3D 화면 전체). 전경·공정 가까이, 재생 막대, "관제실로".
+//   field 현장. 작업모를 쓰고 직접 나간 생산관리자의 눈(3D 화면 전체). 3인칭(전경·구획)과 1인칭(4.10), 재생 막대, "관제실로".
 // 공정을 들여다보는 길: 전경의 정반, 간트 막대, 평가서의 "작업 현황에서 보기" → 오른쪽 모니터의 공정 확대(재생 중에도 오늘을 본다).
 // 사람의 얼굴과 이름은 작업모를 쓰고 현장(3D)에 직접 나가야 보인다(D24). 화면에는 "CCTV"라는 말을 쓰지 않는다(감시처럼 느껴져서).
 
@@ -19,8 +19,8 @@ import { breakdownBar, breakdownLegend, eventText, renderReport } from "./report
 import { renderCctv } from "./cctv";
 import { renderTrackCard, type TrackPick } from "./track";
 import { buildFrame, type Frame } from "./scene/frame";
-import type { Yard } from "./scene/yard";
-import { sector, sectorOf, SECTORS, ST, type SectorId } from "./scene/layout";
+import type { FieldView, Yard } from "./scene/yard";
+import { sector, sectorOf, SECTORS, ST, WALK_SPOTS, type SectorId } from "./scene/layout";
 
 const SPEEDS = [1, 4];   // 관제실 배속. 기본 4배속(사용자 결정). 현장은 따로 1배속 고정(FIELD_MS_PER_DAY).
 const BASE_MS_PER_DAY = 500;   // 1배속은 하루에 0.5초, 60일이 30초다.
@@ -91,6 +91,8 @@ interface State {
   pick: TrackPick | null;
   /** 현장에서 관리자가 선 자리: 안전한 자리, 또는 버튼으로 순간이동한 설비 옆(3.0) */
   managerSpot: "safe" | "crane" | "cart";
+  /** 현장 시점(4.10): 3인칭(기본, 관제실에서 나가면 늘 3인칭) 또는 1인칭(관리자 소인의 눈) */
+  fieldView: FieldView;
   /** 마지막으로 서명한 사람(이 브라우저가 기억한다). */
   signer: Signer | null;
   /** 반 코드를 적었으면 그 반의 시나리오별 최고(서버). */
@@ -900,7 +902,7 @@ function aimCamera(): void {
     state.managerSpot = "safe";
     yard?.setManagerSpot("safe", state.fieldFocus);
     // 이름표는 현장에서 공정을 가까이 볼 때만.
-    // 이름표는 3인칭 현장에서는 보이지 않는다(4.7.3, 사용자). 1인칭(4.8)에서는 명찰로 사람을 분명히 구분한다
+    // 이름표는 3인칭 현장에서는 보이지 않는다(4.7.3, 사용자). 1인칭(4.10)에서는 가까운 사람만 명찰(yard.ts)
     yard?.showNameTags(false);
   };
   if (yard) apply();
@@ -925,6 +927,7 @@ function syncScene(jump: boolean): void {
     yardLoading ??= import("./scene/yard").then((y) => {
       yard = new y.Yard();
       yard.setPickHandler(openTrack);
+      yard.setHazardHandler(warnHazard);
     });
     void yardLoading.then(() => {
       aimCamera();
@@ -1216,6 +1219,8 @@ function goField(): void {
   const r = currentRun();
   if (!r) return;
   state.fieldFocus = null;   // 현장은 처음에 전경으로 본다(4.0.1, 사용자). 구획은 위 단추로 고른다.
+  state.fieldView = "third";   // 관제실에서 나가면 늘 3인칭(4.10, 사용자). 오른쪽 위 단추로 1인칭
+  yard?.setView("third");
   pause();   // 현장에 나가면 시간이 멈춰 있다. 재생하면 1배속(하루 2초)으로 흐른다.
   r.safetyWarnings ??= 0;
   setScreen("field");
@@ -1242,22 +1247,52 @@ function backToRoom(): void {
 
 function drawField(): void {
   const r = currentRun();
+  const first = state.fieldView === "first";
   mount(els.fieldHead,
     h("button", { class: "field-back", type: "button", onclick: backToRoom }, "← 관제실로"),
     h("b", null, "현장"),
-    h("span", { class: "hint" }, r ? `${r.n}회차 ${r.label} · 생산관리자의 눈으로 봅니다` : ""),
-    h("div", { class: "field-cams", role: "group", "aria-label": "볼 곳" },
-      h("button", { type: "button", class: state.fieldFocus === null ? "active" : "", onclick: () => { state.fieldFocus = null; drawField(); aimCamera(); } }, "전경"),
-      shownSectors().map((sec) =>
-        h("button", { type: "button", class: state.fieldFocus === sec.id ? "active" : "", onclick: () => { state.fieldFocus = sec.id; drawField(); aimCamera(); } }, sec.name))),
-    // 관리자 순간이동(3.0 안전): 설비 옆으로 가면 위험 반경 경고. 1인칭 이동은 나중에(D35)
-    h("div", { class: "field-cams", role: "group", "aria-label": "관리자 이동" },
-      h("button", { type: "button", onclick: () => moveManager("crane") }, "골리앗 주변으로"),
-      h("button", { type: "button", onclick: () => moveManager("cart") }, "트랜스포터 주변으로")),
+    h("span", { class: "hint" }, r ? `${r.n}회차 ${r.label} · ${first ? "끌어서 둘러보기 · 휠로 당겨 보기" : "생산관리자의 눈으로 봅니다"}` : ""),
+    first
+      ? walkSelect()
+      : [
+        h("div", { class: "field-cams", role: "group", "aria-label": "볼 곳" },
+          h("button", { type: "button", class: state.fieldFocus === null ? "active" : "", onclick: () => { state.fieldFocus = null; drawField(); aimCamera(); } }, "전경"),
+          shownSectors().map((sec) =>
+            h("button", { type: "button", class: state.fieldFocus === sec.id ? "active" : "", onclick: () => { state.fieldFocus = sec.id; drawField(); aimCamera(); } }, sec.name))),
+        // 관리자 순간이동(3.0 안전): 설비 옆으로 가면 위험 반경 경고. 1인칭에서는 걸어서 다닌다(4.10)
+        h("div", { class: "field-cams", role: "group", "aria-label": "관리자 이동" },
+          h("button", { type: "button", onclick: () => moveManager("crane") }, "골리앗 주변으로"),
+          h("button", { type: "button", onclick: () => moveManager("cart") }, "트랜스포터 주변으로")),
+      ],
     // 자재·블록 추적(3.1): 블록이나 선반을 누르면 상자, 고른 배는 노란 고리
     h("span", { class: "hint" }, "블록·선반을 누르면 추적"),
-    trackSelect());
+    trackSelect(),
+    // 시점 전환(4.10): 오른쪽 위. 관제실에서 나오면 3인칭
+    h("div", { class: "field-cams field-view", role: "group", "aria-label": "시점" },
+      (["third", "first"] as const).map((v) =>
+        h("button", { type: "button", class: state.fieldView === v ? "active" : "", "aria-pressed": String(state.fieldView === v), onclick: () => setFieldView(v) },
+          v === "third" ? "3인칭" : "1인칭"))));
   drawOsd(els.fieldOsd);
+}
+
+function setFieldView(view: FieldView): void {
+  if (state.fieldView === view) return;
+  state.fieldView = view;
+  yard?.setView(view);
+  drawField();
+}
+
+/** 1인칭에서 걸어갈 곳(정해진 지점, D9). 그 반기에 쓰지 않는 공정 앞은 뺀다. */
+function walkSelect(): HTMLElement {
+  const stations = state.data.scenario.stations;
+  const spots = WALK_SPOTS.filter((sp) => sp.station === undefined || !stations[sp.station]?.skipped);
+  const groups = [...new Set(spots.map((sp) => sp.group))];
+  const at = yard?.walkingTo() ?? "safe";
+  return h("label", { class: "cam-track walk-to" }, "걸어가기",
+    h("select", { onchange: (e: Event) => { yard?.walkTo((e.target as HTMLSelectElement).value); } },
+      at === "" ? h("option", { value: "", selected: true, disabled: true }, "설비 옆") : null,
+      groups.map((g) => h("optgroup", { label: g },
+        spots.filter((sp) => sp.group === g).map((sp) => h("option", { value: sp.id, selected: sp.id === at }, sp.name))))));
 }
 
 function moveManager(spot: "safe" | "crane" | "cart"): void {
@@ -1269,7 +1304,8 @@ function moveManager(spot: "safe" | "crane" | "cart"): void {
 /** 위험 설비 옆으로 갔다: 재생을 멈추고 알린다. 횟수는 그 회차 평가서에 한 줄(등급과 무관). */
 function warnHazard(hazard: { id: string; label: string }): void {
   const r = currentRun();
-  if (!r || state.screen !== "field") return;
+  // 이미 경고 카드가 떠 있으면(순간이동 경고와 자동 경고가 겹칠 때) 한 번만 센다
+  if (!r || state.screen !== "field" || els.field.querySelector(".safety-alert")) return;
   const wasPlaying = state.playing;
   pause();
   r.safetyWarnings = (r.safetyWarnings ?? 0) + 1;
@@ -1282,6 +1318,7 @@ function warnHazard(hazard: { id: string; label: string }): void {
         h("button", { class: "btn primary", type: "button", onclick: () => {
           overlay.remove();
           moveManager("safe");
+          if (state.fieldView === "first") drawField();   // 걸어가기 칸을 "안전한 자리"로
           if (wasPlaying) play();
         } }, "안전한 자리로 돌아가기"))));
   els.field.append(overlay);
@@ -1416,6 +1453,7 @@ async function start(): Promise<void> {
     track: null,
     pick: null,
     managerSpot: "safe",
+    fieldView: "third",
     signer: loadSigner(),
     classBest: {},
   };

@@ -7,8 +7,8 @@
 - 목적: 조선업 생산관리 교육(7요소, QCD, 4M) 복습과 시연. 게임 완성도보다 "배운 개념이 화면에서 보이는가"가 기준이다.
 - 규칙의 기준 문서(Claude Docs): https://claude.ai/code/artifact/63f9424c-6a92-461b-8fb0-06a2820778d0
   docs 도구로 읽고 고친다. 통째로 읽지 말고 `search`나 `view` + `parentId`로 고칠 곳만 읽는다.
-- 버전: 4.9.0(2026-10-11, develop, 태그 `v4.9.0`, 호이스트 D52). 지난 버전은 `CHANGELOG.md`, 결정 기록은 `docs/handoff-v2.0.md`(D10~D52).
-- 다음: 4.10 1인칭 현장과 자동 안전 경고, 호이스트 아래 공정 안 사고(보류) → 4.x. `docs/roadmap.md`
+- 버전: 4.10.0(2026-10-11, develop, 태그 `v4.10.0`, 1인칭 현장 D53). 지난 버전은 `CHANGELOG.md`, 결정 기록은 `docs/handoff-v2.0.md`(D10~D53).
+- 다음: 1인칭 소인 말풍선, 호이스트 아래 공정 안 사고(보류) → 4.x. `docs/roadmap.md`
 - 브랜치: `main`은 MAJOR만, 작업은 `develop`에서 따서 `develop`으로 PR(규칙은 `CHANGELOG.md`). 버전은 엔진 `__init__.py`, `ui/package.json`·`package-lock.json`이 같은 값.
 - 세부 메모(시연 흐름, 규칙 요약, 화면·3D 세부, 예시 계획 점수): `docs/notes.md`. 필요한 절만 grep으로 찾아 읽는다.
 

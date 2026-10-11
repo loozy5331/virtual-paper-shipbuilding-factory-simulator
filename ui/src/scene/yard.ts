@@ -17,7 +17,7 @@ import { quayWaiting, STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot, st
 import { buildDock, buildLand, buildRoof, buildSectorOutline, buildWalls, buildYardLines, GiantHand, Gulliver, SEA_Y, type DockParts } from "./coast";
 import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LANE_Z, LOUNGE, LOUNGE_SOUTH, loungeOf, fenceSegments, GATES, GATE_W, OUTER_ROAD, MAT_D, MAT_TOP, MAT_W, MAT2_D,
   nearLane, QUEUE_Z, SAFE_SPOT, seaSpot, SECTORS, sector, sectorBounds, DOCK2_AREA, SHELF_X, SHELF_Z, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_IN, SPUR_OUT, SPUR_X, STATION_X,
-  STOCK_AT, STOCK_D, STOCK_HALF, STOCK_NAME, CONVEYORS, BACK_LANE_Z, garageSpot, FORKLIFT_GARAGE, KIT_PICK, kitDrop, roadPath, palletPath, SPUR_ROADS, type RoadSide, QUAY_WORK_Z, ST, isShop, QUAY_ROAD_Z, QUAY_STORE, QUAY, DEPOT_WALLS, GARAGE_WALLS, depotSpot, along, groundY, LAB_TREES, LAND_ROUTE, route, SHIP_ROUTE, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId } from "./layout";
+  STOCK_AT, STOCK_D, STOCK_HALF, STOCK_NAME, CONVEYORS, BACK_LANE_Z, garageSpot, FORKLIFT_GARAGE, KIT_PICK, kitDrop, roadPath, palletPath, SPUR_ROADS, type RoadSide, QUAY_WORK_Z, ST, isShop, QUAY_ROAD_Z, QUAY_STORE, QUAY, DEPOT_WALLS, GARAGE_WALLS, depotSpot, along, groundY, LAB_TREES, LAND_ROUTE, route, SHIP_ROUTE, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId, walkPath, walkSpot, type WalkZone } from "./layout";
 import { clamp01, ease } from "./model";
 import { Lot } from "./lot";
 import { buildHoist, buildRobot, buildSupplyCart, buildSupplyShip, crateTop, type SupplyShip } from "./props";
@@ -39,6 +39,12 @@ export interface Hazard { id: string; label: string }
 const BG = new THREE.Color("#dbe5ea");   // 하늘
 
 export type CameraMode = "control" | "field";
+/** 현장 시점(4.10): third = 위에서 내려다보는 3인칭(기본), first = 관리자 소인의 눈 */
+export type FieldView = "third" | "first";
+/** 1인칭: 걷는 빠르기, 명찰이 보이는 거리, 시야각(3인칭은 40) */
+const WALK_SPEED = 2.6, BADGE_R = 5.5, FP_FOV = 62;
+/** 1인칭에서 이름표(작업장·설비·블록)가 보이는 거리. 멀리 것까지 띄우면 지평선에 겹쳐 쌓인다 */
+const FP_LABEL_R = 12;
 
 export interface DaySource {
   /** 그날 안에서 흐른 비율(0~1)을 받아 장면을 돌려준다. */
@@ -138,6 +144,18 @@ export class Yard {
   private focus: SectorId | null = null;
   private readonly camGoal = { pos: new THREE.Vector3(), target: new THREE.Vector3() };
   private camMoving = 0;
+  /** 1인칭(4.10): 관리자가 걸을 남은 점들, 지금 선 길과 지점(null = 길 밖, 설비 옆으로 순간이동한 뒤), 바라보는 방향 */
+  private view: FieldView = "third";
+  private walk: { x: number; z: number }[] = [];
+  private walkZone: WalkZone | null = "front";
+  private walkAt = "safe";
+  private fpYaw = 0;
+  private fpPitch = -0.06;
+  /** 사람이 끌어서 둘러봤으면 다음 걸음까지 그 방향을 그대로 둔다 */
+  private userLook = false;
+  /** 자동 안전 경고(4.10): 지금 관리자가 들어 있는 위험 반경, 들어갈 때 부를 곳(main.ts) */
+  private hazardNow: string | null = null;
+  private hazardHandler: ((hazard: Hazard) => void) | null = null;
 
   private readonly hemi = new THREE.HemisphereLight("#fff8ec", "#8a6a4a", 1.5);
   private readonly sun = new THREE.DirectionalLight("#fff1da", 2.6);
@@ -163,10 +181,26 @@ export class Yard {
     this.controls.addEventListener("start", () => { this.camMoving = 0; });
     // 누르기: 끌지 않고 떼면(카메라 돌리기와 구분) 그 자리의 블록이나 선반을 찾는다(자재·블록 추적, 3.1)
     let down: { x: number; y: number } | null = null;
-    r.domElement.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY }; });
+    let last: { x: number; y: number } | null = null;
+    r.domElement.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY }; last = down; });
+    // 1인칭: 끌면 고개를 돌린다(OrbitControls는 꺼 둔다)
+    r.domElement.addEventListener("pointermove", (e) => {
+      if (this.view !== "first" || !last || !e.buttons) return;
+      this.fpYaw -= (e.clientX - last.x) * 0.005;
+      this.fpPitch = THREE.MathUtils.clamp(this.fpPitch - (e.clientY - last.y) * 0.004, -1.1, 0.7);
+      last = { x: e.clientX, y: e.clientY };
+      this.userLook = true;
+    });
+    r.domElement.addEventListener("wheel", (e) => {
+      if (this.view !== "first") return;
+      e.preventDefault();
+      this.camera.fov = THREE.MathUtils.clamp(this.camera.fov + Math.sign(e.deltaY) * 4, 26, FP_FOV);
+      this.camera.updateProjectionMatrix();
+    }, { passive: false });
     r.domElement.addEventListener("pointerup", (e) => {
       if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 5) this.pickAt(e.clientX, e.clientY);
       down = null;
+      last = null;
     });
     this.trackRing = new THREE.Mesh(new THREE.RingGeometry(1.15, 1.3, 48),
       new THREE.MeshBasicMaterial({ color: "#e0b43a", side: THREE.DoubleSide, transparent: true, opacity: 0.9 }));
@@ -269,7 +303,13 @@ export class Yard {
     this.managerSpot = spot;
     this.managerStation = station;
     const at = this.managerAt();
-    this.manager.place(at, Math.PI, "stand", spot !== "safe", 0.4);
+    // 멀리 있으면(1인칭으로 걸어간 뒤) 건물을 뚫고 걷지 않게 바로 옮긴다
+    const far = this.manager.root.position.distanceTo(at) > 3;
+    this.manager.place(at, spot === "safe" && this.view === "first" ? walkSpot("safe").look : Math.PI, "stand", spot !== "safe" || far || this.view === "first", 0.4);
+    this.walk = [];
+    this.walkZone = spot === "safe" ? "front" : null;
+    this.walkAt = spot === "safe" ? "safe" : "";
+    if (spot === "safe") this.userLook = false;
     if (spot === "crane") return { id: "crane", label: "골리앗 크레인(걸리버의 손) 작업 반경" };
     if (spot === "cart") return { id: "cart", label: "트랜스포터 운행 반경" };
     return null;
@@ -862,12 +902,116 @@ export class Yard {
   /** 카메라: 전경(null) 또는 구획 하나. 전경에서는 구획 이름만 보이고 공장에 지붕을 덮는다. */
   setCamera(mode: CameraMode, focus: SectorId | null = null): void {
     this.aim(mode === "control" ? null : focus);
-    this.camMoving = 1;
+    this.camMoving = this.view === "first" ? 0 : 1;
+  }
+
+  /**
+   * 3인칭 ↔ 1인칭(4.10). 1인칭이면 관리자 몸을 숨기고 그 눈높이에 카메라를 둔다(끌어서 둘러보기, 휠로 당겨 보기).
+   * 3인칭으로 돌아오면 관리자는 걸어간 자리에 그대로 있고, 카메라만 구획 보기로 날아간다.
+   */
+  setView(view: FieldView): void {
+    if (view === this.view) return;
+    this.view = view;
+    const first = view === "first";
+    this.controls.enabled = !first;
+    this.manager.setVisible(!first);
+    this.camera.fov = first ? FP_FOV : 40;
+    this.camera.updateProjectionMatrix();
+    this.labels.domElement.classList.toggle("first", first);
+    if (first) {
+      // 설비 옆(길 밖)에 있었으면 안전한 자리에서 시작한다
+      if (this.walkZone === null) this.setManagerSpot("safe", this.managerStation);
+      this.fpYaw = this.manager.root.rotation.y + Math.PI;
+      this.fpPitch = -0.06;
+      this.userLook = false;
+      this.camMoving = 0;
+      this.labels.domElement.classList.remove("overview");
+    } else {
+      for (const p of [...this.people, this.senior]) p.showTag(false);
+      this.aim(this.focus);
+      this.camMoving = 1;
+    }
+  }
+
+  /** 1인칭: 관리자가 그 지점까지 길(공장 앞 통로·남문 샛길·안벽 도로)을 따라 걷는다. */
+  walkTo(id: string): void {
+    const spot = walkSpot(id);
+    if (this.walkZone === null) this.setManagerSpot("safe", this.managerStation);
+    const from = this.manager.root.position;
+    this.walk = walkPath({ x: from.x, z: from.z }, this.walkZone ?? "front", spot);
+    this.walkZone = spot.zone;
+    this.walkAt = spot.id;
+    this.managerSpot = id === "safe" ? "safe" : this.managerSpot;
+    this.userLook = false;
+    this.manager.pace(WALK_SPEED);
+    this.stepWalk(true);
+  }
+
+  /** 지금 서 있거나 걸어가는 지점 */
+  walkingTo(): string {
+    return this.walkAt;
+  }
+
+  /** 위험 반경에 들어가면(설비가 다가왔거나 관리자가 걸어 들어갔거나) 부른다. 관리자는 그 자리에 멈춘다. */
+  setHazardHandler(fn: (hazard: Hazard) => void): void {
+    this.hazardHandler = fn;
+  }
+
+  /** 걷기: 다음 점에 거의 닿으면 그다음 점으로. 마지막 점에서는 그 지점이 바라보는 쪽으로 선다. */
+  private stepWalk(start = false): void {
+    if (!this.walk.length) return;
+    const next = this.walk[0];
+    const last = this.walk.length === 1;
+    const here = this.manager.root.position;
+    if (!start && Math.hypot(next.x - here.x, next.z - here.z) > (last ? 0.06 : 0.3)) return;   // Person은 0.05 안에 들면 멈춘다
+    if (!start) this.walk.shift();
+    const goal = this.walk[0];
+    if (!goal) return;
+    this.manager.place(new THREE.Vector3(goal.x, 0, goal.z), this.walk.length === 1 ? walkSpot(this.walkAt).look : this.manager.root.rotation.y, "stand", false);
+  }
+
+  /** 관리자 자리가 움직이는 설비의 위험 반경 안인가: 일하는 크레인, 움직이는 트랜스포터 */
+  private hazardAt(p: THREE.Vector3): Hazard | null {
+    for (let u = 0; u < 2; u++) {
+      if (!this.craneRings[u].visible || !this.craneActive[u]) continue;
+      if (Math.hypot(p.x - STATION_X[ST.dock], p.z - dockZ(u)) < CRANE_R) return { id: "crane", label: "골리앗 크레인(걸리버의 손) 작업 반경" };
+    }
+    for (const ring of this.cartRings) {
+      if (ring.visible && Math.hypot(p.x - ring.position.x, p.z - ring.position.z) < CART_R) return { id: "cart", label: "트랜스포터 운행 반경" };
+    }
+    return null;
+  }
+
+  private checkHazard(): void {
+    const hazard = this.hazardAt(this.manager.root.position);
+    if (hazard && hazard.id !== this.hazardNow) {
+      // 그 자리에 멈춘다(경고 카드의 "안전한 자리로 돌아가기"가 옮긴다)
+      this.walk = [];
+      this.manager.place(this.manager.root.position.clone(), this.manager.root.rotation.y, "stand", true);
+      this.hazardHandler?.(hazard);
+    }
+    this.hazardNow = hazard?.id ?? null;
+  }
+
+  /** 1인칭 카메라: 관리자의 눈. 걷는 동안은 가는 쪽을, 서면 그 지점이 바라보는 쪽을 본다(끌어서 둘러봤으면 그대로). */
+  private firstPersonCamera(dt: number): void {
+    const m = this.manager.root.position;
+    this.camera.position.set(m.x, m.y + this.manager.eyeHeight(), m.z);
+    if (!this.userLook) {
+      const walking = this.walk.length > 0 && this.manager.distanceToTarget() > 0.05;
+      const goal = walking ? Math.atan2(this.walk[0].x - m.x, this.walk[0].z - m.z) + Math.PI : walkSpot(this.walkAt).look + Math.PI;
+      const diff = Math.atan2(Math.sin(goal - this.fpYaw), Math.cos(goal - this.fpYaw));
+      this.fpYaw += diff * Math.min(1, dt * 4);
+      this.fpPitch += (-0.06 - this.fpPitch) * Math.min(1, dt * 4);
+    }
+    this.camera.rotation.set(this.fpPitch, this.fpYaw, 0, "YXZ");
+    // 명찰: 가까운 사람만(멀리까지 띄우면 겹친다)
+    for (const p of [...this.people, this.senior]) p.showTag(p.root.visible && p.root.position.distanceTo(m) < BADGE_R);
   }
 
   private aim(focus: SectorId | null): void {
     this.focus = focus;
-    this.labels.domElement.classList.toggle("overview", focus === null);
+    this.labels.domElement.classList.toggle("overview", focus === null && this.view === "third");
     if (focus === null) {
       // 전경: 높이서 비스듬히. 구획 넷과 큰길, 만 입구의 등대가 함께 들어오게.
       // 4.7.6: 등대 곶 바깥 부두의 납품 배까지 들어오게 조금 멀리
@@ -921,6 +1065,8 @@ export class Yard {
     this.draw(false);
     for (const p of [...this.people, this.senior, this.manager]) p.update(dt);
     this.drawHazardRings();
+    this.stepWalk();
+    this.checkHazard();
     for (const lot of this.lots.values()) {
       if (!lot.group.visible) continue;
       // 대기 줄 → 정반처럼 자리를 옮기는 로트도 준비 시간(1배속 0.15초) 안에 닿게 빨리 옮긴다.
@@ -938,15 +1084,28 @@ export class Yard {
       lot.tag.element.classList.toggle("tracked", this.track === lot.ship);
       lot.tag.element.classList.toggle("untracked", this.track !== null && this.track !== lot.ship);
     }
-    if (this.camMoving > 0) {
-      const k = Math.min(1, dt * 3);
-      this.camera.position.lerp(this.camGoal.pos, k);
-      this.controls.target.lerp(this.camGoal.target, k);
-      if (this.camera.position.distanceTo(this.camGoal.pos) < 0.05) this.camMoving = 0;
+    if (this.view === "first") this.firstPersonCamera(dt);
+    else {
+      if (this.camMoving > 0) {
+        const k = Math.min(1, dt * 3);
+        this.camera.position.lerp(this.camGoal.pos, k);
+        this.controls.target.lerp(this.camGoal.target, k);
+        if (this.camera.position.distanceTo(this.camGoal.pos) < 0.05) this.camMoving = 0;
+      }
+      this.controls.update();
     }
-    this.controls.update();
     this.render();
     this.labels.render(this.scene, this.camera);
+    if (this.view === "first") this.hideFarLabels();
+  }
+
+  /** 1인칭: 먼 이름표는 감춘다(CSS2DRenderer가 매번 다시 보이게 하므로 그린 뒤에) */
+  private hideFarLabels(): void {
+    const at = new THREE.Vector3();
+    this.scene.traverse((o) => {
+      if (!(o instanceof CSS2DObject) || o.element.style.display === "none") return;
+      if (o.getWorldPosition(at).distanceTo(this.camera.position) > FP_LABEL_R) o.element.style.display = "none";
+    });
   }
 
   private draw(snap: boolean): void {
@@ -1060,7 +1219,7 @@ export class Yard {
     // 정반: 작업장(1호, 증설하면 2호)마다 인원 또는 로봇, 시니어, 중지, 잔업
     let person = 0;
     // 내업 지붕은 전경이나 다른 구획을 볼 때만(내업을 가까이 보면 지붕과 철골을 통째로 숨긴다, D38)
-    const roofsOn = this.focus !== "shop";
+    const roofsOn = this.view === "third" && this.focus !== "shop";
     // 간이공정(4.4): 쓰지 않는 공정의 작업장·이름표·적치장 칸은 숨겨 빈 땅으로 둔다(공장 벽·지붕도)
     this.stockCells.forEach((cell, p) => { for (const o of cell) o.visible = stockUsed(f, p); });
     const quayTag = this.sectorMarks.get("quay")?.tag;
