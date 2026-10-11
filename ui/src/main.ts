@@ -1333,7 +1333,7 @@ function warnHazard(hazard: { id: string; label: string }): void {
     h("div", { class: "safety-card" },
       h("b", null, "⚠ 위험 반경입니다"),
       h("p", null, `${hazard.label}에 들어왔습니다.`),
-      h("p", { class: "hint" }, "움직이는 설비 반경 10m 안에는 들어가지 않습니다."),
+      h("p", { class: "hint" }, "골리앗 크레인과 움직이는 트랜스포터 반경 10m 안에는 들어가지 않습니다."),
       h("div", { class: "safety-actions" },
         h("button", { class: "btn primary", type: "button", onclick: () => {
           overlay.remove();

@@ -12,7 +12,7 @@ import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { LEAD_IN, nextStation, type Delivery, type ForkliftJobView, type Frame, type LotView } from "./frame";
-import { mesh, Person, SENIOR_NAME, WORKER_NAMES } from "./people";
+import { buildFirstPersonArms, mesh, Person, SENIOR_NAME, WORKER_NAMES } from "./people";
 import { quayWaiting, STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot, stockUsed } from "./stock";
 import { buildDock, buildLand, buildRoof, buildSectorOutline, buildWalls, buildYardLines, GiantHand, Gulliver, SEA_Y, type DockParts } from "./coast";
 import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LANE_Z, LOUNGE, LOUNGE_SOUTH, loungeOf, fenceSegments, GATES, GATE_W, OUTER_ROAD, MAT_D, MAT_TOP, MAT_W, MAT2_D,
@@ -45,6 +45,8 @@ export type FieldView = "third" | "first";
 const WALK_SPEED = 2.6, BADGE_R = 5.5, FP_FOV = 62;
 /** 1인칭에서 이름표(작업장·설비·블록)가 보이는 거리. 멀리 것까지 띄우면 지평선에 겹쳐 쌓인다 */
 const FP_LABEL_R = 12;
+/** 내업 공장 벽 높이(4.11.1: 1.0 → 1.6, 1인칭에서 소인 키의 두 배 남짓이면 공장 벽 같지 않았다) */
+const SHOP_WALL_H = 1.6;
 
 export interface DaySource {
   /** 그날 안에서 흐른 비율(0~1)을 받아 장면을 돌려준다. */
@@ -149,6 +151,9 @@ export class Yard {
   private fpYaw = 0;
   private fpPitch = -0.06;
   private readonly keys = { forward: 0, strafe: 0, run: false };
+  /** 1인칭 팔(카메라에 붙음)과 걸음에 따라 흔들리는 박자 */
+  private readonly fpArms = buildFirstPersonArms();
+  private stride = 0;
   /** 자동 안전 경고(4.10): 지금 관리자가 들어 있는 위험 반경, 들어갈 때 부를 곳(main.ts) */
   private hazardNow: string | null = null;
   private hazardHandler: ((hazard: Hazard) => void) | null = null;
@@ -248,6 +253,10 @@ export class Yard {
       this.scene.add(p.root);
     }
     this.scene.add(this.senior.root, this.manager.root);
+    // 1인칭 팔은 카메라의 자식이라 카메라를 장면에 넣어야 그려진다
+    this.fpArms.visible = false;
+    this.camera.add(this.fpArms);
+    this.scene.add(this.camera);
     this.manager.place(this.managerAt(), Math.PI, "stand", true);
     this.buildSafety();
     this.setupLighting();
@@ -482,7 +491,7 @@ export class Yard {
       for (const unit of [0, 1, 2]) {
         const { x0, x1, z0, z1 } = areaBounds(p, unit, docks);
         // 안벽의장·시운전은 물 위라 구역 그림이 없다(빈 묶음)
-        const area = isShop(p) ? buildWalls(x0, x1, z0, z1, 1.0)
+        const area = isShop(p) ? buildWalls(x0, x1, z0, z1, SHOP_WALL_H)
           : p === ST.pe ? buildYardLines(x0, x1, z0, z1)
           : p === ST.quay ? buildYardLines(x0, x1, z0, z1)   // 안벽 위 작업 구역
           : p > ST.dock ? new THREE.Group()
@@ -492,7 +501,7 @@ export class Yard {
         this.areas[p][unit] = area;
         if (p === ST.dock) this.docks[unit] = area.userData.dock as DockParts;
         if (isShop(p)) {
-          const roof = buildRoof(x0, x1, z0, z1, 1.0);
+          const roof = buildRoof(x0, x1, z0, z1, SHOP_WALL_H);
           roof.visible = false;
           this.scene.add(roof);
           this.roofs[p][unit] = roof;
@@ -910,7 +919,10 @@ export class Yard {
     this.controls.enabled = !first;
     this.manager.setVisible(!first);
     this.camera.fov = first ? FP_FOV : 40;
+    // 팔이 눈 바로 앞(0.1 안쪽)에 있어 1인칭에서는 가까운 면을 당긴다
+    this.camera.near = first ? 0.02 : 0.1;
     this.camera.updateProjectionMatrix();
+    this.fpArms.visible = first;
     this.labels.domElement.classList.toggle("first", first);
     if (first) {
       // 설비 옆(순간이동한 자리)에 있었으면 안전한 자리에서 시작한다
@@ -962,6 +974,7 @@ export class Yard {
     const step = (WALK_SPEED * (run ? 2 : 1) * dt) / len;
     dx *= step;
     dz *= step;
+    this.stride += dt * (run ? 2 : 1);
     const pos = this.manager.root.position.clone();
     const blockers = this.blockers();
     if (walkable(pos.x + dx, pos.z, blockers)) pos.x += dx;
@@ -974,10 +987,11 @@ export class Yard {
     this.hazardHandler = fn;
   }
 
-  /** 관리자 자리가 움직이는 설비의 위험 반경 안인가: 일하는 크레인, 움직이는 트랜스포터 */
+  /** 관리자 자리가 위험 반경 안인가: 골리앗 크레인(늘), 움직이는 트랜스포터 */
   private hazardAt(p: THREE.Vector3): Hazard | null {
     for (let u = 0; u < 2; u++) {
-      if (!this.craneRings[u].visible || !this.craneActive[u]) continue;
+      // 크레인 반경은 일하지 않을 때도 출입 금지(팻말·순간이동 경고와 같게, 4.11.1). 트랜스포터는 움직일 때만
+      if (!this.craneRings[u].visible) continue;
       if (Math.hypot(p.x - STATION_X[ST.dock], p.z - dockZ(u)) < CRANE_R) return { id: "crane", label: "골리앗 크레인(걸리버의 손) 작업 반경" };
     }
     for (const ring of this.cartRings) {
@@ -1002,6 +1016,10 @@ export class Yard {
     const m = this.manager.root.position;
     this.camera.position.set(m.x, m.y + this.manager.eyeHeight(), m.z);
     this.camera.rotation.set(this.fpPitch, this.fpYaw, 0, "YXZ");
+    // 걸으면 팔이 위아래·좌우로 조금 흔들린다
+    const walking = this.keys.forward !== 0 || this.keys.strafe !== 0;
+    const t = this.stride * 9;
+    this.fpArms.position.set(walking ? Math.sin(t) * 0.004 : 0, walking ? -Math.abs(Math.cos(t)) * 0.006 : 0, 0);
     // 명찰: 가까운 사람만(멀리까지 띄우면 겹친다)
     for (const p of [...this.people, this.senior]) p.showTag(p.root.visible && p.root.position.distanceTo(m) < BADGE_R);
   }

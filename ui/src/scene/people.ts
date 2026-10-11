@@ -390,3 +390,36 @@ export class Person {
     this.root.rotation.y += d * Math.min(1, dt * 8);
   }
 }
+
+/**
+ * 1인칭 팔(4.11.1): 카메라에 붙이는 생산관리자의 두 팔. 소매는 관리자 옷 색, 손은 관리자 피부(SKIN[0]),
+ * 왼손에 태블릿(3인칭 관리자가 가슴에 든 것). 크기는 3인칭 소인과 같다(PERSON_SIZE). 카메라 공간: −z가 앞, +x가 오른쪽.
+ */
+export function buildFirstPersonArms(): THREE.Group {
+  const g = new THREE.Group();
+  const k = 1.8 * PERSON_SIZE;
+  const arm = (shoulder: THREE.Vector3, hand: THREE.Vector3) => {
+    const dir = hand.clone().sub(shoulder);
+    const len = dir.length();
+    const sleeve = mesh(new THREE.CapsuleGeometry(0.022 * k, len, 6, 12), "#3d4a5c");
+    sleeve.position.copy(shoulder).addScaledVector(dir, 0.5);
+    sleeve.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+    const palm = mesh(new THREE.SphereGeometry(0.024 * k, 16, 12), SKIN[0]);
+    palm.position.copy(hand);
+    g.add(sleeve, palm);
+  };
+  arm(new THREE.Vector3(0.15, -0.28, -0.02), new THREE.Vector3(0.1, -0.17, -0.3));
+  arm(new THREE.Vector3(-0.15, -0.28, -0.02), new THREE.Vector3(-0.085, -0.175, -0.29));
+  // 태블릿: 왼손이 받쳐 들고 화면이 위로 비스듬히
+  const tablet = new THREE.Group();
+  tablet.add(mesh(new THREE.BoxGeometry(0.1 * k, 0.007, 0.07 * k), "#22303c"));
+  const screen = mesh(new THREE.PlaneGeometry(0.09 * k, 0.06 * k), "#9fc2d6", { emissive: "#2c4a5c", roughness: 0.4 });
+  screen.rotation.x = -Math.PI / 2;
+  screen.position.y = 0.004;
+  tablet.add(screen);
+  tablet.position.set(-0.045, -0.16, -0.3);
+  tablet.rotation.set(0.75, 0.25, 0.05);
+  g.add(tablet);
+  g.traverse((o) => { o.castShadow = false; o.receiveShadow = false; });
+  return g;
+}
