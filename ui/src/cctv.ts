@@ -552,7 +552,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   });
 
   // 인도한 배는 조선소를 떠난다(관제실 모니터 오른쪽 위 인도 완료 로그). 착수 전 배만 안벽에 적어 둔다
-  const waiting = frame.lots.filter((l) => l.place === "hidden").map((l) => l.ship);
+  const waiting = frame.lots.filter((l) => l.place === "hidden" && l.state !== "material_wait").map((l) => l.ship);
   if (waiting.length) add(9, tag(px((QUAY.x0 + QUAY.x1) / 2), py(QUAY.z0 + 1.8), `착수 전 ${waiting.join(" ")}`, "cc-tag mid"));
 
   // ----- 그리기: 고른 구획을 화면 가득 -----

@@ -7,7 +7,7 @@ import { SEA_MATERIALS, SUPPLY_DAYS } from "./layout";
 
 /** 로트가 있는 자리. */
 export type Place =
-  | "hidden"      // 착수 전
+  | "hidden"      // 착수 전, 또는 첫 공정(절단)의 자재(종이)가 아직 오지 않음
   | "queue"       // 공정 앞 대기 줄 (작업장 대기, 자재 대기, 중지된 작업장 앞)
   | "bench"       // 정반 위 (작업, 재작업, 인력 대기, 중지)
   | "outbound"    // 공정을 끝내고 트랜스포터를 기다림
@@ -187,6 +187,10 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
       case "transport_wait":
         return { ...base, place: "outbound", station: p, form: formOf(p, 1), state: rec.state };
       case "material_wait":
+        // 첫 공정(앞 공정이 없는 절단)의 자재 대기는 아직 야드에 아무것도 없다: 종이(철판)가 오는 중이다(4.7.2).
+        // 강재 적치장의 "입고 D-n"과 사건 기록만 보인다. 다른 공정은 앞 공정이 만든 블록이 적치장에서 기다린다.
+        if (!scenario.stations[p]?.after?.length) return { ...base, place: "hidden", station: p, form: 0, state: rec.state };
+        return { ...base, place: "queue", station: p, form: formOf(p, 0), state: rec.state };
       case "station_wait":
         return { ...base, place: "queue", station: p, form: formOf(p, 0), state: rec.state };
       default: {
