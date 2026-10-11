@@ -124,9 +124,9 @@ class HandExamples(unittest.TestCase):
                                           "pre_outfitting": (17, 18), "grand_assembly": (20, 23), "erection": (24, 30),
                                           "quay_outfitting": (31, 32), "sea_trial": (33, 34)})
         self.assertEqual(r["ships"][0]["delivered_day"], 34)
-        # 재공비 33일 × 10, 인건비 (조립 4 + 가공·탑재·도장·의장 2씩) × 10 × 120일 + 시운전 40, 증설비 300, 정비비 작업장 11곳 × 100
+        # 재공비 33일 × 10, 인건비 (조립 4 + 가공·탑재·도장·의장 2씩) × 10 × 120일 + 시운전 40, 증설비 300, 정비비 작업장 10곳 × 100(시운전은 설비가 없다, 4.12)
         self.assertEqual((r["costs"]["wip"], r["costs"]["labor"], r["costs"]["investment"], r["costs"]["maintenance"]),
-                         (330, 14440, 300, 1100))
+                         (330, 14440, 300, 1000))
         # 조립 인원이 2명이면 2호는 1호가 끝날 때까지 인력 대기, 그 뒤 1호가 짝 대기 → 나누지 않은 것과 같은 10~17일.
         cfg["pool"] = 2
         r = simulate(cfg, one_ship_scenario(FULL))
@@ -188,19 +188,19 @@ class Presets(unittest.TestCase):
     # 4.0 물류 전담(D39) 뒤의 값. 등급 구간은 버전을 올릴 때 조율한다(D40): "4.3.0 조율 값".
     EXPECTED = {
         "unmanaged": {
-            "delivered": [82, 74, 66, 59, 51, 36], "late": [40, 18, 0, 0, 0, 0], "fpy": (32, 60), "on_time": 4,
+            "delivered": [82, 74, 66, 58, 50, 36], "late": [40, 18, 0, 0, 0, 0], "fpy": (34, 60), "on_time": 4,
             "accidents": 7, "breakdowns": 13, "man_days": 334,
-            "costs": {'labor': 28980.0, 'overtime': 1670.0, 'maintenance': 0, 'material': 3060.0, 'holding': 42.4, 'wip': 3290.0, 'rework': 5600.0, 'accident': 2100.0, 'breakdown': 1950.0, 'transporter': 1800, 'investment': 0.0, 'research': 0, 'late_penalty': 10008.0},
-            "total": 58500.4, "profit": -24900.4,
-            "spans": {'S1': [(10, 10), (18, 19), (23, 27), (42, 51), (54, 55), (56, 58), (60, 64), (70, 76), (79, 81), (82, 82)], 'S2': [(9, 9), (13, 14), (20, 22), (38, 41), (45, 45), (48, 50), (52, 54), (62, 69), (71, 73), (74, 74)], 'S3': [(7, 8), (10, 12), (13, 19), (33, 37), (39, 40), (43, 47), (49, 51), (54, 61), (63, 64), (65, 66)], 'S4': [(6, 6), (8, 9), (11, 12), (27, 32), (36, 37), (38, 42), (44, 45), (46, 53), (55, 57), (58, 59)], 'S5': [(4, 5), (6, 7), (8, 10), (14, 26), (28, 29), (30, 32), (34, 38), (39, 42), (48, 49), (50, 51)], 'S6': [(3, 3), (4, 4), (5, 6), (8, 13), (17, 18), (19, 21), (23, 24), (25, 29), (34, 35), (36, 36)]},
-            "parts": {'S1': [25, 4, 4, 31, 0, 3, 2, 9, 4], 'S2': [21, 8, 3, 32, 0, 3, 3, 1, 3], 'S3': [25, 7, 3, 18, 0, 3, 0, 5, 5], 'S4': [21, 7, 3, 11, 0, 3, 6, 6, 2], 'S5': [25, 8, 7, 3, 0, 3, 0, 3, 2], 'S6': [21, 4, 6, 0, 0, 3, 2, 0, 0]},
-            "oee": {'cutting': (66.7, 60.0, 66.7, 26.7), 'processing': (80.0, 57.8, 50.0, 23.1), 'sub_assembly': (80.0, 70.7, 50.0, 28.3), 'block_assembly': (77.3, 81.6, 50.0, 31.5), 'painting': (100.0, 58.2, 66.7, 38.8), 'pre_outfitting': (77.3, 53.3, 16.7, 6.9), 'grand_assembly': (90.0, 62.2, 66.7, 37.3), 'erection': (80.0, 87.5, 66.7, 46.7), 'quay_outfitting': (51.7, 53.3, 50.0, 13.8), 'sea_trial': (100.0, 66.7, 50.0, 33.3)},
+            "costs": {'labor': 28940.0, 'overtime': 1670.0, 'maintenance': 0, 'material': 3060.0, 'holding': 42.4, 'wip': 3270.0, 'rework': 5200.0, 'accident': 2100.0, 'breakdown': 1950.0, 'transporter': 1800, 'investment': 0.0, 'research': 0, 'late_penalty': 10008.0},
+            "total": 58040.4, "profit": -24440.4,
+            "spans": {'S1': [(10, 10), (18, 19), (23, 27), (42, 51), (54, 55), (56, 58), (60, 64), (70, 76), (79, 81), (82, 82)], 'S2': [(9, 9), (13, 14), (20, 22), (38, 41), (45, 45), (48, 50), (52, 54), (62, 69), (71, 73), (74, 74)], 'S3': [(7, 8), (10, 12), (13, 19), (33, 37), (39, 40), (43, 47), (49, 51), (54, 61), (63, 64), (65, 66)], 'S4': [(6, 6), (8, 9), (11, 12), (27, 32), (36, 37), (38, 42), (44, 45), (46, 53), (55, 57), (58, 58)], 'S5': [(4, 5), (6, 7), (8, 10), (14, 26), (28, 29), (30, 32), (34, 38), (39, 42), (48, 49), (50, 50)], 'S6': [(3, 3), (4, 4), (5, 6), (8, 13), (17, 18), (19, 21), (23, 24), (25, 29), (34, 35), (36, 36)]},
+            "parts": {'S1': [25, 4, 4, 31, 0, 3, 2, 9, 4], 'S2': [21, 8, 3, 32, 0, 3, 3, 1, 3], 'S3': [25, 7, 3, 18, 0, 3, 0, 5, 5], 'S4': [21, 6, 3, 11, 0, 3, 6, 6, 2], 'S5': [25, 7, 7, 3, 0, 3, 0, 3, 2], 'S6': [21, 4, 6, 0, 0, 3, 2, 0, 0]},
+            "oee": {'cutting': (66.7, 60.0, 66.7, 26.7), 'processing': (80.0, 57.8, 50.0, 23.1), 'sub_assembly': (80.0, 70.7, 50.0, 28.3), 'block_assembly': (77.3, 81.6, 50.0, 31.5), 'painting': (100.0, 58.2, 66.7, 38.8), 'pre_outfitting': (77.3, 53.3, 16.7, 6.9), 'grand_assembly': (90.0, 62.2, 66.7, 37.3), 'erection': (80.0, 87.5, 66.7, 46.7), 'quay_outfitting': (51.7, 53.3, 50.0, 13.8), 'sea_trial': (100.0, 74.3, 83.3, 61.9)},
         },
         "managed": {
             "delivered": [42, 51, 70, 80, 95, 106], "late": [0, 0, 0, 0, 0, 0], "fpy": (59, 60), "on_time": 6,
             "accidents": 0, "breakdowns": 4, "man_days": 373,
-            "costs": {'labor': 13890.0, 'overtime': 0.0, 'maintenance': 1000, 'material': 3060.0, 'holding': 171.4, 'wip': 2430.0, 'rework': 200.0, 'accident': 0.0, 'breakdown': 600.0, 'transporter': 1950, 'investment': 0.0, 'research': 0, 'late_penalty': 0.0},
-            "total": 23301.4, "profit": 10298.6,
+            "costs": {'labor': 13890.0, 'overtime': 0.0, 'maintenance': 900, 'material': 3060.0, 'holding': 171.4, 'wip': 2430.0, 'rework': 200.0, 'accident': 0.0, 'breakdown': 600.0, 'transporter': 1950, 'investment': 0.0, 'research': 0, 'late_penalty': 0.0},
+            "total": 23201.4, "profit": 10398.6,
             "spans": {'S1': [(3, 4), (5, 6), (7, 12), (14, 21), (23, 24), (25, 26), (28, 31), (32, 38), (39, 40), (41, 42)], 'S2': [(12, 12), (13, 14), (15, 20), (24, 31), (33, 34), (35, 36), (38, 39), (40, 47), (48, 49), (50, 51)], 'S3': [(24, 25), (26, 27), (28, 35), (39, 47), (49, 50), (51, 52), (54, 57), (58, 66), (67, 68), (69, 70)], 'S4': [(40, 40), (41, 42), (43, 48), (51, 60), (62, 63), (64, 65), (67, 68), (69, 76), (77, 78), (79, 80)], 'S5': [(52, 53), (54, 55), (56, 62), (64, 72), (74, 75), (76, 79), (81, 84), (85, 91), (92, 93), (94, 95)], 'S6': [(70, 70), (71, 72), (73, 75), (77, 84), (86, 87), (88, 89), (91, 92), (93, 102), (103, 104), (105, 106)]},
             "parts": {'S1': [35, 2, 0, 0, 0, 3, 0, 0, 0], 'S2': [35, 0, 0, 0, 0, 3, 2, 0, 0], 'S3': [36, 0, 0, 0, 4, 3, 2, 0, 2], 'S4': [35, 0, 0, 0, 0, 3, 1, 0, 2], 'S5': [37, 0, 0, 0, 4, 3, 0, 0, 0], 'S6': [32, 0, 0, 0, 0, 3, 0, 0, 2]},
             "oee": {'cutting': (100.0, 44.4, 100.0, 44.4), 'processing': (100.0, 46.7, 100.0, 46.7), 'sub_assembly': (83.3, 40.9, 83.3, 28.4), 'block_assembly': (92.6, 44.8, 100.0, 41.5), 'painting': (100.0, 46.7, 100.0, 46.7), 'pre_outfitting': (85.7, 53.3, 100.0, 45.7), 'grand_assembly': (100.0, 53.3, 100.0, 53.3), 'erection': (91.8, 53.3, 100.0, 49.0), 'quay_outfitting': (100.0, 53.3, 100.0, 53.3), 'sea_trial': (100.0, 40.0, 100.0, 40.0)},
@@ -208,8 +208,8 @@ class Presets(unittest.TestCase):
         "all_in": {
             "delivered": [34, 47, 56, 60, 64, 73], "late": [0, 0, 0, 0, 0, 0], "fpy": (42, 60), "on_time": 6,
             "accidents": 7, "breakdowns": 3, "man_days": 314,
-            "costs": {'labor': 43660.0, 'overtime': 1570.0, 'maintenance': 1000, 'material': 3060.0, 'holding': 881.0, 'wip': 3000.0, 'rework': 3600.0, 'accident': 2100.0, 'breakdown': 450.0, 'transporter': 1950, 'investment': 0.0, 'research': 0, 'late_penalty': 0.0},
-            "total": 61271.0, "profit": -27671.0,
+            "costs": {'labor': 43660.0, 'overtime': 1570.0, 'maintenance': 900, 'material': 3060.0, 'holding': 881.0, 'wip': 3000.0, 'rework': 3600.0, 'accident': 2100.0, 'breakdown': 450.0, 'transporter': 1950, 'investment': 0.0, 'research': 0, 'late_penalty': 0.0},
+            "total": 61171.0, "profit": -27571.0,
             "spans": {'S1': [(3, 3), (4, 5), (6, 10), (12, 16), (18, 19), (20, 22), (24, 26), (27, 30), (31, 33), (34, 34)], 'S2': [(4, 4), (6, 6), (11, 13), (17, 22), (26, 26), (27, 29), (31, 33), (34, 44), (45, 46), (47, 47)], 'S3': [(5, 5), (7, 8), (14, 18), (23, 30), (33, 34), (35, 36), (38, 40), (45, 52), (53, 54), (55, 56)], 'S4': [(6, 6), (9, 10), (19, 20), (31, 36), (40, 41), (42, 43), (45, 46), (53, 57), (58, 59), (60, 60)], 'S5': [(7, 8), (11, 12), (21, 23), (37, 44), (47, 48), (49, 51), (53, 55), (58, 61), (62, 63), (64, 64)], 'S6': [(9, 9), (13, 13), (24, 25), (45, 51), (55, 56), (57, 59), (61, 62), (63, 70), (71, 72), (73, 73)]},
             "parts": {'S1': [25, 4, 2, 0, 0, 3, 0, 0, 0], 'S2': [21, 6, 2, 8, 0, 3, 2, 3, 2], 'S3': [25, 5, 2, 11, 0, 3, 1, 5, 4], 'S4': [21, 4, 2, 23, 0, 3, 2, 3, 2], 'S5': [25, 5, 2, 25, 0, 3, 4, 0, 0], 'S6': [21, 2, 2, 30, 0, 3, 9, 6, 0]},
             "oee": {'cutting': (77.8, 62.9, 83.3, 40.7), 'processing': (76.9, 60.0, 83.3, 38.5), 'sub_assembly': (87.0, 70.7, 50.0, 30.7), 'block_assembly': (76.2, 81.7, 66.7, 41.5), 'painting': (100.0, 58.2, 66.7, 38.8), 'pre_outfitting': (84.2, 53.3, 33.3, 15.0), 'grand_assembly': (100.0, 63.3, 83.3, 52.8), 'erection': (80.0, 87.5, 66.7, 46.7), 'quay_outfitting': (100.0, 53.3, 83.3, 44.4), 'sea_trial': (100.0, 74.3, 83.3, 61.9)},
@@ -310,18 +310,18 @@ class GradeTable(unittest.TestCase):
     트랜스포터는 역할마다 한 대로 고정돼(D39) 대수를 바꾼 줄은 뺐다."""
 
     ROWS = [
-        ("무관리", PRESETS["unmanaged"], -24900.4, 4, 49.3, "F"),
-        ("전부 최대 투입", PRESETS["all_in"], -27671.0, 6, 57.8, "C"),
-        ("관리", PRESETS["managed"], 10298.6, 6, 88.4, "A"),
-        ("관리, 직종마다 3명", variant("managed", 3), 5508.6, 6, 75.2, "B"),
-        ("관리, 직종마다 1명", variant("managed", 1), -39700.8, 0, 20.0, "F"),
-        ("관리 + 공정 자동화, 직종마다 1명", variant("managed", 1, research=["automation"]), 11602.0, 0, 72.0, "B"),
-        ("속성 + 자동 검사 → 자동화", variant("managed", 2, research=["auto_inspect", "automation"], method="fast"), 10515.2, 6, 88.5, "A"),
+        ("무관리", PRESETS["unmanaged"], -24440.4, 4, 49.6, "F"),
+        ("전부 최대 투입", PRESETS["all_in"], -27571.0, 6, 57.8, "C"),
+        ("관리", PRESETS["managed"], 10398.6, 6, 88.7, "A"),
+        ("관리, 직종마다 3명", variant("managed", 3), 5608.6, 6, 75.5, "B"),
+        ("관리, 직종마다 1명", variant("managed", 1), -39600.8, 0, 20.0, "F"),
+        ("관리 + 공정 자동화, 직종마다 1명", variant("managed", 1, research=["automation"]), 11702.0, 0, 72.3, "B"),
+        ("속성 + 자동 검사 → 자동화", variant("managed", 2, research=["auto_inspect", "automation"], method="fast"), 10615.2, 6, 88.7, "A"),
         ("정비 생략 + 예지 정비 → 자동화, 트랜스포터·지게차 미정비", variant("managed", 2, 1, False, ["predictive", "automation"], maintenance=False), 10860.8, 5, 86.1, "A"),
-        ("관리, 탑재 숙련공 → 일반", crew("managed", erection="normal"), 10748.6, 6, 89.7, "A"),
-        ("관리, 중조립 로봇", crew("managed", block_assembly="robot"), 9482.6, 6, 86.2, "A"),
-        ("관리, 휴지·저가 물감·저가 깃발", mats("managed", paper="cheap", paint="cheap", flag="cheap"), 10904.3, 5, 86.7, "A"),
-        ("관리, 전 공정 신공법", method("managed", "new", *STATIONS), 8126.8, 6, 82.4, "B"),
+        ("관리, 탑재 숙련공 → 일반", crew("managed", erection="normal"), 10848.6, 6, 89.9, "A"),
+        ("관리, 중조립 로봇", crew("managed", block_assembly="robot"), 9582.6, 6, 86.4, "A"),
+        ("관리, 휴지·저가 물감·저가 깃발", mats("managed", paper="cheap", paint="cheap", flag="cheap"), 11004.3, 5, 87.0, "A"),
+        ("관리, 전 공정 신공법", method("managed", "new", *STATIONS), 8226.8, 6, 82.7, "B"),
     ]
 
     def test_rows(self):
@@ -336,7 +336,7 @@ class GradeTable(unittest.TestCase):
         g = open_sim(variant("managed", 1, research=["automation"]))["grade"]
         self.assertEqual(g["baseline"]["name"], "전부 최대 투입")
         self.assertEqual((g["baseline"]["score"], g["baseline"]["grade"]), (57.8, "C"))
-        self.assertEqual(g["vs_baseline"], {'profit': 39273.0, 'pool': -31, 'score': 14.2})
+        self.assertEqual(g["vs_baseline"], {'profit': 39273.0, 'pool': -31, 'score': 14.5})
 
     def test_parts_add_up(self):
         g = open_sim(PRESETS["managed"])["grade"]
@@ -453,7 +453,7 @@ class Contract(unittest.TestCase):
         # 탑재는 숙련공(불량률 −8%p), 자동 검사 −5%p. 숙련공 할증은 일한 날마다 붙어 고정비에 없다.
         self.assertEqual(p["stations"]["erection"], {"rate": 2.0, "defect_rate": 0.02, "defect_rate_final": 0.0})
         self.assertEqual(p["fixed_costs"],
-                         {"labor": 36000, "maintenance": 1000, "transporter": 1950, "investment": 0, "research": 300})   # 직종마다 6명 × 1,200
+                         {"labor": 36000, "maintenance": 900, "transporter": 1950, "investment": 0, "research": 300})   # 직종마다 6명 × 1,200
         # 운반 설비(4.3): 트랜스포터 1대 650 + 지게차 2대 × (5 × 120일 + 정비 50) = 1,950
         self.assertEqual([(x["id"], x["end"]) for x in p["research"]], [("auto_inspect", 8)])
         # 깃발은 안벽의장(4.0)에서 쓴다. 필요일 = 지게차가 안벽의장 키트를 싣는 날(탑재에 들어간 다음 날). JIT는 리드타임 10일 앞.
@@ -522,8 +522,8 @@ class Expansion(unittest.TestCase):
     def test_expansion_cost_and_maintenance_per_unit(self):
         p = open_preview(expanded("all_in", block_assembly=2, erection=2))
         self.assertEqual(p["fixed_costs"]["investment"], 300 + 800)
-        # 정비비는 작업장마다: 공정 10개(4.0) + 증설 2곳 = 12곳
-        self.assertEqual(p["fixed_costs"]["maintenance"], 12 * 100)
+        # 정비비는 작업장마다: 공정 10개(4.0) − 시운전(설비 없음, 4.12) + 증설 2곳 = 11곳
+        self.assertEqual(p["fixed_costs"]["maintenance"], 11 * 100)
 
     def test_plan_overlap_only_when_more_ships_than_units(self):
         plan = open_preview(expanded("managed", block_assembly=2))["plan"]
@@ -608,7 +608,7 @@ class Scenarios(unittest.TestCase):
 
     def test_growth_presets(self):
         # 4.3.0 조율 값(D40). 4.8: C안(전부 최대 투입)은 트랜스포터 2대
-        cases = {'unmanaged': (-31615.4, 44.7, 'F'), 'managed': (18148.2, 88.5, 'A'), 'all_in': (-22419.0, 51.1, 'C')}
+        cases = {'unmanaged': (-30999.4, 45.0, 'F'), 'managed': (18248.2, 88.6, 'A'), 'all_in': (-22319.0, 51.1, 'C')}
         for pid, (profit, score, grade) in cases.items():
             r = simulate(GROWTH[pid])
             self.assertEqual((r["profit"], r["grade"]["score"], r["grade"]["grade"]), (profit, score, grade), pid)
@@ -669,7 +669,7 @@ class AreasAndSplit(unittest.TestCase):
         # 관리안(기본 반기)에 조립 4명, 중조립 2곳 나눠 하기(4.3.0 조율 값, D40).
         cfg = as_areas(with_assembly(PRESETS["managed"], 4), block_assembly={"stations": 2, "split": True})
         r = open_sim(cfg)
-        self.assertEqual((r["grade"]["grade"], r["grade"]["score"], r["qcd"]["delivery"]["on_time"]), ("A", 85.3, 6))
+        self.assertEqual((r["grade"]["grade"], r["grade"]["score"], r["qcd"]["delivery"]["on_time"]), ("A", 85.5, 6))
         # 들어갈 때 빈 작업장 수만큼 나눈다. 반기에는 배 사이가 넉넉해 여섯 척 모두 2곳에 나눠 들어간다.
         # 투입 기록은 배마다 하나(나눠 들어가면 units에 작업장 목록). 검사는 배 한 척에 한 번이다.
         enters = [e for e in r["events"] if e["type"] == "enter" and e["station"] == "block_assembly"]
@@ -684,7 +684,7 @@ class AreasAndSplit(unittest.TestCase):
         # "나눠 하기가 일정을 살린다"는 비교는 수주 급증(Surge.test_split_is_what_saves_the_schedule)이 맡는다.
         cfg = as_areas(with_assembly(PRESETS["managed"], 4), block_assembly={"stations": 2})
         r = open_sim(cfg)
-        self.assertEqual((r["grade"]["score"], r["qcd"]["delivery"]["on_time"]), (84.5, 6))
+        self.assertEqual((r["grade"]["score"], r["qcd"]["delivery"]["on_time"]), (84.7, 6))
 
     def test_plan_bar_uses_part_work(self):
         # 계획 막대: 나눠 하기를 켠 공정은 작업장을 모두 쓴다고 보고 부분 작업량으로 잰다(S1 중조립 16 ÷ 2곳 ÷ 2/일 = 4일).
@@ -714,7 +714,7 @@ class Surge(unittest.TestCase):
 
     def test_presets(self):
         # 4.3.0 조율 값(D40). 블록 운반이 한 대로 줄어 관리안도 한 척 지연(7/8)
-        cases = {'unmanaged': (-42029.2, 44.0, 'F'), 'managed': (25595.8, 89.3, 'A'), 'all_in': (-10540.8, 57.3, 'C')}   # 4.8: C안은 트랜스포터 2대
+        cases = {'unmanaged': (-42029.2, 44.0, 'F'), 'managed': (25695.8, 89.4, 'A'), 'all_in': (-10440.8, 57.3, 'C')}   # 4.8: C안은 트랜스포터 2대
         for pid, (profit, score, grade) in cases.items():
             r = simulate(SURGE[pid])
             self.assertEqual((r["profit"], r["grade"]["score"], r["grade"]["grade"]), (profit, score, grade), pid)
@@ -930,6 +930,30 @@ class TransporterCount(unittest.TestCase):
                 simulate(cfg)
 
 
+class TrialHasNoEquipment(unittest.TestCase):
+    """시운전은 외부팀이 하고 조선소 설비가 없다(4.12, D57): 고장 판정·정비비·미정비 불량 가산이 없다."""
+
+    def test_rule_marks_only_sea_trial(self):
+        sc = load_scenario("basic")
+        self.assertEqual([st["id"] for st in sc["stations"] if st.get("equipment") is False], ["sea_trial"])
+
+    def test_no_maintenance_cost_or_penalty(self):
+        on, off = copy.deepcopy(PRESETS["managed"]), copy.deepcopy(PRESETS["managed"])
+        on["stations"]["sea_trial"]["maintenance"] = True
+        off["stations"]["sea_trial"]["maintenance"] = False
+        p_on, p_off = preview(on), preview(off)
+        # 정비를 켜도 끄도 정비비와 불량률이 같다(표준 공법 0.10 그대로)
+        self.assertEqual(p_on["fixed_costs"]["maintenance"], p_off["fixed_costs"]["maintenance"])
+        self.assertEqual(p_off["stations"]["sea_trial"]["defect_rate"], 0.1)
+        self.assertEqual(simulate(on)["profit"], simulate(off)["profit"])
+
+    def test_never_breaks_down(self):
+        for sid in ("basic", "growth", "surge"):
+            for p in load_presets(sid):
+                events = simulate(p["config"], baseline=False)["events"]
+                self.assertFalse([e for e in events if e["type"] == "breakdown" and e.get("station") == "sea_trial"], (sid, p["id"]))
+
+
 class Hoist(unittest.TestCase):
     """호이스트(4.9): 소조립·중조립 정반 위 천장 크레인. 작업량 80%, 작업장마다 도입비 200·정비비 50, 고장 판정 6일마다."""
 
@@ -993,12 +1017,12 @@ class Hoist(unittest.TestCase):
                     simulate(cfg)
 
     def test_non_bottleneck_does_not_pay(self):
-        # 수주 증가 B안의 중조립에 호이스트: 도크가 병목이라 납기는 8 → 6척, 이익 18,148.2 → 16,896.0(병목 이론, D45)
+        # 수주 증가 B안의 중조립에 호이스트: 도크가 병목이라 납기는 8 → 6척, 이익 18,248.2 → 16,996.0(병목 이론, D45)
         cfg = copy.deepcopy(GROWTH["managed"])
         cfg["stations" if "stations" in cfg else "areas"]["block_assembly"]["hoist"] = True
         one, two = simulate(GROWTH["managed"], baseline=False), simulate(cfg, baseline=False)
         self.assertEqual((one["qcd"]["delivery"]["on_time"], two["qcd"]["delivery"]["on_time"]), (8, 6))
-        self.assertEqual((round(one["profit"], 1), round(two["profit"], 1)), (18148.2, 16896.0))
+        self.assertEqual((round(one["profit"], 1), round(two["profit"], 1)), (18248.2, 16996.0))
 
 
 SIMPLE = {p["id"]: p["config"] for p in load_presets("simple")}
@@ -1036,10 +1060,10 @@ class SimpleScenario(unittest.TestCase):
         self.assertEqual(jobs[:2], [(6, "pallet", "S1"), (7, "kit", "S1")])
 
     def test_only_used_trades_are_staffed_and_paid(self):
-        # 가공 2 + 조립 4 + 탑재 2 = 8명 × 10 × 60일 = 4,800 + 시운전 외부팀 120. 도장·의장 직종은 없고, 정비비는 쓰는 공정 여섯 곳만(6 × 100).
+        # 가공 2 + 조립 4 + 탑재 2 = 8명 × 10 × 60일 = 4,800 + 시운전 외부팀 120. 도장·의장 직종은 없고, 정비비는 설비가 있는 공정 다섯 곳만(5 × 100, 시운전은 설비 없음 4.12).
         r = simulate(SIMPLE["managed"], baseline=False)
         self.assertEqual(r["workforce"]["pools"], {"processing": 2, "assembly": 4, "erection": 2})
-        self.assertEqual((r["costs"]["labor"], r["costs"]["maintenance"]), (4920.0, 600))
+        self.assertEqual((r["costs"]["labor"], r["costs"]["maintenance"]), (4920.0, 500))
         # 쓰지 않는 직종 인원을 적어도 읽지 않는다
         cfg = copy.deepcopy(SIMPLE["managed"])
         cfg["pools"]["painting"] = 2
@@ -1047,7 +1071,7 @@ class SimpleScenario(unittest.TestCase):
         self.assertEqual(list(preview(SIMPLE["managed"])["plan"]["ships"]["S1"]), self.ACTIVE)
 
     def test_presets(self):
-        cases = {"unmanaged": (-4338.0, 47.4, "F", 2), "managed": (5169.8, 91.8, "A", 4), "all_in": (-6148.4, 59.3, "C", 4)}
+        cases = {"unmanaged": (-4238.0, 47.4, "F", 2), "managed": (5269.8, 92.4, "A", 4), "all_in": (-6048.4, 59.3, "C", 4)}
         for pid, (profit, score, grade, on_time) in cases.items():
             r = simulate(SIMPLE[pid])
             self.assertEqual((r["profit"], r["grade"]["score"], r["grade"]["grade"], r["qcd"]["delivery"]["on_time"]), (profit, score, grade, on_time), pid)

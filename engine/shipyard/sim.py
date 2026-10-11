@@ -407,12 +407,14 @@ def station_rate(station_cfg: dict[str, Any], rules: dict[str, Any], assigned: i
 
 
 def station_defect_rate(station_cfg: dict[str, Any], crew: str, scenario: dict[str, Any],
-                        research: frozenset[str] = frozenset(), lots_done: int = 0, grade: str = "standard") -> float:
+                        research: frozenset[str] = frozenset(), lots_done: int = 0, grade: str = "standard",
+                        equipment: bool = True) -> float:
     """불량률 = 공법(신공법은 끝낸 로트 수만큼 낮아짐) + 잔업 + 미정비 + 인력 + 자재 등급 − 자동 검사.
 
     예지 정비는 고장만 막는다(2.0). 정비를 안 한 공정의 불량 가산은 그대로다.
 
-    research는 효과가 난 연구, lots_done은 이 공정에서 검사를 마친 로트 수(학습 곡선)."""
+    research는 효과가 난 연구, lots_done은 이 공정에서 검사를 마친 로트 수(학습 곡선).
+    equipment가 False인 공정(시운전, 4.12)은 설비가 없어 미정비 가산이 없다."""
     rules = scenario["rules"]
     method = rules["methods"][station_cfg["method"]]
     rate = method["defect_rate"]
@@ -420,7 +422,7 @@ def station_defect_rate(station_cfg: dict[str, Any], crew: str, scenario: dict[s
         rate = max(method["defect_floor"], rate - method["learning_step"] * lots_done)
     if is_overtime({**station_cfg, "crew": crew}):
         rate += rules["overtime"]["defect_add"]
-    if not station_cfg["maintenance"]:
+    if equipment and not station_cfg["maintenance"]:
         rate += rules["no_maintenance_defect_add"]
     rate += rules["crews"][crew].get("defect_add", 0)
     rate += scenario["material_grades"][grade]["defect_add"]
@@ -496,7 +498,7 @@ def fixed_costs(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, f
     return {
         "labor": sum(config["pools"].values()) * costs["wage_per_day"] * days,
         "maintenance": sum(n * (costs["maintenance_per_station"] + (scenario["rules"]["hoist"]["maintenance_cost"] if has_hoist(config, s["id"]) else 0))
-                           for s, n in zip(scenario["stations"], units) if config["stations"][s["id"]]["maintenance"] and not is_skipped(s)),
+                           for s, n in zip(scenario["stations"], units) if config["stations"][s["id"]]["maintenance"] and not is_skipped(s) and has_equipment(s)),
         "transporter": n_tr * tr["cost_per_day"] * days
         + (n_tr * tr["maintenance_cost"] if config["transporters"]["maintenance"] else 0) + vehicles,
         "investment": investment(config, scenario),
@@ -521,8 +523,9 @@ def preview(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> d
         cfg = {**cfg, "crew": crew}
         stations[st["id"]] = {
             "rate": station_rate(cfg, rules, rules["max_workers_per_station"]),
-            "defect_rate": station_defect_rate(cfg, crew, scenario, grade=grade),
-            "defect_rate_final": station_defect_rate(cfg, crew, scenario, every, lots_done=len(scenario["orders"]), grade=grade),
+            "defect_rate": station_defect_rate(cfg, crew, scenario, grade=grade, equipment=has_equipment(st)),
+            "defect_rate_final": station_defect_rate(cfg, crew, scenario, every, lots_done=len(scenario["orders"]), grade=grade,
+                                                     equipment=has_equipment(st)),
         }
     lead = {m["id"]: m["lead_days"] for m in scenario["materials"]}
     materials = {sid: {mid: {"order_day": day, "arrival_day": None if day is None else day + lead[mid]}
@@ -561,6 +564,11 @@ def station_after(scenario: dict[str, Any]) -> list[list[int]]:
 
 def is_skipped(station: dict[str, Any]) -> bool:
     return bool(station.get("skipped"))
+
+
+def has_equipment(station: dict[str, Any]) -> bool:
+    """조선소 설비가 있는 공정. 시운전(외부팀)은 없어서 고장·정비·미정비 불량이 없다(4.12)."""
+    return station.get("equipment", True) is not False
 
 
 def active_trades(scenario: dict[str, Any]) -> list[str]:
@@ -694,6 +702,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     automation = scenario["research"]["automation"]
     # 고장 판정 간격(일한 날): 호이스트를 단 공정은 설비가 하나 더 있어 더 자주 판정한다(4.9)
     every_busy = [rules["hoist"]["breakdown_every_busy_days"] if has_hoist(config, s["id"]) else bd["every_busy_days"] for s in stations]
+    equipped = [has_equipment(s) for s in stations]
 
     def work_of(ship: int, p: int) -> float:
         return station_work(config, scenario, stations[p]["id"], orders[ship]["type"])
@@ -1072,7 +1081,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                         events.append({"day": day, "type": "accident", "station": pid, "unit": u + 1, "ship": orders[i]["id"]})
 
             # 5-2. 일한 날을 세고, 정해진 간격마다 고장 판정을 한다. 오늘 사고로 멈췄으면 판정하지 않는다.
-            if unit_busy[p][u] % every_busy[p] == 0 and day > stop_until[p][u]:
+            #      설비가 없는 공정(시운전, 4.12)은 판정하지 않는다.
+            if equipped[p] and unit_busy[p][u] % every_busy[p] == 0 and day > stop_until[p][u]:
                 threshold = 0 if "predictive" in done_research else (
                     bd["threshold_maintained"] if st_cfg[p]["maintenance"] else bd["threshold"])
                 table = rnd["breakdown"][pid]
@@ -1094,7 +1104,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                 if not cur["rework"]:
                     if group["verdict"] is None:
                         inspections[p] += 1
-                        rate = station_defect_rate(st_cfg[p], crews[p], scenario, done_research, inspections[p] - 1, grades[p])
+                        rate = station_defect_rate(st_cfg[p], crews[p], scenario, done_research, inspections[p] - 1, grades[p],
+                                                   has_equipment(stations[p]))
                         group["verdict"] = rnd["quality"][orders[i]["id"]][pid] < rate
                         if group["verdict"]:
                             cost["rework"] += costs["rework_per_defect"]
@@ -1241,7 +1252,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             "name": st["name"],
             "crew": crews[p],
             "max_rate": station_rate(st_cfg[p], rules, rules["max_workers_per_station"]),
-            "defect_rate": station_defect_rate(st_cfg[p], crews[p], scenario, grade=grades[p]),
+            "defect_rate": station_defect_rate(st_cfg[p], crews[p], scenario, grade=grades[p], equipment=has_equipment(st)),
             "busy_days": busy[p],
             "accident_stop_days": accident_stopped[p],
             "breakdown_stop_days": breakdown_stopped[p],
