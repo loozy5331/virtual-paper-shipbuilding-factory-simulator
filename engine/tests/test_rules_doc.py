@@ -930,6 +930,77 @@ class TransporterCount(unittest.TestCase):
                 simulate(cfg)
 
 
+class Hoist(unittest.TestCase):
+    """호이스트(4.9): 소조립·중조립 정반 위 천장 크레인. 작업량 80%, 작업장마다 도입비 200·정비비 50, 고장 판정 6일마다."""
+
+    def hoisted(self, units=1):
+        cfg = one_ship_config(FULL)
+        cfg["stations"]["block_assembly"].update(hoist=True, units=units)
+        return cfg
+
+    def test_work_is_eighty_percent(self):
+        # VLCC 중조립 16 → 12.8, 2명이면 8일 → 7일(올림). 뒤 공정이 하루씩 당겨진다.
+        # 고장은 끈다(이 난수표로는 호이스트의 6일째 판정에서 고장이 나 이틀 멈춘다, 아래 판정 간격 테스트)
+        sc = one_ship_scenario(FULL)
+        sc["breakdown"] = {**sc["breakdown"], "threshold_maintained": 0}
+        base, hoist = spans(simulate(one_ship_config(FULL), sc, baseline=False), "S1"), spans(simulate(self.hoisted(), sc, baseline=False), "S1")
+        self.assertEqual(base["block_assembly"][1] - base["block_assembly"][0] + 1, 8)
+        self.assertEqual(hoist["block_assembly"][1] - hoist["block_assembly"][0] + 1, 7)
+        self.assertEqual(hoist["erection"][1], base["erection"][1] - 1)
+        # 계획 막대도 같은 작업량으로 잰다
+        plan = preview(self.hoisted(), sc)["plan"]["ships"]["S1"]["block_assembly"]
+        self.assertEqual(plan["end"] - plan["start"] + 1, 7)
+
+    def test_costs_per_station(self):
+        # 작업장 둘: 도입비 200 × 2(설비 투자비), 정비비 (100 + 50) × 2
+        sc = one_ship_scenario(FULL)
+        plain = one_ship_config(FULL)
+        plain["stations"]["block_assembly"]["units"] = 2
+        a, b = preview(plain, sc)["fixed_costs"], preview(self.hoisted(units=2), sc)["fixed_costs"]
+        self.assertEqual(b["investment"] - a["investment"], 400)
+        self.assertEqual(b["maintenance"] - a["maintenance"], 100)
+        # 정비를 안 하면 호이스트 정비비도 없다
+        off = self.hoisted(units=2)
+        off["stations"]["block_assembly"]["maintenance"] = False
+        plain["stations"]["block_assembly"]["maintenance"] = False
+        self.assertEqual(preview(off, sc)["fixed_costs"]["maintenance"], preview(plain, sc)["fixed_costs"]["maintenance"])
+
+    def test_breakdown_checked_every_six_busy_days(self):
+        # 판정마다 고장 나게 하면(기준 1.0) 첫 고장이 일한 날 8일째 → 6일째
+        sc = one_ship_scenario(FULL)
+        sc["breakdown"] = {**sc["breakdown"], "threshold_maintained": 1.0}
+
+        def first(cfg):
+            r = simulate(cfg, sc, baseline=False)
+            start = spans(r, "S1")["block_assembly"][0]
+            return next(e["day"] for e in r["events"] if e["type"] == "breakdown" and e.get("station") == "block_assembly") - start + 1
+        self.assertEqual((first(one_ship_config(FULL)), first(self.hoisted())), (8, 6))
+
+    def test_only_assembly_and_opened_levels(self):
+        cfg = copy.deepcopy(GROWTH["managed"])
+        cfg["stations" if "stations" in cfg else "areas"]["painting"]["hoist"] = True
+        with self.assertRaises(ConfigError):
+            simulate(cfg)
+        # 입문·기본 반기는 잠겨 있고, 수주 증가·급증은 열려 있다
+        for presets, ok in ((SIMPLE, False), (PRESETS, False), (GROWTH, True)):
+            cfg = copy.deepcopy(presets["managed"])
+            key = "stations" if "stations" in cfg else "areas"
+            cfg[key]["sub_assembly"]["hoist"] = True
+            if ok:
+                simulate(cfg, baseline=False)
+            else:
+                with self.assertRaises(ConfigError):
+                    simulate(cfg)
+
+    def test_non_bottleneck_does_not_pay(self):
+        # 수주 증가 B안의 중조립에 호이스트: 도크가 병목이라 납기는 8 → 6척, 이익 18,148.2 → 16,896.0(병목 이론, D45)
+        cfg = copy.deepcopy(GROWTH["managed"])
+        cfg["stations" if "stations" in cfg else "areas"]["block_assembly"]["hoist"] = True
+        one, two = simulate(GROWTH["managed"], baseline=False), simulate(cfg, baseline=False)
+        self.assertEqual((one["qcd"]["delivery"]["on_time"], two["qcd"]["delivery"]["on_time"]), (8, 6))
+        self.assertEqual((round(one["profit"], 1), round(two["profit"], 1)), (18148.2, 16896.0))
+
+
 SIMPLE = {p["id"]: p["config"] for p in load_presets("simple")}
 
 

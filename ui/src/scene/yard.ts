@@ -432,6 +432,8 @@ export class Yard {
     mats: { mat: THREE.Mesh; tag: CSS2DObject }[];
     /** 로봇 팔(인력이 로봇인 공정). 작업장마다 하나 */
     robots: THREE.Group[];
+    /** 호이스트(4.9, 소조립·중조립만): 작업장마다 정반 위 천장 크레인 */
+    hoists: THREE.Group[];
   }[] = [];
   /** 트랜스포터(4.3, D46): 블록 한 대. 평소에는 소조립·중조립 사이 차고에 큰길과 직각으로 선다 */
   private readonly carts: { group: THREE.Group; tag: CSS2DObject; smoke: THREE.Group }[] = [];
@@ -758,7 +760,15 @@ export class Yard {
         return robot;
       });
 
-      this.stationProps.push({ tag, smoke, tape, candle, light, flame, mats, robots });
+      // 호이스트(4.9): 블록을 뒤집는 조립 정반(소조립·중조립)에만
+      const hoists = i === ST.sub || i === ST.block ? [0, 1, 2].map((u) => {
+        const hoist = buildHoist(u === 0 ? MAT_D : MAT2_D);
+        hoist.visible = false;
+        this.scene.add(hoist);
+        return hoist;
+      }) : [];
+
+      this.stationProps.push({ tag, smoke, tape, candle, light, flame, mats, robots, hoists });
     });
   }
 
@@ -821,6 +831,7 @@ export class Yard {
         props.mats[unit].mat.position.set(b.x, MAT_TOP / 2, b.z);
         props.mats[unit].tag.position.set(b.x - MAT_W / 2 - 0.2, 0.1, b.z);
         props.robots[unit].position.set(b.x + MAT_W / 2 + 0.25, 0, b.z);
+        props.hoists[unit]?.position.set(b.x, 0, b.z);
       }
       const first = benchAt(p, 0, docks);
       props.tag.position.set(first.x, 0.1, first.z - first.d / 2 - 0.45);
@@ -1429,6 +1440,10 @@ export class Yard {
         e.tag.visible = on && st.units.length > 1 && u > 0;
         if (this.areas[i][u]) this.areas[i][u].visible = on;
         if (this.roofs[i][u]) this.roofs[i][u].visible = on && roofsOn;
+      });
+      props.hoists.forEach((hst, u) => {
+        hst.visible = st.hoist && u < st.units.length && !st.skipped;
+        hst.userData.working = st.units[u]?.state === "work" || st.units[u]?.state === "rework";
       });
       props.robots.forEach((r, u) => {
         r.visible = robot && u < st.units.length;
@@ -2062,6 +2077,13 @@ export class Yard {
         arm.rotation.y = Math.PI + Math.sin(t * 2.2 + i + u) * 0.6 * w;
         fore.rotation.z = -0.9 + Math.sin(t * 3.1 + u) * 0.35 * w;
       });
+      // 호이스트: 일하는 동안 거더가 정반 위를 오가고 트롤리가 가로로 움직인다(쉴 때는 가운데)
+      p.hoists.forEach((hst, u) => {
+        if (!hst.visible) return;
+        const w = hst.userData.working ? 1 : 0;
+        (hst.userData.bridge as THREE.Object3D).position.x = Math.sin(t * 0.7 + i + u) * MAT_W * 0.32 * w;
+        (hst.userData.trolley as THREE.Object3D).position.z = Math.sin(t * 1.1 + u) * (hst.userData.depth as number) * 0.25 * w;
+      });
     });
     this.carts.forEach((c) => puffs(c.smoke, 1.4));
   }
@@ -2233,6 +2255,40 @@ function buildSupplyCart(): { root: THREE.Group; crates: THREE.Mesh[]; tag: CSS2
 }
 
 /** 로봇 팔: 받침, 돌아가는 기둥, 위팔, 아래팔, 집게. 무광 회색(장식은 절제). */
+/**
+ * 호이스트(4.9): 정반 위 천장 크레인. 정반 앞뒤로 기둥 넷과 주행 레일 둘, 그 위를 x로 오가는 노란 거더,
+ * 거더 위를 z로 오가는 트롤리와 훅. 내업 지붕(높이 1.0) 아래에 들어간다. depth = 정반 깊이
+ */
+function buildHoist(depth: number): THREE.Group {
+  const g = new THREE.Group();
+  const H = 0.92, half = MAT_W / 2 + 0.15, zr = depth / 2 + 0.18;
+  for (const z of [-zr, zr]) {
+    const rail = mesh(new THREE.BoxGeometry(half * 2, 0.07, 0.07), "#5d6661");
+    rail.position.set(0, H, z);
+    g.add(rail);
+    for (const x of [-half, half]) {
+      const post = mesh(new THREE.BoxGeometry(0.06, H, 0.06), "#5d6661");
+      post.position.set(x, H / 2, z);
+      g.add(post);
+    }
+  }
+  const bridge = new THREE.Group();
+  const girder = mesh(new THREE.BoxGeometry(0.12, 0.09, zr * 2 + 0.1), "#e0b43a");
+  girder.position.y = H + 0.08;
+  const trolley = new THREE.Group();
+  const carriage = mesh(new THREE.BoxGeometry(0.2, 0.08, 0.18), "#3a3f3c");
+  carriage.position.y = H + 0.16;
+  const cable = mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.36, 6), "#2b2b2b");
+  cable.position.y = H - 0.08;
+  const hook = mesh(new THREE.BoxGeometry(0.09, 0.07, 0.07), "#3a3f3c");
+  hook.position.y = H - 0.28;
+  trolley.add(carriage, cable, hook);
+  bridge.add(girder, trolley);
+  g.add(bridge);
+  g.userData = { bridge, trolley, depth, working: false };
+  return g;
+}
+
 function buildRobot(): THREE.Group {
   const robot = new THREE.Group();
   const base = mesh(new THREE.CylinderGeometry(0.34, 0.4, 0.22, 32), "#7c858a");

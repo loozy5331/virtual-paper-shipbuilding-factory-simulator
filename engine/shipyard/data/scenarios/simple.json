@@ -68,6 +68,7 @@
       "standard"
     ],
     "max_units": 1,
+    "hoist": false,
     "split": false,
     "forklift_counts": [
       2

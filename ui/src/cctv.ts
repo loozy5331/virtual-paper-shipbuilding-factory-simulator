@@ -111,6 +111,19 @@ function ship(x: number, z: number, kind: string, scale = 1): SVGElement {
   return g;
 }
 
+/** 호이스트(4.9): 높이 0.92의 주행 레일 둘(정반 앞뒤)과 가운데 거더, 훅 */
+function hoist(x: number, z: number, d: number): SVGElement {
+  const H = 0.92, half = MAT_W / 2 + 0.15, zr = d / 2 + 0.18;
+  const g = s("g", { class: "cc-hoist" }, s("title", null, "호이스트"));
+  for (const zz of [z - zr, z + zr]) {
+    g.append(s("line", { x1: px(x - half), x2: px(x + half), y1: py(zz, H), y2: py(zz, H), stroke: "#aab5ae", "stroke-width": 2 }));
+    for (const xx of [x - half, x + half]) g.append(s("line", { x1: px(xx), x2: px(xx), y1: py(zz, 0), y2: py(zz, H), stroke: "#aab5ae", "stroke-width": 1.2 }));
+  }
+  g.append(s("line", { x1: px(x), x2: px(x), y1: py(z - zr, H + 0.08), y2: py(z + zr, H + 0.08), stroke: "#b8902c", "stroke-width": 3 }),
+    s("line", { x1: px(x), x2: px(x), y1: py(z, H), y2: py(z, H - 0.3), stroke: "#2b2b2b", "stroke-width": 1 }));
+  return g;
+}
+
 /** 2D 배의 반 길이(단위, 선종 크기 곱하기 전). ship()과 같은 값 */
 const shipLen = (kind: string) => (kind === "VLCC" ? 1.45 : kind === "LNG" ? 1.35 : kind === "TUG" ? 1.0 : kind === "FEEDER" ? 1.15 : 1.3);
 
@@ -452,6 +465,8 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
         const a = areaBounds(p, k, docks);
         add(a.z0 - 0.01, s("rect", { x: px(a.x0), y: py(a.z0), width: (a.x1 - a.x0) * S, height: (a.z1 - a.z0) * S * DEPTH, fill: "none", stroke: "#e0b43a", "stroke-width": 1.5, "stroke-dasharray": "6 4" }));
       }
+      // 호이스트(4.9): 정반 위 천장 크레인. 주행 레일 둘(앞뒤)과 가운데 노란 거더를 블록 위에 겹쳐 그린다
+      if (view.hoist && !water) add(z + d / 2 + 0.3, hoist(x, z, d));
       const g = s("g", {
         class: "cc-station pick", role: "button", tabindex: 0,
         "aria-label": `${st.name} ${unit.unit}호. 눌러서 그 구획 보기`,

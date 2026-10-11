@@ -237,6 +237,11 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
             errors.append(f"{pid}: 인력은 {', '.join(rules['crews'])} 중 하나여야 합니다")
         if not isinstance(st.get("split", False), bool):
             errors.append(f"{pid}: 나눠 하기(split)는 true 또는 false여야 합니다")
+        # 호이스트(4.9): 블록을 뒤집는 조립 정반(소조립·중조립)에만 단다
+        if not isinstance(st.get("hoist", False), bool):
+            errors.append(f"{pid}: 호이스트(hoist)는 true 또는 false여야 합니다")
+        elif st.get("hoist") and not _station_rule(scenario, pid).get("hoist"):
+            errors.append(f"{pid}: 호이스트는 {', '.join(hoist_stations(scenario))}에만 달 수 있습니다")
         units = st.get("units", 1)
         # 탑재 도크는 골리앗 크레인(걸리버의 두 손)이 있어야 하므로 2곳까지(3.0)
         max_units = scenario["expansion"].get("max_units_by_station", {}).get(pid, scenario["expansion"]["max_units"])
@@ -295,7 +300,7 @@ def _locked_options(config: dict[str, Any], scenario: dict[str, Any]) -> list[st
     """분기(난이도)가 열어 둔 옵션만 썼는지(D33). 화면이 숨긴 옵션을 설정 JSON으로 보내도 여기서 막는다.
 
     시나리오 파일의 options: crews·methods·material_grades(쓸 수 있는 값), max_units(작업장 수 상한), split(나눠 하기).
-    options가 없는 시나리오(손 계산용 등)는 모두 열려 있다.
+    options가 없는 시나리오(손 계산용 등)는 모두 열려 있다. hoist(4.9)가 없으면 호이스트는 닫혀 있다.
     """
     opts = scenario.get("options")
     if not opts:
@@ -317,6 +322,8 @@ def _locked_options(config: dict[str, Any], scenario: dict[str, Any]) -> list[st
             errors.append(f"{name}에서는 작업장을 {opts['max_units']}개까지 둘 수 있습니다({label})")
         if cfg.get("split", False) and not opts["split"]:
             errors.append(f"{name}에서는 나눠 하기를 쓸 수 없습니다({label})")
+        if cfg.get("hoist", False) and not opts.get("hoist", False):
+            errors.append(f"{name}에서는 호이스트를 쓸 수 없습니다({label})")
     tcounts = opts.get("transporter_counts")
     if tcounts and (config.get("transporters") or {}).get("count") not in tcounts:
         errors.append(f"{name}에서는 트랜스포터를 {', '.join(map(str, tcounts))}대로만 둘 수 있습니다")
@@ -358,6 +365,28 @@ def _trade_of_station(station_id: str) -> str:
 def material_grade(config: dict[str, Any], material_id: str | None) -> str:
     """자재 등급: standard(표준) 또는 cheap(저가). 설정에 없으면 표준."""
     return (config.get("materials") or {}).get(material_id, "standard") if material_id else "standard"
+
+
+def _station_rule(scenario: dict[str, Any], station_id: str) -> dict[str, Any]:
+    return next((s for s in scenario["stations"] if s["id"] == station_id), {})
+
+
+def hoist_stations(scenario: dict[str, Any]) -> list[str]:
+    """호이스트를 달 수 있는 공정의 이름(rules.json 공정의 hoist)."""
+    return [s["name"] for s in scenario["stations"] if s.get("hoist")]
+
+
+def has_hoist(config: dict[str, Any], station_id: str) -> bool:
+    """호이스트(4.9): 그 공정의 모든 작업장에 단 천장 크레인. 설정에 없으면 없다."""
+    return bool(config["stations"][station_id].get("hoist", False))
+
+
+def station_work(config: dict[str, Any], scenario: dict[str, Any], station_id: str, ship_type: str) -> float:
+    """배 한 척이 그 공정에서 할 작업량. 호이스트가 있으면 블록을 들고 뒤집는 시간이 줄어 work_factor배."""
+    work = scenario["ship_types"][ship_type]["work"][station_id]
+    if has_hoist(config, station_id):
+        work *= scenario["rules"]["hoist"]["work_factor"]
+    return work
 
 
 def is_overtime(station_cfg: dict[str, Any]) -> bool:
@@ -433,7 +462,7 @@ def split_parts(config: dict[str, Any], scenario: dict[str, Any], p: int, units:
 
 
 def investment(config: dict[str, Any], scenario: dict[str, Any]) -> float:
-    """설비 투자비: 증설한 작업장 + 로봇 도입(작업장마다) + 신공법 도입(공정마다)."""
+    """설비 투자비: 증설한 작업장 + 로봇 도입(작업장마다) + 호이스트(작업장마다, 4.9) + 신공법 도입(공정마다)."""
     rules = scenario["rules"]
     total = 0.0
     for st, n in zip(scenario["stations"], station_units(config, scenario)):
@@ -441,6 +470,8 @@ def investment(config: dict[str, Any], scenario: dict[str, Any]) -> float:
         total += (n - 1) * scenario["expansion"]["cost"][st["id"]]
         if crew_of(config, st["id"]) == "robot":
             total += n * rules["crews"]["robot"]["install_cost"]
+        if has_hoist(config, st["id"]):
+            total += n * rules["hoist"]["install_cost"]
         total += rules["methods"][cfg["method"]].get("setup_cost", 0)
     return total
 
@@ -452,7 +483,7 @@ def material_prices(config: dict[str, Any], scenario: dict[str, Any]) -> dict[st
 
 
 def fixed_costs(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, float]:
-    """실행 전에 정해지는 비용: 인건비(대기소), 정비비(작업장마다), 운반 설비(트랜스포터·지게차), 설비 투자비, 연구비."""
+    """실행 전에 정해지는 비용: 인건비(대기소), 정비비(작업장마다, 호이스트를 단 작업장은 호이스트 정비비도), 운반 설비(트랜스포터·지게차), 설비 투자비, 연구비."""
     costs = scenario["rules"]["costs"]
     tr = scenario["transporter"]
     days = scenario["days"]
@@ -464,8 +495,8 @@ def fixed_costs(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, f
         vehicles = n_fk * fk["cost_per_day"] * days + (n_fk * fk["maintenance_cost"] if config["forklifts"]["maintenance"] else 0)
     return {
         "labor": sum(config["pools"].values()) * costs["wage_per_day"] * days,
-        "maintenance": sum(n for s, n in zip(scenario["stations"], units) if config["stations"][s["id"]]["maintenance"] and not is_skipped(s))
-        * costs["maintenance_per_station"],
+        "maintenance": sum(n * (costs["maintenance_per_station"] + (scenario["rules"]["hoist"]["maintenance_cost"] if has_hoist(config, s["id"]) else 0))
+                           for s, n in zip(scenario["stations"], units) if config["stations"][s["id"]]["maintenance"] and not is_skipped(s)),
         "transporter": n_tr * tr["cost_per_day"] * days
         + (n_tr * tr["maintenance_cost"] if config["transporters"]["maintenance"] else 0) + vehicles,
         "investment": investment(config, scenario),
@@ -550,7 +581,7 @@ def plan_schedule(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str,
     parts_of = {s["id"]: split_parts(config, scenario, p, units_of[s["id"]]) for p, s in enumerate(scenario["stations"])}
     ships: dict[str, dict[str, dict[str, int]]] = {}
     for order in scenario["orders"]:
-        work = scenario["ship_types"][order["type"]]["work"]
+        work = {st["id"]: station_work(config, scenario, st["id"], order["type"]) for st in scenario["stations"]}
         day = config["ships"][order["id"]]["start_day"]
         spans = {}
         # 공정 목록 순서(앞 공정을 늘 먼저 적는다)로 이어 붙인다. 도장·선행의장처럼 순서가 자유인 공정은 목록 순서대로.
@@ -661,9 +692,11 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     fk_maintained: bool = config["forklifts"]["maintenance"]
     schedule = research_schedule(config.get("research", []), scenario)
     automation = scenario["research"]["automation"]
+    # 고장 판정 간격(일한 날): 호이스트를 단 공정은 설비가 하나 더 있어 더 자주 판정한다(4.9)
+    every_busy = [rules["hoist"]["breakdown_every_busy_days"] if has_hoist(config, s["id"]) else bd["every_busy_days"] for s in stations]
 
     def work_of(ship: int, p: int) -> float:
-        return types[orders[ship]["type"]]["work"][stations[p]["id"]]
+        return station_work(config, scenario, stations[p]["id"], orders[ship]["type"])
 
     def bom_of(ship: int, material: str) -> int:
         return types[orders[ship]["type"]]["bom"].get(material, 0)
@@ -1039,11 +1072,11 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                         events.append({"day": day, "type": "accident", "station": pid, "unit": u + 1, "ship": orders[i]["id"]})
 
             # 5-2. 일한 날을 세고, 정해진 간격마다 고장 판정을 한다. 오늘 사고로 멈췄으면 판정하지 않는다.
-            if unit_busy[p][u] % bd["every_busy_days"] == 0 and day > stop_until[p][u]:
+            if unit_busy[p][u] % every_busy[p] == 0 and day > stop_until[p][u]:
                 threshold = 0 if "predictive" in done_research else (
                     bd["threshold_maintained"] if st_cfg[p]["maintenance"] else bd["threshold"])
                 table = rnd["breakdown"][pid]
-                n = unit_busy[p][u] // bd["every_busy_days"]
+                n = unit_busy[p][u] // every_busy[p]
                 if table[(n - 1 + u) % len(table)] < threshold:
                     stop_until[p][u] = day + bd["stop_days"]
                     stop_cause[p][u] = BREAKDOWN_STOP

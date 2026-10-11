@@ -60,7 +60,7 @@
     "on_time_rate": 1.0,
     "first_pass_yield": 0.9
   },
-  "unlocks": "일정·자재 발주·사람·정비 같은 기본 운영만 씁니다. 지게차는 2대로 고정입니다. 작업장 증설, 지게차 대수, 로봇·신공법·저가 자재는 다음 반기부터 열립니다.",
+  "unlocks": "일정·자재 발주·사람·정비 같은 기본 운영만 씁니다. 지게차는 2대로 고정입니다. 작업장 증설, 지게차 대수, 로봇·신공법·저가 자재, 호이스트는 다음 반기부터 열립니다.",
   "options": {
     "crews": [
       "normal",
@@ -74,6 +74,7 @@
       "standard"
     ],
     "max_units": 1,
+    "hoist": false,
     "split": false,
     "forklift_counts": [
       2
