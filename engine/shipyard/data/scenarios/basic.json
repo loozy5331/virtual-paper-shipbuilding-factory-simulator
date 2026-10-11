@@ -77,6 +77,9 @@
     "split": false,
     "forklift_counts": [
       2
+    ],
+    "transporter_counts": [
+      1
     ]
   },
   "grade": {
@@ -212,7 +215,8 @@
           "outfitting": 4
         },
         "transporters": {
-          "maintenance": false
+          "maintenance": false,
+          "count": 1
         },
         "forklifts": {
           "count": 2,
@@ -314,7 +318,8 @@
           "outfitting": 2
         },
         "transporters": {
-          "maintenance": true
+          "maintenance": true,
+          "count": 1
         },
         "forklifts": {
           "count": 2,
@@ -417,7 +422,8 @@
           "outfitting": 6
         },
         "transporters": {
-          "maintenance": true
+          "maintenance": true,
+          "count": 1
         },
         "forklifts": {
           "count": 2,

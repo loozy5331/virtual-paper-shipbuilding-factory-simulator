@@ -133,6 +133,8 @@ export interface ScenarioOptions {
   split: boolean;
   /** 4.3: 고를 수 있는 지게차 대수. 하나뿐이면 고정 */
   forklift_counts?: number[];
+  /** 4.8: 고를 수 있는 블록 트랜스포터 대수. 하나뿐이면 고정 */
+  transporter_counts?: number[];
 }
 
 export interface Scenario {
@@ -164,7 +166,7 @@ export interface Scenario {
     crews: Record<Crew, CrewInfo>;
     overtime: { speed: number };
   };
-  transporter: { max_count: number; capacity: number; lot_weight: number; roles: "block"[] };
+  transporter: { max_count: number; default_count?: number; capacity: number; lot_weight: number; roles: "block"[] };
   forklift: { default_count: number; max_count: number; jobs_per_day: number; cost_per_day: number; maintenance_cost: number };
   expansion: { name: string; max_units: number; max_units_by_station?: Record<string, number>; summary: string; cost: Record<string, number> };
   material_grades: Record<"standard" | "cheap", { name: string; price_factor: number; defect_add: number }>;
@@ -201,6 +203,7 @@ export function completeConfig(config: Config, scenario: Scenario): Config {
   }
   config.pool = Object.values(config.pools).reduce((a, b) => a + b, 0);
   config.forklifts ??= { count: scenario.forklift.default_count, maintenance: config.transporters.maintenance };
+  config.transporters.count ??= scenario.transporter.default_count ?? 1;   // 4.7 이전 설정은 1대
   return config;
 }
 

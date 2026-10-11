@@ -220,11 +220,16 @@ function commonPane(ctx: FormContext): HTMLElement {
         pools[t], (v) => { pools[t] = v; config.pool = Object.values(pools).reduce((a, b) => a + b, 0); ctx.onEdit(false); }),
       h("small", null, `명 · ${activeStations(scenario).filter((st) => st.trade === t).map((st) => st.name).join("·")}`))));
 
-  // 트랜스포터는 블록 한 대로 고정(4.3, D46): 정비만 고른다.
+  // 블록 트랜스포터(4.8): 수주 증가부터 1~2대를 고른다. 두 대면 서로 다른 배를 같은 날 나른다(대마다 운행비·정비비).
+  const trc = opts.transporter_counts ?? [1];
+  const tr = config.transporters as { count: number; maintenance: boolean };
   const transporter = h("div", { class: "field-row" },
     h("span", { class: "field-label" }, "트랜스포터"),
-    h("span", { class: "hint" }, "블록(소조립 이후 공정 사이), 1대"),
-    toggle("정비", config.transporters.maintenance, (on) => { config.transporters.maintenance = on; ctx.onEdit(false); }));
+    trc.length > 1
+      ? segmented("transporters", trc.map((n) => ({ value: n, label: String(n) })), tr.count, (v) => { tr.count = v; ctx.onEdit(false); })
+      : h("b", null, String(tr.count)),
+    h("small", null, `대${trc.length > 1 ? "" : "(고정)"} · 블록(소조립 이후 공정 사이)${trc.length > 1 ? " · 두 대면 두 배를 함께 나른다" : ""}`),
+    toggle("정비", tr.maintenance, (on) => { tr.maintenance = on; ctx.onEdit(false); }));
   // 공용 지게차(4.3, D46): 작업자처럼 차고에 몇 대를 둘지 고른다. 자재 키트와 가공 → 소조립 부재 팔레트를 나른다.
   const fk = config.forklifts!;
   const counts = opts.forklift_counts ?? Array.from({ length: scenario.forklift.max_count }, (_, k) => k + 1);

@@ -71,6 +71,9 @@
     "split": false,
     "forklift_counts": [
       2
+    ],
+    "transporter_counts": [
+      1
     ]
   },
   "grade": {
@@ -173,7 +176,8 @@
           "erection": 4
         },
         "transporters": {
-          "maintenance": false
+          "maintenance": false,
+          "count": 1
         },
         "forklifts": {
           "count": 2,
@@ -240,7 +244,8 @@
           "erection": 2
         },
         "transporters": {
-          "maintenance": true
+          "maintenance": true,
+          "count": 1
         },
         "forklifts": {
           "count": 2,
@@ -307,7 +312,8 @@
           "erection": 6
         },
         "transporters": {
-          "maintenance": true
+          "maintenance": true,
+          "count": 1
         },
         "forklifts": {
           "count": 2,

@@ -110,6 +110,10 @@
       1,
       2,
       3
+    ],
+    "transporter_counts": [
+      1,
+      2
     ]
   },
   "grade": {
@@ -309,7 +313,8 @@
           "outfitting": 4
         },
         "transporters": {
-          "maintenance": false
+          "maintenance": false,
+          "count": 1
         },
         "forklifts": {
           "count": 1,
@@ -427,7 +432,8 @@
           "outfitting": 4
         },
         "transporters": {
-          "maintenance": true
+          "maintenance": true,
+          "count": 1
         },
         "forklifts": {
           "count": 2,
@@ -554,7 +560,8 @@
           "outfitting": 6
         },
         "transporters": {
-          "maintenance": true
+          "maintenance": true,
+          "count": 2
         },
         "forklifts": {
           "count": 3,
