@@ -5,7 +5,7 @@ import * as THREE from "three";
 import type { Frame } from "./frame";
 import { quayWaiting } from "./stock";
 import { SEA_Y, type DockParts } from "./coast";
-import { BAY_C, BOLLARD, bollardX, dockZ, MAT_TOP, MOUTH_X, ST, STATION_X } from "./layout";
+import { along, BAY_C, BOLLARD, bollardX, dockZ, MAT_TOP, MOUTH_X, route, ST, STATION_X } from "./layout";
 import { ease } from "./model";
 import type { Lot } from "./lot";
 import { buildTug, Rope, TUG_DECK, TUG_HALF } from "./props";
@@ -44,6 +44,20 @@ function lerpAngle(a: number, b: number, t: number): number {
   return a + d * t;
 }
 
+
+/**
+ * 시운전 출항(4.11.2): from(선석·정박지·도크 문 밖)에서 만 입구를 지나 만 밖까지. k = 0~1.
+ * 선석에 댄 배는 먼저 안벽에서 떨어진다(우현을 안벽에 댔으므로 −z로). yaw는 launchPose와 같다(0 = +x).
+ */
+export function departPose(from: THREE.Vector3, k: number): LaunchPose {
+  const y = SEA_Y + 0.02;
+  const pts = [{ x: from.x, z: from.z }];
+  if (from.z > BAY_C + 2) pts.push({ x: from.x + 0.6, z: from.z - 2.2 });
+  pts.push({ x: MOUTH_X - 4, z: BAY_C }, { x: MOUTH_X, z: BAY_C }, { x: MOUTH_X + 8, z: BAY_C });
+  const at = along(route(pts), ease(k));
+  const pos = new THREE.Vector3(at.x, y, at.z);
+  return { pos, yaw: -at.angle, stage: "tow", k: 1, out: pos, x1: pos.x };
+}
 
 /** 진수 장면을 맡는다. docks는 yard.ts가 채우는 도크 배열(같은 배열을 함께 본다), lots는 배 이름 → 로트 */
 export class Harbor {
