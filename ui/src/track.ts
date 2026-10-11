@@ -34,7 +34,7 @@ function whereNow(l: LotView, frame: Frame, scenario: Scenario): string {
     case "sea": return "인도 완료 · 안벽";
     case "carried": {
       const tr = frame.transporters.find((t) => t.role === "block" && t.ship === l.ship);
-      const next = scenario.stations[l.station + 1]?.name ?? "";
+      const next = scenario.stations.slice(l.station + 1).find((x) => !x.skipped)?.name ?? "";
       return `${tr ? `트랜스포터 ${tr.id}` : "트랜스포터"}에 실려 ${next}(으)로 운반 중`;
     }
     case "outbound": return `${name}을 끝내고 공용 적치장에서 운반 대기`;

@@ -26,10 +26,15 @@ from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 from typing import Any, Callable, Iterable
 
-from shipyard.sim import load_scenario, scenario_ids, simulate
+from shipyard.sim import active_trades, is_skipped, load_scenario, scenario_ids, simulate
 
 RESEARCH_SETS = [[], ["automation"], ["auto_inspect"], ["predictive"], ["automation", "auto_inspect"],
                  ["automation", "predictive"], ["auto_inspect", "predictive"], ["automation", "auto_inspect", "predictive"]]
+
+
+def active_stations(sc: dict[str, Any]) -> list[dict[str, Any]]:
+    """시나리오가 쓰는 공정(간이공정은 일부가 빠진다, 4.4)."""
+    return [st for st in sc["stations"] if not is_skipped(st)]
 
 
 def space(sc: dict[str, Any]) -> dict[str, list[Any]]:
@@ -40,7 +45,7 @@ def space(sc: dict[str, Any]) -> dict[str, list[Any]]:
                                  "material_grades": list(sc["material_grades"]),
                                  "max_units": sc["expansion"]["max_units"], "split": True}
     out: dict[str, list[Any]] = {}
-    for st in sc["stations"]:
+    for st in active_stations(sc):
         pid = st["id"]
         external = sc["trades"].get(st.get("trade", ""), {}).get("external", False)
         # 시운전(외부팀)은 인력·잔업을 고르지 않는다(4.0, D42)
@@ -55,9 +60,8 @@ def space(sc: dict[str, Any]) -> dict[str, list[Any]]:
     for m in sc["materials"]:
         out[f"material.{m['id']}"] = list(opts["material_grades"])
     # 직종별 대기소 인원(4.0, D42). 트랜스포터는 블록 한 대로 고정이라 대수는 고르지 않는다(D39·D46)
-    for t, info in sc["trades"].items():
-        if not t.startswith("_") and not info.get("external"):
-            out[f"pool.{t}"] = list(range(1, info["max"] + 1))
+    for t in active_trades(sc):
+        out[f"pool.{t}"] = list(range(1, sc["trades"][t]["max"] + 1))
     out["tr_maintenance"] = [False, True]
     # 공용 지게차(4.3, D46): 분기가 연 대수만(기본 반기는 2대 고정)
     fk = sc["forklift"]
@@ -77,7 +81,7 @@ def to_config(sc: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
         "ordering": plan["ordering"],
         "ships": {o["id"]: {"priority": k + 1, "start_day": min(sc["days"], 1 + k * plan["gap"])} for k, o in enumerate(by_due)},
         "stations": {st["id"]: {key: plan[f"{st['id']}.{key}"] for key in ("crew", "method", "overtime", "maintenance", "units", "split")}
-                     for st in sc["stations"]},
+                     for st in active_stations(sc)},
         "materials": {m["id"]: plan[f"material.{m['id']}"] for m in sc["materials"]},
         "pools": {name.split(".", 1)[1]: v for name, v in plan.items() if name.startswith("pool.")},
         "transporters": {"maintenance": plan["tr_maintenance"]},
@@ -164,7 +168,7 @@ def run(scenario_id: str, starts: int, seed: int, report: Callable[[str], None] 
     r = simulate(cfg, sc, baseline=False)
     report(f"  이익 {r['profit']:.1f}, 납기 {r['qcd']['delivery']['on_time']}/{len(sc['orders'])}, "
            f"직행률 {r['qcd']['quality']['first_pass_yield']:.2f}")
-    for st in sc["stations"]:
+    for st in active_stations(sc):
         c = cfg["stations"][st["id"]]
         report(f"  {st['name']}: 인력 {c['crew']}, 공법 {c['method']}, 잔업 {c['overtime']}, 정비 {c['maintenance']}, 작업장 {c['units']}, 나눠 {c['split']}")
     report(f"  자재 {cfg['materials']}, 직종별 인원 {cfg['pools']}, 트랜스포터 정비 {cfg['transporters']['maintenance']}, 지게차 {cfg['forklifts']['count']}대(정비 {cfg['forklifts']['maintenance']}), 연구 {cfg['research']}, "
@@ -174,7 +178,7 @@ def run(scenario_id: str, starts: int, seed: int, report: Callable[[str], None] 
     top = [p for s, p in found if s >= best_score - 5]
     report(f"\n최고와 5점 안의 설정 {len(top)}개에서 고른 값 (공정 칸은 {len(sc['stations'])}공정을 합쳐 셈)")
     for kind in ("crew", "method", "overtime", "maintenance", "units", "split"):
-        counts = Counter(p[f"{st['id']}.{kind}"] for p in top for st in sc["stations"])
+        counts = Counter(p[f"{st['id']}.{kind}"] for p in top for st in active_stations(sc))
         report(f"  {kind:12s} " + ", ".join(f"{k}: {v}" for k, v in counts.most_common()))
     for name in [n for n in sp if n.startswith("material.") or n.startswith("pool.")] + ["research", "ordering"]:
         counts = Counter(p[name] for p in top)
@@ -184,11 +188,11 @@ def run(scenario_id: str, starts: int, seed: int, report: Callable[[str], None] 
     # 모든 공정을 한 값으로 고정했을 때의 최고 점수
     # 시작점은 상위 2개 설정(3.x는 5개). 고를 수 없는 공정(시운전 인력, 나눌 수 없는 공정)은 고정하지 않는다
     report("\n모든 공정을 한 값으로 고정했을 때의 최고 (최고와의 차이)")
-    cases = [(kind, v) for kind in ("crew", "method", "units", "split") for v in sp[f"{sc['stations'][0]['id']}.{kind}"]]
+    cases = [(kind, v) for kind in ("crew", "method", "units", "split") for v in sp[f"{active_stations(sc)[0]['id']}.{kind}"]]
     tops = [p for _, p in found[:2]]
     jobs = []
     for kind, v in cases:
-        fixed = {f"{st['id']}.{kind}": v for st in sc["stations"] if v in sp[f"{st['id']}.{kind}"]}
+        fixed = {f"{st['id']}.{kind}": v for st in active_stations(sc) if v in sp[f"{st['id']}.{kind}"]}
         jobs += [({**p, **fixed}, fixed) for p in tops]
     got_all = [score for score, _ in climbs(jobs)]
     forced = {}

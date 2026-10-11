@@ -102,7 +102,13 @@ def load_scenario(scenario_id: str = DEFAULT_SCENARIO) -> dict[str, Any]:
     sc = _read(DATA_DIR / "scenarios" / f"{scenario_id}.json")
     sc.pop("presets")
     random = {**rules.pop("random"), **sc.pop("random")}
-    return {**sc, **rules, "random": random}
+    # 간이공정(4.4, D47): 시나리오가 쓰지 않는 공정(skip)과 공정별 자재(station_material)를 정한다.
+    # 공정 목록과 번호는 그대로 두고(화면 번호가 같다), 쓰지 않는 공정은 처음부터 마친 것으로 보고 건너뛴다.
+    skip = set(sc.get("skip", []))
+    material = sc.get("station_material", {})
+    stations = [{**st, "material": None if st["id"] in skip else material.get(st["id"], st.get("material")),
+                 **({"skipped": True} if st["id"] in skip else {})} for st in rules["stations"]]
+    return {**sc, **rules, "stations": stations, "skip": [st["id"] for st in stations if st["id"] in skip], "random": random}
 
 
 def load_presets(scenario_id: str = DEFAULT_SCENARIO) -> list[dict[str, Any]]:
@@ -148,7 +154,7 @@ def complete_config(config: dict[str, Any], scenario: dict[str, Any]) -> dict[st
         if st["id"] not in stations:
             stations[st["id"]] = {"method": "standard", "overtime": False, "maintenance": True}
     out["stations"] = stations
-    trades = [t for t, info in scenario["trades"].items() if not t.startswith("_") and not info.get("external")]
+    trades = active_trades(scenario)
     pools = config.get("pools")
     if not isinstance(pools, dict):
         defaults = {k: v for k, v in scenario["default_pools"].items() if not k.startswith("_")}
@@ -157,6 +163,7 @@ def complete_config(config: dict[str, Any], scenario: dict[str, Any]) -> dict[st
         # 4.0 개발 중 설정처럼 직종이 덜 적힌 pools(가공 직종 전)는 빠진 직종을 기본 인원으로 채운다
         defaults = {k: v for k, v in scenario["default_pools"].items() if not k.startswith("_")}
         pools = {**{t: defaults.get(t, 1) for t in trades if t not in pools}, **pools}
+    pools = {t: v for t, v in pools.items() if t in trades}
     out["pools"] = pools
     if all(_is_int(v) for v in pools.values()):
         out["pool"] = sum(pools.values())
@@ -234,9 +241,8 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
 
     # 직종별 대기소 인원(4.0, D42). 시운전은 외부팀이라 인원이 없다.
     pools = config.get("pools") or {}
-    for tid, info in scenario["trades"].items():
-        if tid.startswith("_") or info.get("external"):
-            continue
+    for tid in active_trades(scenario):
+        info = scenario["trades"][tid]
         n = pools.get(tid)
         if not _is_int(n) or not 1 <= n <= info["max"]:
             errors.append(f"{info['name']} 인원은 1~{info['max']}명이어야 합니다")
@@ -292,6 +298,8 @@ def _locked_options(config: dict[str, Any], scenario: dict[str, Any]) -> list[st
     errors: list[str] = []
     for st in scenario["stations"]:
         pid, label = st["id"], st["name"]
+        if is_skipped(st):
+            continue
         cfg = config["stations"][pid]
         crew = crew_of(config, pid)
         if crew != "external" and crew not in opts["crews"]:
@@ -446,7 +454,7 @@ def fixed_costs(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, f
         vehicles = n_fk * fk["cost_per_day"] * days + (n_fk * fk["maintenance_cost"] if config["forklifts"]["maintenance"] else 0)
     return {
         "labor": sum(config["pools"].values()) * costs["wage_per_day"] * days,
-        "maintenance": sum(n for s, n in zip(scenario["stations"], units) if config["stations"][s["id"]]["maintenance"])
+        "maintenance": sum(n for s, n in zip(scenario["stations"], units) if config["stations"][s["id"]]["maintenance"] and not is_skipped(s))
         * costs["maintenance_per_station"],
         "transporter": n_tr * tr["cost_per_day"] * days
         + (n_tr * tr["maintenance_cost"] if config["transporters"]["maintenance"] else 0) + vehicles,
@@ -500,8 +508,24 @@ def move_days_between(scenario: dict[str, Any], a: int, b: int) -> int:
 def station_after(scenario: dict[str, Any]) -> list[list[int]]:
     """공정마다 앞 공정 번호들. after가 없는 옛 시나리오는 바로 앞 공정 하나."""
     ids = [s["id"] for s in scenario["stations"]]
-    return [[ids.index(a) for a in s["after"]] if "after" in s else ([p - 1] if p else [])
-            for p, s in enumerate(scenario["stations"])]
+    raw = [[ids.index(a) for a in s["after"]] if "after" in s else ([p - 1] if p else [])
+           for p, s in enumerate(scenario["stations"])]
+    skipped = {p for p, s in enumerate(scenario["stations"]) if is_skipped(s)}
+
+    def through(p: int) -> list[int]:
+        """앞 공정 p가 쓰지 않는 공정이면 그 앞 공정들로 건너뛴다(간이공정, 4.4)."""
+        return [x for a in raw[p] for x in (through(a) if a in skipped else [a])]
+    return [[] if p in skipped else sorted(set(through(p))) for p in range(len(scenario["stations"]))]
+
+
+def is_skipped(station: dict[str, Any]) -> bool:
+    return bool(station.get("skipped"))
+
+
+def active_trades(scenario: dict[str, Any]) -> list[str]:
+    """사람을 보내는 직종 가운데 쓰는 공정이 있는 직종(간이공정은 일부 직종이 빠진다). 시운전 외부팀은 제외."""
+    used = {st.get("trade", "assembly") for st in scenario["stations"] if not is_skipped(st)}
+    return [t for t, info in scenario["trades"].items() if not t.startswith("_") and not info.get("external") and t in used]
 
 
 def plan_schedule(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
@@ -520,15 +544,17 @@ def plan_schedule(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str,
         day = config["ships"][order["id"]]["start_day"]
         spans = {}
         # 공정 목록 순서(앞 공정을 늘 먼저 적는다)로 이어 붙인다. 도장·선행의장처럼 순서가 자유인 공정은 목록 순서대로.
-        for p, st in enumerate(scenario["stations"]):
+        active = [p for p, st in enumerate(scenario["stations"]) if not is_skipped(st)]
+        for k, p in enumerate(active):
+            st = scenario["stations"][p]
             assigned = min(pools.get(st.get("trade", "assembly"), rules["max_workers_per_station"]), rules["max_workers_per_station"])
             rate = station_rate({**config["stations"][st["id"]], "crew": crew_of(config, st["id"])}, rules, assigned)
             # 나눠 하기: 작업장을 모두 쓴다고 보고 부분 작업량으로 잰다(배가 혼자 쓸 때의 일정).
             end = day + math.ceil(work[st["id"]] / parts_of[st["id"]] / rate - EPS) - 1
             spans[st["id"]] = {"start": day, "end": end}
             # 끝난 다음 날부터 다음 공정으로(같은 자리·크레인·예인은 다음 날, 그 밖은 T2 운반일)
-            if p + 1 < len(scenario["stations"]):
-                day = end + move_days_between(scenario, p, p + 1)
+            if k + 1 < len(active):
+                day = end + move_days_between(scenario, p, active[k + 1])
         ships[order["id"]] = spans
 
     # 겹침: 같은 공정을 쓰는 배가 그 공정의 작업장 수보다 많은 날. 두 배씩 묶어 그 날들의 구간으로 적는다.
@@ -536,6 +562,8 @@ def plan_schedule(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str,
     ids = list(ships)
     for st, n_units in zip(scenario["stations"], station_units(config, scenario)):
         sid = st["id"]
+        if is_skipped(st):
+            continue
         # 나눠 하기를 켠 공정은 배 한 척이 작업장을 모두 차지한다.
         users = lambda day: sum(parts_of[sid] for k in ids if ships[k][sid]["start"] <= day <= ships[k][sid]["end"])
         for i, a in enumerate(ids):
@@ -651,7 +679,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     # 자재 페깅(3.1, 기록만): 창고의 자재를 입고 묶음 [입고일, 몫인 배, 수량]으로도 들고 있다. 처음 재고는 몫이 없다(공용).
     # 규칙은 그대로 공용 재고(stock)를 본다. 묶음은 "누구 몫을 누가 썼나"를 결과에 남기려는 것뿐이다.
     batches: dict[str, list[list[Any]]] = {mid: ([[0, None, stock[mid]]] if stock[mid] else []) for mid in materials}
-    done: list[set[int]] = [set() for _ in range(n_ships)]   # 마친 공정(4.0: 공정 그래프)
+    skipped_p = {p for p, st in enumerate(stations) if is_skipped(st)}       # 쓰지 않는 공정(4.4 간이공정): 처음부터 마친 것
+    done: list[set[int]] = [set(skipped_p) for _ in range(n_ships)]   # 마친 공정(4.0: 공정 그래프)
 
     def _candidates(i: int) -> list[int]:
         return [q for q in range(n_st) if q not in done[i] and all(a in done[i] for a in after[q])]
@@ -698,7 +727,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     # 앞 공정이 없는 공정(소조립)의 키트는 착수 예정일 하루 전에 요청한다
     for i, o in enumerate(orders):
         for q in range(n_st):
-            if not after[q]:
+            if not after[q] and q not in skipped_p:
                 request_kit(i, q, config["ships"][o["id"]]["start_day"] - 1)
 
     ship_daily: list[list[dict[str, Any]]] = [[] for _ in range(n_ships)]
@@ -924,7 +953,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                             if p in after[q]:
                                 request_kit(i, q, day)
                         spans[i][pid] = {"start": day, "end": day}
-                        if p == 0:
+                        if not after[p]:   # 첫 공정(처음 쓰는 공정)에 들어간 날이 착수
                             started[i] = day
                         break
                     if cur is None and any(ship_state.get(i, ("",))[0] == MATERIAL_WAIT for i in waiting):

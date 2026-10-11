@@ -4,7 +4,7 @@
 // 탭 전환도 hidden만 바꾼다. 처리량, 불량률, 고정비, 연구 일정, 발주일, 계획 막대는
 // 서버의 /api/preview 결과를 data-preview 자리에 채운다.
 
-import { completeConfig, staffTrades, type Config, type Crew, type Ordering, type Preset, type Preview, type Scenario, type ScenarioOptions, type ScenarioSummary } from "./api";
+import { activeStations, completeConfig, staffTrades, type Config, type Crew, type Ordering, type Preset, type Preview, type Scenario, type ScenarioOptions, type ScenarioSummary } from "./api";
 import { h, mount, money, num, pct } from "./dom";
 import { STATION_COLOR } from "./labels";
 import { docHead } from "./paper";
@@ -159,7 +159,7 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
       h("small", null, "배 줄을 좌우로 끌거나, 줄을 누르고 ←/→로 착수 예정일을 옮깁니다.")),
     h("div", { class: "plan-host", "data-plan": "" }),
     h("div", { class: "legend plan-legend" },
-      scenario.stations.map((st) => h("span", null, h("i", { style: { background: STATION_COLOR[st.id] } }), st.name)),
+      activeStations(scenario).map((st) => h("span", null, h("i", { style: { background: STATION_COLOR[st.id] } }), st.name)),
       h("span", null, h("i", { class: "plan-overlap" }), "작업장 겹침"),
       h("span", null, h("i", { class: "due-mark" }), "납기")),
     h("p", { class: "hint", "data-preview": "conflicts" }),
@@ -218,7 +218,7 @@ function commonPane(ctx: FormContext): HTMLElement {
       segmented(`pool-${t}`,
         Array.from({ length: info.max ?? 6 }, (_, k) => ({ value: k + 1, label: String(k + 1) })),
         pools[t], (v) => { pools[t] = v; config.pool = Object.values(pools).reduce((a, b) => a + b, 0); ctx.onEdit(false); }),
-      h("small", null, `명 · ${scenario.stations.filter((st) => st.trade === t).map((st) => st.name).join("·")}`))));
+      h("small", null, `명 · ${activeStations(scenario).filter((st) => st.trade === t).map((st) => st.name).join("·")}`))));
 
   // 트랜스포터는 블록 한 대로 고정(4.3, D46): 정비만 고른다.
   const transporter = h("div", { class: "field-row" },
@@ -240,7 +240,7 @@ function commonPane(ctx: FormContext): HTMLElement {
   const unitCap = (pid: string) => Math.min(opts.max_units, scenario.expansion.max_units_by_station?.[pid] ?? opts.max_units);
   const crews = (Object.entries(scenario.rules.crews) as [Crew, { name: string; summary: string; install_cost?: number }][])
     .filter(([id]) => opts.crews.includes(id));
-  const stationCards = scenario.stations.map((st) => {
+  const stationCards = activeStations(scenario).map((st) => {
     const cfg = config.stations[st.id];
     // 1.x 설정의 시니어는 그 공정의 숙련공으로 옮겨 적는다(엔진도 같이 읽는다).
     if (config.skilled_station) {
@@ -315,7 +315,7 @@ function commonPane(ctx: FormContext): HTMLElement {
 function materialGrades(ctx: FormContext): HTMLElement {
   const { scenario, config } = ctx;
   const cheap = scenario.material_grades.cheap;
-  const used = Object.fromEntries(scenario.stations.filter((st) => st.material).map((st) => [st.material!, st.name]));
+  const used = Object.fromEntries(activeStations(scenario).filter((st) => st.material).map((st) => [st.material!, st.name]));
   return h("div", { class: "materials" },
     h("div", { class: "field-row" }, h("span", { class: "field-label" }, "자재 등급"),
       h("small", null, `저가: 단가 ${Math.round(cheap.price_factor * 100)}%, 쓰는 공정 불량률 +${Math.round(cheap.defect_add * 100)}%p`)),
@@ -385,7 +385,7 @@ function shipPane(ctx: FormContext, sid: string): HTMLElement {
       h("div", null, h("dt", null, "계약금"), h("dd", null, num(order.price)))),
     h("div", { class: "field-row" },
       h("span", { class: "field-label" }, "작업량"),
-      h("span", { class: "work-cells" }, scenario.stations.map((st) =>
+      h("span", { class: "work-cells" }, activeStations(scenario).map((st) =>
         h("span", { class: "work-chip", title: st.name, style: { borderColor: STATION_COLOR[st.id] } },
           `${st.name} ${type.work[st.id]}`)))),
     h("table", { class: "plan orders-table" },
@@ -393,7 +393,7 @@ function shipPane(ctx: FormContext, sid: string): HTMLElement {
         h("th", null, "자재"), h("th", { class: "r" }, "소요량"), h("th", null, "쓰는 공정"),
         h("th", null, "발주일"), h("th", null, "입고일"))),
       h("tbody", null, scenario.materials.map((m) => {
-        const station = scenario.stations.find((st) => st.material === m.id);
+        const station = activeStations(scenario).find((st) => st.material === m.id);
         return h("tr", null,
           h("td", null, h("b", null, m.name)),
           h("td", { class: "r" }, type.bom[m.id] ?? 0),

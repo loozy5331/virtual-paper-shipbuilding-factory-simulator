@@ -597,7 +597,8 @@ class Scenarios(unittest.TestCase):
 
     def test_list(self):
         self.assertEqual([(s["id"], s["name"], s["ships"]) for s in list_scenarios()],
-                         [("basic", "기본 반기", 6), ("growth", "수주 증가", 8), ("surge", "수주 급증", 10)])
+                         [("simple", "간이공정 분기", 4), ("basic", "기본 반기", 6), ("growth", "수주 증가", 8), ("surge", "수주 급증", 10)])
+        self.assertEqual([s["level"] for s in list_scenarios()], [1, 2, 3, 4])
 
     def test_config_without_scenario_runs_as_basic(self):
         # 하위 호환: 1.x 설정(scenario 없음)은 기본 분기로 돈다.
@@ -889,6 +890,64 @@ class ForkliftPool(unittest.TestCase):
         with self.assertRaises(ConfigError):
             simulate(cfg)
         self.assertEqual(open_sim(cfg, baseline=False)["forklifts"][2]["id"], "F3")
+
+
+SIMPLE = {p["id"]: p["config"] for p in load_presets("simple")}
+
+
+class SimpleScenario(unittest.TestCase):
+    """간이공정(4.4, D47): 소조립 → 중조립 → PE장 → 탑재 네 공정만 쓰는 입문 시나리오. 나머지 여섯 공정은 처음부터 마친 것으로 건너뛴다."""
+
+    ACTIVE = ["sub_assembly", "block_assembly", "grand_assembly", "erection"]
+
+    def test_skipped_stations_never_run(self):
+        sc = load_scenario("simple")
+        self.assertEqual(sc["skip"], ["cutting", "processing", "painting", "pre_outfitting", "quay_outfitting", "sea_trial"])
+        self.assertEqual([st["id"] for st in sc["stations"] if st.get("skipped")], sc["skip"])
+        r = simulate(SIMPLE["managed"], baseline=False)
+        for ship in r["ships"]:
+            self.assertEqual(list(ship["spans"]), self.ACTIVE)
+        # 탑재를 마친 날이 인도일이다(안벽의장·시운전이 없다). 착수일 = 소조립에 들어간 날
+        s1 = r["ships"][0]
+        self.assertEqual((s1["spans"]["erection"]["end"], s1["delivered_day"], s1["started_day"]), (27, 27, 3))
+        skipped = [st for st in r["stations"] if st["id"] not in self.ACTIVE]
+        self.assertTrue(all(st["busy_days"] == 0 and st["oee"]["oee"] is None for st in skipped))
+
+    def test_materials_follow_the_scenario_not_the_rules(self):
+        # 3.x 시나리오 1처럼 종이는 소조립, 물감은 PE장, 깃발은 탑재에서 쓴다.
+        # 종이(강재 적치장)는 소조립에 들어가는 날 컨베이어로, 물감·깃발은 앞 공정에 들어간 다음 날 지게차가 싣는다.
+        r = simulate(SIMPLE["managed"], baseline=False)
+        issues = [(e["day"], e["material"], e["station"], e.get("forklift")) for e in r["events"] if e["type"] == "issue" and e["ship"] == "S1"]
+        self.assertEqual(issues, [(3, "paper", "sub_assembly", None), (9, "paint", "grand_assembly", "F1"), (18, "flag", "erection", "F1")])
+
+    def test_only_used_trades_are_staffed_and_paid(self):
+        # 조립 6 + 탑재 3 = 9명 × 10 × 60일 = 5,400. 가공·도장·의장 직종은 없고 정비비도 쓰는 공정 4곳만(4 × 100).
+        r = simulate(SIMPLE["managed"], baseline=False)
+        self.assertEqual(r["workforce"]["pools"], {"assembly": 6, "erection": 3})
+        self.assertEqual((r["costs"]["labor"], r["costs"]["maintenance"]), (5400.0, 400))
+        # 쓰지 않는 직종 인원을 적어도 읽지 않는다
+        cfg = copy.deepcopy(SIMPLE["managed"])
+        cfg["pools"]["processing"] = 2
+        self.assertEqual(simulate(cfg, baseline=False)["costs"]["labor"], 5400.0)
+        self.assertEqual(list(preview(SIMPLE["managed"])["plan"]["ships"]["S1"]), self.ACTIVE)
+
+    def test_presets(self):
+        cases = {"unmanaged": (-5684.8, 40.1, "F", 2), "managed": (12009.2, 97.5, "A", 4), "all_in": (2818.0, 58.8, "C", 2)}
+        for pid, (profit, score, grade, on_time) in cases.items():
+            r = simulate(SIMPLE[pid])
+            self.assertEqual((r["profit"], r["grade"]["score"], r["grade"]["grade"], r["qcd"]["delivery"]["on_time"]), (profit, score, grade, on_time), pid)
+
+    def test_options_are_the_most_closed(self):
+        # 일반 인력·표준 공법·표준 자재·작업장 1·나눠 하기 없음·지게차 2대 고정
+        cfg = copy.deepcopy(SIMPLE["managed"])
+        cfg["stations"]["block_assembly"]["method"] = "fast"
+        with self.assertRaises(ConfigError):
+            simulate(cfg)
+        cfg = copy.deepcopy(SIMPLE["managed"])
+        cfg["forklifts"]["count"] = 3
+        with self.assertRaises(ConfigError):
+            simulate(cfg)
+        self.assertEqual(load_scenario("simple")["options"]["max_units"], 1)
 
 
 if __name__ == "__main__":
