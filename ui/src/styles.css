@@ -221,12 +221,12 @@ select.priority { max-width: 84px; }
 .gantt .lane { fill: rgba(31, 42, 36, 0.035); }
 .gantt .grid { stroke: var(--line-soft); stroke-width: 1; }
 .gantt .grid.major { stroke: var(--line); }
-.gantt .tick { font-size: 11px; fill: var(--ink-3); text-anchor: middle; font-variant-numeric: tabular-nums; }
-.gantt .ship-id { font-size: 16px; font-weight: 800; fill: var(--ink); }
-.gantt .ship-sub { font-size: 11px; fill: var(--ink-3); }
+.gantt .tick { font-size: 12px; fill: var(--ink-3); text-anchor: middle; font-variant-numeric: tabular-nums; }
+.gantt .ship-id { font-size: 15px; font-weight: 800; fill: var(--ink); }
+.gantt .ship-sub { font-size: 12px; fill: var(--ink-3); }
 .gantt .bar-label { font-size: 12px; font-weight: 700; text-anchor: middle; pointer-events: none; }
 .gantt .due { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 3 3; }
-.gantt .due-label { font-size: 10px; fill: var(--ink-2); text-anchor: middle; font-weight: 600; }
+.gantt .due-label { font-size: 11px; fill: var(--ink-2); text-anchor: middle; font-weight: 600; }
 .gantt .deliver { fill: var(--good); stroke: #fff; stroke-width: 1.5; }
 .gantt .deliver.late { fill: var(--bad); }
 .gantt .outcome { font-size: 12px; font-weight: 700; }
@@ -234,7 +234,7 @@ select.priority { max-width: 84px; }
 .gantt .outcome.late { fill: var(--bad); }
 .gantt .cursor line { stroke: var(--accent); stroke-width: 2; }
 .gantt .cursor rect { fill: var(--accent); }
-.gantt .cursor text { fill: #fff; font-size: 11px; font-weight: 700; text-anchor: middle; }
+.gantt .cursor text { fill: #fff; font-size: 12px; font-weight: 700; text-anchor: middle; }
 
 .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.8rem; color: var(--ink-2); margin-top: 8px; align-items: center; }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
@@ -454,9 +454,9 @@ select.priority { max-width: 84px; }
 /* ----- v3: 간트 설비 줄 ----- */
 .gantt .bar-label.small { font-size: 11px; }
 .gantt .transport { fill: none; stroke: var(--ink-3); stroke-width: 1.3; stroke-dasharray: 3 2; }
-.gantt .section-label { font-size: 12px; font-weight: 700; fill: var(--ink-2); }
-.gantt .unit-id { font-size: 10px; fill: var(--ink-3); text-anchor: end; }
-.gantt .eq-id { font-size: 12px; font-weight: 700; fill: var(--ink); }
+.gantt .section-label { font-size: 13px; font-weight: 700; fill: var(--ink-2); }
+.gantt .unit-id { font-size: 11px; fill: var(--ink-3); text-anchor: end; }
+.gantt .eq-id { font-size: 13px; font-weight: 700; fill: var(--ink); }
 .gantt .band.eq { fill: rgba(31, 42, 36, 0.02); }
 .legend i.pair-mark { border: 1px solid; }
 .legend i.transport-mark { background: transparent; border: 1.5px dashed var(--ink-3); }
@@ -493,7 +493,7 @@ select.priority { max-width: 84px; }
 .inv-chart { width: 100%; height: auto; display: block; }
 .inv-chart .axis-line { stroke: var(--line); }
 .inv-chart .grid { stroke: var(--line-soft); stroke-dasharray: 2 3; }
-.inv-chart .tick { font-size: 10px; fill: var(--ink-3); text-anchor: middle; }
+.inv-chart .tick { font-size: 11px; fill: var(--ink-3); text-anchor: middle; }
 .inv-chart .tick.end { text-anchor: end; }
 .inv-chart .inv-area { fill: var(--accent); opacity: 0.12; }
 .inv-chart .inv-line { fill: none; stroke: var(--accent); stroke-width: 2; }
@@ -547,7 +547,7 @@ select.priority { max-width: 84px; }
 
 /* ----- 배별 간트 ----- */
 .gantt .arrival { fill: #de9644; stroke: #8a5d00; stroke-width: 1; }
-.gantt .arrival-label { font-size: 10px; fill: var(--ink-2); text-anchor: middle; font-weight: 600; }
+.gantt .arrival-label { font-size: 11px; fill: var(--ink-2); text-anchor: middle; font-weight: 600; }
 .legend i.other-mark { background: #d3dbd6; }
 .legend i.arrival-mark { width: 0; height: 0; border-radius: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 9px solid #de9644; }
 .chip.cut { background: #2a78d6; color: #fff; }
@@ -860,7 +860,7 @@ body { background: var(--desk); }
 .plate-best { display: inline-flex; align-items: center; gap: 4px; }
 .plate-best .best-grade { width: 20px; height: 20px; font-size: 11px; }
 .plate-runs { display: inline-flex; align-items: center; gap: 4px; }
-.plate-runs .run-chip { padding: 1px 8px; font-size: 11px; }
+.plate-runs .run-chip { padding: 1px 8px; font-size: 12px; }
 
 /* transform을 쓰지 않는다: 크게 보기의 position: fixed가 화면 기준이 되도록 */
 /* 좌우 여백은 예전(폭 최대 1222px)의 절반: 폭 = (화면 폭 + 예전 폭) ÷ 2 */
@@ -902,12 +902,12 @@ body { background: var(--desk); }
 .osd .day-now { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .osd-btn.end { font-weight: 700; white-space: nowrap; }
 .osd-fixed { font-size: 12px; font-weight: 700; white-space: nowrap; padding: 2px 8px; border: 1px solid rgba(243, 241, 234, 0.35); border-radius: 4px; }
-.gantt-screen { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 8px 8px; display: flex; flex-direction: column; gap: 4px; }
+.gantt-screen { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; padding: 4px 8px 8px; display: flex; flex-direction: column; gap: 4px; }
 .screen-tabs { display: flex; gap: 2px; }
-.screen-tab { border: 0; background: transparent; color: var(--ink-3); font: inherit; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
+.screen-tab { border: 0; background: transparent; color: var(--ink-3); font: inherit; font-size: 13px; font-weight: 700; padding: 3px 10px; border-radius: 4px; cursor: pointer; }
 .screen-tab.active { background: var(--ink); color: #fff; }
 /* 간트 범례는 스크롤 밖 모니터 아래에 고정(4.12.3). 운반 다음 줄바꿈 */
-.gantt-legend { flex: none; margin-top: 0; padding: 5px 10px 6px; border-top: 1px solid var(--line); background: var(--paper); font-size: 0.74rem; }
+.gantt-legend { flex: none; margin-top: 0; padding: 5px 10px 6px; border-top: 1px solid var(--line); background: var(--paper); font-size: 0.8rem; }
 .legend .break { flex-basis: 100%; height: 0; }
 
 /* 오른쪽 모니터: 위 3/4 작업 현황 전경(2D), 아래 1/4 사건 기록 */
@@ -951,13 +951,13 @@ body { background: var(--desk); }
 .cc-feed .tracked .cc-chip rect:first-of-type { stroke: #e0b43a; stroke-width: 2.5; }
 .cc-feed .tracked .cc-sea-name { fill: #e0b43a; }
 .cc-feed .cc-tag.track { fill: #e0b43a; font-weight: 800; }
-.cam-track { position: absolute; right: 10px; bottom: 8px; z-index: 2; display: flex; align-items: center; gap: 5px; background: rgba(20, 24, 20, 0.62); color: #f3f1ea; font-size: 11px; font-weight: 700; padding: 2px 4px 2px 8px; border-radius: 3px; }
-.cam-track select { font: inherit; font-size: 11px; color: #1f2622; background: #f3f1ea; border: 0; border-radius: 2px; padding: 1px 2px; }
+.cam-track { position: absolute; right: 10px; bottom: 8px; z-index: 2; display: flex; align-items: center; gap: 5px; background: rgba(20, 24, 20, 0.62); color: #f3f1ea; font-size: 12px; font-weight: 700; padding: 2px 4px 2px 8px; border-radius: 3px; }
+.cam-track select { font: inherit; font-size: 12px; color: #1f2622; background: #f3f1ea; border: 0; border-radius: 2px; padding: 1px 2px; }
 .track-host { position: absolute; right: 10px; top: 60px; z-index: 3; width: min(340px, calc(100% - 20px)); max-height: calc(100% - 80px); overflow-y: auto; }
 .track-host:empty { display: none; }
 /* 인도 완료 로그(4.0): 오른쪽 위, 최근 것부터. 지연은 빨간 글 */
 .delivered-log { position: absolute; right: 10px; top: 8px; z-index: 2; margin: 0; padding: 4px 8px; list-style: none; max-height: 40%; overflow-y: auto;
-  background: rgba(20, 24, 20, 0.78); color: #f3f1ea; font-size: 11px; border-radius: 3px; min-width: 190px; }
+  background: rgba(20, 24, 20, 0.78); color: #f3f1ea; font-size: 12px; border-radius: 3px; min-width: 190px; }
 .delivered-log[hidden] { display: none; }
 .delivered-log li { display: grid; grid-template-columns: 2.4em 1fr auto auto; gap: 6px; padding: 1px 0; align-items: baseline; }
 .delivered-log li.head { display: block; font-weight: 700; color: #cfd8d2; padding-bottom: 2px; border-bottom: 1px solid rgba(243, 241, 234, 0.2); margin-bottom: 2px; }
@@ -966,7 +966,7 @@ body { background: var(--desk); }
 .field-screen .delivered-log { top: 10px; }
 .right-top .delivered-log { top: 34px; }
 .trial-bubble { position: absolute; right: 14px; bottom: 40px; z-index: 2; background: var(--paper); color: var(--ink); border: 1px solid #c9cfc9;
-  border-radius: 8px; padding: 5px 7px 7px; font-size: 11px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
+  border-radius: 8px; padding: 5px 7px 7px; font-size: 12px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
 .trial-bubble[hidden] { display: none; }
 /* 말풍선 꼬리: 오른쪽 아래, 화면 밖 먼바다 쪽을 가리킨다 */
 .trial-bubble::after { content: ""; position: absolute; right: -7px; bottom: 10px; width: 12px; height: 12px; background: var(--paper);
@@ -1001,7 +1001,7 @@ body { background: var(--desk); }
 .track-card { background: var(--paper); color: var(--ink); border: 1px solid #c9cfc9; border-radius: 4px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3); padding: 10px 12px; font-size: 12px; line-height: 1.45; }
 .track-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
 .track-head b { font-size: 13px; }
-.track-kind { color: var(--ink-3); font-size: 11px; }
+.track-kind { color: var(--ink-3); font-size: 12px; }
 .track-x { margin-left: auto; border: 0; background: transparent; font: inherit; font-size: 15px; line-height: 1; color: var(--ink-2); cursor: pointer; padding: 0 2px; }
 .track-card dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; }
 .track-card dt { color: var(--ink-3); font-weight: 700; white-space: nowrap; }
@@ -1012,18 +1012,18 @@ body { background: var(--desk); }
 .track-mats li { display: grid; grid-template-columns: 3em 1fr; gap: 6px; }
 .track-actions { display: flex; gap: 6px; margin-top: 9px; }
 .track-link { border: 0; background: transparent; padding: 0; font: inherit; color: var(--accent); font-weight: 700; text-decoration: underline; cursor: pointer; }
-.track-hint { margin: 7px 0 0; color: var(--ink-3); font-size: 11px; }
+.track-hint { margin: 7px 0 0; color: var(--ink-3); font-size: 12px; }
 .right-top .cam-anon { top: 34px; }
 .cam-back { position: absolute; right: 10px; top: 8px; z-index: 2; background: #fff; border: 1px solid #c9cfc9; font: inherit; font-size: 12px; padding: 3px 9px; border-radius: 4px; font-weight: 700; color: var(--accent); cursor: pointer; }
 /* 익명 표시(2.1): 관제실 화면은 개인을 구분하지 않는다는 표시. 화면 이름 바로 아래, 눈에 띄지만 조용하게. */
-.cam-anon { position: absolute; left: 10px; top: 34px; z-index: 2; background: rgba(243, 241, 234, 0.92); color: var(--ink-2); font-size: 11px; padding: 2px 7px; border-radius: 3px; border: 1px solid #c9cfc9; }
+.cam-anon { position: absolute; left: 10px; top: 34px; z-index: 2; background: rgba(243, 241, 234, 0.92); color: var(--ink-2); font-size: 12px; padding: 2px 7px; border-radius: 3px; border: 1px solid #c9cfc9; }
 .cam-switch { display: flex; gap: 4px; }
 /* 작업 현황 머리줄(4.15.2): 현장 머리줄처럼 제목 · 볼 구획 · 추적을 한 줄에. 볼 구획은 추적 바로 옆 오른쪽으로(4.15.3). 줄 바깥 빈 곳은 그림을 누를 수 있게 */
 .cam-bar { position: absolute; left: 10px; right: 10px; top: 8px; z-index: 2; display: flex; align-items: center; gap: 8px; pointer-events: none; }
 .cam-bar > * { pointer-events: auto; }
 .cam-bar .cam-label, .cam-bar .cam-track { position: static; white-space: nowrap; }
 .cam-bar .cam-switch { margin-left: auto; }
-.cam-switch button { border: 0; background: rgba(20, 24, 20, 0.62); color: #f3f1ea; font: inherit; font-size: 11px; padding: 2px 7px; border-radius: 3px; cursor: pointer; }
+.cam-switch button { border: 0; background: rgba(20, 24, 20, 0.62); color: #f3f1ea; font: inherit; font-size: 12px; padding: 2px 7px; border-radius: 3px; cursor: pointer; }
 .cam-switch button.active { background: rgba(20, 24, 20, 0.9); font-weight: 700; }
 .log { flex: 1; min-height: 0; margin: 0; padding: 4px 10px 6px; list-style: none; overflow-y: auto; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-2); background: #f6f3ea; }
 .log li { display: flex; gap: 8px; align-items: baseline; padding: 1px 0; }
@@ -1049,7 +1049,7 @@ body { background: var(--desk); }
 .clip-sheet b { display: block; font-size: 12px; color: var(--ink); }
 .clip-sheet small { display: block; margin-bottom: 4px; }
 .clip-sheet i { display: block; height: 3px; background: #e2ddd0; margin: 6px 0; }
-.room .desk-label { display: block; font-size: 11px; color: #f3f1ea; font-weight: 600; text-align: center; text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3); margin-top: 4px; }
+.room .desk-label { display: block; font-size: 12px; color: #f3f1ea; font-weight: 600; text-align: center; text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3); margin-top: 4px; }
 .desk-clip .desk-label { position: absolute; left: 0; right: 0; top: 100%; }
 .desk-hat { position: absolute; right: 90px; top: 30px; width: 190px; border: 0; background: transparent; cursor: pointer; font: inherit; transition: transform 0.15s ease; }
 .desk-hat svg { width: 180px; display: block; margin: 0 auto; }
