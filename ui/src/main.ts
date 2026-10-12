@@ -138,6 +138,9 @@ const els = {
   trialRoom: h("div", { class: "trial-bubble", role: "status", hidden: true }),
   trialField: h("div", { class: "trial-bubble", role: "status", hidden: true }),
   log: h("ol", { class: "log", "aria-label": "사건 기록" }),
+  // 오른쪽 모니터 아래(4.15.7): 사건 기록 + 오른쪽 칸(인도 완료, 시운전). 지도 위에 띄우면 작업장을 가렸다
+  roomSide: h("div", { class: "right-side" }),
+  rightBottom: h("div", { class: "right-bottom" }),
   deskClip: h("button", { class: "desk-clip", type: "button", title: "생산계획서로 돌아가 계획을 고칩니다" }),
   hat: h("button", { class: "desk-hat", type: "button", title: "작업모를 쓰고 현장으로 나갑니다" }),
   hands: h("div", { class: "hands", "aria-hidden": "true" }),
@@ -688,6 +691,15 @@ function finish(): void {
   drawRoom();
 }
 
+/** 작업 현황 그림을 모니터에 줄여 넣은 만큼 글자를 키운다(4.15.7, 최대 1.35배. 더 키우면 이웃 글과 겹친다). */
+function fitFeedText(): void {
+  const svg = els.rightTop.querySelector<SVGSVGElement>(".cc-feed");
+  const box = svg?.viewBox.baseVal;
+  if (!svg || !box?.width || !svg.clientWidth) return;
+  const scale = Math.min(svg.clientWidth / box.width, svg.clientHeight / box.height);
+  svg.style.setProperty("--ts", String(Math.min(1.35, Math.max(1, 0.8 / scale)).toFixed(2)));
+}
+
 /** 왼쪽 모니터의 간트. 모니터의 실제 폭으로 그려 글자가 줄지 않는다(4.15.6). */
 function drawGanttChart(): void {
   const r = currentRun();
@@ -733,6 +745,7 @@ function tick(jump: boolean): void {
       due: Object.fromEntries(result.ships.map((sh) => [sh.id, sh.due_day])),
     }));
   }
+  fitFeedText();
   const cam = els.rightTop.querySelector(".cam-label");
   if (cam) cam.textContent = camLabel();
 
@@ -784,7 +797,7 @@ function trackSelect(): HTMLElement {
       (currentRun()?.result.ships ?? []).map((sh) => h("option", { value: sh.id, selected: state.track === sh.id }, sh.id))));
 }
 
-/** 인도 완료 로그: 오늘까지 인도한 배를 최근 것부터. 추적 상자가 떠 있으면 그 자리를 비켜 감춘다 */
+/** 인도 완료 로그: 오늘까지 인도한 배를 최근 것부터. 현장은 추적 상자가 떠 있으면 그 자리를 비켜 감춘다 */
 function drawDelivered(frame: Frame): void {
   const { scenario } = state.data;
   const rows = frame.delivered.map((d) => h("li", { class: d.late ? "late" : "" },
@@ -793,12 +806,12 @@ function drawDelivered(frame: Frame): void {
     h("span", null, `${d.day}일 인도`),
     h("em", null, d.late ? `${d.late}일 지연` : "납기 준수")));
   for (const host of [els.deliveredRoom, els.deliveredField]) {
-    host.hidden = !!state.pick || rows.length === 0;
+    host.hidden = (host === els.deliveredField && !!state.pick) || rows.length === 0;   // 관제실은 아래 줄이라 추적 상자와 겹치지 않는다
     mount(host, rows.length ? [h("li", { class: "head" }, `인도 완료 ${rows.length}척`), ...rows.map((r) => r.cloneNode(true) as HTMLElement)] : []);
   }
 }
 
-/** 시운전 말풍선: 시운전은 먼바다라 그림 밖이다. 시운전 중인 배가 있을 때만 오른쪽 아래에 뜬다 */
+/** 시운전 말풍선: 시운전은 먼바다라 그림 밖이다. 시운전 중인 배가 있을 때만(현장은 오른쪽 아래, 관제실은 사건 기록 옆) */
 function drawSeaTrial(frame: Frame): void {
   // 글 목록이 아니라 그림: 먼바다(수평선과 물결) 위에 시운전 중인 배가 동동 떠 있다. 배 아래에 이름과 며칠째
   const ships = frame.seaTrial;
@@ -1135,9 +1148,7 @@ function drawRightTop(): void {
       trackSelect()),
     h("span", { class: "cam-anon", title: "관제실 화면은 사람을 기호로만 보여 줍니다. 얼굴과 이름은 현장에 직접 나가야 보입니다." },
       "익명 표시 · 개인을 구분하지 않습니다"),
-    els.trackRoom,
-    els.deliveredRoom,
-    els.trialRoom);
+    els.trackRoom);
   if (label) label.textContent = `작업 현황 · ${cctvName()}`;
 }
 
@@ -1490,7 +1501,9 @@ async function start(): Promise<void> {
       h("aside", { class: "plan-notes", "aria-label": "메모" }, els.planNotes, els.goalNote)));
 
   monitor(els.monitorLeft, "left", "공정 간트", els.ganttScreen, els.ganttLegend, els.osd);
-  monitor(els.monitorRight, "right", "작업 현황 전경", els.rightTop, els.log, els.osdRight);
+  mount(els.roomSide, els.deliveredRoom, els.trialRoom);
+  mount(els.rightBottom, els.log, els.roomSide);
+  monitor(els.monitorRight, "right", "작업 현황 전경", els.rightTop, els.rightBottom, els.osdRight);
   // 간트는 모니터의 실제 크기로 그리므로 크기가 바뀌면(창 크기, 최대화) 다시 그린다
   let ganttSize = "";
   new ResizeObserver(() => {
@@ -1499,6 +1512,7 @@ async function start(): Promise<void> {
     ganttSize = size;
     if (state.screen === "room") drawGanttChart();
   }).observe(els.ganttScreen);
+  new ResizeObserver(fitFeedText).observe(els.rightTop);
   els.hands.innerHTML = HANDS_SVG;
   els.hat.innerHTML = `${HAT_SVG}<span class="desk-label">작업모 · 현장으로</span>`;
   els.hat.addEventListener("click", goField);

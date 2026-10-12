@@ -910,25 +910,40 @@ body { background: var(--desk); }
 .gantt-legend { flex: none; margin-top: 0; padding: 5px 10px 6px; border-top: 1px solid var(--line); background: var(--paper); font-size: 0.8rem; }
 .legend .break { flex-basis: 100%; height: 0; }
 
-/* 오른쪽 모니터: 위 3/4 작업 현황 전경(2D), 아래 1/4 사건 기록 */
+/* 오른쪽 모니터: 위 3/4 작업 현황 전경(2D), 아래 1/4 사건 기록 + 오른쪽 칸(인도 완료, 시운전, 4.15.7) */
+.right-bottom { flex: 1; min-height: 0; display: flex; border-top: 1px solid var(--line); background: #f6f3ea; }
+.right-bottom .log { border-top: 0; }
+.right-side { flex: none; display: flex; gap: 8px; align-items: flex-start; padding: 6px 10px 6px 0; overflow-y: auto; }
+.right-side:not(:has(> :not([hidden]))) { display: none; }
+.right-side .delivered-log { position: static; max-height: none; background: transparent; color: var(--ink-2); padding: 0; }
+.right-side .delivered-log li.head { color: var(--ink); border-bottom-color: var(--line); }
+.right-side .delivered-log b { color: var(--ink); }
+.right-side .delivered-log em { color: var(--good); font-weight: 700; }
+.right-side .delivered-log li.late em { color: var(--bad); }
+.right-side { max-width: 58%; }
+.right-side .delivered-log { min-width: 0; }
+.right-side .trial-bubble { position: static; box-shadow: none; flex: none; }
+.right-side .trial-sea { width: auto; height: 62px; }
+.right-side .trial-bubble::after { display: none; }
 .right-top { position: relative; flex: 3; min-height: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: center; }
 .cam-label { position: absolute; left: 10px; top: 8px; z-index: 2; background: rgba(20, 24, 20, 0.8); color: #f3f1ea; font-size: 12px; padding: 3px 8px; border-radius: 3px; font-weight: 700; }
 /* 작업 현황 전경(2.1): 기호도를 대신하는 2D 정지 화면. 위에서 비스듬히 내려다본 조선소, 사람은 기호뿐. */
 .cc-host { position: absolute; inset: 0; background: #1f2622; }
 .cc-feed { width: 100%; height: 100%; display: block; }
+/* --ts(4.15.7): 그림을 모니터에 줄여 넣는 만큼 글자를 키운다(main.ts fitFeedText, 1~1.35배). 칩·배 이름은 틀 크기가 정해져 있어 그대로 */
 .cc-feed .cc-bg { fill: #1f2622; }
 .cc-feed text { font-family: inherit; fill: #c9d3cc; }
-.cc-feed .cc-place { font-size: 13px; font-weight: 700; fill: #eef2ee; text-anchor: middle; }
+.cc-feed .cc-place { font-size: calc(13px * var(--ts, 1)); font-weight: 700; fill: #eef2ee; text-anchor: middle; }
 .cc-feed .cc-place.start { text-anchor: start; }
-.cc-feed .cc-name { font-size: 14px; font-weight: 800; fill: #fff; }
+.cc-feed .cc-name { font-size: calc(14px * var(--ts, 1)); font-weight: 800; fill: #fff; }
 /* 정반(공정 색) 위 글: 바탕색이 제각각이라 어두운 테두리로 읽히게 */
 .cc-feed .cc-mat-text text { fill: #fff; paint-order: stroke; stroke: rgba(20, 26, 22, 0.75); stroke-width: 3px; stroke-linejoin: round; }
 .cc-feed .cc-mat-text .loss { fill: #ffd29a; }
-.cc-feed .cc-tag { font-size: 12px; fill: #b5c0b9; }
+.cc-feed .cc-tag { font-size: calc(12px * var(--ts, 1)); fill: #b5c0b9; }
 /* 전경(4.15.1): 3D 전경처럼 작은 글(이름표, 수량, 팻말)은 숨기고 구획 이름만 크게 */
 .cc-feed.overview text { display: none; }
 .cc-feed.overview text.cc-sector { display: inline; font-size: 44px; font-weight: 800; fill: #eef2ee; text-anchor: middle; paint-order: stroke; stroke: rgba(20, 26, 22, 0.8); stroke-width: 8px; stroke-linejoin: round; }
-.cc-feed .cc-unit { font-size: 11px; font-weight: 700; fill: rgba(255, 255, 255, 0.85); }
+.cc-feed .cc-unit { font-size: calc(11px * var(--ts, 1)); font-weight: 700; fill: rgba(255, 255, 255, 0.85); }
 .cc-feed .cc-tag.loss { fill: #f0b36a; font-weight: 700; }
 .cc-feed .warn { fill: #de9644; font-weight: 700; }
 .cc-feed .stop { fill: #ff8a95; font-weight: 800; }
@@ -950,7 +965,7 @@ body { background: var(--desk); }
 .cc-feed .untracked { opacity: 0.25; }
 .cc-feed .tracked .cc-chip rect:first-of-type { stroke: #e0b43a; stroke-width: 2.5; }
 .cc-feed .tracked .cc-sea-name { fill: #e0b43a; }
-.cc-feed .cc-tag.track { fill: #e0b43a; font-weight: 800; }
+.cc-feed .cc-tag.track, .cc-feed .cc-tag .track { fill: #e0b43a; font-weight: 800; }
 .cam-track { position: absolute; right: 10px; bottom: 8px; z-index: 2; display: flex; align-items: center; gap: 5px; background: rgba(20, 24, 20, 0.62); color: #f3f1ea; font-size: 12px; font-weight: 700; padding: 2px 4px 2px 8px; border-radius: 3px; }
 .cam-track select { font: inherit; font-size: 12px; color: #1f2622; background: #f3f1ea; border: 0; border-radius: 2px; padding: 1px 2px; }
 .track-host { position: absolute; right: 10px; top: 60px; z-index: 3; width: min(340px, calc(100% - 20px)); max-height: calc(100% - 80px); overflow-y: auto; }
@@ -964,7 +979,6 @@ body { background: var(--desk); }
 .delivered-log em { font-style: normal; color: #9fd8b4; }
 .delivered-log li.late em { color: #ff8a95; }
 .field-screen .delivered-log { top: 10px; }
-.right-top .delivered-log { top: 34px; }
 .trial-bubble { position: absolute; right: 14px; bottom: 40px; z-index: 2; background: var(--paper); color: var(--ink); border: 1px solid #c9cfc9;
   border-radius: 8px; padding: 5px 7px 7px; font-size: 12px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
 .trial-bubble[hidden] { display: none; }
@@ -1030,7 +1044,7 @@ body { background: var(--desk); }
 .log li.today { color: var(--ink); }
 .log li.quiet { color: var(--ink-3); }
 .log b { width: 34px; flex: none; color: var(--ink); font-variant-numeric: tabular-nums; }
-.log em { flex: none; font-style: normal; font-weight: 700; font-size: 11px; width: 26px; color: var(--ink-2); }
+.log em { flex: none; font-style: normal; font-weight: 700; font-size: 11px; width: 4.6em; white-space: nowrap; color: var(--ink-2); }
 .log em.defect { color: #cf3d0b; } .log em.accident, .log em.breakdown { color: #8e2e42; } .log em.arrival { color: #9a5a10; } .log em.delivery { color: var(--good); }
 
 /* 책상: 생산계획서, 두 손, 작업모 */
