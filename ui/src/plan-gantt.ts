@@ -4,7 +4,7 @@
 // 막대 앞 위에 착수 예정일을 숫자로 적는다. 끄는 동안에도 그 숫자가 따라 바뀐다.
 // 끄는 동안에는 줄만 옮겨 보이고, 놓을 때 onMove로 알린다. 새 막대는 다음 미리보기에서 다시 그린다.
 
-import { activeStations, type Plan, type Scenario } from "./api";
+import { activeStations, type Plan, type Preview, type Scenario } from "./api";
 import { s } from "./dom";
 import { STATE_INFO, STATION_COLOR } from "./labels";
 
@@ -20,6 +20,8 @@ export interface PlanGanttContext {
   scenario: Scenario;
   plan: Plan;
   startDays: Record<string, number>;
+  /** 공정 여유(4.15)를 넣은 납기. 없으면 수주의 납기 */
+  contract?: Preview["contract"];
   /** 착수 예정일을 바꿨다. 범위(1~마지막 날)는 여기서 맞춰서 넘긴다. */
   onMove(shipId: string, startDay: number): void;
 }
@@ -43,6 +45,7 @@ export function renderPlanGantt(ctx: PlanGanttContext): SVGElement {
   svg.append(s("defs", null,
     s("pattern", { id: "plan-hatch", width: 5, height: 5, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" },
       s("rect", { width: 2, height: 5, fill: WAIT_COLOR }))));
+  const dueOf = (sid: string, fallback: number) => ctx.contract?.[sid]?.due_day ?? fallback;
 
   const axis = s("g", { class: "axis" });
   for (let d = 1; d <= days; d++) {
@@ -77,11 +80,20 @@ export function renderPlanGantt(ctx: PlanGanttContext): SVGElement {
         x: x(sp.start) + 0.5, y: barY, width: Math.max(1, (end - sp.start + 1) * dayW - 1), height: BAR_H, rx: 2,
         fill: STATION_COLOR[st.id],
       }, s("title", null, `${sid} ${stationName[st.id]} ${sp.start}~${sp.end}일`)));
+      // 공정 여유(4.15): 막대 뒤에 같은 색 테두리의 빈 칸
+      if (sp.buffer && end < days) {
+        const bEnd = Math.min(sp.end + sp.buffer, days);
+        row.append(s("rect", {
+          x: x(end + 1) + 0.5, y: barY + 2, width: Math.max(1, (bEnd - end) * dayW - 1), height: BAR_H - 4, rx: 2,
+          class: "plan-buffer", stroke: STATION_COLOR[st.id],
+        }, s("title", null, `${sid} ${stationName[st.id]} 여유 ${sp.buffer}일`)));
+      }
     }
     const act = activeStations(scenario);
     const last = spans[act[act.length - 1].id];
-    if (last && last.end > order.due_day) {
-      row.append(s("text", { x: Math.min(x(last.end + 1) + 3, W - RIGHT), y: barY + BAR_H - 3, class: "plan-late" }, "!"));
+    const lastEnd = last ? last.end + (last.buffer ?? 0) : 0;
+    if (last && lastEnd > dueOf(sid, order.due_day)) {
+      row.append(s("text", { x: Math.min(x(lastEnd + 1) + 3, W - RIGHT), y: barY + BAR_H - 3, class: "plan-late" }, "!"));
     }
     // 착수 예정일. 줄과 함께 움직이고, 끄는 동안 숫자가 바뀐다.
     const label = s("text", { x: x(start), y: barY - 3, class: "plan-start" }, `${start}일`);
@@ -143,9 +155,11 @@ export function renderPlanGantt(ctx: PlanGanttContext): SVGElement {
   // 납기는 끌어도 움직이지 않고, 줄 강조에 가리지 않게 맨 위에 그린다.
   scenario.orders.forEach((order, i) => {
     const y = TOP + i * ROW_H;
+    const due = dueOf(order.id, order.due_day);
+    if (due > days) return;   // 공정 여유로 기간 밖으로 밀린 납기는 그리지 않는다
     svg.append(
-      s("line", { x1: x(order.due_day + 1), x2: x(order.due_day + 1), y1: y + 2, y2: y + ROW_H - 2, class: "due plan-due" },
-        s("title", null, `${order.id} 납기 ${order.due_day}일`)));
+      s("line", { x1: x(due + 1), x2: x(due + 1), y1: y + 2, y2: y + ROW_H - 2, class: "due plan-due" },
+        s("title", null, `${order.id} 납기 ${due}일${due !== order.due_day ? ` (원래 ${order.due_day}일 + 공정 여유)` : ""}`)));
   });
 
   if (focusedShip) {

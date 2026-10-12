@@ -68,7 +68,8 @@ function foldSummaries(ctx: FormContext): Record<string, string> {
       opts.safety_stock ? `안전 재고 ${listOr(safety)}` : null, cheap.length ? `저가 ${cheap.join("·")}` : null].filter(Boolean).join(" · "),
     stations: [`증설 ${listOr(names((id) => (st(id).units ?? 1) > 1))}`, `숙련공 ${listOr(names((id) => st(id).crew === "skilled"))}`,
       opts.crews.includes("robot") ? `로봇 ${listOr(names((id) => st(id).crew === "robot"))}` : null,
-      `잔업 ${listOr(names((id) => !!st(id).overtime))}`].filter(Boolean).join(" · "),
+      `잔업 ${listOr(names((id) => !!st(id).overtime))}`,
+      opts.plan_buffer ? `여유 ${act.reduce((n, s) => n + (st(s.id).buffer ?? 0), 0)}일` : null].filter(Boolean).join(" · "),
     research: config.research.length ? config.research.map((r) => scenario.research[r]?.name ?? r).join(" → ") : "없음",
   };
 }
@@ -188,8 +189,9 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
         return h("tr", null,
           h("td", null, h("b", null, order.id)),
           h("td", null, scenario.ship_types[order.type].name),
-          h("td", { class: "r" }, `${order.due_day}일`),
-          h("td", { class: "r" }, num(order.price)),
+          // 공정 여유(4.15)를 넣으면 미리보기의 납기·선가로 바뀐다
+          h("td", { class: "r" }, h("span", { "data-preview": `due:${order.id}` }, `${order.due_day}일`)),
+          h("td", { class: "r" }, h("span", { "data-preview": `price:${order.id}` }, num(order.price))),
           h("td", null, h("select", {
             class: "priority",
             onchange: (e: Event) => {
@@ -211,6 +213,7 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
     h("div", { class: "legend plan-legend" },
       activeStations(scenario).map((st) => h("span", null, h("i", { style: { background: STATION_COLOR[st.id] } }), st.name)),
       h("span", null, h("i", { class: "plan-overlap" }), "작업장 겹침"),
+      openOptions(scenario).plan_buffer ? h("span", null, h("i", { class: "plan-buffer-mark" }), "공정 여유") : null,
       h("span", null, h("i", { class: "due-mark" }), "납기")),
     h("p", { class: "hint", "data-preview": "conflicts" }),
     h("p", { class: "hint" }, "막대는 배 한 척이 작업장을 혼자 쓸 때의 일정입니다. 겹치는 날은 뒤 순위 배가 기다립니다."),
@@ -248,10 +251,10 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
 }
 
 /** 분기가 열어 둔 옵션(D33). 시나리오에 없으면 모두 연다. */
-function openOptions(scenario: FormContext["scenario"]): ScenarioOptions {
+export function openOptions(scenario: FormContext["scenario"]): ScenarioOptions {
   return scenario.options ?? {
     crews: Object.keys(scenario.rules.crews) as Crew[], methods: Object.keys(scenario.rules.methods),
-    material_grades: Object.keys(scenario.material_grades), max_units: scenario.expansion.max_units, split: true, hoist: true, jit_buffer: true, safety_stock: true,
+    material_grades: Object.keys(scenario.material_grades), max_units: scenario.expansion.max_units, split: true, hoist: true, jit_buffer: true, safety_stock: true, plan_buffer: true,
   };
 }
 
@@ -357,6 +360,11 @@ function commonPane(ctx: FormContext): HTMLElement {
             value: k + 1, label: k === 0 ? "1개" : `${k + 1}개 (+${num(scenario.expansion.cost[st.id] * k)})`,
           })),
           cfg.units ?? 1, (v) => { if (v > 1) cfg.units = v; else delete cfg.units; ctx.onEdit(false); }),
+        // 공정 여유(4.15, D62): 기본 반기부터. 여유 하루마다 모든 배의 납기 +1일, 선가 −1%
+        opts.plan_buffer ? h("span", { class: "field-label", title: "선주에게 약속하는 납기에 이 공정의 여유를 넣는다. 배는 기다리지 않는다." }, "여유") : null,
+        !opts.plan_buffer ? null : segmented(`buffer-${st.id}`,
+          Array.from({ length: scenario.plan_buffer.max_days + 1 }, (_, k) => ({ value: k, label: k ? `${k}일 (−${num(k * scenario.plan_buffer.price_cut_per_day * 100, 0)}%)` : "없음" })),
+          cfg.buffer ?? 0, (v) => { if (v) cfg.buffer = v; else delete cfg.buffer; ctx.onEdit(false); }),
       ),
       h("div", { class: "station-preview" },
         h("span", null, "최대 ", h("b", { "data-preview": `rate:${st.id}` }, "…"), "/일"),
@@ -396,7 +404,7 @@ function commonPane(ctx: FormContext): HTMLElement {
     sec(3, "자재", ["발주 방식", opts.material_grades.includes("cheap") ? "등급" : null, opts.safety_stock ? "안전 재고" : null].filter(Boolean).join(" · "), ordering, buffer, orderingHint,
       opts.material_grades.includes("cheap") || opts.safety_stock
         ? materialTable(ctx, opts.material_grades.includes("cheap"), !!opts.safety_stock) : null),
-    sec(4, "공정", "공정마다 인력 · 공법 · 설비 운영 · 작업장 수", h("div", { class: "stations" }, stationCards)),
+    sec(4, "공정", `공정마다 인력 · 공법 · 설비 운영 · 작업장 수${opts.plan_buffer ? " · 여유" : ""}`, h("div", { class: "stations" }, stationCards)),
     sec(5, "연구", null, researchQueue(ctx)),
     h("p", { class: "hint fixed" },
       "고정비: 인건비 ", h("b", { "data-preview": "labor" }, "…"),
@@ -553,8 +561,8 @@ function shipPane(ctx: FormContext, sid: string): HTMLElement {
     h("dl", { class: "ship-info" },
       h("div", null, h("dt", null, "선종"), h("dd", null, type.name)),
       h("div", null, h("dt", null, "수주"), h("dd", null, `${order.order_day}일`)),
-      h("div", null, h("dt", null, "납기"), h("dd", null, `${order.due_day}일`)),
-      h("div", null, h("dt", null, "계약금"), h("dd", null, num(order.price)))),
+      h("div", null, h("dt", null, "납기"), h("dd", null, h("span", { "data-preview": `due:${order.id}` }, `${order.due_day}일`))),
+      h("div", null, h("dt", null, "계약금"), h("dd", null, h("span", { "data-preview": `price:${order.id}` }, num(order.price))))),
     h("div", { class: "field-row" },
       h("span", { class: "field-label" }, "작업량"),
       h("span", { class: "work-cells" }, activeStations(scenario).map((st) =>
@@ -619,6 +627,13 @@ export function updatePreview(root: HTMLElement, preview: Preview | null, errors
       const qty = preview.safety_stock?.[el.dataset.preview!.slice("safety:".length)];
       el.textContent = qty ? `${qty}개` : "";
     }
+    // 납기·계약금은 수주 목록과 배 탭 두 곳에 있다
+    for (const [sid, c] of Object.entries(preview.contract ?? {})) {
+      root.querySelectorAll<HTMLElement>(`[data-preview="due:${sid}"]`).forEach((el) => {
+        el.textContent = c.buffer_days ? `${c.due_day}일 (+${c.buffer_days})` : `${c.due_day}일`;
+      });
+      root.querySelectorAll<HTMLElement>(`[data-preview="price:${sid}"]`).forEach((el) => { el.textContent = num(c.price); });
+    }
     drawPlan(root, preview);
   }
   // 오류 메시지는 "S2: …"처럼 배 id로 시작한다. 배가 아닌 오류는 공통 탭에 표시한다.
@@ -643,7 +658,7 @@ function drawPlan(root: HTMLElement, preview: Preview): void {
   const { scenario, config } = ctx;
   const startDays = Object.fromEntries(Object.entries(config.ships).map(([sid, ship]) => [sid, ship.start_day]));
   mount(host, renderPlanGantt({
-    scenario, plan: preview.plan, startDays,
+    scenario, plan: preview.plan, startDays, contract: preview.contract,
     onMove: (sid, day) => {
       config.ships[sid].start_day = day;
       const label = root.querySelector<HTMLElement>(`[data-preview="start:${sid}"]`);

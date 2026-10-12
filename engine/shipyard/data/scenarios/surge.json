@@ -91,6 +91,7 @@
   },
   "unlocks": "작업장 3개, 나눠 하기(한 배를 작업장 여러 곳에서 동시에), 역산 발주 여유일(0~3일), 안전 재고(자재마다 0~2척분)",
   "options": {
+    "plan_buffer": true,
     "crews": [
       "normal",
       "skilled",

@@ -242,6 +242,10 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
             errors.append(f"{pid}: 호이스트(hoist)는 true 또는 false여야 합니다")
         elif st.get("hoist") and not _station_rule(scenario, pid).get("hoist"):
             errors.append(f"{pid}: 호이스트는 {', '.join(hoist_stations(scenario))}에만 달 수 있습니다")
+        # 공정 여유(4.15): 0~max_days일
+        buf = st.get("buffer", 0)
+        if not _is_int(buf) or not 0 <= buf <= scenario["plan_buffer"]["max_days"]:
+            errors.append(f"{pid}: 공정 여유(buffer)는 0~{scenario['plan_buffer']['max_days']}일이어야 합니다")
         units = st.get("units", 1)
         # 탑재 도크는 골리앗 크레인(걸리버의 두 손)이 있어야 하므로 2곳까지(3.0)
         max_units = scenario["expansion"].get("max_units_by_station", {}).get(pid, scenario["expansion"]["max_units"])
@@ -336,6 +340,8 @@ def _locked_options(config: dict[str, Any], scenario: dict[str, Any]) -> list[st
             errors.append(f"{name}에서는 나눠 하기를 쓸 수 없습니다({label})")
         if cfg.get("hoist", False) and not opts.get("hoist", False):
             errors.append(f"{name}에서는 호이스트를 쓸 수 없습니다({label})")
+        if cfg.get("buffer", 0) and not opts.get("plan_buffer", False):
+            errors.append(f"{name}에서는 공정 여유를 둘 수 없습니다({label})")
     tcounts = opts.get("transporter_counts")
     if tcounts and (config.get("transporters") or {}).get("count") not in tcounts:
         errors.append(f"{name}에서는 트랜스포터를 {', '.join(map(str, tcounts))}대로만 둘 수 있습니다")
@@ -489,6 +495,23 @@ def material_abc(scenario: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def plan_buffers(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, int]:
+    """공정 여유(4.15, D62): 쓰는 공정마다 여유일. 설정에 없으면 0."""
+    return {st["id"]: config["stations"][st["id"]].get("buffer", 0) for st in scenario["stations"] if not is_skipped(st)}
+
+
+def contract_orders(config: dict[str, Any], scenario: dict[str, Any]) -> list[dict[str, Any]]:
+    """선주와 맺은 납기와 선가(4.15). 여유 합계만큼 납기가 늦어지고 선가가 하루 price_cut_per_day씩 준다.
+
+    원래 값은 base_due_day·base_price에 남긴다(등급의 KPI 대상은 원래 납기로 가른다).
+    """
+    days = sum(plan_buffers(config, scenario).values())
+    cut = scenario["plan_buffer"]["price_cut_per_day"]
+    return [{**o, "base_due_day": o["due_day"], "base_price": o["price"], "buffer_days": days,
+             "due_day": o["due_day"] + days, "price": round(o["price"] * (1 - cut * days), 2)}
+            for o in scenario["orders"]]
+
+
 def jit_buffer(config: dict[str, Any], scenario: dict[str, Any]) -> int:
     """역산 발주의 여유일(4.13, D59). 설정에 없으면 규칙의 기본값(0일)."""
     return config.get("jit_buffer", scenario["ordering"]["jit"]["buffer_days"])
@@ -604,7 +627,10 @@ def preview(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> d
     return {"stations": stations, "fixed_costs": fixed_costs(config, scenario),
             "research": research_schedule(config.get("research", []), scenario),
             "materials": materials, "safety_stock": safety_stock(config, scenario), "abc": material_abc(scenario),
-            "plan": plan_schedule(config, scenario)}
+            "plan": plan_schedule(config, scenario),
+            # 공정 여유(4.15): 선주와 맺을 납기와 선가
+            "contract": {o["id"]: {"due_day": o["due_day"], "price": o["price"], "buffer_days": o["buffer_days"]}
+                         for o in contract_orders(config, scenario)}}
 
 
 def move_days_between(scenario: dict[str, Any], a: int, b: int) -> int:
@@ -660,6 +686,7 @@ def plan_schedule(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str,
     units_of = dict(zip((s["id"] for s in scenario["stations"]), station_units(config, scenario)))
     parts_of = {s["id"]: split_parts(config, scenario, p, units_of[s["id"]]) for p, s in enumerate(scenario["stations"])}
     ships: dict[str, dict[str, dict[str, int]]] = {}
+    buffers = plan_buffers(config, scenario)
     for order in scenario["orders"]:
         work = {st["id"]: station_work(config, scenario, st["id"], order["type"]) for st in scenario["stations"]}
         day = config["ships"][order["id"]]["start_day"]
@@ -672,10 +699,10 @@ def plan_schedule(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str,
             rate = station_rate({**config["stations"][st["id"]], "crew": crew_of(config, st["id"])}, rules, assigned)
             # 나눠 하기: 작업장을 모두 쓴다고 보고 부분 작업량으로 잰다(배가 혼자 쓸 때의 일정).
             end = day + math.ceil(work[st["id"]] / parts_of[st["id"]] / rate - EPS) - 1
-            spans[st["id"]] = {"start": day, "end": end}
-            # 끝난 다음 날부터 다음 공정으로(같은 자리·크레인·예인은 다음 날, 그 밖은 T2 운반일)
+            spans[st["id"]] = {"start": day, "end": end, **({"buffer": buffers[st["id"]]} if buffers[st["id"]] else {})}
+            # 끝난 다음 날부터 다음 공정으로(같은 자리·크레인·예인은 다음 날, 그 밖은 T2 운반일). 공정 여유(4.15)가 있으면 그 뒤로
             if k + 1 < len(active):
-                day = end + move_days_between(scenario, p, active[k + 1])
+                day = end + buffers[st["id"]] + move_days_between(scenario, p, active[k + 1])
         ships[order["id"]] = spans
 
     # 겹침: 같은 공정을 쓰는 배가 그 공정의 작업장 수보다 많은 날. 두 배씩 묶어 그 날들의 구간으로 적는다.
@@ -720,6 +747,8 @@ def simulate(config: dict[str, Any], scenario: dict[str, Any] | None = None, bas
         base_cfg = complete_config(normalize_config(base_cfg), scenario)
     base = _run(_with_order_days(base_cfg, scenario), scenario) if base_cfg is not None else None
     result["grade"] = _grade(result, config, base, base_cfg, scenario)
+    # 7관리 지표(4.15)는 평가서 부록용이라 기준선 실행에는 붙이지 않는다
+    result["management"] = _management(result, config, scenario)
     return result
 
 
@@ -745,7 +774,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     bd = scenario["breakdown"]
     tr = scenario["transporter"]
     rnd = scenario["random"]
-    orders = scenario["orders"]
+    orders = contract_orders(config, scenario)
     stations = scenario["stations"]
     materials = {m["id"]: m for m in scenario["materials"]}
     types = scenario["ship_types"]
@@ -1302,6 +1331,10 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             "order_day": order["order_day"],
             "due_day": order["due_day"],
             "price": order["price"],
+            # 공정 여유(4.15): 여유 합계와 여유를 넣기 전의 납기·선가
+            "buffer_days": order["buffer_days"],
+            "base_due_day": order["base_due_day"],
+            "base_price": order["base_price"],
             "priority": priority[i],
             "start_day": config["ships"][order["id"]]["start_day"],
             "order_days": order_days[i],
@@ -1348,6 +1381,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             "labor_wait_days": labor_wait[p],
             "pair_wait_days": sum(pair_wait_days[p]),
             "breakdowns": station_breakdowns[p],
+            "overtime_days": sum(overtime_days[p]),
             "work_done": work_done[p],
             "inspections": inspections[p],
             "passes": passes[p],
@@ -1423,6 +1457,116 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _worst(totals: dict[str, int], order: list[str]) -> tuple[str, int] | None:
+    """값이 가장 큰 항목. 같으면 order(공정·배 목록)의 앞. 0뿐이면 없다."""
+    best = None
+    for key in order:
+        if totals.get(key, 0) > 0 and (best is None or totals[key] > best[1]):
+            best = (key, totals[key])
+    return best
+
+
+def _management(result: dict[str, Any], config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
+    """평가서 부록의 7관리 지표(4.15, D61): 계획·일정·자재·설비·품질·안전마다 대표 지표와 개선 포인트.
+
+    데이터 관리는 평가서 전체가 그 일이라 재지 않는다. 등급 점수에는 넣지 않는다. 포인트는 손실이 있는 요소에만,
+    {"code", 어디(station·ship), 크기}로 준다. 문구는 화면이 code마다 정한 안내를 쓴다(의문점 카드와 같은 방식).
+    """
+    days = result["days"]
+    ships = result["ships"]
+    station_ids = [st["id"] for st in scenario["stations"] if not is_skipped(st)]
+    ship_ids = [sh["id"] for sh in ships]
+    by_id = {st["id"]: st for st in result["stations"]}
+
+    def loss_by_station(kind: str) -> dict[str, int]:
+        totals: dict[str, int] = {}
+        for f in result["findings"]:
+            if f["kind"] == kind:
+                totals[f["station"]] = totals.get(f["station"], 0) + f["days"]
+        return totals
+
+    def part_sum(state: str) -> int:
+        return sum(sh["lead_time_parts"].get(state, 0) for sh in ships)
+
+    # 계획: 계획 간트(배가 혼자 쓴다고 본 일정)의 끝날과 실제 인도일
+    plan = plan_schedule(config, scenario)
+    slips: dict[str, int] = {}
+    on_plan = 0
+    for sh in ships:
+        planned_end = max(span["end"] + span.get("buffer", 0) for span in plan["ships"][sh["id"]].values())
+        end = sh["delivered_day"] if sh["delivered_day"] is not None else days
+        slips[sh["id"]] = max(0, end - planned_end)
+        if sh["delivered_day"] is not None and sh["delivered_day"] <= planned_end:
+            on_plan += 1
+    conflict_days = sum(c["end"] - c["start"] + 1 for c in plan["conflicts"])
+    worst_slip = _worst(slips, ship_ids)
+    plan_point = ({"code": "conflict", "days": conflict_days} if conflict_days
+                  else {"code": "slip", "ship": worst_slip[0], "days": worst_slip[1]} if worst_slip else None)
+
+    # 일정: 리드타임 중 일한 날(작업·운반)의 비율과 기다린 날
+    lead = sum(sh["lead_time"] for sh in ships)
+    flowing = part_sum(WORK) + part_sum(TRANSPORT)
+    waits = {k: part_sum(k) for k in (STATION_WAIT, LABOR_WAIT, TRANSPORT_WAIT)}
+    worst_wait = _worst(waits, list(waits))
+    schedule_point = None
+    if worst_wait:
+        where = _worst(loss_by_station(worst_wait[0]), station_ids)
+        schedule_point = {"code": worst_wait[0], "station": where[0] if where else None, "days": worst_wait[1]}
+
+    # 자재: 자재 대기와 재고
+    material_wait = part_sum(MATERIAL_WAIT)
+    inv = result["inventory_value_daily"]
+    material_point = None
+    if material_wait:
+        where = _worst(loss_by_station(MATERIAL_WAIT), station_ids)
+        material_point = {"code": "material_wait", "station": where[0] if where else None, "days": material_wait}
+    elif config.get("ordering") == "bulk" and result["costs"]["holding"] > 0:
+        material_point = {"code": "holding", "cost": result["costs"]["holding"]}
+
+    # 설비: 설비가 있는 공정(시운전 제외)의 OEE 평균과 고장
+    equipped = [by_id[st["id"]] for st in scenario["stations"]
+                if not is_skipped(st) and has_equipment(st) and by_id[st["id"]]["oee"]["oee"] is not None]
+    oee = sum(st["oee"]["oee"] for st in equipped) / len(equipped) if equipped else None
+    stops = {sid: by_id[sid]["breakdown_stop_days"] for sid in station_ids}
+    worst_stop = _worst(stops, station_ids)
+    equipment_point = {"code": "breakdown", "station": worst_stop[0], "days": worst_stop[1]} if worst_stop else None
+
+    # 품질: 직행률과 불량
+    defects: dict[str, int] = {}
+    accidents: dict[str, int] = {}
+    for ev in result["events"]:
+        if ev["type"] == "defect":
+            defects[ev["station"]] = defects.get(ev["station"], 0) + 1
+        elif ev["type"] == "accident":
+            accidents[ev["station"]] = accidents.get(ev["station"], 0) + 1
+    worst_defect = _worst(defects, station_ids)
+    quality_point = {"code": "defect", "station": worst_defect[0], "count": worst_defect[1]} if worst_defect else None
+
+    # 안전: 잔업 사고. 사고가 없어도 잔업한 날은 위험에 노출된 날
+    safety = result["qcd"]["safety"]
+    worst_accident = _worst(accidents, station_ids)
+    worst_overtime = _worst({sid: by_id[sid]["overtime_days"] for sid in station_ids}, station_ids)
+    safety_point = ({"code": "accident", "station": worst_accident[0], "count": worst_accident[1]} if worst_accident
+                    else {"code": "overtime", "station": worst_overtime[0], "days": worst_overtime[1]} if worst_overtime else None)
+
+    return {
+        "plan": {"on_plan": on_plan, "ships": len(ships), "slip_days": sum(slips.values()),
+                 "conflict_days": conflict_days, "point": plan_point},
+        "schedule": {"flow_efficiency": flowing / lead if lead else None, "lead_days": lead,
+                     "wait_days": waits, "point": schedule_point},
+        "material": {"wait_days": material_wait,
+                     "supply_delays": sum(1 for ev in result["events"] if ev["type"] == "supply_delay"),
+                     "avg_inventory": round(sum(inv) / len(inv), 2) if inv else 0.0,
+                     "holding": result["costs"]["holding"], "point": material_point},
+        "equipment": {"oee": oee, "breakdowns": result["status"]["breakdowns"],
+                      "stop_days": sum(stops.values()), "point": equipment_point},
+        "quality": {"first_pass_yield": result["qcd"]["quality"]["first_pass_yield"],
+                    "defects": result["status"]["defects"], "rework_days": part_sum(REWORK), "point": quality_point},
+        "safety": {"accidents": safety["accidents"], "stop_days": safety["stop_days"],
+                   "overtime_days": safety["overtime_days"], "point": safety_point},
+    }
+
+
 def _segments(daily: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """하루 기록을 같은 상태가 이어지는 구간으로 묶는다. 간트 차트용."""
     out: list[dict[str, Any]] = []
@@ -1458,7 +1602,8 @@ def _grade(result: dict[str, Any], config: dict[str, Any], base: dict[str, Any] 
     days = scenario["days"]
 
     # KPI 대상: 수주일과 인도 예정일이 모두 분기 안에 있는 배.
-    targets = [s for s in result["ships"] if 1 <= s["order_day"] <= days and s["due_day"] <= days]
+    # 공정 여유(4.15)로 늦춘 납기가 아니라 원래 납기로 가른다(납기를 기간 밖으로 밀어 대상에서 빼지 못하게)
+    targets = [s for s in result["ships"] if 1 <= s["order_day"] <= days and s.get("base_due_day", s["due_day"]) <= days]
     revenue = sum(s["price"] for s in targets if s["delivered_day"] is not None)
     on_time_rate = sum(1 for s in targets if s["on_time"]) / len(targets) if targets else 0.0
     fpy = result["qcd"]["quality"]["first_pass_yield"] or 0.0

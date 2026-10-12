@@ -7,8 +7,8 @@
 - 목적: 조선업 생산관리 교육(7요소, QCD, 4M) 복습과 시연. 게임 완성도보다 "배운 개념이 화면에서 보이는가"가 기준이다.
 - 규칙의 기준 문서(Claude Docs): https://claude.ai/code/artifact/63f9424c-6a92-461b-8fb0-06a2820778d0
   docs 도구로 읽고 고친다. 통째로 읽지 말고 `search`나 `view` + `parentId`로 고칠 곳만 읽는다.
-- 버전: 4.14.0(2026-10-12, 안전 재고와 ABC 분석). 지난 버전은 `CHANGELOG.md`, 결정 기록은 `docs/handoff-v2.0.md`(D10~D60).
-- 다음: 4.x 이후 목록에서 고른다(7관리 지표, 시나리오·선종 추가 등). `docs/roadmap.md`
+- 버전: 4.15.0(2026-10-12, 7관리 지표와 공정 여유). 지난 버전은 `CHANGELOG.md`, 결정 기록은 `docs/handoff-v2.0.md`(D10~D62).
+- 다음: 4.x 이후 목록에서 고른다(시나리오·선종 추가, 자재창고 위치, 스마트 야드 등). `docs/roadmap.md`
 - 브랜치: `main`은 MAJOR만, 작업은 `develop`에서 따서 `develop`으로 PR(규칙은 `CHANGELOG.md`). 버전은 엔진 `__init__.py`, `ui/package.json`·`package-lock.json`이 같은 값.
 - 세부 메모(시연 흐름, 규칙 요약, 화면·3D 세부, 예시 계획 점수): `docs/notes.md`. 필요한 절만 grep으로 찾아 읽는다.
 
@@ -17,7 +17,7 @@
 - `engine/shipyard/sim.py`: 엔진. `simulate(config, scenario=None, baseline=True) -> dict`. 표준 라이브러리만, 화면·서버를 모른다. 결과의 `grade`를 위해 기준선 프리셋도 함께 돌린다.
 - `engine/shipyard/data/rules.json`(공통 규칙 숫자) + `data/scenarios/<id>.json`(수주·기간·목표·등급·난수·프리셋 3개·`options`). `load_scenario(id)`가 합친다. 시나리오: simple(입문, 간이공정)·basic·growth(수주 증가)·surge(수주 급증).
 - 분기별 옵션(D33): 시나리오 `options`에 없는 옵션은 생산계획서(`form.ts` `openOptions`)가 그리지 않고 엔진(`_locked_options`)이 거절한다. 테스트는 `opened()`로 잠금을 푼다.
-- `engine/tests/test_rules_doc.py`: 규칙 문서 10장 값과 버전별 규칙 검증(100개). `engine/tools/balance.py`: 지배 전략 점검.
+- `engine/tests/test_rules_doc.py`: 규칙 문서 10장 값과 버전별 규칙 검증(109개). `engine/tools/balance.py`: 지배 전략 점검.
 - `server/app.py`: 표준 라이브러리 HTTP 서버(API + `ui/dist`). `server/store.py`: sqlite3(users·auth·runs), 파일 `server/data/shipyard.sqlite3`(git 제외).
 - `ui/`: 프레임워크 없는 TypeScript + esbuild. `main.ts`(상태·화면 전환), `form.ts`(생산계획서), `cctv.ts`(관제실 2D 작업 현황), `gantt.ts`, `report.ts`, `api.ts`(타입), `labels.ts`(이름·색). 3D는 `ui/src/scene/`: `frame.ts`(결과 → 그날 장면, 순수 함수), `layout.ts`(모든 자리 좌표, 2D·3D 공용), `yard.ts`(Three.js 장면·카메라·매 프레임 그리기), `harbor.ts`(진수·예인선·계류줄), `lot.ts`(로트·배 모형), `props.ts`(줄·예인선·납품 배와 마차·호이스트·로봇 모형), `util.ts`(종이 재질·이름표·칩), `coast.ts`, `people.ts`, `ships.ts`, `stock.ts`.
 

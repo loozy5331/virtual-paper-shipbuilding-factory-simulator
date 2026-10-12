@@ -259,6 +259,8 @@ select.priority { max-width: 84px; }
 .plan-gantt .plan-start { font-size: 10px; font-weight: 700; fill: var(--ink-2); font-variant-numeric: tabular-nums; pointer-events: none; }
 .plan-gantt .plan-row.dragging .plan-start, .plan-gantt .plan-row:focus-visible .plan-start { fill: var(--accent); }
 .plan-gantt .plan-due { pointer-events: none; }
+.plan-gantt .plan-buffer { fill: var(--paper, #fcfaf4); stroke-width: 1.2; stroke-dasharray: 2 1.5; }   /* 공정 여유(4.15) */
+.legend i.plan-buffer-mark { background: transparent; outline: 1.2px dashed var(--ink-3); outline-offset: -1px; }
 .plan-gantt .plan-late { font-size: 13px; font-weight: 800; fill: var(--bad); }
 .legend i.plan-overlap { background: repeating-linear-gradient(45deg, #898781 0 2px, transparent 2px 5px); outline: 1px solid #898781; }
 .field-hint { margin: -2px 0 2px 80px; }
@@ -315,6 +317,17 @@ select.priority { max-width: 84px; }
 .report-sec[open] > summary .fold-sum { display: block; }   /* 평가서는 펼쳐도 한 줄 요약을 둔다 */
 .card-stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .status.two { grid-template-columns: repeat(2, 1fr); }
+/* 부록 7관리 지표(4.15): 요소마다 한 줄에 지표와 개선 포인트 */
+.mgmt { display: flex; flex-direction: column; }
+.mgmt-row { display: grid; grid-template-columns: 52px minmax(180px, 2fr) minmax(0, 3fr); gap: 4px 14px; align-items: start; padding: 8px 0; border-top: 1px solid var(--line-soft); }
+.mgmt-head { border-top: 0; padding-top: 0; font-size: 0.75rem; color: var(--ink-3); }
+.mgmt-name { font-size: 0.95rem; }
+.mgmt-value { display: flex; flex-direction: column; gap: 2px; font-variant-numeric: tabular-nums; }
+.mgmt-value b { font-size: 1.05rem; }
+.mgmt-value small { font-size: 0.78rem; color: var(--ink-3); }
+.mgmt-point { margin: 0; font-size: 0.85rem; color: var(--ink-2); }
+.mgmt-point.good { color: var(--good, #2f6b4a); font-weight: 700; }
+@media (max-width: 900px) { .mgmt-row { grid-template-columns: 44px minmax(0, 1fr); } .mgmt-point { grid-column: 2; } .mgmt-head span:last-child { display: none; } }
 @media (max-width: 1300px) { .report-grid { grid-template-columns: 1fr; } }
 
 .status { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 0; }

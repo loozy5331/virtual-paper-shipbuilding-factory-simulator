@@ -311,6 +311,11 @@
       "summary": "자재가 필요한 날 발주한다. 리드타임만큼 자재 대기가 생긴다."
     }
   },
+  "plan_buffer": {
+    "_comment": "공정 여유(4.15, D62): 공정마다 0~max_days일. 배의 여유 합계(쓰는 공정의 합)만큼 납기가 늦어지고, 선가가 하루에 price_cut_per_day씩 준다. 실행은 그대로이고 계획 간트에서는 공정 막대 뒤에 여유 칸을 둔다.",
+    "max_days": 2,
+    "price_cut_per_day": 0.01
+  },
   "supply_delay": {
     "_comment": "입고 지연(4.13, D59; 자재별 4.14, D60): 시나리오가 supply_delays를 켠 분기에서, 발주마다 난수표 random.supply[배][자재]가 그 자재의 delay.probability보다 작으면 delay.days일 늦게 들어온다. 표준품(종이)은 드물고 짧게, 특수품(LNG 보냉재)은 잦고 길게."
   },

@@ -13,6 +13,8 @@ export interface StationConfig {
   split?: boolean;
   /** 호이스트(4.9): 조립 정반 위 천장 크레인(소조립·중조립만). 작업량이 줄고 도입비·정비비·고장 판정이 는다. 없으면 없음 */
   hoist?: boolean;
+  /** 공정 여유(4.15, D62): 0~max_days일. 배의 여유 합계만큼 납기가 늦어지고 선가가 하루 1% 준다. 없으면 0 */
+  buffer?: number;
 }
 
 export type Crew = "normal" | "skilled" | "robot" | "external";
@@ -151,6 +153,8 @@ export interface ScenarioOptions {
   jit_buffer?: boolean;
   /** 4.14: 안전 재고를 둘 수 있는가(수주 증가부터) */
   safety_stock?: boolean;
+  /** 4.15: 공정 여유를 둘 수 있는가(기본 반기부터) */
+  plan_buffer?: boolean;
 }
 
 /** 호이스트(4.9): 작업량 배수, 작업장마다 도입비·정비비, 고장 판정 간격(일한 날) */
@@ -197,6 +201,8 @@ export interface Scenario {
   supply_delay: { probability: number; days: number };
   /** 4.14(D60): 안전 재고로 고를 수 있는 척분 */
   safety_stock: { levels: number[]; abc: { A: number; B: number } };
+  /** 4.15(D62): 공정 여유 상한과 여유 하루의 선가 차감률 */
+  plan_buffer: { max_days: number; price_cut_per_day: number };
   kpi: { revenue: number; profit: number; on_time_rate: number; first_pass_yield: number };
 }
 
@@ -275,6 +281,8 @@ export interface Preview {
   /** 4.14(D60): 자재 ABC 분석(교육용 표, 규칙에는 쓰지 않는다). 금액 큰 순 누적 비율로 A·B·C, ships = 그 자재를 쓰는 배 수 */
   abc: AbcRow[];
   plan: Plan;
+  /** 4.15(D62): 공정 여유를 넣은 납기와 선가(배마다) */
+  contract?: Record<string, { due_day: number; price: number; buffer_days: number }>;
 }
 
 export interface AbcRow {
@@ -293,7 +301,8 @@ export interface AbcRow {
   delay: { probability: number; days: number } | null;
 }
 
-export interface Span { start: number; end: number }
+/** buffer(4.15): 계획 간트에서 이 공정 막대 뒤의 여유일. 여유가 없으면 없다 */
+export interface Span { start: number; end: number; buffer?: number }
 
 /** 계획 막대: 배가 작업장을 혼자 쓴다고 본 공정 일정과, 두 배가 같은 작업장을 겹쳐 쓰는 구간. */
 export interface Plan {
@@ -320,6 +329,10 @@ export interface ShipResult {
   order_day: number;
   due_day: number;
   price: number;
+  /** 4.15: 공정 여유 합계와 여유를 넣기 전의 납기·선가. 옛 회차에는 없다 */
+  buffer_days?: number;
+  base_due_day?: number;
+  base_price?: number;
   priority: number;
   start_day: number;
   order_days: Record<string, number>;
@@ -434,6 +447,26 @@ export type SimEvent =
   | { day: number; type: "research_done"; research: string }
   | { day: number; type: "delivery"; ship: string; late_days: number };
 
+/** 7관리 개선 포인트(4.15). 손실이 있는 요소에만 붙는다. 문구는 화면이 code마다 정한 안내를 쓴다 */
+export type MgmtPoint =
+  | { code: "conflict"; days: number }
+  | { code: "slip"; ship: string; days: number }
+  | { code: "station_wait" | "labor_wait" | "transport_wait" | "material_wait"; station: string | null; days: number }
+  | { code: "holding"; cost: number }
+  | { code: "breakdown" | "overtime"; station: string; days: number }
+  | { code: "defect" | "accident"; station: string; count: number };
+
+/** 평가서 부록의 7관리 지표(4.15, D61). 데이터 관리는 평가서 전체라 따로 없다. 등급에는 넣지 않는다 */
+export interface Management {
+  plan: { on_plan: number; ships: number; slip_days: number; conflict_days: number; point: MgmtPoint | null };
+  schedule: { flow_efficiency: number | null; lead_days: number;
+    wait_days: { station_wait: number; labor_wait: number; transport_wait: number }; point: MgmtPoint | null };
+  material: { wait_days: number; supply_delays: number; avg_inventory: number; holding: number; point: MgmtPoint | null };
+  equipment: { oee: number | null; breakdowns: number; stop_days: number; point: MgmtPoint | null };
+  quality: { first_pass_yield: number | null; defects: number; rework_days: number; point: MgmtPoint | null };
+  safety: { accidents: number; stop_days: number; overtime_days: number; point: MgmtPoint | null };
+}
+
 export interface Result {
   days: number;
   qcd: {
@@ -465,6 +498,8 @@ export interface Result {
   events: SimEvent[];
   findings: Finding[];
   grade: Grade;
+  /** 4.15 7관리 지표. 옛 회차 결과에는 없다 */
+  management?: Management;
 }
 
 export class ApiError extends Error {
