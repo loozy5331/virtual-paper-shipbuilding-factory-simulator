@@ -923,6 +923,9 @@ body { background: var(--desk); }
 .cc-feed .cc-mat-text text { fill: #fff; paint-order: stroke; stroke: rgba(20, 26, 22, 0.75); stroke-width: 3px; stroke-linejoin: round; }
 .cc-feed .cc-mat-text .loss { fill: #ffd29a; }
 .cc-feed .cc-tag { font-size: 12px; fill: #b5c0b9; }
+/* 전경(4.15.1): 3D 전경처럼 작은 글(이름표, 수량, 팻말)은 숨기고 구획 이름만 크게 */
+.cc-feed.overview text { display: none; }
+.cc-feed.overview text.cc-sector { display: inline; font-size: 44px; font-weight: 800; fill: #eef2ee; text-anchor: middle; paint-order: stroke; stroke: rgba(20, 26, 22, 0.8); stroke-width: 8px; stroke-linejoin: round; }
 .cc-feed .cc-unit { font-size: 11px; font-weight: 700; fill: rgba(255, 255, 255, 0.85); }
 .cc-feed .cc-tag.loss { fill: #f0b36a; font-weight: 700; }
 .cc-feed .warn { fill: #de9644; font-weight: 700; }

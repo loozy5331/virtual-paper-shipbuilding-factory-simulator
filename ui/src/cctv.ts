@@ -1,5 +1,6 @@
 // 관제실 작업 현황(2.1): 높은 곳에서 조선소를 내려다본 2D 정지 화면. 기호도를 대신한다.
-// 3.2(D38): 전경은 없다. 구획(내업, 1도크, 2도크, 안벽) 하나를 화면 가득 그린다. 공정이 늘어도 구획 안만 커진다.
+// 3.2(D38): 구획(내업, 도크, 안벽) 하나를 화면 가득 그린다. 공정이 늘어도 구획 안만 커진다.
+// 4.15.1: 현장처럼 전경도 있다. 구획을 모두 담고, 작은 글은 숨기고 구획 이름만 크게 쓴다(정반을 누르면 그 구획으로).
 // 화면에는 "CCTV"라는 말을 쓰지 않는다(감시처럼 느껴져서, 사용자 결정). 파일 이름만 옛 이름이다.
 // 바로 위에서 30도쯤 기운 시점이다(바닥은 위에서, 사람·블록·선반은 앞면이 조금 보인다).
 // 배치는 현장 3D(scene/yard.ts)와 같은 좌표를 쓴다. 작업모를 쓰고 나가면 같은 자리가 3D로 보인다.
@@ -214,8 +215,8 @@ function dock(x0: number, x1: number, z0: number, z1: number): SVGElement {
 export interface CctvOptions {
   /** 배마다 약속한 납기(4.15: 공정 여유를 넣었으면 늦춘 납기). 없으면 수주의 납기 */
   due?: Record<string, number>;
-  /** 볼 구획(전경은 없다, D38) */
-  focus: SectorId;
+  /** 볼 구획. null이면 전경(4.15.1) */
+  focus: SectorId | null;
   /** 구획 가장자리에 보이는 이웃 구획의 작업장을 누르면 그 구획으로 */
   onSector: (id: SectorId) => void;
   /** 추적 중인 배(3.1). 그 배의 블록만 진하게, 나머지 블록은 흐리게, 선반에는 그 배 몫 수량 */
@@ -636,7 +637,8 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   const waiting = frame.lots.filter((l) => l.place === "hidden" && l.state !== "material_wait").map((l) => l.ship);
   if (waiting.length) add(9, tag(px((QUAY.x0 + QUAY.x1) / 2), py(QUAY.z0 + 1.8), `착수 전 ${waiting.join(" ")}`, "cc-tag mid"));
 
-  // ----- 그리기: 고른 구획을 화면 가득 -----
+  // ----- 그리기: 고른 구획을 화면 가득, 전경이면 구획을 모두 -----
+  if (opts.focus === null) return overview(items, scenario, docks, frame.day);
   const sec = sectorBounds(opts.focus, docks);
   // 모든 구획을 같은 배율로 그린다(구획 크기에 맞춰 확대하면 큰 내업은 멀고 작은 도크는 너무 가깝다).
   // 화면은 구획 가운데에 맞추고, 구획보다 넓으면 이웃(큰길, 마주 보는 도크)이 함께 보인다.
@@ -648,6 +650,28 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   const svg = s("svg", {
     class: "cc-feed zoom", viewBox, preserveAspectRatio: "xMidYMid meet", role: "img",
     "aria-label": `작업 현황 ${sec.name}, ${frame.day}일`,
+  });
+  svg.append(s("rect", { x: -2000, y: -2000, width: 6000, height: 6000, class: "cc-bg" }));
+  items.sort((a, b) => a.z - b.z).forEach((it) => svg.append(it.el));
+  return svg;
+}
+
+/** 전경(4.15.1): 그 회차에 쓰는 구획을 모두 담는다. 작은 글은 CSS(.overview)가 숨기고, 구획 이름만 크게 쓴다. */
+function overview(items: Item[], scenario: Scenario, docks: number, day: number): SVGElement {
+  const skip = new Set(scenario.skip ?? []);
+  const shown = SECTORS.filter((sec) => sec.id !== "quay" || !skip.has("quay_outfitting"));
+  const secs = shown.map((sec) => sectorBounds(sec.id, docks));
+  const x0 = Math.min(...secs.map((sec) => sec.x0)) - 0.6, x1 = Math.max(...secs.map((sec) => sec.x1)) + 0.6;
+  const z0 = Math.min(...secs.map((sec) => sec.z0)), z1 = Math.max(...secs.map((sec) => sec.z1)) + 0.6;
+  // 이름은 정반을 가리지 않게 구획 윗가장자리 안쪽에(도크가 둘이어도 비는 1도크 뒤쪽 땅). 안벽은 구획 대부분이 바다라 안벽 바로 위 물에 쓴다
+  for (const sec of shown) {
+    const y = sec.id === "quay" ? py(QUAY.z0) - 16 : py(sec.z0) + 52;
+    items.push({ z: 99, el: tag(px((sec.x0 + sec.x1) / 2), y, sec.name, "cc-sector") });
+  }
+  const top = py(z0, 2.8), bottom = py(z1);
+  const svg = s("svg", {
+    class: "cc-feed overview", viewBox: `${px(x0)} ${top} ${(x1 - x0) * S} ${bottom - top}`, preserveAspectRatio: "xMidYMid meet", role: "img",
+    "aria-label": `작업 현황 전경, ${day}일`,
   });
   svg.append(s("rect", { x: -2000, y: -2000, width: 6000, height: 6000, class: "cc-bg" }));
   items.sort((a, b) => a.z - b.z).forEach((it) => svg.append(it.el));
