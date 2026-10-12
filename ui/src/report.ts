@@ -14,7 +14,7 @@ export function eventText(ev: SimEvent, scenario: Scenario): string {
   };
   const material = (id: string) => scenario.materials.find((m) => m.id === id)?.name ?? id;
   switch (ev.type) {
-    case "arrival": return `${material(ev.material)} ${ev.quantity}개 입고 (${ev.ship}용)`;
+    case "arrival": return `${material(ev.material)} ${ev.quantity}개 입고 (${ev.safety ? "안전 재고" : `${ev.ship}용`})`;
     case "supply_delay": return `${material(ev.material)} ${ev.quantity}개 (${ev.ship}용) 입고 ${ev.days}일 지연 → ${ev.arrival_day}일 입고`;
     case "issue": return `${material(ev.material)} ${ev.quantity}개 출고 → ${ev.ship} ${station(ev.station)}${ev.forklift ? ` (지게차 ${ev.forklift} 자재 키트)` : ev.transporter ? ` (${ev.transporter} 자재 키트)` : ""}`;
     case "enter": return `${ev.ship} ${station(ev.station)} 투입${ev.units ? ` (${ev.units.join("·")}호에 나눠)` : ""}`;
@@ -67,6 +67,22 @@ export function breakdownLegend(): HTMLElement {
 
 function card(title: string, ...body: (HTMLElement | SVGElement | null)[]): HTMLElement {
   return h("div", { class: "card" }, h("h3", null, title), ...body);
+}
+
+// 평가서의 QCD 칸 접기(4.14). 열림 상태는 회차를 바꿔도 그대로 둔다. 위의 등급·의문점·QCD 요약은 접지 않는다.
+const REPORT_FOLD_DEFAULT: Record<string, boolean> = { q: true, c: true, d: true, s: true, events: false };
+const reportFolds = new Map<string, boolean>();
+
+/** QCD 칸: 제목 줄(Q·C·D 표, 이름, 접었을 때 보일 요약)과 카드 묶음 */
+function qcdSection(key: string, tag: string | null, title: string, summary: string, ...cards: (HTMLElement | null)[]): HTMLElement {
+  const box = h("details", { class: `fold report-sec`, open: reportFolds.get(key) ?? REPORT_FOLD_DEFAULT[key] ?? true },
+    h("summary", null,
+      tag ? h("span", { class: `kpi-tag sec-tag ${tag.toLowerCase()}` }, tag) : null,
+      h("b", { class: "fold-title" }, title),
+      h("span", { class: "fold-sum" }, summary)),
+    h("div", { class: "report-grid" }, ...cards));
+  box.addEventListener("toggle", () => { reportFolds.set(key, (box as HTMLDetailsElement).open); });
+  return box;
 }
 
 // 의문점 카드의 "어디를 볼까". 손실 종류마다 정해진 안내 문구다.
@@ -138,8 +154,10 @@ function inventoryChart(values: number[]): SVGElement {
 }
 
 export function renderReport(result: Result, scenario: Scenario, maxRate: number,
-  onFinding: (f: Finding, where: "field" | "gantt") => void): HTMLElement {
+  onFinding: (f: Finding, where: "field" | "gantt") => void, safetyWarnings?: number): HTMLElement {
   const { qcd, status } = result;
+  // S 안전(4.14, QCDS). 옛 회차 결과에는 없을 수 있어 status에서 채운다
+  const safety = qcd.safety ?? { accidents: status.accidents, stop_days: 0, overtime_days: 0, accident_cost: result.costs.accident ?? 0 };
   const profitTone = result.profit >= 0 ? "good" : "bad";
 
   // 엔진이 손실 기간이 긴 순서로 준다(같으면 이른 것부터). 핵심 3개만 보여 준다.
@@ -169,33 +187,41 @@ export function renderReport(result: Result, scenario: Scenario, maxRate: number
       h("b", { class: `kpi-value ${qcd.delivery.on_time === qcd.delivery.ships ? "good" : "bad"}` },
         `${qcd.delivery.on_time} / ${qcd.delivery.ships}척`),
       h("span", { class: "kpi-sub" }, `납기 · 준수율 ${pct(qcd.delivery.on_time_rate, 0)} · 총 지연 ${qcd.delivery.total_late_days}일`)),
+    h("div", { class: "kpi" },
+      h("span", { class: "kpi-tag s" }, "S 안전사고"),
+      h("b", { class: `kpi-value ${safety.accidents ? "bad" : "good"}` }, `${safety.accidents}건`),
+      h("span", { class: "kpi-sub" }, `안전 · 사고로 멈춘 날 ${safety.stop_days}일 · 잔업 ${safety.overtime_days}일`)),
   );
 
   const wf = result.workforce;
-  const statusCard = card("현황",
-    h("dl", { class: "status" },
-      h("div", null, h("dt", null, "인도"), h("dd", null, `${status.delivered}척`)),
-      h("div", null, h("dt", null, "진행 중"), h("dd", null, `${status.in_progress}척`)),
+  // Q: 품질과 설비(불량·고장)
+  const qualityCard = card("품질과 설비",
+    h("dl", { class: "status two" },
       h("div", null, h("dt", null, "불량"), h("dd", { class: status.defects ? "bad" : "" }, `${status.defects}건`)),
-      h("div", null, h("dt", null, "사고"), h("dd", { class: status.accidents ? "bad" : "" }, `${status.accidents}건`)),
-      h("div", null, h("dt", null, "고장"), h("dd", { class: status.breakdowns ? "bad" : "" }, `${status.breakdowns}건`))),
+      h("div", null, h("dt", null, "설비 고장"), h("dd", { class: status.breakdowns ? "bad" : "" }, `${status.breakdowns}건`))),
+    h("p", { class: "hint" }, `직행률 ${pct(qcd.quality.first_pass_yield)} = 첫 검사 합격 ${qcd.quality.passes} / 검사 ${qcd.quality.inspections}. 불량은 재작업으로 납기(D)와 원가(C)도 깎습니다. 고장은 정비로 줄입니다.`));
+  // S: 안전(잔업 사고와 현장 안전 경고)
+  const accidentList = result.events.filter((ev): ev is Extract<SimEvent, { type: "accident" }> => ev.type === "accident");
+  const stationName = (id: string) => scenario.stations.find((st) => st.id === id)?.name ?? id;
+  const safetyCard = card("안전",
+    h("dl", { class: "status four" },
+      h("div", null, h("dt", null, "잔업 사고"), h("dd", { class: safety.accidents ? "bad" : "" }, `${safety.accidents}건`)),
+      h("div", null, h("dt", null, "사고로 멈춘 날"), h("dd", { class: safety.stop_days ? "bad" : "" }, `${safety.stop_days}일`)),
+      h("div", null, h("dt", null, "잔업한 날"), h("dd", null, `${safety.overtime_days}일`)),
+      h("div", null, h("dt", null, "현장 안전 경고"), h("dd", { class: safetyWarnings ? "bad" : "" }, safetyWarnings === undefined ? "—" : `${safetyWarnings}회`))),
+    accidentList.length
+      ? h("p", { class: "accident-list" }, "사고: ", accidentList.map((ev) => `${ev.day}일 ${stationName(ev.station)}(${ev.ship})`).join(" · "))
+      : null,
+    h("p", { class: "hint" }, `사고는 잔업한 작업장에서 납니다(잔업한 날이 사고 위험에 노출된 날). 사고 한 건에 작업장 3일 중지와 비용 300(합계 ${money(safety.accident_cost)}). `,
+      "현장 안전 경고는 현장에서 위험 설비 반경에 들어간 횟수입니다. 안전은 등급 점수에 넣지 않습니다."));
+  // C: 사람을 얼마나 놀렸나(인건비는 고정비라 쉰 인일이 곧 손실)
+  const laborCard = card("인력 가동",
     h("div", { class: "util" },
       h("span", null, "작업자 가동률"),
       h("span", { class: "meter wide" }, h("i", { style: { width: `${wf.utilization * 100}%` } })),
       h("b", null, pct(wf.utilization)),
       h("small", null, `배정 ${wf.man_days}인일 ÷ (${wf.pool}명 × ${result.days}일) · 쉰 인일 ${wf.idle_man_days}`)),
-    h("table", { class: "ship-table" },
-      h("thead", null, h("tr", null,
-        h("th", null, "배"), h("th", { class: "r" }, "착수"), h("th", { class: "r" }, "인도"),
-        h("th", { class: "r" }, "납기"), h("th", { class: "r" }, "지연"))),
-      h("tbody", null, result.ships.map((ship) => h("tr", null,
-        h("td", null, h("b", null, ship.id), " ", h("small", null, ship.type_name)),
-        h("td", { class: "r" }, ship.started_day ? `${ship.started_day}일` : "—"),
-        h("td", { class: "r" }, ship.delivered_day ? `${ship.delivered_day}일` : "미인도"),
-        h("td", { class: "r" }, `${ship.due_day}일`),
-        h("td", { class: `r ${ship.late_days ? "bad" : "good"}` }, ship.late_days ? `${ship.late_days}일` : "없음"))))),
-  );
-
+    h("p", { class: "hint" }, "인건비는 일하지 않아도 나가는 고정비입니다. 쉰 인일이 많으면 인원을 줄여도 됩니다."));
   const maxCost = Math.max(1, ...COST_ITEMS.map((c) => result.costs[c.key] ?? 0));
   const costCard = card("원가 내역",
     h("div", { class: "cost-list" }, COST_ITEMS.map((item) => {
@@ -212,12 +238,19 @@ export function renderReport(result: Result, scenario: Scenario, maxRate: number
   );
 
   const scale = Math.max(1, ...result.ships.map((sh) => sh.lead_time));
-  const leadCard = card("리드타임 분해",
+  // D: 배마다 한 줄에 리드타임 분해와 착수·인도·납기·지연(4.14에 배별 표와 합쳤다)
+  const leadCard = card("배별 납기와 리드타임",
     h("p", { class: "hint" }, "착수부터 인도까지 하루하루가 어디에 쓰였는지. 작업과 운반 외의 칸이 손실입니다."),
-    h("div", { class: "lead-list" }, result.ships.map((ship) => h("div", { class: "lead-row" },
-      h("span", { class: "lead-name" }, h("b", null, ship.id)),
-      breakdownBar(ship, scale),
-      h("span", { class: "lead-total" }, `${ship.lead_time}일`)))),
+    h("div", { class: "lead-list" },
+      h("div", { class: "lead-row lead-head" }, h("span", null, "배"), h("span", null, "리드타임 분해"), h("span", { class: "r" }, "리드"),
+        h("span", { class: "r" }, "착수"), h("span", { class: "r" }, "인도 / 납기"), h("span", { class: "r" }, "지연")),
+      result.ships.map((ship) => h("div", { class: "lead-row" },
+        h("span", { class: "lead-name" }, h("b", null, ship.id), h("small", null, ship.type_name)),
+        breakdownBar(ship, scale),
+        h("span", { class: "lead-total" }, `${ship.lead_time}일`),
+        h("span", { class: "r" }, ship.started_day ? `${ship.started_day}일` : "—"),
+        h("span", { class: "r" }, `${ship.delivered_day ? `${ship.delivered_day}일` : "미인도"} / ${ship.due_day}일`),
+        h("span", { class: `r ${ship.late_days ? "bad" : "good"}` }, ship.late_days ? `${ship.late_days}일` : "없음")))),
     breakdownLegend(),
   );
 
@@ -226,7 +259,7 @@ export function renderReport(result: Result, scenario: Scenario, maxRate: number
   // 나눠 하기를 쓴 회차만 짝 대기 칸을 보인다(3.0)
   const split = result.stations.some((st) => (st.pair_wait_days ?? 0) > 0);
   const skipped = new Set(scenario.skip ?? []);
-  const oeeCard = card("공정별 OEE",
+  const oeeCard = card("공정별 OEE (설비 종합 효율)",
     h("table", { class: "oee" },
       h("thead", null, h("tr", null,
         h("th", null, "공정"), h("th", { class: "r" }, "최대/일"), h("th", { class: "r" }, "불량률"),
@@ -270,8 +303,20 @@ export function renderReport(result: Result, scenario: Scenario, maxRate: number
       "투입, 완료, 출고, 운반도 보기"),
     eventList);
 
+  for (const c of [qualityCard, oeeCard, leadCard, safetyCard]) c.classList.add("wide");
+  // C: 원가 내역(긴 카드) 옆에 인력 가동과 재고 금액 추이를 위아래로
+  const costSide = h("div", { class: "card-stack" }, laborCard, invCard);
+  // 위(늘 보임): 등급, 의문점, QCD 세 숫자. 아래: Q·C·D 칸마다 근거 카드(접기), 끝에 사건 기록
   return h("div", { class: "report" },
     h("div", { class: "report-top" }, gradeCard(result.grade), findingRow),
     qcdRow,
-    h("div", { class: "report-grid" }, statusCard, costCard, leadCard, oeeCard, invCard, eventsCard));
+    qcdSection("q", "Q", "품질", `직행률 ${pct(qcd.quality.first_pass_yield)} · 불량 ${status.defects}건 · 설비 고장 ${status.breakdowns}건`,
+      qualityCard, oeeCard),
+    qcdSection("c", "C", "원가", `이익 ${money(result.profit)} · 매출 ${money(result.revenue)} − 총원가 ${money(result.total_cost)} · 재고비 ${money(result.costs.holding)} · 가동률 ${pct(wf.utilization)}`,
+      costCard, costSide),
+    qcdSection("d", "D", "납기", `준수 ${qcd.delivery.on_time} / ${qcd.delivery.ships}척 · 총 지연 ${qcd.delivery.total_late_days}일 · 인도 ${status.delivered}척 · 진행 중 ${status.in_progress}척`,
+      leadCard),
+    qcdSection("s", "S", "안전", `잔업 사고 ${safety.accidents}건 · 사고로 멈춘 날 ${safety.stop_days}일 · 잔업 ${safety.overtime_days}일${safetyWarnings === undefined ? "" : ` · 현장 안전 경고 ${safetyWarnings}회`}`,
+      safetyCard),
+    qcdSection("events", null, "사건 기록", `${result.events.filter((ev) => important.has(ev.type)).length}건(주요 사건)`, eventsCard));
 }

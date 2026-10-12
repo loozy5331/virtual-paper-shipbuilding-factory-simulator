@@ -52,7 +52,8 @@
   "initial_stock": {
     "paper": 0,
     "paint": 0,
-    "flag": 0
+    "flag": 0,
+    "insulation": 0
   },
   "kpi": {
     "revenue": 33600,

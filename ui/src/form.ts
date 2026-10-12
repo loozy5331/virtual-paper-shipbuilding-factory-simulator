@@ -4,8 +4,8 @@
 // 탭 전환도 hidden만 바꾼다. 처리량, 불량률, 고정비, 연구 일정, 발주일, 계획 막대는
 // 서버의 /api/preview 결과를 data-preview 자리에 채운다.
 
-import { activeStations, completeConfig, staffTrades, type Config, type Crew, type Ordering, type Preset, type Preview, type Scenario, type ScenarioOptions, type ScenarioSummary } from "./api";
-import { h, mount, money, num, pct } from "./dom";
+import { activeStations, completeConfig, staffTrades, type Config, type Crew, type Ordering, type Preset, type AbcRow, type Preview, type Scenario, type ScenarioOptions, type ScenarioSummary } from "./api";
+import { h, mount, money, num, pct, s } from "./dom";
 import { STATION_COLOR } from "./labels";
 import { docHead } from "./paper";
 import { conflictText, renderPlanGantt } from "./plan-gantt";
@@ -30,6 +30,54 @@ export interface FormContext {
 let activeTab = "common";
 // 미리보기가 도착하면 계획 간트를 다시 그려야 해서 마지막 양식의 상태를 들고 있는다.
 let current: FormContext | null = null;
+
+// 아코디언(접기, 4.14): 칸마다 열림 상태를 기억해 양식을 다시 그려도 그대로 둔다. 계획 간트는 접지 않는다.
+const FOLD_DEFAULT: Record<string, boolean> = { orders: false, people: true, shared: false, material: false, stations: false, research: false };
+const folds = new Map<string, boolean>();
+const isOpen = (key: string) => folds.get(key) ?? FOLD_DEFAULT[key] ?? true;
+
+/** 접는 칸: 제목 줄(번호, 제목, 설명)과 접었을 때도 보이는 요약(data-fold-sum, 미리보기 때마다 새로 쓴다) */
+function fold(key: string, head: (HTMLElement | string | null)[], cls: string, ...children: (HTMLElement | null)[]): HTMLElement {
+  const box = h("details", { class: `fold ${cls}`, open: isOpen(key), "data-fold": key },
+    h("summary", null, ...head, h("span", { class: "fold-sum", "data-fold-sum": key })),
+    ...children);
+  box.addEventListener("toggle", () => { folds.set(key, (box as HTMLDetailsElement).open); });
+  return box;
+}
+
+/** 접은 칸 제목 줄에 보일 지금 고른 값. 화면 문구일 뿐 규칙 계산은 하지 않는다. */
+function foldSummaries(ctx: FormContext): Record<string, string> {
+  const { scenario, config } = ctx;
+  const opts = openOptions(scenario);
+  const staff = staffTrades(scenario);
+  const pools = config.pools ?? {};
+  const act = activeStations(scenario);
+  const st = (id: string) => config.stations[id];
+  const names = (f: (id: string) => boolean) => act.filter((s) => f(s.id)).map((s) => s.name);
+  const listOr = (xs: string[], none = "없음") => (xs.length ? xs.join("·") : none);
+  const byPriority = Object.entries(config.ships).sort((a, b) => a[1].priority - b[1].priority).map(([sid]) => sid);
+  const ordering = config.ordering ?? "jit";
+  const safety = Object.entries(config.safety_stock ?? {}).map(([m, n]) => `${scenario.materials.find((x) => x.id === m)?.name ?? m} ${n}척분`);
+  const cheap = Object.entries(config.materials ?? {}).filter(([, g]) => g === "cheap").map(([m]) => scenario.materials.find((x) => x.id === m)?.name ?? m);
+  const tr = config.transporters as { count?: number; maintenance: boolean };
+  return {
+    orders: `${byPriority.length}척 · 우선순위 ${byPriority.join(" → ")}`,
+    people: `${staff.map(([t, info]) => `${info.name} ${pools[t] ?? 0}`).join(" · ")} (${Object.values(pools).reduce((a, b) => a + b, 0)}명)`,
+    shared: `트랜스포터 ${tr.count ?? 1}대${tr.maintenance ? "(정비)" : ""} · 지게차 ${config.forklifts?.count ?? 1}대${config.forklifts?.maintenance ? "(정비)" : ""}`,
+    material: [scenario.ordering[ordering].name, ordering === "jit" && opts.jit_buffer ? `여유 ${config.jit_buffer ?? 0}일` : null,
+      opts.safety_stock ? `안전 재고 ${listOr(safety)}` : null, cheap.length ? `저가 ${cheap.join("·")}` : null].filter(Boolean).join(" · "),
+    stations: [`증설 ${listOr(names((id) => (st(id).units ?? 1) > 1))}`, `숙련공 ${listOr(names((id) => st(id).crew === "skilled"))}`,
+      opts.crews.includes("robot") ? `로봇 ${listOr(names((id) => st(id).crew === "robot"))}` : null,
+      `잔업 ${listOr(names((id) => !!st(id).overtime))}`].filter(Boolean).join(" · "),
+    research: config.research.length ? config.research.map((r) => scenario.research[r]?.name ?? r).join(" → ") : "없음",
+  };
+}
+
+function refreshFoldSummaries(root: HTMLElement): void {
+  if (!current) return;
+  const sums = foldSummaries(current);
+  root.querySelectorAll<HTMLElement>("[data-fold-sum]").forEach((el) => { el.textContent = sums[el.dataset.foldSum!] ?? ""; });
+}
 
 function segmented<T extends string | number>(
   name: string, options: { value: T; label: string }[], current: T, onPick: (value: T) => void,
@@ -130,6 +178,7 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
   // ① 수주와 계획: 4척 요약 줄과 계획 간트. 우선순위는 겹치면 맞바꾸고, 착수 예정일은 간트에서 끌어 정한다.
   const summary = h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("span", { class: "step" }, "1"), h("h2", null, "수주와 계획")),
+    fold("orders", [h("b", { class: "fold-title" }, "수주 목록과 우선순위")], "fold-orders",
     h("table", { class: "plan" },
       h("thead", null, h("tr", null,
         h("th", null, "배"), h("th", null, "선종"), h("th", { class: "r" }, "납기"), h("th", { class: "r" }, "계약금"),
@@ -153,7 +202,8 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
           }, orderIds.map((_, k) => h("option", { value: k + 1, selected: ship.priority === k + 1 }, `${k + 1}순위`)))),
           h("td", null, h("b", { "data-preview": `start:${order.id}` }, `${ship.start_day}일`)));
       }))),
-    h("p", { class: "hint" }, "작업장, 사람, 운반 모두 우선순위 순으로 받습니다."),
+    h("p", { class: "hint" }, "작업장, 사람, 운반 모두 우선순위 순으로 받습니다.")),
+    // 계획 간트는 늘 보인다(접지 않는다)
     h("div", { class: "plan-head" },
       h("b", null, "계획 간트"),
       h("small", null, "배 줄을 좌우로 끌거나, 줄을 누르고 ←/→로 착수 예정일을 옮깁니다.")),
@@ -193,6 +243,7 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
   });
 
   mount(root, head, summary, settings, runSection);
+  refreshFoldSummaries(root);
   showTab(root, activeTab);
 }
 
@@ -200,8 +251,15 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
 function openOptions(scenario: FormContext["scenario"]): ScenarioOptions {
   return scenario.options ?? {
     crews: Object.keys(scenario.rules.crews) as Crew[], methods: Object.keys(scenario.rules.methods),
-    material_grades: Object.keys(scenario.material_grades), max_units: scenario.expansion.max_units, split: true, hoist: true, jit_buffer: true,
+    material_grades: Object.keys(scenario.material_grades), max_units: scenario.expansion.max_units, split: true, hoist: true, jit_buffer: true, safety_stock: true,
   };
+}
+
+/** 공정 카드 머리글의 자리와 기본 설비. 자리 이름이 설비와 같으면(탑재 = 골리앗 크레인) 한 번만 */
+function stationPlace(st: FormContext["scenario"]["stations"][number]): string {
+  const place = st.real.split(":")[0];
+  const eq = st.equipment === false ? "설비 없음(외부팀)" : st.equipment ?? "";
+  return !eq || place === eq ? place : `${place} · ${eq}`;
 }
 
 function commonPane(ctx: FormContext): HTMLElement {
@@ -258,10 +316,11 @@ function commonPane(ctx: FormContext): HTMLElement {
     const robot = crew === "robot";
     const trial = scenario.trades.trial;
     return h("div", { class: "station", style: { "--station": STATION_COLOR[st.id] } as Record<string, string> },
+      // 머리글: 공정 · 자리 · 기본 설비(4.12.1, 4M의 설비, 고장은 이 설비가 난다)
       h("div", { class: "station-head" },
         h("span", { class: "swatch" }),
         h("b", null, st.name),
-        h("small", null, st.real.split(":")[0])),
+        h("small", null, stationPlace(st))),
       h("div", { class: "station-grid" },
         h("span", { class: "field-label" }, "인력"),
         external
@@ -272,9 +331,6 @@ function commonPane(ctx: FormContext): HTMLElement {
         h("span", { class: "field-label" }, "공법"),
         segmented(`method-${st.id}`, methods.map(([id, m]) => ({ value: id, label: m.name })),
           cfg.method, (v) => { cfg.method = v; ctx.onEdit(false); }),
-        // 기본 설비(4.12.1, 4M의 설비): 고장은 이 설비가 난다
-        h("span", { class: "field-label" }, "설비"),
-        h("span", { class: "hint" }, st.equipment === false ? "없음 (외부팀)" : st.equipment ?? ""),
         h("span", { class: "field-label" }, "운영"),
         h("div", { class: "toggles" },
           external ? null
@@ -325,14 +381,23 @@ function commonPane(ctx: FormContext): HTMLElement {
   const orderingHint = h("p", { class: "hint field-hint" },
     scenario.ordering[config.ordering ?? "jit"].summary,
     scenario.supply_delays
-      ? ` 이 분기에는 입고 지연이 있습니다: 발주 몇 건은 ${scenario.supply_delay.days}일 늦게 들어옵니다(어느 발주인지는 미리 알 수 없습니다).`
+      ? " 이 분기에는 입고 지연이 있습니다: 발주 몇 건은 늦게 들어오고, 확률과 일수는 자재마다 다릅니다(아래 ABC 분석). 어느 발주인지는 미리 알 수 없습니다."
       : "",
     ` 배별 발주일은 ${scenario.orders[0].id}~${scenario.orders[scenario.orders.length - 1].id} 탭에 있습니다.`);
 
+  // 서식 칸을 4M 순서로 나눈다: 사람 → 공용 설비 → 자재 → 공정(공정마다 인력·공법·설비) → 연구
+  const keys = ["people", "shared", "material", "stations", "research"];
+  const sec = (no: number, title: string, note: string | null, ...children: (HTMLElement | null)[]) =>
+    fold(keys[no - 1], [h("span", { class: "sec-no" }, String(no)), h("b", { class: "fold-title" }, title), note ? h("small", { class: "fold-note" }, note) : null],
+      "form-sec", h("div", { class: "fold-body" }, ...children));
   return h("div", { class: "pane", "data-pane": "common" },
-    pool, transporter, forklift, ordering, buffer, orderingHint, opts.material_grades.includes("cheap") ? materialGrades(ctx) : null,
-    researchQueue(ctx),
-    h("div", { class: "stations" }, stationCards),
+    sec(1, "사람", "직종별 대기소 인원 · 사람은 자기 직종 공정에만 간다", pool),
+    sec(2, "공용 설비", "공정 사이를 나르는 운반 설비 · 공정의 설비는 4번 공정 카드에", transporter, forklift),
+    sec(3, "자재", ["발주 방식", opts.material_grades.includes("cheap") ? "등급" : null, opts.safety_stock ? "안전 재고" : null].filter(Boolean).join(" · "), ordering, buffer, orderingHint,
+      opts.material_grades.includes("cheap") || opts.safety_stock
+        ? materialTable(ctx, opts.material_grades.includes("cheap"), !!opts.safety_stock) : null),
+    sec(4, "공정", "공정마다 인력 · 공법 · 설비 운영 · 작업장 수", h("div", { class: "stations" }, stationCards)),
+    sec(5, "연구", null, researchQueue(ctx)),
     h("p", { class: "hint fixed" },
       "고정비: 인건비 ", h("b", { "data-preview": "labor" }, "…"),
       " · 정비비 ", h("b", { "data-preview": "maintenance" }, "…"),
@@ -341,26 +406,103 @@ function commonPane(ctx: FormContext): HTMLElement {
       " · 연구비 ", h("b", { "data-preview": "research" }, "…")));
 }
 
-/** 자재 등급(4M의 Material): 자재마다 표준 또는 저가. 저가는 단가가 반이고 그 자재를 쓰는 공정의 불량이 늘어난다. */
-function materialGrades(ctx: FormContext): HTMLElement {
+/** 자재별 선택(4M의 Material)을 한 표에: 자재마다 한 줄에 등급과 안전 재고(4.14).
+ *  등급: 저가는 단가가 반이고 그 자재를 쓰는 공정의 불량이 늘어난다.
+ *  안전 재고: 1일에 발주해 리드타임 뒤 들어오는 공용 재고, 재고비만. 수량은 미리보기(엔진)가 채운다. */
+function materialTable(ctx: FormContext, grades: boolean, safety: boolean): HTMLElement {
   const { scenario, config } = ctx;
   const cheap = scenario.material_grades.cheap;
   const used = Object.fromEntries(activeStations(scenario).filter((st) => st.material).map((st) => [st.material!, st.name]));
+  // 이 분기에 쓰는 자재만(보냉재는 LNG선이 있을 때만)
+  const mats = scenario.materials.filter((m) => scenario.orders.some((o) => (scenario.ship_types[o.type]?.bom[m.id] ?? 0) > 0));
+  const notes = [
+    grades ? `저가 = 단가 ${Math.round(cheap.price_factor * 100)}%, 쓰는 공정 불량률 +${Math.round(cheap.defect_add * 100)}%p` : null,
+    safety ? "안전 재고 = 1일에 발주해 리드타임 뒤 들어오는 공용 재고, 늦게 온 몫을 메운다 · 재고비만(1척분 = 그 자재를 가장 많이 쓰는 배 한 척 몫)" : null,
+  ].filter(Boolean).join(" · ");
   return h("div", { class: "materials" },
-    h("div", { class: "field-row" }, h("span", { class: "field-label" }, "자재 등급"),
-      h("small", null, `저가: 단가 ${Math.round(cheap.price_factor * 100)}%, 쓰는 공정 불량률 +${Math.round(cheap.defect_add * 100)}%p`)),
-    scenario.materials.map((m) => h("div", { class: "field-row" },
-      h("span", { class: "field-label sub" }, m.name, h("small", null, ` ${used[m.id] ?? ""}`)),
-      segmented(`grade-${m.id}`, [
-        { value: "standard" as const, label: `표준 ${num(m.price)}` },
-        { value: "cheap" as const, label: `${m.cheap_name} ${num(m.price * cheap.price_factor)}` },
-      ], config.materials?.[m.id] ?? "standard", (v) => {
-        const next = { ...(config.materials ?? {}) };
-        if (v === "standard") delete next[m.id]; else next[m.id] = v;
-        config.materials = Object.keys(next).length ? next : undefined;
-        if (!config.materials) delete config.materials;
-        ctx.onEdit(false);
-      }))));
+    h("table", { class: "mat-table" },
+      h("thead", null, h("tr", null, h("th", null, "자재"), grades ? h("th", null, "등급") : null, safety ? h("th", { colspan: 2 }, "안전 재고") : null)),
+      h("tbody", null, mats.map((m) => h("tr", null,
+        h("td", null, h("b", null, m.name), h("small", null, ` ${used[m.id] ?? ""}`)),
+        grades ? h("td", null, segmented(`grade-${m.id}`, [
+          { value: "standard" as const, label: `표준 ${num(m.price)}` },
+          { value: "cheap" as const, label: `${m.cheap_name} ${num(m.price * cheap.price_factor)}` },
+        ], config.materials?.[m.id] ?? "standard", (v) => {
+          const next = { ...(config.materials ?? {}) };
+          if (v === "standard") delete next[m.id]; else next[m.id] = v;
+          if (Object.keys(next).length) config.materials = next; else delete config.materials;
+          ctx.onEdit(false);
+        })) : null,
+        safety ? h("td", null, segmented(`safety-${m.id}`, scenario.safety_stock.levels.map((n) => ({ value: n, label: n ? `${n}척분` : "없음" })),
+          config.safety_stock?.[m.id] ?? 0, (v) => {
+            const next = { ...(config.safety_stock ?? {}) };
+            if (v) next[m.id] = v; else delete next[m.id];
+            if (Object.keys(next).length) config.safety_stock = next; else delete config.safety_stock;
+            ctx.onEdit(false);
+          })) : null,
+        safety ? h("td", { class: "qty" }, h("small", { "data-preview": `safety:${m.id}` }, "")) : null)))),
+    h("p", { class: "hint field-hint" }, notes),
+    // ABC 분석(엔진이 미리보기로 채운다): 금액이 큰 A는 엄격하게, 금액이 작고 가끔 쓰는 자재는 넉넉하게
+    safety ? h("div", { "data-preview": "abc", "data-cut-a": String(scenario.safety_stock.abc.A), "data-cut-b": String(scenario.safety_stock.abc.B) }) : null);
+}
+
+/** ABC 분석(4.14): 파레토 차트(막대 = 금액 비율, 선 = 누적 비율, 점선 = A·B 경계) + 표로 보기.
+ *  값은 모두 엔진(미리보기 abc)이 준다. 화면은 좌표만 정한다. */
+function abcChart(rows: AbcRow[], cut: { A: number; B: number }): HTMLElement {
+  const W = 640, H = 262, L = 40, R = 64, T = 16, B = 62;
+  const n = Math.max(1, rows.length), sw = (W - L - R) / n, bw = Math.min(56, sw * 0.42);
+  const cx = (k: number) => L + sw * (k + 0.5);
+  const py = (v: number) => T + (1 - v) * (H - T - B);
+  const base = py(0);
+  const svg = s("svg", { class: "abc-chart", viewBox: `0 0 ${W} ${H}`, role: "img",
+    "aria-label": `자재 ABC 분석: ${rows.map((r) => `${r.name} ${pct(r.share, 0)}(${r.class})`).join(", ")}` });
+  // 격자 0·50·100%와 A·B 경계(점선)
+  for (const v of [0, 0.5, 1]) {
+    svg.append(s("line", { x1: L, x2: W - R, y1: py(v), y2: py(v), class: v ? "grid" : "axis-line" }),
+      s("text", { x: L - 6, y: py(v) + 4, class: "tick end" }, pct(v, 0)));
+  }
+  for (const [name, v] of [["A", cut.A], ["B", cut.B]] as const) {
+    svg.append(s("line", { x1: L, x2: W - R, y1: py(v), y2: py(v), class: "cut" }),
+      s("text", { x: W - R + 6, y: py(v) + 4, class: "cut-label" }, `${name} 경계 ${pct(v, 0)}`));
+  }
+  rows.forEach((r, k) => {
+    const x = cx(k) - bw / 2, top = py(r.share), hgt = base - top, rad = Math.min(4, hgt);
+    // 막대: 위쪽만 4px 둥글게, 바닥은 축에 붙인다
+    svg.append(s("path", { class: "abc-bar", d: `M${x} ${base} V${top + rad} Q${x} ${top} ${x + rad} ${top} H${x + bw - rad} Q${x + bw} ${top} ${x + bw} ${top + rad} V${base} Z` }));
+    // 금액 비율: 막대가 높으면 안쪽, 낮으면 위
+    const inside = hgt >= 22;
+    svg.append(s("text", { x: cx(k), y: inside ? top + 15 : top - 5, class: inside ? "bar-label in" : "bar-label" }, pct(r.share, 0)));
+    // 아래 이름표 세 줄: 자재·등급, 사용 빈도, 리드타임·지연
+    svg.append(
+      s("text", { x: cx(k), y: base + 16, class: "name" }, `${r.name} · ${r.class}`),
+      s("text", { x: cx(k), y: base + 31, class: "sub" }, r.ships === r.of ? `매 척 ${r.ships}/${r.of}` : `가끔 ${r.ships}/${r.of}척`),
+      s("text", { x: cx(k), y: base + 45, class: "sub" }, `리드 ${r.lead_days}일${r.delay ? ` · 지연 ${pct(r.delay.probability, 0)}·${r.delay.days}일` : ""}`));
+  });
+  // 누적 비율 선과 점(점에는 바탕색 테두리), 점 왼쪽 위에 누적 값(선이 오른쪽 위로 오르니 왼쪽 위가 빈다)
+  const pts = rows.map((r, k) => `${k ? "L" : "M"}${cx(k).toFixed(1)} ${py(r.cumulative).toFixed(1)}`).join(" ");
+  svg.append(s("path", { d: pts, class: "cum-line" }));
+  rows.forEach((r, k) => svg.append(
+    s("circle", { cx: cx(k), cy: py(r.cumulative), r: 4.5, class: "cum-dot" }),
+    s("text", { x: cx(k) - 8, y: py(r.cumulative) - 7, class: "cum-label" }, `누적 ${pct(r.cumulative, 0)}`)));
+  // 마우스를 올릴 자리: 자재 칸 전체
+  rows.forEach((r, k) => svg.append(s("rect", { x: cx(k) - sw / 2, y: T, width: sw, height: H - T - 8, class: "hit" },
+    s("title", null, `${r.name}: 반기 ${num(r.quantity)}개, 금액 ${num(r.value)} (${pct(r.share, 1)}), 누적 ${pct(r.cumulative, 1)}, ${r.class}등급`))));
+  const legend = h("div", { class: "abc-legend" },
+    h("span", null, h("i", { class: "sw bar" }), "금액 비율(막대)"),
+    h("span", null, h("i", { class: "sw cum" }), "누적 비율(선)"),
+    h("span", null, h("i", { class: "sw cut" }), "A·B 경계"));
+  const table = h("details", { class: "abc-table-wrap" }, h("summary", null, "표로 보기"),
+    h("table", { class: "abc-table" },
+      h("thead", null, h("tr", null, ["자재", "반기 사용", "금액", "비율", "누적", "ABC", "쓰는 배", "리드타임", "입고 지연"].map((t) => h("th", null, t)))),
+      h("tbody", null, rows.map((r) => h("tr", null,
+        h("td", null, r.name), h("td", null, `${num(r.quantity)}개`), h("td", null, num(r.value)),
+        h("td", null, pct(r.share, 1)), h("td", null, pct(r.cumulative, 1)), h("td", null, h("b", null, r.class)),
+        h("td", null, `${r.ships}/${r.of}척`), h("td", null, `${r.lead_days}일`),
+        h("td", null, r.delay ? `${pct(r.delay.probability, 0)} · ${r.delay.days}일` : "—"))))));
+  return h("figure", { class: "abc" },
+    h("figcaption", null, "자재 ABC 분석 · 반기 사용 금액 순"), legend, svg,
+    h("p", { class: "hint" }, `금액 누적 ${pct(cut.A, 0)}까지 A, ${pct(cut.B, 0)}까지 B, 나머지 C. 금액이 큰 A는 엄격하게(쌓으면 재고비가 크다), 매 척 쓰는 자재는 다음 배 몫이 곧 들어와 메워 주니 적게, 가끔 쓰고 늦으면 오래 걸리는 자재는 넉넉하게.`),
+    table);
 }
 
 /** 연구 대기열: 넣은 순서대로 1일부터 하나씩 진행한다. 순서를 바꾸면 양식을 다시 그린다(입력란이 없어 커서 걱정이 없다). */
@@ -422,7 +564,8 @@ function shipPane(ctx: FormContext, sid: string): HTMLElement {
       h("thead", null, h("tr", null,
         h("th", null, "자재"), h("th", { class: "r" }, "소요량"), h("th", null, "쓰는 공정"),
         h("th", null, "발주일"), h("th", null, "입고일"))),
-      h("tbody", null, scenario.materials.map((m) => {
+      // 이 배가 쓰는 자재만(보냉재는 LNG선만, 4.14)
+      h("tbody", null, scenario.materials.filter((m) => (type.bom[m.id] ?? 0) > 0).map((m) => {
         const station = activeStations(scenario).find((st) => st.material === m.id);
         return h("tr", null,
           h("td", null, h("b", null, m.name)),
@@ -437,6 +580,7 @@ function shipPane(ctx: FormContext, sid: string): HTMLElement {
 /** 서버가 준 미리보기 값을 양식의 자리에 채운다. 오류가 있으면 실행 버튼을 막고, 오류가 난 탭에 ⚠를 붙인다. */
 export function updatePreview(root: HTMLElement, preview: Preview | null, errors: string[], busy: boolean): void {
   const slot = (key: string) => root.querySelector<HTMLElement>(`[data-preview="${key}"]`);
+  refreshFoldSummaries(root);
   if (preview) {
     for (const [id, st] of Object.entries(preview.stations)) {
       const rate = slot(`rate:${id}`);
@@ -463,6 +607,17 @@ export function updatePreview(root: HTMLElement, preview: Preview | null, errors
         if (order) order.textContent = m.order_day === null ? "안 함" : `${m.order_day}일`;
         if (arrival) arrival.textContent = m.arrival_day === null ? "—" : `${m.arrival_day}일`;
       }
+    }
+    const abc = slot("abc");
+    if (abc && preview.abc && abc.dataset.cutA) {
+      // 미리보기가 올 때마다 다시 그린다. 펼쳐 둔 "표로 보기"는 펼친 채로 둔다
+      const open = abc.querySelector("details")?.open ?? false;
+      abc.replaceChildren(abcChart(preview.abc, { A: Number(abc.dataset.cutA), B: Number(abc.dataset.cutB) }));
+      abc.querySelector("details")!.open = open;
+    }
+    for (const el of root.querySelectorAll<HTMLElement>("[data-preview^='safety:']")) {
+      const qty = preview.safety_stock?.[el.dataset.preview!.slice("safety:".length)];
+      el.textContent = qty ? `${qty}개` : "";
     }
     drawPlan(root, preview);
   }

@@ -72,8 +72,8 @@
       "id": "pre_outfitting",
       "name": "선행의장",
       "equipment": "의장 작업대",
-      "real": "블록 마감동 의장장: 블록에 배관·받침을 미리 단다",
-      "material": null,
+      "real": "블록 마감동 의장장: 블록에 배관·받침을 미리 단다. LNG선은 화물 탱크 보냉재(단열재)도 붙인다",
+      "material": "insulation",
       "trade": "outfitting",
       "after": [
         "block_assembly"
@@ -145,7 +145,11 @@
       "price": 20,
       "lead_days": 2,
       "cheap_name": "휴지",
-      "store": "steel_yard"
+      "store": "steel_yard",
+      "delay": {
+        "probability": 0.05,
+        "days": 1
+      }
     },
     {
       "id": "paint",
@@ -153,7 +157,11 @@
       "price": 40,
       "lead_days": 5,
       "cheap_name": "저가 물감",
-      "store": "warehouse"
+      "store": "warehouse",
+      "delay": {
+        "probability": 0.25,
+        "days": 3
+      }
     },
     {
       "id": "flag",
@@ -161,7 +169,23 @@
       "price": 100,
       "lead_days": 10,
       "cheap_name": "저가 깃발",
-      "store": "warehouse"
+      "store": "warehouse",
+      "delay": {
+        "probability": 0.25,
+        "days": 3
+      }
+    },
+    {
+      "id": "insulation",
+      "name": "보냉재",
+      "price": 60,
+      "lead_days": 12,
+      "cheap_name": "저가 보냉재",
+      "store": "warehouse",
+      "delay": {
+        "probability": 0.6,
+        "days": 16
+      }
     }
   ],
   "ship_types": {
@@ -182,7 +206,8 @@
       "bom": {
         "paper": 8,
         "paint": 4,
-        "flag": 2
+        "flag": 2,
+        "insulation": 0
       }
     },
     "CONT": {
@@ -202,7 +227,8 @@
       "bom": {
         "paper": 6,
         "paint": 2,
-        "flag": 3
+        "flag": 3,
+        "insulation": 0
       }
     },
     "LNG": {
@@ -222,7 +248,8 @@
       "bom": {
         "paper": 8,
         "paint": 4,
-        "flag": 6
+        "flag": 6,
+        "insulation": 4
       }
     },
     "TUG": {
@@ -242,7 +269,8 @@
       "bom": {
         "paper": 4,
         "paint": 2,
-        "flag": 1
+        "flag": 1,
+        "insulation": 0
       }
     },
     "FEEDER": {
@@ -262,7 +290,8 @@
       "bom": {
         "paper": 5,
         "paint": 3,
-        "flag": 2
+        "flag": 2,
+        "insulation": 0
       }
     }
   },
@@ -283,9 +312,20 @@
     }
   },
   "supply_delay": {
-    "_comment": "입고 지연(4.13, D59): 시나리오가 supply_delays를 켠 분기에서, 발주마다 난수표 random.supply[배][자재]가 probability보다 작으면 days일 늦게 들어온다.",
-    "probability": 0.25,
-    "days": 3
+    "_comment": "입고 지연(4.13, D59; 자재별 4.14, D60): 시나리오가 supply_delays를 켠 분기에서, 발주마다 난수표 random.supply[배][자재]가 그 자재의 delay.probability보다 작으면 delay.days일 늦게 들어온다. 표준품(종이)은 드물고 짧게, 특수품(LNG 보냉재)은 잦고 길게."
+  },
+  "safety_stock": {
+    "_comment": "안전 재고(4.14, D60): 자재마다 0·1·2척분. 1척분 = 그 분기 배 중 그 자재를 가장 많이 쓰는 배 한 척 몫. 1일에 발주해 리드타임 뒤에 들어오는 공용 재고이고(지연 없음), 재고비(1%/일)만 낸다.",
+    "levels": [
+      0,
+      1,
+      2
+    ],
+    "abc": {
+      "_comment": "ABC 분석: 반기 사용 금액이 큰 순으로 누적 비율이 A까지면 A, B까지면 B, 나머지 C. 첫 자재는 늘 A.",
+      "A": 0.7,
+      "B": 0.9
+    }
   },
   "blocks": {
     "cutting": 8,

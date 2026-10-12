@@ -293,7 +293,9 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
   });
 
   const stock = day > 0 ? result.inventory_daily[index] : {};
-  const shelves: ShelfView[] = scenario.materials.map((m) => {
+  // 이 분기 배가 쓰는 자재만 선반을 둔다(LNG선이 없으면 보냉재 선반을 숨긴다, 4.14). 보냉재가 마지막이라 앞 선반 번호는 그대로다
+  const used = scenario.materials.filter((m) => scenario.orders.some((o) => (scenario.ship_types[o.type]?.bom[m.id] ?? 0) > 0));
+  const shelves: ShelfView[] = used.map((m) => {
     const next = result.events.find((ev) => ev.type === "arrival" && ev.material === m.id && ev.day > day);
     const pegs = day > 0 ? result.pegging_daily?.[index]?.[m.id] ?? [] : [];
     return { material: m.id, name: m.name, qty: stock[m.id] ?? 0, nextArrival: next ? next.day : null, pegs };

@@ -9,8 +9,9 @@ import { MAT_W } from "./layout";
 import { hullTris } from "./model";
 import { FoldMesh, deckSheet } from "./lot";
 import { label, paperMaterial } from "./util";
+import { CRATE_COLORS } from "../labels";
 
-const CRATE_COLORS = ["#f7f3ea", "#c8553d", "#c0392b"];   // 선반 상자 뚜껑과 같은 색(종이, 물감, 깃발)
+export { CRATE_COLORS };
 const crateTops = CRATE_COLORS.map((c) => new THREE.MeshStandardMaterial({ color: c }));
 export const crateTop = (i: number) => crateTops[i] ?? crateTops[0];
 
