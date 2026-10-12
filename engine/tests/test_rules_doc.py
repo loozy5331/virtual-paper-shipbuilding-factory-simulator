@@ -1329,5 +1329,70 @@ class Management(unittest.TestCase):
         self.assertEqual((r["profit"], r["grade"]["grade"]), (simulate(PRESETS["managed"], baseline=False)["profit"], "A"))
 
 
+def buffered(cfg, **days):
+    """공정 여유(4.15)를 공정마다 넣은 설정 사본."""
+    cfg = copy.deepcopy(cfg)
+    for pid, n in days.items():
+        cfg["stations"][pid]["buffer"] = n
+    return cfg
+
+
+class PlanBuffer(unittest.TestCase):
+    """4장 공정 여유(4.15, D62): 납기를 늦추고 선가를 하루 1% 깎는다. 실행은 그대로."""
+
+    def test_due_and_price(self):
+        # 탑재 2일 + PE장 1일 = 여유 3일: 납기 +3일, 선가 × 0.97. S1(VLCC 6,000, 납기 42일) → 5,820, 45일
+        base = simulate(PRESETS["managed"], baseline=False)
+        r = simulate(buffered(PRESETS["managed"], erection=2, grand_assembly=1), baseline=False)
+        s1 = r["ships"][0]
+        self.assertEqual((s1["buffer_days"], s1["base_due_day"], s1["due_day"], s1["base_price"], s1["price"]), (3, 42, 45, 6000, 5820.0))
+        self.assertEqual(r["revenue"], round(33600 * 0.97, 2))
+        # 실행은 그대로: 인도일·원가가 같고 이익은 매출이 준 만큼만 준다
+        self.assertEqual([s["delivered_day"] for s in r["ships"]], [s["delivered_day"] for s in base["ships"]])
+        self.assertEqual(r["total_cost"], base["total_cost"])
+        self.assertAlmostEqual(r["profit"], base["profit"] - 33600 * 0.03, places=2)
+
+    def test_insurance_against_late_penalty(self):
+        # 기본 반기 A안(무관리)은 S1이 40일, S2가 18일 늦는다(10장 프리셋 표). 공정마다 2일 = 여유 20일이면 S1만 20일 늦는다
+        r = simulate(buffered(PRESETS["unmanaged"], **{pid: 2 for pid in STATIONS}), baseline=False)
+        self.assertEqual([s["late_days"] for s in r["ships"]], [20, 0, 0, 0, 0, 0])
+        # 위약금 = 늦은 날 × 깎인 선가 × 3%: 20 × 4,800 × 0.03
+        self.assertEqual(r["costs"]["late_penalty"], round(20 * 6000 * 0.8 * 0.03, 2))
+        self.assertEqual(r["qcd"]["delivery"]["on_time"], 5)
+
+    def test_plan_gantt_has_buffer_after_each_process(self):
+        # 계획 간트: 여유가 있는 공정 막대에만 buffer, 다음 공정은 그 뒤에 시작한다
+        plain = preview(PRESETS["managed"])["plan"]["ships"]["S1"]
+        plan = preview(buffered(PRESETS["managed"], cutting=1))
+        s1 = plan["plan"]["ships"]["S1"]
+        self.assertEqual(s1["cutting"], {**plain["cutting"], "buffer": 1})
+        self.assertNotIn("buffer", s1["processing"])
+        self.assertEqual(s1["processing"]["start"], plain["processing"]["start"] + 1)
+        self.assertEqual(plan["contract"]["S1"], {"due_day": 43, "price": 5940.0, "buffer_days": 1})
+        # 7관리 계획: 계획 끝날에 여유가 들어가 B안의 6척이 모두 계획대로가 된다(공정마다 1일)
+        m = simulate(buffered(PRESETS["managed"], **{pid: 1 for pid in STATIONS}), baseline=False)["management"]["plan"]
+        self.assertEqual((m["on_plan"], m["ships"]), (6, 6))
+
+    def test_kpi_targets_use_original_due(self):
+        # 수주 급증 S9·S10은 납기가 늦은 배다. 여유로 납기를 기간 밖으로 밀어도 KPI 대상에서 빠지지 않는다
+        cfg = buffered(SURGE["managed"], **{pid: 2 for pid in STATIONS})
+        r = simulate(cfg, baseline=False)
+        days = load_scenario("surge")["days"]
+        self.assertTrue(any(s["due_day"] > days for s in r["ships"]))
+        delivery = next(p for p in r["grade"]["parts"] if p["key"] == "delivery")
+        targets = [s for s in r["ships"] if s["base_due_day"] <= days]
+        self.assertEqual(delivery["value"], sum(s["on_time"] for s in targets) / len(targets))
+
+    def test_range_and_lock(self):
+        with self.assertRaises(ConfigError):
+            simulate(buffered(PRESETS["managed"], cutting=3), baseline=False)
+        # 간이공정(입문)은 잠겨 있다(D33). 옵션을 풀면 돈다
+        cfg = buffered(SIMPLE["managed"], cutting=1)
+        with self.assertRaises(ConfigError):
+            simulate(cfg, baseline=False)
+        self.assertEqual(open_sim(cfg, baseline=False)["ships"][0]["buffer_days"], 1)
+        # 옛 설정(여유 없음)은 결과가 그대로다: 프리셋 표 테스트가 지킨다
+
+
 if __name__ == "__main__":
     unittest.main()

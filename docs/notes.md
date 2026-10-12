@@ -36,6 +36,7 @@ CLAUDE.md에서 옮긴 세부(2026-10-11, 토큰 절약). 그 공정·화면을 
   발주 방식 `ordering`(1.1): `bulk` 1일에 전부, `jit` 필요일 − 리드타임 − 여유일(`jit_buffer` 0~3일, 기본 0, 수주 증가부터 고름, 4.13), `late` 필요일에 발주(리드타임만큼 자재 대기).
   입고 지연(4.13, D59): 수주 증가·수주 급증에서 발주마다 `random.supply`가 0.25보다 작으면 3일 늦게 입고. 원래 입고일에 `supply_delay` 사건, 미리보기는 예정일만.
   안전 재고(4.14, D60): 설정 `safety_stock` 자재마다 0·1·2척분(1척분 = 그 분기 최대 BOM), 1일 발주 → 1 + 리드타임일에 공용 몫(None, 입고 사건 `safety: true`), 재고비만. 결과·미리보기 `safety_stock`은 수량, 미리보기 `abc`는 ABC 분석(금액 큰 순, 누적 비율), 생산계획서는 파레토 차트(`abcChart`, 막대 #2a78d6·누적선 #eb6834 색각 검증 통과).
+  공정 여유(4.15, D62): 설정 `stations.<공정>.buffer` 0~2일(옵션 `plan_buffer`, 간이공정 잠김). `contract_orders`가 납기 + 여유 합계, 선가 × (1 − 0.01 × 합계). 결과 배에 `buffer_days`·`base_due_day`·`base_price`, 미리보기 `contract`, 계획 간트 span의 `buffer`(있을 때만). 등급 KPI 대상은 `base_due_day`로.
   보냉재(4.14): LNG선만 4개, 선행의장. 자재별 지연 `materials[].delay`(종이 5%·1일, 물감·깃발 25%·3일, 보냉재 60%·16일). 물류창고 선반 셋(`SHELF_X`), 쓰지 않는 자재 선반은 숨김.
   필요일은 자재가 충분하다고 보고 한 번 돌려 구한다(`resolve_order_days`). `ordering`이 없으면 1.0처럼 배별 `order_days`를 읽는다.
 - 호이스트(4.9, D52): 설정 `stations.<공정>.hoist`, 소조립·중조립만(rules.json 공정의 `hoist`), 수주 증가부터(옵션 `hoist`). 작업량 × 0.8(`station_work`, 계획 막대도), 작업장마다 도입비 200(investment)·정비비 50(정비할 때), 고장 판정 일한 날 6일마다(`every_busy`). 그림: 현장 3D `buildHoist`(정반 위 천장 크레인, 레일 높이 `HOIST_H` = 벽 높이 − 0.25, 4.11.3), 2D `hoist()`.

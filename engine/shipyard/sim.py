@@ -242,6 +242,10 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
             errors.append(f"{pid}: 호이스트(hoist)는 true 또는 false여야 합니다")
         elif st.get("hoist") and not _station_rule(scenario, pid).get("hoist"):
             errors.append(f"{pid}: 호이스트는 {', '.join(hoist_stations(scenario))}에만 달 수 있습니다")
+        # 공정 여유(4.15): 0~max_days일
+        buf = st.get("buffer", 0)
+        if not _is_int(buf) or not 0 <= buf <= scenario["plan_buffer"]["max_days"]:
+            errors.append(f"{pid}: 공정 여유(buffer)는 0~{scenario['plan_buffer']['max_days']}일이어야 합니다")
         units = st.get("units", 1)
         # 탑재 도크는 골리앗 크레인(걸리버의 두 손)이 있어야 하므로 2곳까지(3.0)
         max_units = scenario["expansion"].get("max_units_by_station", {}).get(pid, scenario["expansion"]["max_units"])
@@ -336,6 +340,8 @@ def _locked_options(config: dict[str, Any], scenario: dict[str, Any]) -> list[st
             errors.append(f"{name}에서는 나눠 하기를 쓸 수 없습니다({label})")
         if cfg.get("hoist", False) and not opts.get("hoist", False):
             errors.append(f"{name}에서는 호이스트를 쓸 수 없습니다({label})")
+        if cfg.get("buffer", 0) and not opts.get("plan_buffer", False):
+            errors.append(f"{name}에서는 공정 여유를 둘 수 없습니다({label})")
     tcounts = opts.get("transporter_counts")
     if tcounts and (config.get("transporters") or {}).get("count") not in tcounts:
         errors.append(f"{name}에서는 트랜스포터를 {', '.join(map(str, tcounts))}대로만 둘 수 있습니다")
@@ -489,6 +495,23 @@ def material_abc(scenario: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def plan_buffers(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, int]:
+    """공정 여유(4.15, D62): 쓰는 공정마다 여유일. 설정에 없으면 0."""
+    return {st["id"]: config["stations"][st["id"]].get("buffer", 0) for st in scenario["stations"] if not is_skipped(st)}
+
+
+def contract_orders(config: dict[str, Any], scenario: dict[str, Any]) -> list[dict[str, Any]]:
+    """선주와 맺은 납기와 선가(4.15). 여유 합계만큼 납기가 늦어지고 선가가 하루 price_cut_per_day씩 준다.
+
+    원래 값은 base_due_day·base_price에 남긴다(등급의 KPI 대상은 원래 납기로 가른다).
+    """
+    days = sum(plan_buffers(config, scenario).values())
+    cut = scenario["plan_buffer"]["price_cut_per_day"]
+    return [{**o, "base_due_day": o["due_day"], "base_price": o["price"], "buffer_days": days,
+             "due_day": o["due_day"] + days, "price": round(o["price"] * (1 - cut * days), 2)}
+            for o in scenario["orders"]]
+
+
 def jit_buffer(config: dict[str, Any], scenario: dict[str, Any]) -> int:
     """역산 발주의 여유일(4.13, D59). 설정에 없으면 규칙의 기본값(0일)."""
     return config.get("jit_buffer", scenario["ordering"]["jit"]["buffer_days"])
@@ -604,7 +627,10 @@ def preview(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> d
     return {"stations": stations, "fixed_costs": fixed_costs(config, scenario),
             "research": research_schedule(config.get("research", []), scenario),
             "materials": materials, "safety_stock": safety_stock(config, scenario), "abc": material_abc(scenario),
-            "plan": plan_schedule(config, scenario)}
+            "plan": plan_schedule(config, scenario),
+            # 공정 여유(4.15): 선주와 맺을 납기와 선가
+            "contract": {o["id"]: {"due_day": o["due_day"], "price": o["price"], "buffer_days": o["buffer_days"]}
+                         for o in contract_orders(config, scenario)}}
 
 
 def move_days_between(scenario: dict[str, Any], a: int, b: int) -> int:
@@ -660,6 +686,7 @@ def plan_schedule(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str,
     units_of = dict(zip((s["id"] for s in scenario["stations"]), station_units(config, scenario)))
     parts_of = {s["id"]: split_parts(config, scenario, p, units_of[s["id"]]) for p, s in enumerate(scenario["stations"])}
     ships: dict[str, dict[str, dict[str, int]]] = {}
+    buffers = plan_buffers(config, scenario)
     for order in scenario["orders"]:
         work = {st["id"]: station_work(config, scenario, st["id"], order["type"]) for st in scenario["stations"]}
         day = config["ships"][order["id"]]["start_day"]
@@ -672,10 +699,10 @@ def plan_schedule(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str,
             rate = station_rate({**config["stations"][st["id"]], "crew": crew_of(config, st["id"])}, rules, assigned)
             # 나눠 하기: 작업장을 모두 쓴다고 보고 부분 작업량으로 잰다(배가 혼자 쓸 때의 일정).
             end = day + math.ceil(work[st["id"]] / parts_of[st["id"]] / rate - EPS) - 1
-            spans[st["id"]] = {"start": day, "end": end}
-            # 끝난 다음 날부터 다음 공정으로(같은 자리·크레인·예인은 다음 날, 그 밖은 T2 운반일)
+            spans[st["id"]] = {"start": day, "end": end, **({"buffer": buffers[st["id"]]} if buffers[st["id"]] else {})}
+            # 끝난 다음 날부터 다음 공정으로(같은 자리·크레인·예인은 다음 날, 그 밖은 T2 운반일). 공정 여유(4.15)가 있으면 그 뒤로
             if k + 1 < len(active):
-                day = end + move_days_between(scenario, p, active[k + 1])
+                day = end + buffers[st["id"]] + move_days_between(scenario, p, active[k + 1])
         ships[order["id"]] = spans
 
     # 겹침: 같은 공정을 쓰는 배가 그 공정의 작업장 수보다 많은 날. 두 배씩 묶어 그 날들의 구간으로 적는다.
@@ -747,7 +774,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     bd = scenario["breakdown"]
     tr = scenario["transporter"]
     rnd = scenario["random"]
-    orders = scenario["orders"]
+    orders = contract_orders(config, scenario)
     stations = scenario["stations"]
     materials = {m["id"]: m for m in scenario["materials"]}
     types = scenario["ship_types"]
@@ -1304,6 +1331,10 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             "order_day": order["order_day"],
             "due_day": order["due_day"],
             "price": order["price"],
+            # 공정 여유(4.15): 여유 합계와 여유를 넣기 전의 납기·선가
+            "buffer_days": order["buffer_days"],
+            "base_due_day": order["base_due_day"],
+            "base_price": order["base_price"],
             "priority": priority[i],
             "start_day": config["ships"][order["id"]]["start_day"],
             "order_days": order_days[i],
@@ -1462,7 +1493,7 @@ def _management(result: dict[str, Any], config: dict[str, Any], scenario: dict[s
     slips: dict[str, int] = {}
     on_plan = 0
     for sh in ships:
-        planned_end = max(span["end"] for span in plan["ships"][sh["id"]].values())
+        planned_end = max(span["end"] + span.get("buffer", 0) for span in plan["ships"][sh["id"]].values())
         end = sh["delivered_day"] if sh["delivered_day"] is not None else days
         slips[sh["id"]] = max(0, end - planned_end)
         if sh["delivered_day"] is not None and sh["delivered_day"] <= planned_end:
@@ -1571,7 +1602,8 @@ def _grade(result: dict[str, Any], config: dict[str, Any], base: dict[str, Any] 
     days = scenario["days"]
 
     # KPI 대상: 수주일과 인도 예정일이 모두 분기 안에 있는 배.
-    targets = [s for s in result["ships"] if 1 <= s["order_day"] <= days and s["due_day"] <= days]
+    # 공정 여유(4.15)로 늦춘 납기가 아니라 원래 납기로 가른다(납기를 기간 밖으로 밀어 대상에서 빼지 못하게)
+    targets = [s for s in result["ships"] if 1 <= s["order_day"] <= days and s.get("base_due_day", s["due_day"]) <= days]
     revenue = sum(s["price"] for s in targets if s["delivered_day"] is not None)
     on_time_rate = sum(1 for s in targets if s["on_time"]) / len(targets) if targets else 0.0
     fpy = result["qcd"]["quality"]["first_pass_yield"] or 0.0

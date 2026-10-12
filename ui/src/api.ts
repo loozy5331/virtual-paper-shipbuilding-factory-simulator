@@ -13,6 +13,8 @@ export interface StationConfig {
   split?: boolean;
   /** 호이스트(4.9): 조립 정반 위 천장 크레인(소조립·중조립만). 작업량이 줄고 도입비·정비비·고장 판정이 는다. 없으면 없음 */
   hoist?: boolean;
+  /** 공정 여유(4.15, D62): 0~max_days일. 배의 여유 합계만큼 납기가 늦어지고 선가가 하루 1% 준다. 없으면 0 */
+  buffer?: number;
 }
 
 export type Crew = "normal" | "skilled" | "robot" | "external";
@@ -151,6 +153,8 @@ export interface ScenarioOptions {
   jit_buffer?: boolean;
   /** 4.14: 안전 재고를 둘 수 있는가(수주 증가부터) */
   safety_stock?: boolean;
+  /** 4.15: 공정 여유를 둘 수 있는가(기본 반기부터) */
+  plan_buffer?: boolean;
 }
 
 /** 호이스트(4.9): 작업량 배수, 작업장마다 도입비·정비비, 고장 판정 간격(일한 날) */
@@ -197,6 +201,8 @@ export interface Scenario {
   supply_delay: { probability: number; days: number };
   /** 4.14(D60): 안전 재고로 고를 수 있는 척분 */
   safety_stock: { levels: number[]; abc: { A: number; B: number } };
+  /** 4.15(D62): 공정 여유 상한과 여유 하루의 선가 차감률 */
+  plan_buffer: { max_days: number; price_cut_per_day: number };
   kpi: { revenue: number; profit: number; on_time_rate: number; first_pass_yield: number };
 }
 
@@ -275,6 +281,8 @@ export interface Preview {
   /** 4.14(D60): 자재 ABC 분석(교육용 표, 규칙에는 쓰지 않는다). 금액 큰 순 누적 비율로 A·B·C, ships = 그 자재를 쓰는 배 수 */
   abc: AbcRow[];
   plan: Plan;
+  /** 4.15(D62): 공정 여유를 넣은 납기와 선가(배마다) */
+  contract?: Record<string, { due_day: number; price: number; buffer_days: number }>;
 }
 
 export interface AbcRow {
@@ -293,7 +301,8 @@ export interface AbcRow {
   delay: { probability: number; days: number } | null;
 }
 
-export interface Span { start: number; end: number }
+/** buffer(4.15): 계획 간트에서 이 공정 막대 뒤의 여유일. 여유가 없으면 없다 */
+export interface Span { start: number; end: number; buffer?: number }
 
 /** 계획 막대: 배가 작업장을 혼자 쓴다고 본 공정 일정과, 두 배가 같은 작업장을 겹쳐 쓰는 구간. */
 export interface Plan {
@@ -320,6 +329,10 @@ export interface ShipResult {
   order_day: number;
   due_day: number;
   price: number;
+  /** 4.15: 공정 여유 합계와 여유를 넣기 전의 납기·선가. 옛 회차에는 없다 */
+  buffer_days?: number;
+  base_due_day?: number;
+  base_price?: number;
   priority: number;
   start_day: number;
   order_days: Record<string, number>;

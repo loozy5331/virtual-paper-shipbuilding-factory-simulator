@@ -212,6 +212,8 @@ function dock(x0: number, x1: number, z0: number, z1: number): SVGElement {
 }
 
 export interface CctvOptions {
+  /** 배마다 약속한 납기(4.15: 공정 여유를 넣었으면 늦춘 납기). 없으면 수주의 납기 */
+  due?: Record<string, number>;
   /** 볼 구획(전경은 없다, D38) */
   focus: SectorId;
   /** 구획 가장자리에 보이는 이웃 구획의 작업장을 누르면 그 구획으로 */
@@ -224,7 +226,7 @@ export interface CctvOptions {
 
 export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions): SVGElement {
   const docks = frame.stations[ST.dock]?.units.length ?? 1;
-  const due = Object.fromEntries(scenario.orders.map((o) => [o.id, o.due_day]));
+  const due = opts.due ?? Object.fromEntries(scenario.orders.map((o) => [o.id, o.due_day]));
   // 지연 표시는 오늘 기준(최종 결과를 미리 알려 주지 않게).
   const lateNow = (l: LotView) => (l.place === "sea" ? l.late : frame.day > due[l.ship]);
   const items: Item[] = [];

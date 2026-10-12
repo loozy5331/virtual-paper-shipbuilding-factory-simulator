@@ -718,6 +718,7 @@ function tick(jump: boolean): void {
   if (feed) {
     mount(feed, renderCctv(buildFrame(result, scenario, r.config, state.day, 1), scenario, {
       focus: state.cctv, onSector: openSector, track: state.track, onPick: openTrack,
+      due: Object.fromEntries(result.ships.map((sh) => [sh.id, sh.due_day])),
     }));
   }
   const cam = els.rightTop.querySelector(".cam-label");

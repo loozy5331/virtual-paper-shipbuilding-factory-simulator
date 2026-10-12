@@ -122,7 +122,8 @@ function pointText(point: MgmtPoint, scenario: Scenario): string {
       return `계획 간트에서 같은 작업장을 겹쳐 쓴 날이 ${point.days}일입니다. 겹친 만큼 뒤 순위 배가 기다립니다. `
         + `착수 예정일 간격을 벌리${opts.max_units > 1 ? "거나 ④ 공정에서 작업장을 늘리" : ""}세요.`;
     case "slip":
-      return `${point.ship}이 계획 간트의 끝날보다 ${point.days}일 늦게 인도됐습니다. 겹침이 없어도 대기·불량·고장이 계획을 밀어냅니다. 아래 요소를 확인하세요.`;
+      return `${point.ship}이 계획 간트의 끝날보다 ${point.days}일 늦게 인도됐습니다. 겹침이 없어도 대기·불량·고장이 계획을 밀어냅니다. 아래 요소를 확인하세요.`
+        + (opts.plan_buffer ? ` 밀릴 것을 알면 ④ 공정의 여유로 납기에 넣을 수 있지만, 여유 하루에 선가가 ${num(scenario.plan_buffer.price_cut_per_day * 100, 0)}% 깎입니다.` : "");
     case "station_wait":
       return `${station(point.station)} 작업장을 기다린 날이 가장 많습니다(${point.days}일). 병목 공정입니다. `
         + `착수 예정일 간격, ④ 공정의 ${list([opts.max_units > 1 && "작업장 수", "잔업", opts.methods.length > 1 && "공법"])}을 확인하세요.`;
@@ -329,7 +330,8 @@ export function renderReport(result: Result, scenario: Scenario, maxRate: number
         breakdownBar(ship, scale),
         h("span", { class: "lead-total" }, `${ship.lead_time}일`),
         h("span", { class: "r" }, ship.started_day ? `${ship.started_day}일` : "—"),
-        h("span", { class: "r" }, `${ship.delivered_day ? `${ship.delivered_day}일` : "미인도"} / ${ship.due_day}일`),
+        h("span", { class: "r", title: ship.buffer_days ? `원래 납기 ${ship.base_due_day}일 + 공정 여유 ${ship.buffer_days}일, 선가 ${num(ship.base_price ?? ship.price)} → ${num(ship.price)}` : undefined },
+          `${ship.delivered_day ? `${ship.delivered_day}일` : "미인도"} / ${ship.due_day}일${ship.buffer_days ? ` (+${ship.buffer_days})` : ""}`),
         h("span", { class: `r ${ship.late_days ? "bad" : "good"}` }, ship.late_days ? `${ship.late_days}일` : "없음")))),
     breakdownLegend(),
   );

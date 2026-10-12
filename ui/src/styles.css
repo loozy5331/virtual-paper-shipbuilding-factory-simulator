@@ -259,6 +259,8 @@ select.priority { max-width: 84px; }
 .plan-gantt .plan-start { font-size: 10px; font-weight: 700; fill: var(--ink-2); font-variant-numeric: tabular-nums; pointer-events: none; }
 .plan-gantt .plan-row.dragging .plan-start, .plan-gantt .plan-row:focus-visible .plan-start { fill: var(--accent); }
 .plan-gantt .plan-due { pointer-events: none; }
+.plan-gantt .plan-buffer { fill: var(--paper, #fcfaf4); stroke-width: 1.2; stroke-dasharray: 2 1.5; }   /* 공정 여유(4.15) */
+.legend i.plan-buffer-mark { background: transparent; outline: 1.2px dashed var(--ink-3); outline-offset: -1px; }
 .plan-gantt .plan-late { font-size: 13px; font-weight: 800; fill: var(--bad); }
 .legend i.plan-overlap { background: repeating-linear-gradient(45deg, #898781 0 2px, transparent 2px 5px); outline: 1px solid #898781; }
 .field-hint { margin: -2px 0 2px 80px; }
