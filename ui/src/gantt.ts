@@ -6,7 +6,7 @@
 // 막대를 누르면 onPick으로 그 배·공정·기간을 넘긴다(현장 들어가는 길, D7).
 // 재생 중에는 today까지만 그린다. 엔진이 준 segments와 daily를 자르고 묶기만 하고 새로 계산하지 않는다.
 
-import { activeStations, type ForkliftJob, type Result, type Scenario, type Segment } from "./api";
+import { activeStations, type ForkliftJob, type Plan, type Result, type Scenario, type Segment } from "./api";
 import { s } from "./dom";
 import { PAIR_WAIT_EDGE, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, STATION_TEXT } from "./labels";
 
@@ -23,6 +23,8 @@ let ROW_H = 56;
 let BAR_H = 24;
 const LOSS_GAP = 4;
 let LOSS_H = 10;
+const PLAN_H = 4;         // 계획 줄(4.16): 실적 막대 바로 위 가는 줄
+const PLAN_GAP = 2;
 const EQ_H = 32;          // 설비 줄 높이
 const EQ_BAR = 18;
 const SECTION_GAP = 22;
@@ -63,6 +65,18 @@ function barEl(x0: number, y: number, w: number, hgt: number, fill: string, titl
 }
 
 type Ship = Result["ships"][number];
+
+/**
+ * 계획 줄(4.16): 실행 전 생산계획서의 계획 간트(미리보기 plan, 배가 작업장을 혼자 쓴다고 본 일정)를 실적 막대 바로 위에 가는 줄로.
+ * 계획은 학생이 세운 것이라 재생 전부터 끝까지 다 그린다(결과를 미리 알려 주지 않는다). 실적 막대가 계획 줄보다 오른쪽으로 밀리면 그만큼 늦은 것.
+ */
+function planLine(sid: string, st: { id: string; name: string }, sp: { start: number; end: number }, days: number, y: number,
+  x: (day: number) => number, width: (a: number, b: number) => number): SVGElement | null {
+  if (sp.start > days) return null;
+  return s("rect", { x: x(sp.start) + 0.5, y: y - PLAN_GAP - PLAN_H, width: Math.max(1, width(sp.start, Math.min(sp.end, days)) - 1), height: PLAN_H,
+    rx: 1, fill: STATION_COLOR[st.id], class: "plan-line" },
+  s("title", null, `${sid} · ${st.name} 계획 ${sp.start}~${sp.end}일`));
+}
 
 /**
  * 배 탭에 다른 배·빈 작업장·운반 설비의 고장을 그릴지(4.12.12). 이 배를 직접 멈춘 고장만 그린다:
@@ -135,7 +149,7 @@ function useSize(size?: { width: number; height: number }, ships = 0): void {
   LOSS_H = ROW_H >= 52 ? 10 : 7;
 }
 
-export function renderGantt(result: Result, scenario: Scenario, today: number, onPick?: OnPick, size?: { width: number; height: number }): SVGElement {
+export function renderGantt(result: Result, scenario: Scenario, today: number, onPick?: OnPick, size?: { width: number; height: number }, plan?: Plan): SVGElement {
   useSize(size, result.ships.length);
   const days = result.days;
   const dayW = (W - LEFT - RIGHT) / days;
@@ -181,6 +195,13 @@ export function renderGantt(result: Result, scenario: Scenario, today: number, o
       s("text", { x: 12, y: y + 27, class: "ship-sub" }, `${ship.type_name} · 납기 ${ship.due_day}일`),
       s("rect", { x: LEFT, y, width: days * dayW, height: BAR_H, class: "lane" }),
     );
+    const planned = plan?.ships[ship.id];
+    if (planned) {
+      for (const st of activeStations(scenario)) {
+        const line = planned[st.id] && planLine(ship.id, st, planned[st.id], days, y, x, width);
+        if (line) g.append(line);
+      }
+    }
 
     const visible = (seg: Segment) => seg.start <= today;
     const clipEnd = (seg: Segment) => Math.min(seg.end, today);
@@ -524,7 +545,7 @@ function drawShipEquipment(svg: SVGElement, result: Result, scenario: Scenario, 
   }
 }
 
-export function renderShipGantt(result: Result, scenario: Scenario, shipId: string, today: number, onPick?: OnPick, size?: { width: number; height: number }): SVGElement {
+export function renderShipGantt(result: Result, scenario: Scenario, shipId: string, today: number, onPick?: OnPick, size?: { width: number; height: number }, plan?: Plan): SVGElement {
   useSize(size);
   const days = result.days;
   const ship = result.ships.find((sh) => sh.id === shipId)!;
@@ -572,8 +593,11 @@ export function renderShipGantt(result: Result, scenario: Scenario, shipId: stri
   stations.forEach((st, row) => {
     const y = rowY[row] + 8;
     const g = s("g", { class: "ship-row" });
+    const sp = plan?.ships[ship.id]?.[st.id];
+    const line = sp ? planLine(ship.id, st, sp, days, y, x, width) : null;
     if (expanded(st.id)) {
       drawUnitRows(g, ship, st, unitsOf(st.id), rowH(st.id), row, y, x, width, days * dayW, today, carried, onPick);
+      if (line) g.append(line);
       svg.append(g);
       return;
     }
@@ -588,6 +612,7 @@ export function renderShipGantt(result: Result, scenario: Scenario, shipId: stri
     const units = result.stations.find((rs) => rs.id === st.id)!.units;
     const segAt = (day: number) => ship.segments.find((sg) => sg.station === st.id && sg.start <= day && day <= sg.end);
     drawOccupancy(g, ship, st, units[0].daily, st.name, y, BAR_H, x, width, today, segAt, onPick);
+    if (line) g.append(line);
 
     // 이 배의 운반과 손실(아래 얇은 줄). 이 배가 겪은 사고·고장도 여기(4.12.13)
     for (const seg of ship.segments.filter((sg) => sg.station === st.id && sg.start <= today)) {
