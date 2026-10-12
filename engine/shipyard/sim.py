@@ -720,6 +720,8 @@ def simulate(config: dict[str, Any], scenario: dict[str, Any] | None = None, bas
         base_cfg = complete_config(normalize_config(base_cfg), scenario)
     base = _run(_with_order_days(base_cfg, scenario), scenario) if base_cfg is not None else None
     result["grade"] = _grade(result, config, base, base_cfg, scenario)
+    # 7관리 지표(4.15)는 평가서 부록용이라 기준선 실행에는 붙이지 않는다
+    result["management"] = _management(result, config, scenario)
     return result
 
 
@@ -1348,6 +1350,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             "labor_wait_days": labor_wait[p],
             "pair_wait_days": sum(pair_wait_days[p]),
             "breakdowns": station_breakdowns[p],
+            "overtime_days": sum(overtime_days[p]),
             "work_done": work_done[p],
             "inspections": inspections[p],
             "passes": passes[p],
@@ -1420,6 +1423,116 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                                          else (stations[candidates(i)[0]]["id"] if candidates(i) else None))}
                             for i in range(n_ships) if started[i] is not None and delivered[i] is None],
         },
+    }
+
+
+def _worst(totals: dict[str, int], order: list[str]) -> tuple[str, int] | None:
+    """값이 가장 큰 항목. 같으면 order(공정·배 목록)의 앞. 0뿐이면 없다."""
+    best = None
+    for key in order:
+        if totals.get(key, 0) > 0 and (best is None or totals[key] > best[1]):
+            best = (key, totals[key])
+    return best
+
+
+def _management(result: dict[str, Any], config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
+    """평가서 부록의 7관리 지표(4.15, D61): 계획·일정·자재·설비·품질·안전마다 대표 지표와 개선 포인트.
+
+    데이터 관리는 평가서 전체가 그 일이라 재지 않는다. 등급 점수에는 넣지 않는다. 포인트는 손실이 있는 요소에만,
+    {"code", 어디(station·ship), 크기}로 준다. 문구는 화면이 code마다 정한 안내를 쓴다(의문점 카드와 같은 방식).
+    """
+    days = result["days"]
+    ships = result["ships"]
+    station_ids = [st["id"] for st in scenario["stations"] if not is_skipped(st)]
+    ship_ids = [sh["id"] for sh in ships]
+    by_id = {st["id"]: st for st in result["stations"]}
+
+    def loss_by_station(kind: str) -> dict[str, int]:
+        totals: dict[str, int] = {}
+        for f in result["findings"]:
+            if f["kind"] == kind:
+                totals[f["station"]] = totals.get(f["station"], 0) + f["days"]
+        return totals
+
+    def part_sum(state: str) -> int:
+        return sum(sh["lead_time_parts"].get(state, 0) for sh in ships)
+
+    # 계획: 계획 간트(배가 혼자 쓴다고 본 일정)의 끝날과 실제 인도일
+    plan = plan_schedule(config, scenario)
+    slips: dict[str, int] = {}
+    on_plan = 0
+    for sh in ships:
+        planned_end = max(span["end"] for span in plan["ships"][sh["id"]].values())
+        end = sh["delivered_day"] if sh["delivered_day"] is not None else days
+        slips[sh["id"]] = max(0, end - planned_end)
+        if sh["delivered_day"] is not None and sh["delivered_day"] <= planned_end:
+            on_plan += 1
+    conflict_days = sum(c["end"] - c["start"] + 1 for c in plan["conflicts"])
+    worst_slip = _worst(slips, ship_ids)
+    plan_point = ({"code": "conflict", "days": conflict_days} if conflict_days
+                  else {"code": "slip", "ship": worst_slip[0], "days": worst_slip[1]} if worst_slip else None)
+
+    # 일정: 리드타임 중 일한 날(작업·운반)의 비율과 기다린 날
+    lead = sum(sh["lead_time"] for sh in ships)
+    flowing = part_sum(WORK) + part_sum(TRANSPORT)
+    waits = {k: part_sum(k) for k in (STATION_WAIT, LABOR_WAIT, TRANSPORT_WAIT)}
+    worst_wait = _worst(waits, list(waits))
+    schedule_point = None
+    if worst_wait:
+        where = _worst(loss_by_station(worst_wait[0]), station_ids)
+        schedule_point = {"code": worst_wait[0], "station": where[0] if where else None, "days": worst_wait[1]}
+
+    # 자재: 자재 대기와 재고
+    material_wait = part_sum(MATERIAL_WAIT)
+    inv = result["inventory_value_daily"]
+    material_point = None
+    if material_wait:
+        where = _worst(loss_by_station(MATERIAL_WAIT), station_ids)
+        material_point = {"code": "material_wait", "station": where[0] if where else None, "days": material_wait}
+    elif config.get("ordering") == "bulk" and result["costs"]["holding"] > 0:
+        material_point = {"code": "holding", "cost": result["costs"]["holding"]}
+
+    # 설비: 설비가 있는 공정(시운전 제외)의 OEE 평균과 고장
+    equipped = [by_id[st["id"]] for st in scenario["stations"]
+                if not is_skipped(st) and has_equipment(st) and by_id[st["id"]]["oee"]["oee"] is not None]
+    oee = sum(st["oee"]["oee"] for st in equipped) / len(equipped) if equipped else None
+    stops = {sid: by_id[sid]["breakdown_stop_days"] for sid in station_ids}
+    worst_stop = _worst(stops, station_ids)
+    equipment_point = {"code": "breakdown", "station": worst_stop[0], "days": worst_stop[1]} if worst_stop else None
+
+    # 품질: 직행률과 불량
+    defects: dict[str, int] = {}
+    accidents: dict[str, int] = {}
+    for ev in result["events"]:
+        if ev["type"] == "defect":
+            defects[ev["station"]] = defects.get(ev["station"], 0) + 1
+        elif ev["type"] == "accident":
+            accidents[ev["station"]] = accidents.get(ev["station"], 0) + 1
+    worst_defect = _worst(defects, station_ids)
+    quality_point = {"code": "defect", "station": worst_defect[0], "count": worst_defect[1]} if worst_defect else None
+
+    # 안전: 잔업 사고. 사고가 없어도 잔업한 날은 위험에 노출된 날
+    safety = result["qcd"]["safety"]
+    worst_accident = _worst(accidents, station_ids)
+    worst_overtime = _worst({sid: by_id[sid]["overtime_days"] for sid in station_ids}, station_ids)
+    safety_point = ({"code": "accident", "station": worst_accident[0], "count": worst_accident[1]} if worst_accident
+                    else {"code": "overtime", "station": worst_overtime[0], "days": worst_overtime[1]} if worst_overtime else None)
+
+    return {
+        "plan": {"on_plan": on_plan, "ships": len(ships), "slip_days": sum(slips.values()),
+                 "conflict_days": conflict_days, "point": plan_point},
+        "schedule": {"flow_efficiency": flowing / lead if lead else None, "lead_days": lead,
+                     "wait_days": waits, "point": schedule_point},
+        "material": {"wait_days": material_wait,
+                     "supply_delays": sum(1 for ev in result["events"] if ev["type"] == "supply_delay"),
+                     "avg_inventory": round(sum(inv) / len(inv), 2) if inv else 0.0,
+                     "holding": result["costs"]["holding"], "point": material_point},
+        "equipment": {"oee": oee, "breakdowns": result["status"]["breakdowns"],
+                      "stop_days": sum(stops.values()), "point": equipment_point},
+        "quality": {"first_pass_yield": result["qcd"]["quality"]["first_pass_yield"],
+                    "defects": result["status"]["defects"], "rework_days": part_sum(REWORK), "point": quality_point},
+        "safety": {"accidents": safety["accidents"], "stop_days": safety["stop_days"],
+                   "overtime_days": safety["overtime_days"], "point": safety_point},
     }
 
 

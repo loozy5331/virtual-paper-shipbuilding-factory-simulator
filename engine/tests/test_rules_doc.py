@@ -1267,5 +1267,67 @@ class SimpleScenario(unittest.TestCase):
         self.assertEqual(load_scenario("simple")["options"]["max_units"], 1)
 
 
+class Management(unittest.TestCase):
+    """8장 7관리 지표(4.15, D61): 평가서 부록. 다른 결과 숫자와 등급은 바뀌지 않는다."""
+
+    def test_basic_unmanaged_by_hand(self):
+        # 10장 프리셋 표(Presets.EXPECTED["unmanaged"])의 리드타임 분해와 OEE로 손 계산한다
+        r = simulate(PRESETS["unmanaged"], baseline=False)
+        m = r["management"]
+        parts = Presets.EXPECTED["unmanaged"]["parts"]
+        col = lambda state: sum(p[STATES.index(state)] for p in parts.values())
+        # 일정: (작업 138 + 운반 18) ÷ 리드타임 366
+        self.assertEqual((col("work"), col("transport"), m["schedule"]["lead_days"]), (138, 18, 366))
+        self.assertAlmostEqual(m["schedule"]["flow_efficiency"], 156 / 366)
+        self.assertEqual(m["schedule"]["wait_days"], {"station_wait": 95, "labor_wait": 0, "transport_wait": 13})
+        self.assertEqual(m["schedule"]["point"], {"code": "station_wait", "station": "block_assembly", "days": 95})
+        # 자재·품질: 배 기준 대기·재작업 날
+        self.assertEqual((m["material"]["wait_days"], m["quality"]["rework_days"]), (col("material_wait"), col("rework")))
+        self.assertEqual(m["material"]["point"], {"code": "material_wait", "station": "quay_outfitting", "days": 26})
+        # 설비: 시운전(설비 없음)을 뺀 9공정 OEE 평균
+        oee = Presets.EXPECTED["unmanaged"]["oee"]
+        self.assertAlmostEqual(m["equipment"]["oee"] * 100, sum(v[3] for k, v in oee.items() if k != "sea_trial") / 9, delta=0.05)
+        self.assertEqual((m["equipment"]["breakdowns"], m["equipment"]["stop_days"]), (13, 14))
+        # 계획: 무관리는 모든 배가 1일 착수라 계획 간트가 겹친다
+        self.assertEqual((m["plan"]["on_plan"], m["plan"]["slip_days"], m["plan"]["conflict_days"]), (0, 210, 183))
+        self.assertEqual(m["plan"]["point"], {"code": "conflict", "days": 183})
+        self.assertEqual(m["quality"]["point"], {"code": "defect", "station": "pre_outfitting", "count": 5})
+        self.assertEqual(m["safety"]["point"], {"code": "accident", "station": "block_assembly", "count": 2})
+
+    def test_simple_managed(self):
+        # 간이공정 B안: 겹침이 없고, S1만 첫 자재 키트를 기다려 계획 끝날 11일보다 3일 늦은 14일에 인도한다
+        m = simulate(SIMPLE["managed"], baseline=False)["management"]
+        self.assertEqual(m["plan"], {"on_plan": 3, "ships": 4, "slip_days": 3, "conflict_days": 0,
+                                     "point": {"code": "slip", "ship": "S1", "days": 3}})
+        self.assertAlmostEqual(m["schedule"]["flow_efficiency"], 56 / 59)
+        self.assertIsNone(m["schedule"]["point"])
+        self.assertEqual(m["material"]["point"], {"code": "material_wait", "station": "cutting", "days": 2})
+        self.assertEqual(m["equipment"]["point"], {"code": "breakdown", "station": "erection", "days": 2})
+        self.assertEqual(m["quality"]["point"], {"code": "defect", "station": "cutting", "count": 1})
+        self.assertEqual(m["safety"], {"accidents": 0, "stop_days": 0, "overtime_days": 0, "point": None})
+
+    def test_points_without_loss(self):
+        # 자재 대기가 없을 때: 일괄 발주면 재고비 포인트, 역산이면 없음. 사고가 없고 잔업만 했으면 잔업 노출
+        m = simulate(PRESETS["managed"], baseline=False)["management"]
+        self.assertEqual((m["material"]["wait_days"], m["material"]["point"]), (0, None))
+        bulk = copy.deepcopy(PRESETS["managed"])
+        bulk["ordering"] = "bulk"
+        r = simulate(bulk, baseline=False)
+        self.assertEqual(r["management"]["material"]["wait_days"], 0)
+        self.assertEqual(r["management"]["material"]["point"], {"code": "holding", "cost": r["costs"]["holding"]})
+        ot = copy.deepcopy(SIMPLE["managed"])
+        ot["stations"]["sub_assembly"]["overtime"] = True
+        m = simulate(ot, baseline=False)["management"]
+        self.assertEqual(m["safety"], {"accidents": 0, "stop_days": 0, "overtime_days": 10,
+                                       "point": {"code": "overtime", "station": "sub_assembly", "days": 10}})
+
+    def test_does_not_change_results(self):
+        # 부록은 결과를 읽기만 한다: 기준선 실행에는 붙지 않고, 등급은 그대로
+        r = simulate(PRESETS["managed"])
+        self.assertNotIn("management", simulate(PRESETS["managed"], baseline=False)["grade"])
+        self.assertEqual(set(r["management"]), {"plan", "schedule", "material", "equipment", "quality", "safety"})
+        self.assertEqual((r["profit"], r["grade"]["grade"]), (simulate(PRESETS["managed"], baseline=False)["profit"], "A"))
+
+
 if __name__ == "__main__":
     unittest.main()

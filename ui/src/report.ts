@@ -1,8 +1,9 @@
-// 한 번의 실행 레포트: 등급, 의문점 카드, QCD, 현황, 원가 내역, 리드타임 분해, 공정별 OEE, 재고 금액 추이, 사건 기록.
+// 한 번의 실행 레포트: 등급, 의문점 카드, QCD, 현황, 원가 내역, 리드타임 분해, 공정별 OEE, 재고 금액 추이, 사건 기록, 부록 7관리 지표.
 // 모든 숫자는 엔진 결과에 있는 값이다. 막대 길이와 차트 좌표를 정하는 비율만 화면에서 구한다.
 
-import type { Finding, Grade, Result, Scenario, ShipResult, SimEvent } from "./api";
+import type { Finding, Grade, Management, MgmtPoint, Result, Scenario, ShipResult, SimEvent } from "./api";
 import { h, money, num, pct, s, signed } from "./dom";
+import { openOptions } from "./form";
 import { COST_ITEMS, EVENT_NAME, GRADE_COLOR, GRADE_NOTE, GRADE_TEXT, LEAD_TIME_STATES, STATE_INFO, STATION_COLOR } from "./labels";
 
 export function eventText(ev: SimEvent, scenario: Scenario): string {
@@ -70,7 +71,7 @@ function card(title: string, ...body: (HTMLElement | SVGElement | null)[]): HTML
 }
 
 // 평가서의 QCD 칸 접기(4.14). 열림 상태는 회차를 바꿔도 그대로 둔다. 위의 등급·의문점·QCD 요약은 접지 않는다.
-const REPORT_FOLD_DEFAULT: Record<string, boolean> = { q: true, c: true, d: true, s: true, events: false };
+const REPORT_FOLD_DEFAULT: Record<string, boolean> = { q: true, c: true, d: true, s: true, events: false, mgmt: true };
 const reportFolds = new Map<string, boolean>();
 
 /** QCD 칸: 제목 줄(Q·C·D 표, 이름, 접었을 때 보일 요약)과 카드 묶음 */
@@ -101,6 +102,85 @@ function findingText(f: Finding, scenario: Scenario): string {
   const name = STATE_INFO[f.kind]?.name ?? f.kind;
   const where = f.kind === "transport_wait" ? `${station} 완료 후` : station;
   return `${f.ship} · ${where} · ${name} ${f.days}일 (${f.start}~${f.end}일)`;
+}
+
+// 부록: 7관리 지표와 개선 포인트(4.15, D61). 지표와 포인트는 엔진이 고르고, 화면은 포인트 종류마다 정한 안내만 붙인다.
+// 안내는 생산계획서 칸 번호(① 사람 ② 공용 설비 ③ 자재 ④ 공정 ⑤ 연구, 4.14)로 고칠 곳을 가리키고, 분기에서 열린 선택지만 말한다.
+const MGMT_ROWS: { key: keyof Management; name: string }[] = [
+  { key: "plan", name: "계획" }, { key: "schedule", name: "일정" }, { key: "material", name: "자재" },
+  { key: "equipment", name: "설비" }, { key: "quality", name: "품질" }, { key: "safety", name: "안전" },
+];
+
+function pointText(point: MgmtPoint, scenario: Scenario): string {
+  const opts = openOptions(scenario);
+  const station = (id: string | null) => (id ? scenario.stations.find((st) => st.id === id)?.name ?? id : "");
+  const list = (xs: (string | false | undefined)[]) => xs.filter(Boolean).join(", ");
+  const predictive = scenario.research.predictive?.name;
+  const inspect = scenario.research.auto_inspect?.name;
+  switch (point.code) {
+    case "conflict":
+      return `계획 간트에서 같은 작업장을 겹쳐 쓴 날이 ${point.days}일입니다. 겹친 만큼 뒤 순위 배가 기다립니다. `
+        + `착수 예정일 간격을 벌리${opts.max_units > 1 ? "거나 ④ 공정에서 작업장을 늘리" : ""}세요.`;
+    case "slip":
+      return `${point.ship}이 계획 간트의 끝날보다 ${point.days}일 늦게 인도됐습니다. 겹침이 없어도 대기·불량·고장이 계획을 밀어냅니다. 아래 요소를 확인하세요.`;
+    case "station_wait":
+      return `${station(point.station)} 작업장을 기다린 날이 가장 많습니다(${point.days}일). 병목 공정입니다. `
+        + `착수 예정일 간격, ④ 공정의 ${list([opts.max_units > 1 && "작업장 수", "잔업", opts.methods.length > 1 && "공법"])}을 확인하세요.`;
+    case "labor_wait":
+      return `${station(point.station)}에 보낼 사람이 없어 기다린 날이 가장 많습니다(${point.days}일). ① 사람에서 그 직종 인원을 확인하세요.`;
+    case "transport_wait":
+      return `${station(point.station)}을 끝낸 블록이 트랜스포터를 기다린 날이 가장 많습니다(${point.days}일). `
+        + `② 공용 설비에서 트랜스포터 ${(opts.transporter_counts?.length ?? 1) > 1 ? "대수와 " : ""}정비를 확인하세요.`;
+    case "material_wait":
+      return `자재를 기다린 날이 ${point.days}일이고 ${station(point.station)}에서 가장 길었습니다. `
+        + `③ 자재에서 ${list(["발주 방식", opts.jit_buffer && "역산 여유일", opts.safety_stock && "안전 재고"])}을 확인하세요.`;
+    case "holding":
+      return `자재 대기는 없지만 일괄 발주로 재고비 ${money(point.cost)}를 냈습니다. ③ 자재에서 역산 발주로 바꿔 보세요.`;
+    case "breakdown":
+      return `${station(point.station)} 설비 고장으로 ${point.days}일 멈췄습니다. ④ 공정의 정비${predictive ? `, ⑤ 연구의 ${predictive}` : ""}를 확인하세요.`;
+    case "defect":
+      return `${station(point.station)}에서 불량이 가장 많습니다(${point.count}건). `
+        + `④ 공정의 ${list([opts.methods.length > 1 && "공법", opts.crews.includes("skilled") && "숙련공", "정비", "잔업"])}`
+        + `${opts.material_grades.includes("cheap") ? ", ③ 자재 등급" : ""}${inspect ? `, ⑤ 연구의 ${inspect}` : ""}을 확인하세요.`;
+    case "accident":
+      return `${station(point.station)}에서 잔업 사고가 가장 많습니다(${point.count}건). 잔업한 작업장에서 사고가 납니다. 잔업 대신 ${opts.max_units > 1 ? "① 사람의 인원이나 ④ 공정의 작업장 수" : "① 사람의 인원"}로 속도를 내 보세요.`;
+    case "overtime":
+      return `사고는 없었지만 ${station(point.station)}에서 ${point.days}일 잔업했습니다. 잔업한 날마다 사고 위험이 있습니다.`;
+  }
+}
+
+function mgmtCard(m: Management, scenario: Scenario, safetyWarnings?: number): HTMLElement {
+  const w = m.schedule.wait_days;
+  const cells: Record<keyof Management, [string, string, string]> = {
+    plan: ["계획대로 인도", `${m.plan.on_plan} / ${m.plan.ships}척`,
+      `계획보다 밀린 날 ${m.plan.slip_days}일 · 계획 겹침 ${m.plan.conflict_days}일`],
+    schedule: ["흐름 효율", pct(m.schedule.flow_efficiency, 0),
+      `리드타임 ${m.schedule.lead_days}일 중 작업장 대기 ${w.station_wait} · 인력 대기 ${w.labor_wait} · 운반 대기 ${w.transport_wait}일`],
+    material: ["자재 대기", `${m.material.wait_days}일`,
+      `${scenario.supply_delays ? `입고 지연 ${m.material.supply_delays}건 · ` : ""}평균 재고 ${money(m.material.avg_inventory)} · 재고비 ${money(m.material.holding)}`],
+    equipment: ["평균 OEE", pct(m.equipment.oee, 0),
+      `고장 ${m.equipment.breakdowns}건 · 고장으로 멈춘 날 ${m.equipment.stop_days}일`],
+    quality: ["직행률", pct(m.quality.first_pass_yield, 0),
+      `불량 ${m.quality.defects}건 · 재작업 ${m.quality.rework_days}일`],
+    safety: ["잔업 사고", `${m.safety.accidents}건`,
+      `사고로 멈춘 날 ${m.safety.stop_days}일 · 잔업 ${m.safety.overtime_days}일${safetyWarnings === undefined ? "" : ` · 현장 안전 경고 ${safetyWarnings}회`}`],
+  };
+  return card("7관리 지표와 개선 포인트",
+    h("div", { class: "mgmt" },
+      h("div", { class: "mgmt-row mgmt-head" }, h("span", null, "요소"), h("span", null, "지표"), h("span", null, "개선 포인트")),
+      MGMT_ROWS.map(({ key, name }) => {
+        const [label, value, sub] = cells[key];
+        const point = m[key].point;
+        return h("div", { class: "mgmt-row" },
+          h("b", { class: "mgmt-name" }, name),
+          h("div", { class: "mgmt-value" },
+            h("span", null, label, " ", h("b", null, value)),
+            h("small", null, sub)),
+          point
+            ? h("p", { class: "mgmt-point" }, pointText(point, scenario))
+            : h("p", { class: "mgmt-point good" }, "손실 없음"));
+      })),
+    h("p", { class: "hint" }, "교육의 7요소 중 데이터 관리는 이 평가서 전체(간트, 의문점, 사건 기록)가 맡아 따로 재지 않습니다. 7관리 지표는 등급 점수에 넣지 않습니다."));
 }
 
 function gradeCard(grade: Grade): HTMLElement {
@@ -318,5 +398,11 @@ export function renderReport(result: Result, scenario: Scenario, maxRate: number
       leadCard),
     qcdSection("s", "S", "안전", `잔업 사고 ${safety.accidents}건 · 사고로 멈춘 날 ${safety.stop_days}일 · 잔업 ${safety.overtime_days}일${safetyWarnings === undefined ? "" : ` · 현장 안전 경고 ${safetyWarnings}회`}`,
       safetyCard),
-    qcdSection("events", null, "사건 기록", `${result.events.filter((ev) => important.has(ev.type)).length}건(주요 사건)`, eventsCard));
+    qcdSection("events", null, "사건 기록", `${result.events.filter((ev) => important.has(ev.type)).length}건(주요 사건)`, eventsCard),
+    // 부록(4.15): 옛 회차 결과에는 management가 없어 칸을 그리지 않는다
+    result.management
+      ? qcdSection("mgmt", "부록", "7관리 지표",
+        `개선 포인트 ${MGMT_ROWS.filter(({ key }) => result.management![key].point).length}개 / 6요소`,
+        mgmtCard(result.management, scenario, safetyWarnings))
+      : null);
 }

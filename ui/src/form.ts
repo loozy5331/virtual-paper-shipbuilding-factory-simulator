@@ -248,7 +248,7 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
 }
 
 /** 분기가 열어 둔 옵션(D33). 시나리오에 없으면 모두 연다. */
-function openOptions(scenario: FormContext["scenario"]): ScenarioOptions {
+export function openOptions(scenario: FormContext["scenario"]): ScenarioOptions {
   return scenario.options ?? {
     crews: Object.keys(scenario.rules.crews) as Crew[], methods: Object.keys(scenario.rules.methods),
     material_grades: Object.keys(scenario.material_grades), max_units: scenario.expansion.max_units, split: true, hoist: true, jit_buffer: true, safety_stock: true,

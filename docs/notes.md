@@ -59,7 +59,7 @@ Node는 Homebrew로 설치했다(v26).
 - `ui/src/main.ts`: 상태, 재생 타이머, 회차 기록, 화면 넷(desk 첫 화면 / plan 생산계획서 / room 관제실 / field 현장)과 클립보드가 날아가는 전환(`makeGhost`·`flyGhost`).
   관제실: 벽 명판(분기·회차·목표·최고·회차 목록, 반기 이름 ▾을 누르면 반기 메뉴 `.plate-menu` → 그 반기 생산계획서로 `switchFromRoom`, 4.2), 왼쪽 모니터(간트 + 아래 재생 막대), 오른쪽 모니터(위 3/4 작업 현황 `cctv.ts`, 아래 1/4 사건 기록, 최대화했을 때만 아래 재생 막대), 책상(생산계획서, 두 손, 작업모, 가운데 기둥 하나인 듀얼 모니터암 `.monitor-arm`·`.arm-clamp`), 평가서 클립보드(`board` none/up/down).
   모니터는 Windows 창처럼 제목 표시줄(제목, □ 최대화 / ❐ 이전 크기로(굵은 선 그림, 2.1.1에 닫기 ✕는 뺐다), 두 번 눌러 최대화). 어두운 막을 누르면 모니터는 줄고 평가서는 내려간다(Esc도 같다). `form.ts` 계획 양식, `plan-gantt.ts` 계획 간트(착수 예정일 끌기, ←/→), `gantt.ts` SVG 간트(전체: 배 4줄 + 연구소·트랜스포터·골리앗 크레인 줄, 배 탭: 공정별 줄 + 같은 공정을 쓰던 다른 배 + 자재 입고),
-  `report.ts` 평가서(위: 등급·의문점·QCDS 네 숫자, 아래 접는 칸 4.14: Q 품질·OEE / C 원가·인력 가동·재고 금액 / D 배별 납기와 리드타임 / S 안전(`qcd.safety`, 현장 안전 경고) / 사건 기록, `qcdSection`·`reportFolds`), `api.ts` 타입과 요청, `dom.ts` 요소 도우미 `h()`, `labels.ts` 이름과 색.
+  `report.ts` 평가서(위: 등급·의문점·QCDS 네 숫자, 아래 접는 칸 4.14: Q 품질·OEE / C 원가·인력 가동·재고 금액 / D 배별 납기와 리드타임 / S 안전(`qcd.safety`, 현장 안전 경고) / 사건 기록 / 부록 7관리 지표(4.15, `management`, `mgmtCard`·`pointText`: 포인트 종류마다 생산계획서 칸 번호로 안내, `openOptions`로 열린 선택지만), `qcdSection`·`reportFolds`), `api.ts` 타입과 요청, `dom.ts` 요소 도우미 `h()`, `labels.ts` 이름과 색.
 - 양식은 입력 중에 다시 그리지 않는다(커서가 빠진다). 프리셋, 발주 방식, 우선순위 맞바꿈, 연구 대기열 변경 때만 다시 그린다.
   계획 간트는 `/api/preview`의 `plan`(배가 작업장을 혼자 쓸 때의 일정, `conflicts` 겹침)을 받을 때마다 다시 그린다. 배 탭의 발주일·입고일도 preview의 `materials`다.
   [공통 | 배별] 탭 전환은 hidden만 바꾼다. 미리보기 숫자는 `data-preview` 자리에 채우고, 오류가 난 탭 라벨에 ⚠를 붙인다.

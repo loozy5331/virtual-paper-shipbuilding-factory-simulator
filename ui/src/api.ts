@@ -434,6 +434,26 @@ export type SimEvent =
   | { day: number; type: "research_done"; research: string }
   | { day: number; type: "delivery"; ship: string; late_days: number };
 
+/** 7관리 개선 포인트(4.15). 손실이 있는 요소에만 붙는다. 문구는 화면이 code마다 정한 안내를 쓴다 */
+export type MgmtPoint =
+  | { code: "conflict"; days: number }
+  | { code: "slip"; ship: string; days: number }
+  | { code: "station_wait" | "labor_wait" | "transport_wait" | "material_wait"; station: string | null; days: number }
+  | { code: "holding"; cost: number }
+  | { code: "breakdown" | "overtime"; station: string; days: number }
+  | { code: "defect" | "accident"; station: string; count: number };
+
+/** 평가서 부록의 7관리 지표(4.15, D61). 데이터 관리는 평가서 전체라 따로 없다. 등급에는 넣지 않는다 */
+export interface Management {
+  plan: { on_plan: number; ships: number; slip_days: number; conflict_days: number; point: MgmtPoint | null };
+  schedule: { flow_efficiency: number | null; lead_days: number;
+    wait_days: { station_wait: number; labor_wait: number; transport_wait: number }; point: MgmtPoint | null };
+  material: { wait_days: number; supply_delays: number; avg_inventory: number; holding: number; point: MgmtPoint | null };
+  equipment: { oee: number | null; breakdowns: number; stop_days: number; point: MgmtPoint | null };
+  quality: { first_pass_yield: number | null; defects: number; rework_days: number; point: MgmtPoint | null };
+  safety: { accidents: number; stop_days: number; overtime_days: number; point: MgmtPoint | null };
+}
+
 export interface Result {
   days: number;
   qcd: {
@@ -465,6 +485,8 @@ export interface Result {
   events: SimEvent[];
   findings: Finding[];
   grade: Grade;
+  /** 4.15 7관리 지표. 옛 회차 결과에는 없다 */
+  management?: Management;
 }
 
 export class ApiError extends Error {
