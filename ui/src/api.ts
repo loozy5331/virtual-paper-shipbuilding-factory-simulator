@@ -30,7 +30,7 @@ export interface Config {
   /** 시나리오 id(2.0). 없으면 기본 분기. */
   scenario?: string;
   ordering?: Ordering;
-  /** 4.13(D58): 역산 발주의 여유일 0~3. 없으면 0. 수주 증가부터 */
+  /** 4.13(D59): 역산 발주의 여유일 0~3. 없으면 0. 수주 증가부터 */
   jit_buffer?: number;
   ships: Record<string, ShipConfig>;
   stations: Record<string, StationConfig>;
@@ -188,7 +188,7 @@ export interface Scenario {
   material_grades: Record<"standard" | "cheap", { name: string; price_factor: number; defect_add: number }>;
   research: Record<string, ResearchInfo>;
   ordering: Record<Ordering, { name: string; summary: string; buffer_days?: number; buffer_max?: number }>;
-  /** 4.13(D58): 입고 지연이 있는 분기인가. 지연 확률·일수는 supply_delay */
+  /** 4.13(D59): 입고 지연이 있는 분기인가. 지연 확률·일수는 supply_delay */
   supply_delays?: boolean;
   supply_delay: { probability: number; days: number };
   kpi: { revenue: number; profit: number; on_time_rate: number; first_pass_yield: number };

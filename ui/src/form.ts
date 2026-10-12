@@ -313,7 +313,7 @@ function commonPane(ctx: FormContext): HTMLElement {
     h("span", { class: "field-label" }, "자재 발주"),
     segmented("ordering", orderings.map(([id, o]) => ({ value: id, label: o.name })),
       config.ordering ?? "jit", (v) => { config.ordering = v; ctx.onEdit(true); }));
-  // 역산 발주 여유일(4.13, D58): 수주 증가부터. 입고 지연을 여유일로 메우고, 그만큼 재고비를 낸다.
+  // 역산 발주 여유일(4.13, D59): 수주 증가부터. 입고 지연을 여유일로 메우고, 그만큼 재고비를 낸다.
   const jit = scenario.ordering.jit;
   const buffer = opts.jit_buffer && (config.ordering ?? "jit") === "jit"
     ? h("div", { class: "field-row" },

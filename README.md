@@ -21,9 +21,13 @@
 
 ## 실행
 
-Python 3.10 이상이면 설치할 것이 없다.
+Python 3.10 이상이면 설치할 것이 없다(외부 패키지 없음). 시스템 Python(macOS 기본 3.9)과 섞이지 않게 프로젝트 전용 가상환경을 쓴다. 버전은 `.python-version`(3.12).
 
 ```bash
+# 가상환경 만들기(한 번). uv가 없으면: python3.12 -m venv .venv
+uv venv .venv
+source .venv/bin/activate   # 이후 python은 .venv의 3.12
+
 # 엔진 테스트
 cd engine && python -m unittest discover -s tests -t .
 

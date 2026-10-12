@@ -7,7 +7,7 @@
 - 목적: 조선업 생산관리 교육(7요소, QCD, 4M) 복습과 시연. 게임 완성도보다 "배운 개념이 화면에서 보이는가"가 기준이다.
 - 규칙의 기준 문서(Claude Docs): https://claude.ai/code/artifact/63f9424c-6a92-461b-8fb0-06a2820778d0
   docs 도구로 읽고 고친다. 통째로 읽지 말고 `search`나 `view` + `parentId`로 고칠 곳만 읽는다.
-- 버전: 4.13.0(2026-10-12, 입고 지연과 역산 발주 여유일). 지난 버전은 `CHANGELOG.md`, 결정 기록은 `docs/handoff-v2.0.md`(D10~D58).
+- 버전: 4.13.0(2026-10-12, 입고 지연과 역산 발주 여유일). 지난 버전은 `CHANGELOG.md`, 결정 기록은 `docs/handoff-v2.0.md`(D10~D59).
 - 다음: 4.x 이후 목록에서 고른다(안전 재고, 7관리 지표, 시나리오·선종 추가 등). `docs/roadmap.md`
 - 브랜치: `main`은 MAJOR만, 작업은 `develop`에서 따서 `develop`으로 PR(규칙은 `CHANGELOG.md`). 버전은 엔진 `__init__.py`, `ui/package.json`·`package-lock.json`이 같은 값.
 - 세부 메모(시연 흐름, 규칙 요약, 화면·3D 세부, 예시 계획 점수): `docs/notes.md`. 필요한 절만 grep으로 찾아 읽는다.
@@ -34,7 +34,7 @@
 
 - 장식은 절제한다. 플래시 게임 같은 장식(나뭇결, 큰 금속 집게)은 뺐다. 종이 서식 = 생산계획서·생산실적 평가서, 결재란 작성 "Bell"·승인 "Loozy"(`paper.ts`).
 - 화면에 "CCTV"라는 말을 쓰지 않는다. 지연 표시는 오늘 기준, 설비 합계는 기간이 끝난 뒤에만(결과를 미리 알려 주지 않게).
-- 색은 색각 이상 검증을 통과한 값이다(`labels.ts`). 공정 10색이라 막대 안 공정 이름이 필수.
+- 색은 색각 이상 검증을 통과한 값이다(`labels.ts`). 공정 10색. 관제실 전체 간트 막대에는 공정 이름을 쓰지 않고 아래 범례로 읽는다(4.12.9 사용자, 이름은 마우스를 올리면).
 - 양식은 입력 중에 다시 그리지 않는다(커서가 빠진다). 날아가는 복제·펼친 계획서는 라디오 name을 뗀다. 클래스 `.ghost`는 쓰지 않는다(`.btn.ghost`와 겹침).
 - 3D: CSS2D 라벨은 로트를 지울 때 요소를 직접 뗀다. `shadow.radius`는 건드리지 않는다(그림자가 사라짐). Three.js는 현장에서만 동적 import.
 - 재생: 관제실 기본 4배속(하루 0.5초 ÷ 배속), 현장 1배속 하루 2초(`FIELD_MS_PER_DAY`).
@@ -42,12 +42,14 @@
 ## 확인과 명령
 
 ```bash
-cd engine && python3 -m unittest discover -s tests -t .   # 엔진 테스트
-python3 -m unittest discover -s server/tests -t server    # 저장소 테스트
-cd engine && python3 -m tools.balance growth -n 16        # 균형 점검(분기 하나 약 2분, 출력은 파일로)
+uv venv .venv                                              # 가상환경(Python 3.12, .python-version). 외부 패키지 없음
+cd engine && ../.venv/bin/python -m unittest discover -s tests -t .   # 엔진 테스트
+.venv/bin/python -m unittest discover -s server/tests -t server    # 저장소 테스트
+cd engine && ../.venv/bin/python -m tools.balance growth -n 16        # 균형 점검(분기 하나 약 2분, 출력은 파일로)
 cd ui && npx tsc --noEmit -p . && npm run build            # 타입 검사와 빌드
-python3 server/app.py --no-open                            # 서버 http://localhost:8000 (--host 0.0.0.0: 수업)
+.venv/bin/python server/app.py --no-open                            # 서버 http://localhost:8000 (--host 0.0.0.0: 수업)
 ```
 
+- Python은 시스템 3.9가 아니라 `.venv`(3.12)를 쓴다. 셸 상태가 이어지지 않으니 activate 대신 경로로 부른다. worktree에는 `.venv`가 없으므로(git 제외) 그 안에서 `uv venv .venv`로 만든다.
 - 헤드리스 Chrome: scratchpad에 playwright-core를 설치하고 `/Applications/Google Chrome.app`을 headless로 쓴다(저장소에 넣지 않음). 스크린샷은 볼 부분만 잘라 찍는다. 시험 실행은 worktree 서버(다른 포트)로 해서 사용자 DB에 회차를 남기지 않는다.
 - 병합 뒤에는 메인 체크아웃을 pull + 빌드하고, 엔진·서버가 바뀌었으면 8000번 서버를 재시작한다.

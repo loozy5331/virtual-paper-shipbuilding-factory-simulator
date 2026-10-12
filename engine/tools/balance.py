@@ -72,7 +72,7 @@ def space(sc: dict[str, Any]) -> dict[str, list[Any]]:
     out["fk_maintenance"] = [False, True]
     out["research"] = list(range(len(RESEARCH_SETS)))
     out["ordering"] = list(sc["ordering"])
-    # 역산 발주 여유일(4.13, D58): 분기가 열었을 때만 0~buffer_max일
+    # 역산 발주 여유일(4.13, D59): 분기가 열었을 때만 0~buffer_max일
     jit = sc["ordering"]["jit"]
     out["jit_buffer"] = list(range(jit["buffer_max"] + 1)) if opts.get("jit_buffer") else [jit["buffer_days"]]
     out["gap"] = [1, 2, 3, 4, 5, 6, 8]

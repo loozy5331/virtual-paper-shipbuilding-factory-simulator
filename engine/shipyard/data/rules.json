@@ -283,7 +283,7 @@
     }
   },
   "supply_delay": {
-    "_comment": "입고 지연(4.13, D58): 시나리오가 supply_delays를 켠 분기에서, 발주마다 난수표 random.supply[배][자재]가 probability보다 작으면 days일 늦게 들어온다.",
+    "_comment": "입고 지연(4.13, D59): 시나리오가 supply_delays를 켠 분기에서, 발주마다 난수표 random.supply[배][자재]가 probability보다 작으면 days일 늦게 들어온다.",
     "probability": 0.25,
     "days": 3
   },

@@ -363,8 +363,10 @@ select.priority { max-width: 84px; }
 .gantt .bar-label.small { font-size: 11px; }
 .gantt .transport { fill: none; stroke: var(--ink-3); stroke-width: 1.3; stroke-dasharray: 3 2; }
 .gantt .section-label { font-size: 12px; font-weight: 700; fill: var(--ink-2); }
+.gantt .unit-id { font-size: 10px; fill: var(--ink-3); text-anchor: end; }
 .gantt .eq-id { font-size: 12px; font-weight: 700; fill: var(--ink); }
 .gantt .band.eq { fill: rgba(31, 42, 36, 0.02); }
+.legend i.pair-mark { border: 1px solid; }
 .legend i.transport-mark { background: transparent; border: 1.5px dashed var(--ink-3); }
 .legend i.hatch-over, .stack-part.hatch {
   background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.55) 0 2px, transparent 2px 5px) !important;
@@ -456,9 +458,6 @@ select.priority { max-width: 84px; }
 .gantt .arrival-label { font-size: 10px; fill: var(--ink-2); text-anchor: middle; font-weight: 600; }
 .legend i.other-mark { background: #d3dbd6; }
 .legend i.arrival-mark { width: 0; height: 0; border-radius: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 9px solid #de9644; }
-.ship-detail { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
-.ship-events { max-height: 220px; }
-.ship-events li.quiet { display: block; color: var(--ink-3); }
 .chip.cut { background: #2a78d6; color: #fff; }
 
 /* =====================================================================
@@ -791,7 +790,6 @@ body { background: var(--desk); }
 .monitor .bezel .screen { border-radius: 0 0 2px 2px; }
 .zoom-only { display: none; }
 .monitor.zoomed .zoom-only { display: flex; }
-.monitor.zoomed .ship-detail.zoom-only { display: flex; }
 /* 크게 보기: 그 모니터가 화면 가득. 나머지는 흐리게. */
 .monitor.zoomed { position: fixed; inset: 14px; z-index: 50; display: flex; flex-direction: column; }
 .monitor.zoomed .bezel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -816,7 +814,9 @@ body { background: var(--desk); }
 .screen-tabs { display: flex; gap: 2px; }
 .screen-tab { border: 0; background: transparent; color: var(--ink-3); font: inherit; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
 .screen-tab.active { background: var(--ink); color: #fff; }
-.gantt-screen .legend { font-size: 0.74rem; }
+/* 간트 범례는 스크롤 밖 모니터 아래에 고정(4.12.3). 운반 다음 줄바꿈 */
+.gantt-legend { flex: none; margin-top: 0; padding: 5px 10px 6px; border-top: 1px solid var(--line); background: var(--paper); font-size: 0.74rem; }
+.legend .break { flex-basis: 100%; height: 0; }
 
 /* 오른쪽 모니터: 위 3/4 작업 현황 전경(2D), 아래 1/4 사건 기록 */
 .right-top { position: relative; flex: 3; min-height: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: center; }

@@ -14,8 +14,8 @@ import { renderDesk } from "./desk";
 import { planLabel, renderForm, renderPlanBar, renderPlanNotes, renderPlanTabs, updatePreview, type FormContext } from "./form";
 import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
 import { docHead, REVIEWER } from "./paper";
-import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, TRANSPORT_STATE } from "./labels";
-import { breakdownBar, breakdownLegend, eventText, renderReport } from "./report";
+import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, PAIR_WAIT_EDGE, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, TRANSPORT_STATE } from "./labels";
+import { eventText, renderReport } from "./report";
 import { renderCctv } from "./cctv";
 import { renderTrackCard, type TrackPick } from "./track";
 import { buildFrame, TRIAL_DEPART, type Frame } from "./scene/frame";
@@ -34,8 +34,6 @@ function msPerDay(): number {
 }
 // 사건 기록에 남기는 사건. 투입, 완료, 출고, 운반은 너무 잦아서 뺀다.
 const LOG_EVENTS = new Set(["arrival", "supply_delay", "defect", "accident", "breakdown", "delivery", "research_done"]);
-// 배 탭(크게 보기)의 그 배 사건: 투입, 완료, 입고(지연), 불량, 사고, 운반, 인도
-const SHIP_EVENTS = new Set(["arrival", "supply_delay", "enter", "complete", "defect", "accident", "transport_start", "delivery"]);
 
 interface Run {
   n: number;
@@ -89,8 +87,6 @@ interface State {
   track: string | null;
   /** 떠 있는 추적 상자(누른 블록이나 선반). 떠 있는 동안 재생은 멈춰 있다 */
   pick: TrackPick | null;
-  /** 현장에서 관리자가 선 자리: 안전한 자리, 또는 버튼으로 순간이동한 설비 옆(3.0) */
-  managerSpot: "safe" | "crane" | "cart";
   /** 현장 시점(4.10): 3인칭(기본, 관제실에서 나가면 늘 3인칭) 또는 1인칭(관리자 소인의 눈) */
   fieldView: FieldView;
   /** 마지막으로 서명한 사람(이 브라우저가 기억한다). */
@@ -129,6 +125,8 @@ const els = {
   // 오른쪽 모니터를 크게 볼 때만 보이는 같은 재생 막대
   osdRight: h("div", { class: "osd osd-right", "data-group": "speed-right" }),
   ganttScreen: h("div", { class: "gantt-screen" }),
+  // 간트 범례: 스크롤 영역 밖(모니터 아래 고정). 배가 많아 위쪽을 볼 때도 보이고, 맨 아래 배 상세를 가리지 않는다.
+  ganttLegend: h("div", { class: "legend gantt-legend zoom-only" }),
   rightTop: h("div", { class: "right-top" }),
   /** 자재·블록 추적 상자 자리: 작업 현황 위(관제실) */
   trackRoom: h("div", { class: "track-host" }),
@@ -704,20 +702,6 @@ function tick(jump: boolean): void {
   const chart = els.ganttScreen.querySelector(".gantt-chart");
   const ship = result.ships.find((sh) => sh.id === state.ganttShip);
   if (chart) mount(chart, ship ? renderShipGantt(result, scenario, ship.id, state.day, pickBar) : renderGantt(result, scenario, state.day, pickBar));
-  const detail = els.ganttScreen.querySelector(".ship-detail");
-  if (detail) {
-    // 그 배의 사건(오늘까지)과, 60일이 끝났으면 리드타임 분해. 크게 볼 때만 보인다.
-    const mine = ship ? result.events.filter((ev) => ev.day <= state.day && "ship" in ev && ev.ship === ship.id && SHIP_EVENTS.has(ev.type)) : [];
-    const ended = state.day >= result.days;
-    mount(detail, ship ? [
-      ended ? h("div", { class: "lead-row" }, h("span", { class: "lead-name" }, h("b", null, ship.id)),
-        breakdownBar(ship, Math.max(1, ship.lead_time)), h("span", { class: "lead-total" }, `${ship.lead_time}일`)) : null,
-      ended ? breakdownLegend() : null,
-      h("ol", { class: "events ship-events" }, mine.length
-        ? mine.map((ev) => h("li", null, h("span", { class: "ev-day" }, `${ev.day}일`), h("span", { class: `ev-type ${ev.type}` }, EVENT_NAME[ev.type]), h("span", null, eventText(ev, scenario))))
-        : h("li", { class: "quiet" }, "아직 이 배의 사건이 없습니다.")),
-    ] : null);
-  }
 
   // 재생 막대(왼쪽 모니터 위, 현장 아래)
   for (const osd of allOsds()) {
@@ -902,8 +886,7 @@ function aimCamera(): void {
   const apply = () => {
     yard?.setCamera("field", state.fieldFocus);
     // 공정을 바꿔 보면 관리자는 그 공정 앞 안전한 자리로 간다
-    state.managerSpot = "safe";
-    yard?.setManagerSpot("safe", state.fieldFocus);
+    yard?.toSafeSpot();
     // 이름표는 현장에서 공정을 가까이 볼 때만.
     // 이름표는 3인칭 현장에서는 보이지 않는다(4.7.3, 사용자). 1인칭(4.10)에서는 가까운 사람만 명찰(yard.ts)
     yard?.showNameTags(false);
@@ -1083,10 +1066,10 @@ function drawOsd(target: HTMLElement = els.osd): void {
       : h("button", { class: "osd-btn end", type: "button", title: "60일 끝으로 건너뛰고 평가서를 받습니다 (End)", onclick: finish }, "끝으로 ⏭"));
 }
 
-/** 왼쪽 모니터: 배 탭과 간트. 범례와 배 상세는 크게 볼 때만 보인다. */
+/** 왼쪽 모니터: 배 탭과 간트. 범례는 크게 볼 때만 보인다. 배의 리드타임 분해와 사건은 평가서와 작업 현황에서 본다(4.12.7). */
 function drawGanttScreen(): void {
   const r = currentRun();
-  if (!r) return mount(els.ganttScreen);
+  if (!r) return (mount(els.ganttScreen), mount(els.ganttLegend));
   const { scenario } = state.data;
   const shipTab = (id: string | null, label: string) =>
     h("button", {
@@ -1096,19 +1079,20 @@ function drawGanttScreen(): void {
   const sameColor = LOSS_STATES.filter((l) => l.state !== "rework");
   mount(els.ganttScreen,
     h("div", { class: "screen-tabs" }, shipTab(null, "전체"), r.result.ships.map((sh) => shipTab(sh.id, sh.id))),
-    h("div", { class: "gantt-chart" }),
-    h("div", { class: "legend zoom-only" },
-      activeStations(scenario).map((st) => h("span", null, h("i", { style: { background: STATION_COLOR[st.id] } }), st.name)),
-      h("span", null, h("i", { class: "hatch" }), "재작업(빗금)"),
-      h("span", null, h("i", { class: "transport-mark" }), TRANSPORT_STATE.name),
-      h("span", { class: "sep" }),
-      sameColor.map((l) => h("span", null, h("i", { class: `thin${l.hatch ? " hatch-over" : ""}`, style: { background: l.color } }), l.name)),
-      // 나눠 하기(3.0)를 쓰는 분기에서만: 막대가 작업장 줄로 갈라지고 먼저 끝난 줄은 짝 대기
-      scenario.options?.split ? h("span", null, h("i", { class: "thin hatch-over", style: { background: PAIR_WAIT_STATE.color } }), "짝 대기(나눠 하기)") : null,
-      h("span", { class: "sep" }),
-      h("span", null, h("i", { class: "due-mark" }), "납기"),
-      h("span", null, h("i", { class: "deliver-mark" }), "인도")),
-    h("div", { class: "ship-detail zoom-only" }));
+    h("div", { class: "gantt-chart" }));
+  mount(els.ganttLegend,
+    // 공정 색은 전체 탭에만. 배 탭은 줄마다 공정 이름이 있다(4.12.7).
+    state.ganttShip ? null : activeStations(scenario).map((st) => h("span", null, h("i", { style: { background: STATION_COLOR[st.id] } }), st.name)),
+    h("span", null, h("i", { class: "hatch" }), "재작업(빗금)"),
+    // 배 탭의 운반은 공정 줄이 아니라 아래 운반 설비 줄에 있다(4.12.10)
+    state.ganttShip ? null : h("span", null, h("i", { class: "transport-mark" }), TRANSPORT_STATE.name),
+    h("span", { class: "break" }),
+    sameColor.map((l) => h("span", null, h("i", { class: `thin${l.hatch ? " hatch-over" : ""}`, style: { background: l.color } }), l.name)),
+    // 나눠 하기(3.0)를 쓰는 분기에서만: 막대가 작업장 줄로 갈라지고 먼저 끝난 줄은 짝 대기
+    scenario.options?.split ? h("span", null, h("i", { class: "pair-mark", style: { background: PAIR_WAIT_STATE.color, borderColor: PAIR_WAIT_EDGE } }), "짝 대기(나눠 하기)") : null,
+    h("span", { class: "sep" }),
+    h("span", null, h("i", { class: "due-mark" }), "납기"),
+    h("span", null, h("i", { class: "deliver-mark" }), "인도"));
 }
 
 /** 이 반기가 쓰는 구획. 간이공정(4.4)은 안벽의장이 없어 안벽 구획 단추를 뺀다 */
@@ -1263,10 +1247,6 @@ function drawField(): void {
           h("button", { type: "button", class: state.fieldFocus === null ? "active" : "", onclick: () => { state.fieldFocus = null; drawField(); aimCamera(); } }, "전경"),
           shownSectors().map((sec) =>
             h("button", { type: "button", class: state.fieldFocus === sec.id ? "active" : "", onclick: () => { state.fieldFocus = sec.id; drawField(); aimCamera(); } }, sec.name))),
-        // 관리자 순간이동(3.0 안전): 설비 옆으로 가면 위험 반경 경고. 1인칭에서는 W·A·S·D로 걸어서 다닌다(4.11)
-        h("div", { class: "field-cams", role: "group", "aria-label": "관리자 이동" },
-          h("button", { type: "button", onclick: () => moveManager("crane") }, "골리앗 주변으로"),
-          h("button", { type: "button", onclick: () => moveManager("cart") }, "트랜스포터 주변으로")),
       ],
     // 자재·블록 추적(3.1): 블록이나 선반을 누르면 상자, 고른 배는 노란 고리
     h("span", { class: "hint" }, "블록·선반을 누르면 추적"),
@@ -1317,16 +1297,10 @@ function releaseMoveKeys(): void {
   pushMove();
 }
 
-function moveManager(spot: "safe" | "crane" | "cart"): void {
-  state.managerSpot = spot;
-  const hazard = yard?.setManagerSpot(spot, state.fieldFocus) ?? null;
-  if (hazard) warnHazard(hazard);
-}
-
 /** 위험 설비 옆으로 갔다: 재생을 멈추고 알린다. 횟수는 그 회차 평가서에 한 줄(등급과 무관). */
 function warnHazard(hazard: { id: string; label: string }): void {
   const r = currentRun();
-  // 이미 경고 카드가 떠 있으면(순간이동 경고와 자동 경고가 겹칠 때) 한 번만 센다
+  // 이미 경고 카드가 떠 있으면 한 번만 센다
   if (!r || state.screen !== "field" || els.field.querySelector(".safety-alert")) return;
   const wasPlaying = state.playing;
   pause();
@@ -1340,7 +1314,7 @@ function warnHazard(hazard: { id: string; label: string }): void {
       h("div", { class: "safety-actions" },
         h("button", { class: "btn primary", type: "button", onclick: () => {
           overlay.remove();
-          moveManager("safe");
+          yard?.toSafeSpot();
           if (wasPlaying) play();
         } }, "안전한 자리로 돌아가기"))));
   els.field.append(overlay);
@@ -1478,7 +1452,6 @@ async function start(): Promise<void> {
     fieldFocus: null,
     track: null,
     pick: null,
-    managerSpot: "safe",
     fieldView: "third",
     signer: loadSigner(),
     classBest: {},
@@ -1499,7 +1472,7 @@ async function start(): Promise<void> {
       h("div", { class: "clipboard board-left" }, els.form),
       h("aside", { class: "plan-notes", "aria-label": "메모" }, els.planNotes, els.goalNote)));
 
-  monitor(els.monitorLeft, "left", "공정 간트", els.ganttScreen, els.osd);
+  monitor(els.monitorLeft, "left", "공정 간트", els.ganttScreen, els.ganttLegend, els.osd);
   monitor(els.monitorRight, "right", "작업 현황 전경", els.rightTop, els.log, els.osdRight);
   els.hands.innerHTML = HANDS_SVG;
   els.hat.innerHTML = `${HAT_SVG}<span class="desk-label">작업모 · 현장으로</span>`;

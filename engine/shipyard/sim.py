@@ -446,12 +446,12 @@ def max_rate(rules: dict[str, Any]) -> float:
 
 
 def jit_buffer(config: dict[str, Any], scenario: dict[str, Any]) -> int:
-    """역산 발주의 여유일(4.13, D58). 설정에 없으면 규칙의 기본값(0일)."""
+    """역산 발주의 여유일(4.13, D59). 설정에 없으면 규칙의 기본값(0일)."""
     return config.get("jit_buffer", scenario["ordering"]["jit"]["buffer_days"])
 
 
 def supply_delay_days(scenario: dict[str, Any], ship_id: str, material_id: str) -> int:
-    """입고 지연(4.13, D58): 그 발주가 며칠 늦게 들어오는지. 시나리오가 supply_delay를 켜지 않았으면 0.
+    """입고 지연(4.13, D59): 그 발주가 며칠 늦게 들어오는지. 시나리오가 supply_delay를 켜지 않았으면 0.
 
     난수표 random.supply[배][자재]가 확률보다 작으면 지연이다. 지연 일수는 자재마다 같다(rules.json supply_delay.days).
     """
@@ -742,7 +742,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
 
     # 입고 일정: 발주일 + 리드타임 = 입고일.
     # order_days는 결과에 싣는 배별 발주일(필요 없는 자재와 비운 칸은 뺀다).
-    # 입고 지연(4.13, D58): 시나리오가 켠 분기에서 발주마다 난수표(random.supply)로 정한다. 지연되면 그만큼 늦게 들어온다.
+    # 입고 지연(4.13, D59): 시나리오가 켠 분기에서 발주마다 난수표(random.supply)로 정한다. 지연되면 그만큼 늦게 들어온다.
     arrivals: dict[int, list[tuple[str, int, str]]] = {}
     order_days: list[dict[str, int]] = [{} for _ in orders]
     arrival_day: list[dict[str, int]] = [{} for _ in orders]

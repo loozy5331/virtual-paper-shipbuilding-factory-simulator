@@ -58,8 +58,11 @@ export function breakdownBar(ship: ShipResult, scale: number): HTMLElement {
 }
 
 export function breakdownLegend(): HTMLElement {
+  // 작업·운반(손실 아님) 다음에 줄을 바꿔 손실 칸을 둘째 줄에(4.12.4)
+  const item = (b: (typeof LEAD_TIME_STATES)[number]) =>
+    h("span", null, h("i", { class: b.hatch ? "hatch-over" : "", style: { background: b.color } }), b.name);
   return h("div", { class: "legend" },
-    LEAD_TIME_STATES.map((b) => h("span", null, h("i", { class: b.hatch ? "hatch-over" : "", style: { background: b.color } }), b.name)));
+    LEAD_TIME_STATES.slice(0, 2).map(item), h("span", { class: "break" }), LEAD_TIME_STATES.slice(2).map(item));
 }
 
 function card(title: string, ...body: (HTMLElement | SVGElement | null)[]): HTMLElement {
