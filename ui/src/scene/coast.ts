@@ -79,7 +79,8 @@ export function buildLand(scene: THREE.Scene): void {
   scene.add(sea);
 
   const hill = (x: number, z: number, rx: number, h: number, rz: number, color: string) => {
-    const m = mesh(new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), color, { roughness: 1, flatShading: true });
+    // 매끈한 언덕(4.15.9): 면을 잘게 나누고 부드러운 음영. 각진 면(flatShading)은 장난감처럼 보였다
+    const m = mesh(new THREE.SphereGeometry(1, 48, 16, 0, Math.PI * 2, 0, Math.PI / 2), color, { roughness: 1 });
     m.scale.set(rx, h, rz);
     m.position.set(x, HILL_BASE, z);
     m.castShadow = false;
