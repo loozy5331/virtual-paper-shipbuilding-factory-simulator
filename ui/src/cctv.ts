@@ -661,7 +661,8 @@ function overview(items: Item[], scenario: Scenario, docks: number, day: number)
   const skip = new Set(scenario.skip ?? []);
   const shown = SECTORS.filter((sec) => sec.id !== "quay" || !skip.has("quay_outfitting"));
   const secs = shown.map((sec) => sectorBounds(sec.id, docks));
-  const x0 = Math.min(...secs.map((sec) => sec.x0)) - 0.6, x1 = Math.max(...secs.map((sec) => sec.x1)) + 0.6;
+  // 오른쪽은 만 입구의 곶과 등대 너머 바다까지(4.15.2, 3D 전경처럼 바다가 보이게)
+  const x0 = Math.min(...secs.map((sec) => sec.x0)) - 0.6, x1 = MOUTH_X + 6;
   const z0 = Math.min(...secs.map((sec) => sec.z0)), z1 = Math.max(...secs.map((sec) => sec.z1)) + 0.6;
   // 이름은 정반을 가리지 않게 구획 윗가장자리 안쪽에(도크가 둘이어도 비는 1도크 뒤쪽 땅). 안벽은 구획 대부분이 바다라 안벽 바로 위 물에 쓴다
   for (const sec of shown) {
