@@ -77,8 +77,8 @@ interface State {
   playing: boolean;
   speed: number;
   board: BoardState;
-  /** 오른쪽 모니터 위쪽 작업 현황에서 보는 구획(3.2, D38: 전경은 없다). (이름은 옛 CCTV에서 왔다) */
-  cctv: SectorId;
+  /** 오른쪽 모니터 위쪽 작업 현황에서 보는 구획. null이면 전경(4.15.1). (이름은 옛 CCTV에서 왔다) */
+  cctv: SectorId | null;
   /** 크게 보고 있는 모니터 */
   zoomed: "left" | "right" | null;
   /** 현장에서 가까이 보는 구획. null이면 전경. */
@@ -860,11 +860,15 @@ function drawTrackCard(): void {
 // ---------------------------------------------------------------------------
 
 function camLabel(): string {
-  return `작업 현황 · ${sector(state.cctv).name} · ${state.day}일`;
+  return `작업 현황 · ${cctvName()} · ${state.day}일`;
+}
+
+function cctvName(): string {
+  return state.cctv === null ? "전경" : sector(state.cctv).name;
 }
 
 /** 오른쪽 모니터 작업 현황을 그 구획으로. 재생 중에도 오늘을 본다(결과를 미리 알려 주지 않는다). */
-function openSector(id: SectorId, day?: number): void {
+function openSector(id: SectorId | null, day?: number): void {
   if (!currentRun()) return;
   state.cctv = id;
   drawRightTop();
@@ -1104,7 +1108,7 @@ function shownSectors(): typeof SECTORS {
 
 /** 오른쪽 모니터 위쪽: 작업 현황, 구획 하나(위 단추로 바꾼다). 그림은 tick이 채운다. */
 function drawRightTop(): void {
-  if (!shownSectors().some((sec) => sec.id === state.cctv)) state.cctv = "shop";
+  if (state.cctv !== null && !shownSectors().some((sec) => sec.id === state.cctv)) state.cctv = "shop";
   const label = els.monitorRight.querySelector(".win-title");
   mount(els.rightTop,
     h("div", { class: "cc-host" }),
@@ -1117,9 +1121,10 @@ function drawRightTop(): void {
     // 추적할 배 고르기(3.1): 고른 배의 블록만 진하게, 선반에는 그 배 몫
     trackSelect(),
     h("div", { class: "cam-switch", role: "group", "aria-label": "볼 구획" },
+      h("button", { type: "button", class: state.cctv === null ? "active" : "", onclick: () => openSector(null) }, "전경"),
       shownSectors().map((sec) =>
         h("button", { type: "button", class: sec.id === state.cctv ? "active" : "", onclick: () => openSector(sec.id) }, sec.name))));
-  if (label) label.textContent = `작업 현황 · ${sector(state.cctv).name}`;
+  if (label) label.textContent = `작업 현황 · ${cctvName()}`;
 }
 
 /** 책상 위: 생산계획서 클립보드(누르면 계획 고치기). 평가서를 보고 있으면 손은 보이지 않는다(CSS). */
