@@ -688,6 +688,20 @@ function finish(): void {
   drawRoom();
 }
 
+/** 왼쪽 모니터의 간트. 모니터의 실제 폭으로 그려 글자가 줄지 않는다(4.15.6). */
+function drawGanttChart(): void {
+  const r = currentRun();
+  const chart = els.ganttScreen.querySelector<HTMLElement>(".gantt-chart");
+  if (!r || !chart) return;
+  const { result } = r;
+  const { scenario } = state.data;
+  const ship = result.ships.find((sh) => sh.id === state.ganttShip);
+  // 높이는 모니터 안 탭 아래 남은 자리
+  const screen = els.ganttScreen.getBoundingClientRect();
+  const size = { width: chart.clientWidth, height: screen.bottom - chart.getBoundingClientRect().top - els.ganttScreen.scrollTop - 8 };
+  mount(chart, ship ? renderShipGantt(result, scenario, ship.id, state.day, pickBar, size) : renderGantt(result, scenario, state.day, pickBar, size));
+}
+
 /** 날짜가 바뀔 때마다 모니터(간트, 작업 현황, 사건 기록)와 재생 막대를 갱신한다. jump면 3D 소인이 걷지 않고 바로 옮긴다. */
 function tick(jump: boolean): void {
   const r = currentRun();
@@ -699,9 +713,7 @@ function tick(jump: boolean): void {
   const { scenario } = state.data;
 
   // 왼쪽 모니터: 간트
-  const chart = els.ganttScreen.querySelector(".gantt-chart");
-  const ship = result.ships.find((sh) => sh.id === state.ganttShip);
-  if (chart) mount(chart, ship ? renderShipGantt(result, scenario, ship.id, state.day, pickBar) : renderGantt(result, scenario, state.day, pickBar));
+  drawGanttChart();
 
   // 재생 막대(왼쪽 모니터 위, 현장 아래)
   for (const osd of allOsds()) {
@@ -1479,6 +1491,14 @@ async function start(): Promise<void> {
 
   monitor(els.monitorLeft, "left", "공정 간트", els.ganttScreen, els.ganttLegend, els.osd);
   monitor(els.monitorRight, "right", "작업 현황 전경", els.rightTop, els.log, els.osdRight);
+  // 간트는 모니터의 실제 크기로 그리므로 크기가 바뀌면(창 크기, 최대화) 다시 그린다
+  let ganttSize = "";
+  new ResizeObserver(() => {
+    const size = `${els.ganttScreen.clientWidth}x${els.ganttScreen.clientHeight}`;
+    if (size === ganttSize) return;
+    ganttSize = size;
+    if (state.screen === "room") drawGanttChart();
+  }).observe(els.ganttScreen);
   els.hands.innerHTML = HANDS_SVG;
   els.hat.innerHTML = `${HAT_SVG}<span class="desk-label">작업모 · 현장으로</span>`;
   els.hat.addEventListener("click", goField);

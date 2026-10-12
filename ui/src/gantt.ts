@@ -10,15 +10,20 @@ import { activeStations, type ForkliftJob, type Result, type Scenario, type Segm
 import { s } from "./dom";
 import { PAIR_WAIT_EDGE, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, STATION_TEXT } from "./labels";
 
-const W = 1000;
-const LEFT = 116;
+// 크기는 모니터의 실제 픽셀(4.15.6). 고정 폭(1000)을 모니터에 줄여 넣으면 11px 글자가 7px로 보였다.
+// 그래서 1단위 = 1px로 그리고, 글자 크기는 CSS 값 그대로 읽힌다. 폭을 모르면(처음 그릴 때) 1000.
+// 전체 탭의 배 줄은 배가 모두 모니터에 들어오게 줄 높이를 줄인다(MIN_ROW까지, 글자는 그대로). 설비 줄은 그 아래로 스크롤.
+const MIN_W = 560;
+const MIN_ROW = 44;
+let W = 1000;
+const LEFT = 148;
 const RIGHT = 70;
 const TOP = 44;
-const ROW_H = 66;
-const BAR_H = 26;
+let ROW_H = 56;
+let BAR_H = 24;
 const LOSS_GAP = 4;
-const LOSS_H = 12;
-const EQ_H = 34;          // 설비 줄 높이
+let LOSS_H = 10;
+const EQ_H = 32;          // 설비 줄 높이
 const EQ_BAR = 18;
 const SECTION_GAP = 22;
 const CRANE = "erection";
@@ -121,7 +126,17 @@ function isSplit(ship: Result["ships"][number], seg: Segment): boolean {
   return false;
 }
 
-export function renderGantt(result: Result, scenario: Scenario, today: number, onPick?: OnPick): SVGElement {
+/** 그릴 크기(px). 폭은 0이면 그대로 둔다. ships가 있으면 배 줄을 높이 안에 맞춘다(전체 탭), 없으면 기본 줄(배 탭). */
+function useSize(size?: { width: number; height: number }, ships = 0): void {
+  if (size?.width) W = Math.max(MIN_W, Math.floor(size.width));
+  const fit = ships && size?.height ? Math.floor((size.height - TOP - 8) / ships) : 56;
+  ROW_H = Math.max(MIN_ROW, Math.min(56, fit));
+  BAR_H = ROW_H >= 52 ? 24 : 18;
+  LOSS_H = ROW_H >= 52 ? 10 : 7;
+}
+
+export function renderGantt(result: Result, scenario: Scenario, today: number, onPick?: OnPick, size?: { width: number; height: number }): SVGElement {
+  useSize(size, result.ships.length);
   const days = result.days;
   const dayW = (W - LEFT - RIGHT) / days;
   const x = (day: number) => LEFT + (day - 1) * dayW;      // day의 왼쪽 끝
@@ -162,8 +177,8 @@ export function renderGantt(result: Result, scenario: Scenario, today: number, o
     const g = s("g", { class: "ship-row" });
     g.append(
       s("rect", { x: 0, y: y - 8, width: W, height: ROW_H - 4, class: row % 2 ? "band odd" : "band" }),
-      s("text", { x: 12, y: y + 12, class: "ship-id" }, ship.id),
-      s("text", { x: 12, y: y + 30, class: "ship-sub" }, `${ship.type_name} · 납기 ${ship.due_day}일`),
+      s("text", { x: 12, y: y + 11, class: "ship-id" }, ship.id),
+      s("text", { x: 12, y: y + 27, class: "ship-sub" }, `${ship.type_name} · 납기 ${ship.due_day}일`),
       s("rect", { x: LEFT, y, width: days * dayW, height: BAR_H, class: "lane" }),
     );
 
@@ -241,7 +256,7 @@ export function renderGantt(result: Result, scenario: Scenario, today: number, o
     const g = s("g", { class: "eq-row" });
     g.append(
       s("rect", { x: 0, y: ey, width: W, height: EQ_H - 2, class: "band eq" }),
-      s("text", { x: 12, y: ey + 15, class: "eq-id" }, title),
+      s("text", { x: 12, y: ey + 14, class: "eq-id" }, title),
       s("text", { x: 12, y: ey + 27, class: "ship-sub" }, sub),
       s("rect", { x: LEFT, y: ey + (EQ_H - EQ_BAR) / 2 - 1, width: days * dayW, height: EQ_BAR, class: "lane" }));
     draw(g, ey + (EQ_H - EQ_BAR) / 2 - 1);
@@ -338,8 +353,8 @@ export function renderGantt(result: Result, scenario: Scenario, today: number, o
     const cx = x(Math.min(today, days) + 1);
     svg.append(s("g", { class: "cursor" },
       s("line", { x1: cx, x2: cx, y1: TOP - 4, y2: height - 4 }),
-      s("rect", { x: cx - 18, y: 2, width: 36, height: 16, rx: 8 }),
-      s("text", { x: cx, y: 14 }, `${today}일`)));
+      s("rect", { x: cx - 21, y: 1, width: 42, height: 18, rx: 9 }),
+      s("text", { x: cx, y: 14.5 }, `${today}일`)));
   }
 
   return svg;
@@ -478,7 +493,7 @@ function drawShipEquipment(svg: SVGElement, result: Result, scenario: Scenario, 
     const y = ey + (EQ_H - EQ_BAR) / 2 - 1;
     g.append(
       s("rect", { x: 0, y: ey, width: W, height: EQ_H - 2, class: "band eq" }),
-      s("text", { x: 12, y: ey + 15, class: "eq-id" }, title),
+      s("text", { x: 12, y: ey + 14, class: "eq-id" }, title),
       s("text", { x: 12, y: ey + 27, class: "ship-sub" }, sub),
       s("rect", { x: LEFT, y, width: laneW, height: EQ_BAR, class: "lane" }));
     for (const run of runs(daily, (d) => mine(d) ? `me:${mine(d)}` : others(d) ? `other:${others(d)}` : null, today)) {
@@ -509,7 +524,8 @@ function drawShipEquipment(svg: SVGElement, result: Result, scenario: Scenario, 
   }
 }
 
-export function renderShipGantt(result: Result, scenario: Scenario, shipId: string, today: number, onPick?: OnPick): SVGElement {
+export function renderShipGantt(result: Result, scenario: Scenario, shipId: string, today: number, onPick?: OnPick, size?: { width: number; height: number }): SVGElement {
+  useSize(size);
   const days = result.days;
   const ship = result.ships.find((sh) => sh.id === shipId)!;
   const dayW = (W - LEFT - RIGHT) / days;
@@ -631,8 +647,8 @@ export function renderShipGantt(result: Result, scenario: Scenario, shipId: stri
     const cx = x(Math.min(today, days) + 1);
     svg.append(s("g", { class: "cursor" },
       s("line", { x1: cx, x2: cx, y1: TOP - 4, y2: height - 4 }),
-      s("rect", { x: cx - 18, y: 2, width: 36, height: 16, rx: 8 }),
-      s("text", { x: cx, y: 14 }, `${today}일`)));
+      s("rect", { x: cx - 21, y: 1, width: 42, height: 18, rx: 9 }),
+      s("text", { x: cx, y: 14.5 }, `${today}일`)));
   }
   return svg;
 }
