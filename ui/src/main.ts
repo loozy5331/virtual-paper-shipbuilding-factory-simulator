@@ -47,7 +47,7 @@ interface Run {
   signer: Signer | null;
   /** 현장 안전 경고 횟수(3.0, 등급과 무관). 현장에 나간 적이 없으면 없음 */
   safetyWarnings?: number;
-  /** 그 회차 계획의 미리보기(책상의 생산계획서를 펼쳐 볼 때 계획 간트·숫자를 채운다). 처음 펼칠 때 받아 둔다. */
+  /** 그 회차 계획의 미리보기(책상의 생산계획서를 펼쳐 볼 때 계획 간트·숫자, 관제실 간트의 계획 줄). 실행할 때 받아 둔다. */
   preview?: Preview;
 }
 
@@ -597,9 +597,13 @@ async function run(signer: Signer | null = null): Promise<void> {
   state.busy = true;
   updateForm();
   let result: Result;
+  let preview: Preview | undefined;
   const config = structuredClone(state.config);
   try {
+    // 관제실 간트의 계획 줄(4.16)은 그 계획의 미리보기 plan을 그린다. 실행과 함께 받는다(없어도 실행은 된다)
+    const previewing = api.preview(config).catch(() => undefined);
     result = await api.simulate(config);
+    preview = await previewing;
   } catch (error) {
     state.errors = error instanceof ApiError ? error.messages : [String(error)];
     return;
@@ -607,7 +611,7 @@ async function run(signer: Signer | null = null): Promise<void> {
     state.busy = false;
     updateForm();
   }
-  state.runs.push({ n: state.runs.length + 1, scenario: state.data.scenario.id, label: runLabel(), config, result, finished: false, signer });
+  state.runs.push({ n: state.runs.length + 1, scenario: state.data.scenario.id, label: runLabel(), config, result, finished: false, signer, preview });
   state.current = state.runs.length - 1;
   Object.assign(state, { day: 0, ganttShip: null, cctv: null, board: "none", playing: false });
 
@@ -711,7 +715,8 @@ function drawGanttChart(): void {
   // 높이는 모니터 안 탭 아래 남은 자리
   const screen = els.ganttScreen.getBoundingClientRect();
   const size = { width: chart.clientWidth, height: screen.bottom - chart.getBoundingClientRect().top - els.ganttScreen.scrollTop - 8 };
-  mount(chart, ship ? renderShipGantt(result, scenario, ship.id, state.day, pickBar, size) : renderGantt(result, scenario, state.day, pickBar, size));
+  const plan = r.preview?.plan;
+  mount(chart, ship ? renderShipGantt(result, scenario, ship.id, state.day, pickBar, size, plan) : renderGantt(result, scenario, state.day, pickBar, size, plan));
 }
 
 /** 날짜가 바뀔 때마다 모니터(간트, 작업 현황, 사건 기록)와 재생 막대를 갱신한다. jump면 3D 소인이 걷지 않고 바로 옮긴다. */
@@ -1121,6 +1126,7 @@ function drawGanttScreen(): void {
     // 나눠 하기(3.0)를 쓰는 분기에서만: 막대가 작업장 줄로 갈라지고 먼저 끝난 줄은 짝 대기
     scenario.options?.split ? h("span", null, h("i", { class: "pair-mark", style: { background: PAIR_WAIT_STATE.color, borderColor: PAIR_WAIT_EDGE } }), "짝 대기(나눠 하기)") : null,
     h("span", { class: "sep" }),
+    r.preview ? h("span", null, h("i", { class: "plan-mark" }), "계획(막대 위 가는 줄)") : null,
     h("span", null, h("i", { class: "due-mark" }), "납기"),
     h("span", null, h("i", { class: "deliver-mark" }), "인도"));
 }
