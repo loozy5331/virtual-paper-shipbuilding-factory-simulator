@@ -367,13 +367,14 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
       g.append(s("rect", { x: bx, y: by, width: 11, height: 8, fill: PAPER }));
     }
     const empty = sh.qty <= 0;
-    g.append(tag(px(x), py(z + 0.25) + 14, `${sh.name} ${empty ? (sh.nextArrival ? `입고 D-${sh.nextArrival - frame.day}` : "없음") : sh.qty}`,
-      empty ? "cc-tag mid warn" : "cc-tag mid"));
-    // 추적 중이면 그 배 몫 수량을 한 줄 더(자재 페깅)
+    // 창고 선반 셋은 붙어 있어 이름표를 세 줄로 엇갈려 쓴다(4.15.7). 추적 중이면 그 배 몫 수량을 같은 줄 끝에(자재 페깅)
+    const label = s("text", { x: px(x), y: py(z + 0.25) + 14, dy: `${steel ? 0 : ((i - 1) % 3) * 1.2}em`, class: empty ? "cc-tag mid warn" : "cc-tag mid" },
+      `${sh.name} ${empty ? (sh.nextArrival ? `입고 D-${sh.nextArrival - frame.day}` : "없음") : sh.qty}`);
     if (opts.track !== null) {
       const mine = sh.pegs.find((pg) => pg.ship === opts.track)?.quantity ?? 0;
-      g.append(tag(px(x), py(z + 0.25) + 28, `${opts.track} 몫 ${mine}`, mine ? "cc-tag mid track" : "cc-tag mid"));
+      label.append(s("tspan", { class: mine ? "track" : "" }, ` · ${opts.track} 몫 ${mine}`));
     }
+    g.append(label);
     add(z, g);
   });
   // 납품 마차(3.2): 정지 화면이라 그날 끝 자리. 입고일 마차는 창고 뒤(뒷문)에, 사흘 안의 입고는 납품 길 위에.
@@ -515,10 +516,11 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     const info = first.state === "work" || first.state === "idle" ? null : STATE_INFO[first.state];
     const status = first.state === "work" ? "작업 중" : first.state === "idle" ? "비어 있음" : info?.name ?? first.state;
     const extra = [view.overtime && view.crew !== "robot" ? "잔업" : "", { normal: "", skilled: "숙련공", robot: "로봇", external: "외부팀" }[view.crew]].filter(Boolean).join(" · ");
+    // 이름은 정반 안, 상태는 정반 앞 바닥에(4.15.7): 글자를 모니터 배율에 맞춰 키우면(--ts) 한 줄에 둘이 겹치고 블록을 가린다
     const ty = py(b0.z + MAT_D / 2) - 6;
     add(b0.z + MAT_D / 2 + 0.05, s("g", { class: "cc-mat-text" },
       tag(px(x - MAT_W / 2) + 5, ty, st.name, "cc-name"),
-      tag(px(x + MAT_W / 2) - 5, ty, status, info ? "cc-tag end loss" : "cc-tag end"),
+      s("text", { x: px(x), y: py(b0.z + MAT_D / 2), dy: "1.1em", class: info ? "cc-tag mid loss" : "cc-tag mid" }, status),
       extra ? tag(px(x + MAT_W / 2) - 5, py(b0.z - MAT_D / 2) + 14, extra, "cc-tag end") : s("g")));
     // 탑재 앞 대기 줄(탑재는 적치장 예외: 도크 앞에서 기다린다)
     // 안벽의장·시운전 차례를 기다리는 배(4.7.3): 빈 선석에 우현을 대고, 선석이 차면 등대 곶 안쪽 정박지에
