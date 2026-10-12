@@ -20,7 +20,7 @@ import { areaBounds, benchAt, CART_R, CRANE_R, DEPOT, dockQueueZ, dockZ, LAB, LA
   STOCK_AT, STOCK_D, STOCK_HALF, STOCK_NAME, CONVEYORS, BACK_LANE_Z, garageSpot, FORKLIFT_GARAGE, KIT_PICK, kitDrop, roadPath, palletPath, SPUR_ROADS, type RoadSide, QUAY_WORK_Z, ST, isShop, QUAY_ROAD_Z, QUAY_STORE, QUAY, DEPOT_WALLS, GARAGE_WALLS, depotSpot, along, groundY, LAB_TREES, LAND_ROUTE, route, SHIP_ROUTE, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, unitZ, type Route, type SectorId, FIXED_BLOCKERS, LAB_SIZE, panelRect, SAFE_LOOK, walkable, wallPanels, WAREHOUSE_WALLS, type Rect } from "./layout";
 import { clamp01, ease } from "./model";
 import { Lot } from "./lot";
-import { buildHoist, buildRobot, buildSupplyCart, buildSupplyShip, crateTop, type SupplyShip } from "./props";
+import { buildHoist, buildRobot, buildSupplyCart, buildSupplyShip, CRATE_COLORS, crateTop, type SupplyShip } from "./props";
 import { departPose, Harbor, LAUNCH, type LaunchPose } from "./harbor";
 import { chipHtml, label, paperMaterial, phase, setLabel } from "./util";
 import { STATE_INFO, STATION_COLOR, STATION_TRADE, TRADE_HAT } from "../labels";
@@ -98,7 +98,7 @@ export class Yard {
   /** 강재 롤러 컨베이어 위 철판(절단이 일하는 날 흐른다) */
   private readonly steelPlates: THREE.Mesh[] = [];
   private steelOn = false;
-  private readonly shelves: { boxes: THREE.Mesh[]; tag: CSS2DObject }[] = [];
+  private readonly shelves: { boxes: THREE.Mesh[]; tag: CSS2DObject; group?: THREE.Group }[] = [];
   /** 자재·블록 추적(3.1): 누르면 상자를 띄울 곳(main.ts), 진하게 볼 배, 선반의 보이지 않는 누름 상자, 추적 중인 배 밑의 고리 */
   private pickHandler: ((pick: TrackPick) => void) | null = null;
   private track: string | null = null;
@@ -677,7 +677,7 @@ export class Yard {
   }
 
   private buildShelves(): void {
-    const colors = ["#f7f3ea", "#c8553d", "#c0392b"];
+    const colors = CRATE_COLORS;
     // 강재 적치장(4.2): 야외 자갈 바닥, 철판 더미 셋(종이 한 장 = 철판 한 장), 롤러 컨베이어로 절단에
     const yard = mesh(new THREE.BoxGeometry(STEEL_YARD.x1 - STEEL_YARD.x0, 0.03, STEEL_YARD.z1 - STEEL_YARD.z0), "#9d978a", { roughness: 1 });
     yard.position.set((STEEL_YARD.x0 + STEEL_YARD.x1) / 2, 0.015, (STEEL_YARD.z0 + STEEL_YARD.z1) / 2);
@@ -729,15 +729,18 @@ export class Yard {
         this.shelves.push({ boxes: plates, tag });
         return;
       }
+      // 선반 하나를 묶어 두고, 그 분기에서 쓰지 않는 자재(기본 반기의 보냉재, 4.14)는 통째로 숨긴다
+      const grp = new THREE.Group();
+      this.scene.add(grp);
       for (const sx of [-1, 1]) {
         const side = mesh(new THREE.BoxGeometry(0.08, 1.6, 0.9), "#8a6a4a");
-        side.position.set(x + sx * 1.0, 0.8, SHELF_Z);
-        this.scene.add(side);
+        side.position.set(x + sx * 0.85, 0.8, SHELF_Z);
+        grp.add(side);
       }
       for (const y of [0.05, 0.6, 1.15]) {
-        const board = mesh(new THREE.BoxGeometry(2.0, 0.05, 0.9), "#a07e58");
+        const board = mesh(new THREE.BoxGeometry(1.7, 0.05, 0.9), "#a07e58");
         board.position.set(x, y, SHELF_Z);
-        this.scene.add(board);
+        grp.add(board);
       }
       // 상자 24개: 선반 3단 × 4개 = 12개까지, 넘치면 바닥(앞)에 쌓는다 → 재고 과다
       const boxes: THREE.Mesh[] = [];
@@ -748,20 +751,20 @@ export class Yard {
         box.add(top);
         if (k < 12) {
           const level = Math.floor(k / 4), slot = k % 4;
-          box.position.set(x - 0.66 + slot * 0.44, 0.24 + level * 0.55, SHELF_Z);
+          box.position.set(x - 0.6 + slot * 0.4, 0.24 + level * 0.55, SHELF_Z);
         } else {
           const j = k - 12, slot = j % 4, level = Math.floor(j / 4);
-          box.position.set(x - 0.66 + slot * 0.44, 0.16 + level * 0.33, SHELF_Z + 0.9);
+          box.position.set(x - 0.6 + slot * 0.4, 0.16 + level * 0.33, SHELF_Z + 0.9);
         }
         box.visible = false;
-        this.scene.add(box);
+        grp.add(box);
         boxes.push(box);
       }
       // 누름 상자: 선반 전체(보이지 않게). 선반을 누르면 자재 페깅 상자
-      const hit = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.8, 1.9), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
+      const hit = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.8, 1.9), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
       hit.position.set(x, 0.9, SHELF_Z + 0.45);
       hit.userData.shelf = i;
-      this.scene.add(hit);
+      grp.add(hit);
       this.shelfHits.push(hit);
       const tag = label("", "shelf-tag");
       tag.position.set(x, 1.75, SHELF_Z + 0.2);
@@ -770,8 +773,8 @@ export class Yard {
         const material = this.source?.frameAt(1).shelves[i]?.material;
         if (material) this.pickHandler?.({ kind: "material", material });
       });
-      this.scene.add(tag);
-      this.shelves.push({ boxes, tag });
+      grp.add(tag);
+      this.shelves.push({ boxes, tag, group: grp });
     });
     const sign = label("물류창고 구역", "place-tag");
     sign.position.set(WAREHOUSE.door, 2.6, SHELF_Z - 0.9);
@@ -1400,6 +1403,10 @@ export class Yard {
     this.steelOn = !!cutSt && (cutSt.state === "work" || cutSt.state === "rework");
 
     // 자재창고: 선반이 비면 "입고 D-n" 팻말
+    this.shelves.forEach((shelf, i) => {
+      if (shelf.group) shelf.group.visible = !!f.shelves[i];
+      shelf.tag.visible = !!f.shelves[i];
+    });
     f.shelves.forEach((sh, i) => {
       const shelf = this.shelves[i];
       const shown = Math.min(sh.qty, shelf.boxes.length);

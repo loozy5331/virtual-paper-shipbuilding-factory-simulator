@@ -32,6 +32,8 @@ export interface Config {
   ordering?: Ordering;
   /** 4.13(D59): 역산 발주의 여유일 0~3. 없으면 0. 수주 증가부터 */
   jit_buffer?: number;
+  /** 4.14(D60): 자재마다 안전 재고 0·1·2척분. 0인 자재는 빼고 적는다. 수주 증가부터 */
+  safety_stock?: Record<string, number>;
   ships: Record<string, ShipConfig>;
   stations: Record<string, StationConfig>;
   /** 대기소 전체 인원. 4.0부터는 pools의 합이다(옛 설정은 조립 인원으로 읽는다) */
@@ -147,6 +149,8 @@ export interface ScenarioOptions {
   hoist?: boolean;
   /** 4.13: 역산 발주 여유일을 고를 수 있는가(수주 증가부터) */
   jit_buffer?: boolean;
+  /** 4.14: 안전 재고를 둘 수 있는가(수주 증가부터) */
+  safety_stock?: boolean;
 }
 
 /** 호이스트(4.9): 작업량 배수, 작업장마다 도입비·정비비, 고장 판정 간격(일한 날) */
@@ -191,6 +195,8 @@ export interface Scenario {
   /** 4.13(D59): 입고 지연이 있는 분기인가. 지연 확률·일수는 supply_delay */
   supply_delays?: boolean;
   supply_delay: { probability: number; days: number };
+  /** 4.14(D60): 안전 재고로 고를 수 있는 척분 */
+  safety_stock: { levels: number[]; abc: { A: number; B: number } };
   kpi: { revenue: number; profit: number; on_time_rate: number; first_pass_yield: number };
 }
 
@@ -264,7 +270,27 @@ export interface Preview {
   research: ResearchSlot[];
   /** 배별 자재의 발주일과 입고일. 엔진이 발주 방식에 따라 정한다. */
   materials: Record<string, Record<string, { order_day: number | null; arrival_day: number | null }>>;
+  /** 4.14: 자재마다 안전 재고 수량(척분 × 1척 몫). 두지 않은 자재는 없다 */
+  safety_stock: Record<string, number>;
+  /** 4.14(D60): 자재 ABC 분석(교육용 표, 규칙에는 쓰지 않는다). 금액 큰 순 누적 비율로 A·B·C, ships = 그 자재를 쓰는 배 수 */
+  abc: AbcRow[];
   plan: Plan;
+}
+
+export interface AbcRow {
+  material: string;
+  name: string;
+  /** 수주 척수(ships의 분모) */
+  of: number;
+  quantity: number;
+  value: number;
+  share: number;
+  /** 금액 큰 순으로 이 자재까지의 누적 비율(0~1) */
+  cumulative: number;
+  class: "A" | "B" | "C";
+  ships: number;
+  lead_days: number;
+  delay: { probability: number; days: number } | null;
 }
 
 export interface Span { start: number; end: number }
@@ -398,7 +424,7 @@ export interface Grade {
 }
 
 export type SimEvent =
-  | { day: number; type: "arrival"; material: string; quantity: number; ship: string }
+  | { day: number; type: "arrival"; material: string; quantity: number; ship: string | null; safety?: boolean }
   | { day: number; type: "supply_delay"; material: string; quantity: number; ship: string; days: number; arrival_day: number }
   | { day: number; type: "issue"; material: string; quantity: number; ship: string; station: string; from: Peg[]; transporter?: string | null; forklift?: string }
   | { day: number; type: "enter" | "complete" | "defect"; ship: string; station: string; unit?: number; units?: number[] }
@@ -414,6 +440,8 @@ export interface Result {
     quality: { passes: number; inspections: number; first_pass_yield: number | null };
     cost: { total: number };
     delivery: { on_time: number; ships: number; on_time_rate: number; total_late_days: number };
+    /** 4.14 QCDS의 S: 잔업 사고 건수, 사고로 멈춘 날, 잔업한 날(작업장 × 일), 사고 비용. 등급에는 넣지 않는다 */
+    safety?: { accidents: number; stop_days: number; overtime_days: number; accident_cost: number };
   };
   status: {
     delivered: number; in_progress: number; not_started: number;

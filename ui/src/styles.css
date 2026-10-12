@@ -126,15 +126,47 @@ th { font-weight: 600; color: var(--ink-3); font-size: 0.8rem; text-align: left;
 select.priority { max-width: 84px; }
 
 /* ----- 작업장 카드 ----- */
-.stations { display: grid; grid-template-columns: 1fr; gap: 10px; }   /* 4M 칸이 늘어 공정 카드는 한 줄에 하나 */
+/* 공정 카드는 두 줄로(4.14). 버튼 묶음은 내용 폭만 차지한다. 좁은 화면에서는 한 줄 */
+.stations { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 760px) { .stations { grid-template-columns: 1fr; } }
 .station {
   border: 1px solid var(--line-soft); border-top: 4px solid var(--station); border-radius: 12px;
   padding: 10px 10px 8px; background: var(--panel-2);
 }
-.station-head { display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; }
+.station-head { display: flex; align-items: baseline; gap: 6px; margin-bottom: 6px; min-width: 0; }
+.station-head b { flex-shrink: 0; white-space: nowrap; }
+.station-head small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; color: var(--ink-3); }
 .station-head .swatch { width: 10px; height: 10px; border-radius: 3px; background: var(--station); align-self: center; }
 .station-head .skilled { margin-left: auto; }
-.station-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 8px; align-items: center; }
+.station-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 5px 8px; align-items: center; }
+.station-grid > .seg { justify-self: start; }
+.station .seg-item span { padding: 3px 8px; }
+.station .toggles { flex-wrap: wrap; gap: 4px 12px; }
+
+/* 자재별 표(4.14): 한 줄에 등급과 안전 재고 */
+.mat-table { width: auto; }
+.mat-table th { text-align: left; font-size: 0.76rem; font-weight: 500; color: var(--ink-3); padding: 0 10px 4px 0; }
+.mat-table td { padding: 3px 10px 3px 0; vertical-align: middle; }
+.mat-table td small { color: var(--ink-3); font-size: 0.74rem; }
+.mat-table td.qty { min-width: 32px; }
+
+/* 생산계획서 공통 칸의 구분(4M): 서식의 번호 붙은 칸처럼. 칸마다 접는다(아코디언) */
+.form-sec { padding-top: 8px; border-top: 1.5px solid var(--ink); }
+.form-sec + .form-sec { margin-top: 2px; }
+.fold > summary { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; cursor: pointer; list-style: none; padding: 2px 0 6px; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::before { content: "▸"; color: var(--ink-3); font-size: 0.8rem; width: 10px; transition: transform 0.15s; align-self: center; }
+.fold[open] > summary::before { transform: rotate(90deg); }
+.fold > summary:hover .fold-title { text-decoration: underline; text-underline-offset: 3px; }
+.fold-title { font-family: var(--serif); font-size: 1.02rem; font-weight: 800; letter-spacing: 0.08em; color: var(--ink); }
+.fold-note { font-size: 0.76rem; color: var(--ink-3); }
+.fold-sum { flex-basis: 100%; padding-left: 18px; font-size: 0.8rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.fold[open] > summary .fold-sum { display: none; }   /* 펼치면 아래 내용이 곧 요약이다 */
+.fold:not([open]) > summary .fold-note { display: none; }
+.fold-body { display: flex; flex-direction: column; gap: 8px; padding-bottom: 6px; }
+.fold-orders { margin-bottom: 8px; }
+.fold-orders > summary .fold-title { font-size: 0.92rem; letter-spacing: 0.02em; }
+.sec-no { align-self: center; display: inline-grid; place-items: center; width: 20px; height: 20px; border: 1.5px solid var(--ink); border-radius: 50%; font-family: system-ui, sans-serif; font-size: 0.72rem; font-weight: 800; letter-spacing: 0; }
 .field-label { font-size: 0.78rem; color: var(--ink-3); }
 .station-preview {
   display: flex; justify-content: space-between; margin-top: 8px; padding-top: 7px;
@@ -258,20 +290,31 @@ select.priority { max-width: 84px; }
 }
 .run-chip.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 
-.qcd { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 14px; }
+.qcd { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }   /* QCDS(4.14) */
+@media (max-width: 900px) { .qcd { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .kpi {
   background: var(--panel-2); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px;
   border: 1px solid var(--line-soft);
 }
 .kpi-tag { font-size: 0.78rem; font-weight: 700; color: var(--ink-2); letter-spacing: 0.02em; }
-.kpi-value { font-size: 2rem; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.kpi-value { font-size: 1.7rem; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.15; }
 .kpi-sub { font-size: 0.8rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
 .report-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .card { border: 1px solid var(--line-soft); border-radius: 12px; padding: 14px 16px; background: #fff; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .card.wide { grid-column: 1 / -1; }
 .card h3 { font-size: 0.92rem; }
-.report-grid > .card:nth-child(n + 3) { grid-column: 1 / -1; }
+/* 평가서 QCD 칸(4.14): 칸마다 접고, 칸 안에서 두 줄. 넓은 카드(OEE·리드타임)는 한 줄을 다 쓴다 */
+.report-sec { border-top: 1.5px solid var(--ink); padding-top: 8px; margin-top: 10px; }
+.report-sec > .report-grid { padding-bottom: 4px; }
+.report-sec > .report-grid > .card:only-child { grid-column: 1 / -1; }
+.sec-tag { align-self: center; display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 4px; border: 1.5px solid var(--ink); border-radius: 4px; font-weight: 800; color: var(--ink); }
+.status.three { grid-template-columns: repeat(3, 1fr); }
+.status.four { grid-template-columns: repeat(4, 1fr); }
+.accident-list { margin: 0; font-size: 0.82rem; color: var(--ink-2); }
+.report-sec[open] > summary .fold-sum { display: block; }   /* 평가서는 펼쳐도 한 줄 요약을 둔다 */
+.card-stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.status.two { grid-template-columns: repeat(2, 1fr); }
 @media (max-width: 1300px) { .report-grid { grid-template-columns: 1fr; } }
 
 .status { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 0; }
@@ -280,6 +323,35 @@ select.priority { max-width: 84px; }
 .status dd { margin: 0; font-weight: 800; font-size: 1.1rem; font-variant-numeric: tabular-nums; }
 .ship-table td, .ship-table th, .oee td, .oee th { padding: 6px 6px; }
 .ship-table tbody td, .oee tbody td { border-top: 1px solid var(--line-soft); }
+/* 안전 재고의 ABC 분석(4.14): 파레토 차트. 막대 파랑·누적 주황은 색각 이상 검증 통과(종이 바탕 #fcfaf4) */
+.abc { margin: 6px 0 12px; }
+.abc figcaption { font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+.abc-legend { display: flex; gap: 14px; font-size: 12px; color: var(--ink-2); margin: 4px 0 2px; }
+.abc-legend .sw { display: inline-block; width: 12px; height: 10px; margin-right: 5px; vertical-align: -1px; }
+.abc-legend .sw.bar { background: #2a78d6; border-radius: 2px 2px 0 0; }
+.abc-legend .sw.cum { height: 2px; vertical-align: 3px; background: #eb6834; }
+.abc-legend .sw.cut { height: 0; vertical-align: 3px; border-top: 1.5px dashed var(--ink-3); }
+.abc-chart { width: 100%; max-width: 640px; height: auto; display: block; }
+.abc-chart .axis-line { stroke: var(--line); }
+.abc-chart .grid { stroke: var(--line-soft); }
+.abc-chart .cut { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 4 3; }
+.abc-chart .cut-label { font-size: 10.5px; fill: var(--ink-3); }
+.abc-chart .tick { font-size: 10.5px; fill: var(--ink-3); }
+.abc-chart .tick.end { text-anchor: end; }
+.abc-chart .abc-bar { fill: #2a78d6; }
+.abc-chart .bar-label { font-size: 12px; font-weight: 700; fill: var(--ink); text-anchor: middle; font-variant-numeric: tabular-nums; }
+.abc-chart .bar-label.in { fill: #fff; }
+.abc-chart .cum-line { fill: none; stroke: #eb6834; stroke-width: 2; }
+.abc-chart .cum-dot { fill: #eb6834; stroke: var(--paper); stroke-width: 2; }
+.abc-chart .cum-label { font-size: 11px; fill: var(--ink-2); text-anchor: end; font-variant-numeric: tabular-nums; }
+.abc-chart .name { font-size: 12px; font-weight: 600; fill: var(--ink); text-anchor: middle; }
+.abc-chart .sub { font-size: 10.5px; fill: var(--ink-3); text-anchor: middle; }
+.abc-chart .hit { fill: transparent; }
+.abc-table-wrap summary { font-size: 12px; color: var(--ink-3); cursor: pointer; }
+.abc-table { margin: 4px 0 10px; font-size: 12.5px; }
+.abc-table th { text-align: left; font-weight: 600; color: var(--ink-3); padding: 4px 6px; }
+.abc-table td { padding: 4px 6px; border-top: 1px solid var(--line-soft); }
+.abc-table caption { caption-side: bottom; text-align: left; font-size: 12px; color: var(--ink-3); padding-top: 4px; }
 
 .cost-list { display: flex; flex-direction: column; gap: 5px; }
 .cost-row { display: grid; grid-template-columns: 84px 1fr 78px; gap: 10px; align-items: center; font-size: 0.86rem; }
@@ -294,7 +366,12 @@ select.priority { max-width: 84px; }
 .cost-total span { color: var(--ink-3); }
 
 .lead-list { display: flex; flex-direction: column; gap: 8px; }
-.lead-row { display: grid; grid-template-columns: 40px 1fr 52px; gap: 10px; align-items: center; }
+.lead-row { display: grid; grid-template-columns: 104px minmax(0, 1fr) 44px 40px 92px 40px; gap: 8px; align-items: center; font-variant-numeric: tabular-nums; font-size: 0.86rem; }
+.lead-row .r { text-align: right; }
+.lead-row .bad { color: var(--bad); font-weight: 700; }
+.lead-row .good { color: var(--good); }
+.lead-name small { margin-left: 4px; font-size: 0.72rem; color: var(--ink-3); }
+.lead-head { font-size: 0.74rem; color: var(--ink-3); }
 .lead-total { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
 .stack { display: flex; height: 24px; border-radius: 6px; overflow: hidden; background: var(--panel-2); }
 .stack-part {

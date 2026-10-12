@@ -99,6 +99,9 @@ export const COST_ITEMS: { key: string; name: string; note: string }[] = [
   { key: "late_penalty", name: "지연 배상", note: "계약금의 3%/일" },
 ];
 
+/** 자재 상자 뚜껑 색(종이, 물감, 깃발, 보냉재 4.14). 관제실 2D와 현장 3D가 함께 쓴다 */
+export const CRATE_COLORS = ["#f7f3ea", "#c8553d", "#c0392b", "#d9a520"];
+
 export const EVENT_NAME: Record<string, string> = {
   arrival: "입고",
   supply_delay: "입고 지연",

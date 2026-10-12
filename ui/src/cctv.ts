@@ -10,7 +10,7 @@
 
 import type { Scenario } from "./api";
 import { s } from "./dom";
-import { HAT, STATE_INFO, STATION_COLOR, STATION_TRADE, TRADE_HAT } from "./labels";
+import { CRATE_COLORS, HAT, STATE_INFO, STATION_COLOR, STATION_TRADE, TRADE_HAT } from "./labels";
 import { nextStation, type Frame, type LotView } from "./scene/frame";
 import type { TrackPick } from "./track";
 import { quayWaiting, STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot, stockUsed } from "./scene/stock";
@@ -351,7 +351,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     const { x, z } = shelfAt(i);
     if (x === undefined) return;
     const steel = i === 0;
-    const g = s("g", { class: "cc-shelf" }, steel ? s("g") : box(x, SHELF_Z, 2.1, 0.5, 1.6, "#4d4238", "#5c4f42"));
+    const g = s("g", { class: "cc-shelf" }, steel ? s("g") : box(x, SHELF_Z, 1.75, 0.5, 1.6, "#4d4238", "#5c4f42"));
     pickable(g, { kind: "material", material: sh.material }, `${sh.name} ${steel ? "더미" : "선반"}. 눌러서 어느 배 몫인지 보기`);
     if (steel) {
       // 철판 더미 셋, 한 장 = 종이 한 장(최대 24장까지 그린다)
@@ -360,7 +360,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     }
     const shown = steel ? 0 : Math.min(sh.qty, 8);
     for (let k = 0; k < shown; k++) {
-      const bx = px(x - 0.85 + (k % 4) * 0.45), by = py(SHELF_Z + 0.25, 1.35 - Math.floor(k / 4) * 0.6);
+      const bx = px(x - 0.75 + (k % 4) * 0.4), by = py(SHELF_Z + 0.25, 1.35 - Math.floor(k / 4) * 0.6);
       g.append(s("rect", { x: bx, y: by, width: 11, height: 8, fill: PAPER }));
     }
     const empty = sh.qty <= 0;
@@ -377,7 +377,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   // 상자 색은 선반 상자 뚜껑과 같다. 창고 뒤 마차만 무엇이 몇 개인지 적고, 길 위 마차는 "입고 D-n"만.
   // 해상(종이): 입고 사흘 전 날 끝에는 배가 부두에, 이틀·하루 전 날 끝에는 마차가 해상 길 위에. 육로(물감·깃발): 산길 위에.
   const roadSea = route(SUPPLY_ROUTE), roadLand = route(LAND_ROUTE), roadOut = route(SUPPLY_EXIT), roadSeaOut = route(SEA_EXIT), shipLane = route(SHIP_ROUTE, 1);
-  const crateColor = (m: string) => ["#f7f3ea", "#c8553d", "#c0392b"][frame.shelves.findIndex((sh) => sh.material === m)] ?? PAPER;
+  const crateColor = (m: string) => CRATE_COLORS[frame.shelves.findIndex((sh) => sh.material === m)] ?? PAPER;
   for (const dv of frame.deliveries) {
     const left = dv.day - frame.day, today = left === 0;
     const label = today ? `입고 · ${dv.items.map((a) => `${a.name} ${a.quantity}`).join(" · ")}` : `입고 D-${left} · ${dv.route === "sea" ? "해상" : "육로"}`;

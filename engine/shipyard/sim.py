@@ -281,6 +281,12 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
     if ordering is not None and ordering not in scenario["ordering"]:
         errors.append(f"발주 방식은 {', '.join(scenario['ordering'])} 중 하나이거나 비워 둬야 합니다")
 
+    # 안전 재고(4.14): 자재마다 levels 중 하나(척분)
+    levels = scenario["safety_stock"]["levels"]
+    ss = config.get("safety_stock", {})
+    if not isinstance(ss, dict) or any(m not in material_ids or v not in levels for m, v in ss.items()):
+        errors.append(f"안전 재고는 자재마다 {', '.join(map(str, levels))}척분 중 하나여야 합니다")
+
     # 역산 발주 여유일(4.13): 0~buffer_max일
     buffer = config.get("jit_buffer", 0)
     buffer_max = scenario["ordering"]["jit"]["buffer_max"]
@@ -336,6 +342,8 @@ def _locked_options(config: dict[str, Any], scenario: dict[str, Any]) -> list[st
     counts = opts.get("forklift_counts")
     if counts and (config.get("forklifts") or {}).get("count") not in counts:
         errors.append(f"{name}에서는 지게차를 {', '.join(map(str, counts))}대로만 둘 수 있습니다")
+    if any((config.get("safety_stock") or {}).values()) and not opts.get("safety_stock"):
+        errors.append(f"{name}에서는 안전 재고를 둘 수 없습니다")
     if config.get("jit_buffer", scenario["ordering"]["jit"]["buffer_days"]) != scenario["ordering"]["jit"]["buffer_days"] and not opts.get("jit_buffer"):
         errors.append(f"{name}에서는 역산 발주 여유일을 바꿀 수 없습니다")
     for mid, grade in (config.get("materials") or {}).items():
@@ -445,19 +453,56 @@ def max_rate(rules: dict[str, Any]) -> float:
     return rules["max_workers_per_station"] * top_speed * rules["overtime"]["speed"]
 
 
+def safety_stock(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, int]:
+    """안전 재고 수량(4.14, D60): 자재마다 0·1·2척분. 1척분 = 이 분기 배 중 그 자재를 가장 많이 쓰는 배 한 척 몫.
+
+    1일에 발주해 리드타임 뒤에 들어오는 공용 재고(몫 없음)다. 안전 재고 발주는 지연되지 않는다.
+    자재비는 들지 않고 재고비만 낸다(남으면 다음 반기로 넘어간다).
+    """
+    levels = config.get("safety_stock") or {}
+    types = {o["type"] for o in scenario["orders"]}
+    return {m["id"]: levels.get(m["id"], 0) * max(scenario["ship_types"][t]["bom"].get(m["id"], 0) for t in types)
+            for m in scenario["materials"] if levels.get(m["id"], 0)}
+
+
+def material_abc(scenario: dict[str, Any]) -> list[dict[str, Any]]:
+    """자재 ABC 분석(4.14, D60): 이 분기 수주 전체의 자재별 사용량·금액, ABC 등급, 쓰는 배 수(사용 빈도).
+
+    금액(표준 단가) 큰 순으로 돌려준다. 누적 비율(cumulative)이 abc.A 이하면 A, abc.B 이하면 B, 나머지 C(첫 자재는 늘 A).
+    금액이 큰 A는 엄격하게(재고를 적게), 금액이 작고 가끔 쓰는 C는 넉넉하게 관리한다는 교육용 표다. 규칙에는 쓰지 않는다.
+    """
+    cut = scenario["safety_stock"]["abc"]
+    rows = []
+    for m in scenario["materials"]:
+        qty = [scenario["ship_types"][o["type"]]["bom"].get(m["id"], 0) for o in scenario["orders"]]
+        if sum(qty) and any(st.get("material") == m["id"] for st in scenario["stations"]):
+            rows.append({"material": m["id"], "name": m["name"], "quantity": sum(qty), "value": sum(qty) * m["price"],
+                         "ships": sum(1 for q in qty if q), "of": len(qty), "lead_days": m["lead_days"], "delay": m.get("delay")})
+    total = sum(r["value"] for r in rows) or 1
+    rows.sort(key=lambda r: -r["value"])   # 금액 큰 순(파레토 차트 순서)
+    acc = 0.0
+    for k, r in enumerate(rows):
+        acc += r["value"] / total
+        r["share"] = round(r["value"] / total, 3)
+        r["cumulative"] = round(acc, 3)
+        r["class"] = "A" if k == 0 or acc <= cut["A"] + EPS else "B" if acc <= cut["B"] + EPS else "C"
+    return rows
+
+
 def jit_buffer(config: dict[str, Any], scenario: dict[str, Any]) -> int:
     """역산 발주의 여유일(4.13, D59). 설정에 없으면 규칙의 기본값(0일)."""
     return config.get("jit_buffer", scenario["ordering"]["jit"]["buffer_days"])
 
 
 def supply_delay_days(scenario: dict[str, Any], ship_id: str, material_id: str) -> int:
-    """입고 지연(4.13, D59): 그 발주가 며칠 늦게 들어오는지. 시나리오가 supply_delay를 켜지 않았으면 0.
+    """입고 지연(4.13, D59): 그 발주가 며칠 늦게 들어오는지. 시나리오가 supply_delays를 켜지 않았으면 0.
 
-    난수표 random.supply[배][자재]가 확률보다 작으면 지연이다. 지연 일수는 자재마다 같다(rules.json supply_delay.days).
+    난수표 random.supply[배][자재]가 그 자재의 delay.probability보다 작으면 delay.days일 늦다(4.14부터 자재마다 다르다, D60).
+    표준품(종이)은 공급처가 많아 드물고 짧게, 특수품(LNG 보냉재)은 공급처가 하나라 잦고 길게 늦는다.
     """
     if not scenario.get("supply_delays"):
         return 0
-    rule = scenario["supply_delay"]
+    rule = next(m["delay"] for m in scenario["materials"] if m["id"] == material_id)
     r = scenario["random"].get("supply", {}).get(ship_id, {}).get(material_id, 1.0)
     return rule["days"] if r < rule["probability"] else 0
 
@@ -558,7 +603,8 @@ def preview(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> d
                  for sid, days in order_days.items()}
     return {"stations": stations, "fixed_costs": fixed_costs(config, scenario),
             "research": research_schedule(config.get("research", []), scenario),
-            "materials": materials, "plan": plan_schedule(config, scenario)}
+            "materials": materials, "safety_stock": safety_stock(config, scenario), "abc": material_abc(scenario),
+            "plan": plan_schedule(config, scenario)}
 
 
 def move_days_between(scenario: dict[str, Any], a: int, b: int) -> int:
@@ -743,10 +789,14 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     # 입고 일정: 발주일 + 리드타임 = 입고일.
     # order_days는 결과에 싣는 배별 발주일(필요 없는 자재와 비운 칸은 뺀다).
     # 입고 지연(4.13, D59): 시나리오가 켠 분기에서 발주마다 난수표(random.supply)로 정한다. 지연되면 그만큼 늦게 들어온다.
-    arrivals: dict[int, list[tuple[str, int, str]]] = {}
+    arrivals: dict[int, list[tuple[str, int, str | None]]] = {}
     order_days: list[dict[str, int]] = [{} for _ in orders]
     arrival_day: list[dict[str, int]] = [{} for _ in orders]
     delay_notes: dict[int, list[dict[str, Any]]] = {}      # 원래 입고일 → 그날 알게 되는 지연
+    # 안전 재고(4.14): 1일에 발주해 1 + 리드타임일에 공용 몫(None)으로 들어온다
+    safety = safety_stock(config, scenario)
+    for mid, qty in safety.items():
+        arrivals.setdefault(1 + materials[mid]["lead_days"], []).append((mid, qty, None))
     for i, order in enumerate(orders):
         for mid, day in (config["ships"][order["id"]].get("order_days") or {}).items():
             qty = bom_of(i, mid)
@@ -761,6 +811,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             arrival_day[i][mid] = arrive + late
             arrivals.setdefault(arrive + late, []).append((mid, qty, order["id"]))
 
+    # 처음 재고는 몫이 없는 공용이다(안전 재고는 위 입고 일정으로 들어온다, 4.14)
     stock = {mid: scenario.get("initial_stock", {}).get(mid, 0) for mid in materials}
     # 자재 페깅(3.1, 기록만): 창고의 자재를 입고 묶음 [입고일, 몫인 배, 수량]으로도 들고 있다. 처음 재고는 몫이 없다(공용).
     # 규칙은 그대로 공용 재고(stock)를 본다. 묶음은 "누구 몫을 누가 썼나"를 결과에 남기려는 것뿐이다.
@@ -863,7 +914,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         for mid, qty, for_ship in arrivals.get(day, []):
             stock[mid] += qty
             batches[mid].append([day, for_ship, qty])
-            events.append({"day": day, "type": "arrival", "material": mid, "quantity": qty, "ship": for_ship})
+            events.append({"day": day, "type": "arrival", "material": mid, "quantity": qty, "ship": for_ship,
+                           **({"safety": True} if for_ship is None else {})})
 
         # 2. 운반: 공용 지게차(4.3, D46)와 블록 트랜스포터. 멈춘(고장) 차는 일감을 받지 않는다.
         carried: dict[int, list[str]] = {k: [] for k in range(n_tr) if day > tr_stop_until[k]}
@@ -1334,6 +1386,9 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             "cost": {"total": total_cost},
             "delivery": {"on_time": on_time, "ships": n_ships, "on_time_rate": on_time / n_ships,
                          "total_late_days": sum(late_days)},
+            # S 안전(4.14, QCDS): 잔업 사고. 등급 점수에는 넣지 않는다(D28). 잔업 일수는 사고 위험에 노출된 날(작업장 × 일)
+            "safety": {"accidents": accidents, "stop_days": sum(accident_stopped),
+                       "overtime_days": sum(sum(u) for u in overtime_days), "accident_cost": cost["accident"]},
         },
         "status": {"delivered": n_delivered, "in_progress": n_in_progress,
                    "not_started": n_ships - n_delivered - n_in_progress,
@@ -1350,6 +1405,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         "transporters": transporters_out,
         "forklifts": forklifts_out,
         "research": schedule,
+        "safety_stock": safety,
         "inventory_daily": inventory_daily,
         "pegging_daily": pegging_daily,
         "inventory_value_daily": inventory_value_daily,
@@ -1538,8 +1594,10 @@ def _need_days(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, di
     for ev in result["events"]:
         if ev["type"] == "issue":
             issued.setdefault((ev["ship"], ev["material"]), ev["day"])
+    # 그 배가 쓰지 않는 자재(LNG선만 쓰는 보냉재, 4.14)는 발주하지 않는다
     station_material = {s["id"]: s["material"] for s in scenario["stations"] if s["material"]}
-    return {ship["id"]: {mid: issued.get((ship["id"], mid), scenario["days"]) for mid in station_material.values()}
+    return {ship["id"]: {mid: issued.get((ship["id"], mid), scenario["days"]) for mid in station_material.values()
+                         if scenario["ship_types"][ship["type"]]["bom"].get(mid, 0) > 0}
             for ship in result["ships"]}
 
 

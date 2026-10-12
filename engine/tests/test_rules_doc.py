@@ -411,6 +411,15 @@ class Contract(unittest.TestCase):
     def test_same_config_same_result(self):
         self.assertEqual(simulate(PRESETS["unmanaged"]), simulate(PRESETS["unmanaged"]))
 
+    def test_qcds(self):
+        # 결과의 qcd는 QCDS(4.14): S 안전 = 잔업 사고 건수, 사고로 멈춘 날(사고마다 3일), 잔업한 날(작업장 × 일), 사고 비용(건당 300).
+        # 등급 점수에는 넣지 않는다(D28). 기본 반기 A안(전부 잔업)은 사고 7건, B안(잔업 없음)은 0건
+        r = simulate(PRESETS["unmanaged"], baseline=False)
+        self.assertEqual(sorted(r["qcd"]), ["cost", "delivery", "quality", "safety"])
+        self.assertEqual(r["qcd"]["safety"], {"accidents": 7, "stop_days": 21, "overtime_days": 167, "accident_cost": 2100.0})
+        self.assertEqual(r["qcd"]["safety"]["accidents"], r["status"]["accidents"])
+        self.assertEqual(simulate(PRESETS["managed"], baseline=False)["qcd"]["safety"]["accidents"], 0)
+
     def test_config_is_not_modified(self):
         cfg = copy.deepcopy(PRESETS["managed"])
         simulate(cfg)
@@ -608,7 +617,8 @@ class Scenarios(unittest.TestCase):
 
     def test_growth_presets(self):
         # 4.3.0 조율 값(D40). 4.8: C안(전부 최대 투입)은 트랜스포터 2대. 4.13: 입고 지연(문자 등급은 그대로)
-        cases = {'unmanaged': (-30944.6, 45.0, 'F'), 'managed': (18295.0, 88.7, 'A'), 'all_in': (-22298.6, 51.1, 'C')}
+        # 4.14: 보냉재(LNG선) 자재비와 지연, B안은 보냉재 안전 재고 1척분
+        cases = {'unmanaged': (-34288.8, 45.0, 'F'), 'managed': (17554.6, 87.5, 'A'), 'all_in': (-22815.8, 51.1, 'C')}
         for pid, (profit, score, grade) in cases.items():
             r = simulate(GROWTH[pid])
             self.assertEqual((r["profit"], r["grade"]["score"], r["grade"]["grade"]), (profit, score, grade), pid)
@@ -714,8 +724,8 @@ class Surge(unittest.TestCase):
 
     def test_presets(self):
         # 4.3.0 조율 값(D40). 블록 운반이 한 대로 줄어 관리안도 한 척 지연(7/8)
-        # 4.8: C안은 트랜스포터 2대. 4.13: 입고 지연, B안은 역산 여유 3일(문자 등급은 그대로)
-        cases = {'unmanaged': (-42532.8, 44.0, 'F'), 'managed': (25549.2, 89.2, 'A'), 'all_in': (-10415.6, 57.3, 'C')}
+        # 4.8: C안은 트랜스포터 2대. 4.13: 입고 지연. 4.14: 보냉재, B안은 여유 0일 + 보냉재 안전 재고 1척분(문자 등급은 그대로)
+        cases = {'unmanaged': (-46428.4, 44.0, 'F'), 'managed': (24713.0, 88.2, 'A'), 'all_in': (-11260.4, 57.3, 'C')}
         for pid, (profit, score, grade) in cases.items():
             r = simulate(SURGE[pid])
             self.assertEqual((r["profit"], r["grade"]["score"], r["grade"]["grade"]), (profit, score, grade), pid)
@@ -803,12 +813,11 @@ class Pegging(unittest.TestCase):
 
     def test_unmanaged_borrows_when_the_schedule_slips(self):
         # A안(무관리, 늦은 발주)은 일정이 발주 때 본 필요일과 어긋나면 남의 몫을 빌린다(4.2): 수주 증가에서 S6이 S5 몫 깃발을 쓴다.
-        # 4.13부터는 그 앞에 입고 지연도 있다: S2 종이가 16일로 늦어 15일에 S1 몫을 빌린다(Delays).
+        # 4.14부터는 47일에 S6이 S7 몫 깃발을 먼저 빌린다(입고 지연과 보냉재로 일정이 바뀌었다).
         r = simulate(next(p for p in load_presets("growth") if p["id"] == "unmanaged")["config"], baseline=False)
         borrowed = [(e["day"], e["ship"], e["material"], e["from"]) for e in r["events"]
                     if e["type"] == "issue" and e["from"] != [{"ship": e["ship"], "quantity": e["quantity"]}]]
-        self.assertEqual(borrowed[0], (15, "S2", "paper", [{"ship": "S1", "quantity": 6}]))
-        self.assertIn((56, "S6", "flag", [{"ship": "S5", "quantity": 2}]), borrowed)
+        self.assertEqual(borrowed[0], (47, "S6", "flag", [{"ship": "S7", "quantity": 2}]))
 
     def test_own_first_then_borrow_oldest(self):
         # 배별 발주일(1.0 방식): S3 종이를 1일에(3일 입고), S1 종이를 3일에(5일 입고) 발주한다.
@@ -854,10 +863,11 @@ class ForkliftPool(unittest.TestCase):
         self.assertEqual([t["id"] for t in r["transporters"]], ["TR"])
 
     def test_one_forklift_makes_a_pallet_wait(self):
-        # 수주 급증 B안을 지게차 1대로: 27일에 키트 두 건(S1·S2, 우선순위가 앞)이 하루 몫을 다 써서
+        # 수주 급증 B안을 역산 여유 3일(4.13 B안)·지게차 1대로: 27일에 키트 두 건(S1·S2, 우선순위가 앞)이 하루 몫을 다 써서
         # S5 부재 팔레트는 하루 운반 대기, 다음 날 실린다. 2대면 대기가 없다.
         def pallet_waits(n):
             cfg = copy.deepcopy(SURGE["managed"])
+            cfg["jit_buffer"] = 3
             cfg["forklifts"]["count"] = n
             r = simulate(cfg, baseline=False)
             return [(s["id"], d) for s in r["ships"] for d, x in enumerate(s["daily"], start=1)
@@ -1026,23 +1036,31 @@ class Hoist(unittest.TestCase):
                     simulate(cfg)
 
     def test_non_bottleneck_does_not_pay(self):
-        # 수주 증가 B안의 중조립에 호이스트: 도크가 병목이라 납기는 8 → 6척, 이익 18,295.0 → 17,042.8(병목 이론, D45)
+        # 수주 증가 B안의 중조립에 호이스트: 도크가 병목이라 납기는 8 → 6척, 이익 17,554.6 → 16,304.8(병목 이론, D45)
         cfg = copy.deepcopy(GROWTH["managed"])
         cfg["stations" if "stations" in cfg else "areas"]["block_assembly"]["hoist"] = True
         one, two = simulate(GROWTH["managed"], baseline=False), simulate(cfg, baseline=False)
         self.assertEqual((one["qcd"]["delivery"]["on_time"], two["qcd"]["delivery"]["on_time"]), (8, 6))
-        self.assertEqual((round(one["profit"], 1), round(two["profit"], 1)), (18295.0, 17042.8))
+        self.assertEqual((round(one["profit"], 1), round(two["profit"], 1)), (17554.6, 16304.8))
 
+
+
+def delayed_paper_scenario():
+    """예시 6·7: S1 한 척, 처음 재고 없음, S1 종이만 3일 지연(규칙의 종이 지연은 10%·1일이라 예시용으로 바꾼다)."""
+    sc = one_ship_scenario({"paper": 0, "paint": 0, "flag": 0, "insulation": 0})
+    sc["supply_delays"] = True
+    sc["materials"] = [{**m, "delay": {"probability": 0.25, "days": 3}} if m["id"] == "paper" else m for m in sc["materials"]]
+    sc["random"]["supply"] = {"S1": {"paper": 0.1}}
+    return sc
 
 
 class Delays(unittest.TestCase):
     """입고 지연과 역산 발주 여유일(4.13, D59). 수주 증가·수주 급증에서 발주마다 난수표가 0.25보다 작으면 3일 늦게 들어온다."""
 
     def one_ship(self, buffer):
-        # 착수 6일, S1 종이만 지연(난수 0.1). 종이 필요일 6일, 리드타임 2일
-        sc = one_ship_scenario({"paper": 0, "paint": 0, "flag": 0})
-        sc["supply_delays"] = True
-        sc["random"]["supply"] = {"S1": {"paper": 0.1}}
+        # 착수 6일, S1 종이만 지연(난수 0.1). 종이 필요일 6일, 리드타임 2일.
+        # 예시용으로 종이 지연을 3일로 둔다(규칙은 종이 10%·1일, 4.14)
+        sc = delayed_paper_scenario()
         cfg = one_ship_config()
         cfg["ships"]["S1"]["start_day"] = 6
         cfg["ordering"] = "jit"
@@ -1067,9 +1085,7 @@ class Delays(unittest.TestCase):
 
     def test_preview_shows_the_planned_arrival(self):
         # 미리보기는 지연을 미리 알려 주지 않는다(입고 예정일 = 발주일 + 리드타임)
-        sc = one_ship_scenario({"paper": 0, "paint": 0, "flag": 0})
-        sc["supply_delays"] = True
-        sc["random"]["supply"] = {"S1": {"paper": 0.1}}
+        sc = delayed_paper_scenario()
         cfg = one_ship_config()
         cfg["ships"]["S1"]["start_day"] = 6
         cfg["ordering"] = "jit"
@@ -1082,17 +1098,19 @@ class Delays(unittest.TestCase):
             delayed[sid] = sorted((e["ship"], e["material"]) for e in r["events"] if e["type"] == "supply_delay")
         self.assertEqual(delayed, {
             "simple": [], "basic": [],
-            "growth": [("S2", "paper"), ("S3", "paint"), ("S6", "paint"), ("S7", "paint"), ("S8", "paint")],
-            "surge": [("S1", "flag"), ("S1", "paint"), ("S1", "paper"), ("S3", "paper"), ("S7", "paint")]})
+            # 4.14: 종이는 5%·1일이라 표에서 지연이 없고, LNG 보냉재는 60%·16일
+            "growth": [("S3", "paint"), ("S4", "insulation"), ("S6", "paint"), ("S7", "insulation"), ("S7", "paint"), ("S8", "paint")],
+            "surge": [("S1", "flag"), ("S1", "paint"), ("S6", "insulation"), ("S7", "paint")]})
 
-    def test_surge_plan_needs_the_buffer(self):
-        # 수주 급증 B안은 여유 3일로 지연을 메운다. 여유 0일이면 총 9일 늦는다.
+    def test_buffer_cannot_cover_a_long_delay(self):
+        # 수주 급증 B안에서 보냉재 안전 재고를 빼면: 보냉재 16일 지연은 여유 3일로 다 못 메운다(총 지연 0일이면 6일, 3일이면 3일)
         totals = {}
         for buffer in (0, 3):
             cfg = copy.deepcopy(SURGE["managed"])
             cfg["jit_buffer"] = buffer
+            cfg["safety_stock"] = {}
             totals[buffer] = simulate(cfg, baseline=False)["qcd"]["delivery"]["total_late_days"]
-        self.assertEqual(totals, {0: 9, 3: 0})
+        self.assertEqual(totals, {0: 6, 3: 3})
 
     def test_buffer_range_and_lock(self):
         cfg = copy.deepcopy(GROWTH["managed"])
@@ -1102,6 +1120,76 @@ class Delays(unittest.TestCase):
         # 기본 반기·간이공정은 여유일을 바꿀 수 없다(옵션 잠금, D33)
         cfg = copy.deepcopy(PRESETS["managed"])
         cfg["jit_buffer"] = 1
+        with self.assertRaises(ConfigError):
+            simulate(cfg)
+        open_sim(cfg)
+
+
+class SafetyStock(unittest.TestCase):
+    """안전 재고(4.14, D60): 자재마다 0·1·2척분을 1일에 발주해 공용 재고로 둔다. 재고비만 내고 자재비는 없다. ABC 분석 표."""
+
+    def test_safety_stock_covers_the_delay(self):
+        # Delays와 같은 배(6일 착수, S1 종이 3일 지연)를 여유 0일로. 종이 1척분(8장)이 있으면 6일에 공용 몫으로 절단에 들어가
+        # 지연이 없을 때와 같은 43일에 인도한다. 늦게 온 S1 몫 8장(9일 입고)이 창고를 다시 채워 끝까지 남는다.
+        sc = delayed_paper_scenario()
+        cfg = one_ship_config()
+        cfg["ships"]["S1"]["start_day"] = 6
+        cfg["ordering"] = "jit"
+        base = simulate(cfg, sc, baseline=False)
+        cfg["safety_stock"] = {"paper": 1}
+        r = simulate(cfg, sc, baseline=False)
+        s = r["ships"][0]
+        self.assertEqual((r["safety_stock"], segments(s, "cutting"), s["delivered_day"]), ({"paper": 8}, [("work", 6, 7)], 43))
+        issue = next(e for e in r["events"] if e["type"] == "issue" and e["material"] == "paper")
+        self.assertEqual(issue["from"], [{"ship": None, "quantity": 8}])
+        self.assertEqual(r["inventory_daily"][-1]["paper"], 8)
+        # 안전 재고는 1일에 발주해 3일(리드타임 2일)에 공용 몫으로 들어온다(4.14). 첫날부터 공짜로 있는 재고가 아니다
+        arrival = next(e for e in r["events"] if e["type"] == "arrival")
+        self.assertEqual(arrival, {"day": 3, "type": "arrival", "material": "paper", "quantity": 8, "ship": None, "safety": True})
+        # 재고비만 는다(종이 8장 = 160, 하루 1.6). 지연이 없어져 지연 배상이 준다. 자재비는 그대로
+        self.assertEqual(r["costs"]["material"], base["costs"]["material"])
+        self.assertAlmostEqual(r["costs"]["holding"] - base["costs"]["holding"], 173.2)
+        self.assertAlmostEqual(r["profit"], -10208.8)
+
+    def test_one_ship_worth_is_the_largest_bom(self):
+        # 1척분 = 그 분기 배 중 그 자재를 가장 많이 쓰는 배 몫: 종이 8(VLCC·LNG), 물감 4, 깃발 6(LNG), 보냉재 4(LNG)
+        cfg = copy.deepcopy(GROWTH["managed"])
+        cfg["safety_stock"] = {"paper": 2, "paint": 1, "flag": 2, "insulation": 1}
+        self.assertEqual(preview(cfg)["safety_stock"], {"paper": 16, "paint": 4, "flag": 12, "insulation": 4})
+
+    def test_abc_table(self):
+        # 수주 증가: 금액 큰 순 깃발 2,700(50.2%, A) → 종이 1,160(누적 71.8%, B) → 물감 1,040(91.1%, C) → 보냉재 480(C).
+        # 사용 빈도: 보냉재만 8척 중 2척(LNG선)
+        rows = {r["material"]: (r["class"], r["value"], r["ships"]) for r in preview(GROWTH["managed"])["abc"]}
+        self.assertEqual(rows, {"flag": ("A", 2700, 8), "paper": ("B", 1160, 8), "paint": ("C", 1040, 8), "insulation": ("C", 480, 2)})
+        # 금액 큰 순으로 오고, 누적 비율이 함께 온다(파레토 차트)
+        self.assertEqual([(r["material"], r["share"], r["cumulative"]) for r in preview(GROWTH["managed"])["abc"]],
+                         [("flag", 0.502, 0.502), ("paper", 0.216, 0.717), ("paint", 0.193, 0.911), ("insulation", 0.089, 1.0)])
+
+    def test_abc_lesson(self):
+        # 가끔 쓰고 늦으면 오래 걸리는 보냉재(C)만 1척분이 가장 낫다. 매 척 쓰는 종이를 더하면 재고비만 는다. 보냉재 2척분은 과잉
+        def profit(ss):
+            cfg = copy.deepcopy(SURGE["managed"])
+            cfg["safety_stock"] = ss
+            r = simulate(cfg, baseline=False)
+            return r["profit"], r["qcd"]["delivery"]["total_late_days"]
+        self.assertEqual(profit({"insulation": 1}), (24713.0, 0))
+        self.assertEqual(profit({"insulation": 1, "paper": 1}), (24524.2, 0))
+        self.assertEqual(profit({"insulation": 2}), (24453.8, 0))
+        self.assertEqual(profit({}), (22958.6, 6))
+        # S6 보냉재(39일)는 늦은 자기 몫 대신 공용(안전 재고) 몫으로 나간다
+        r = simulate(SURGE["managed"], baseline=False)
+        s6 = next(e for e in r["events"] if e["type"] == "issue" and e["material"] == "insulation" and e["ship"] == "S6")
+        self.assertEqual((s6["day"], s6["from"]), (39, [{"ship": None, "quantity": 4}]))
+
+    def test_levels_and_lock(self):
+        cfg = copy.deepcopy(GROWTH["managed"])
+        cfg["safety_stock"] = {"paper": 3}
+        with self.assertRaises(ConfigError):
+            simulate(cfg)
+        # 기본 반기·간이공정은 안전 재고를 둘 수 없다(옵션 잠금, D33)
+        cfg = copy.deepcopy(PRESETS["managed"])
+        cfg["safety_stock"] = {"paper": 1}
         with self.assertRaises(ConfigError):
             simulate(cfg)
         open_sim(cfg)

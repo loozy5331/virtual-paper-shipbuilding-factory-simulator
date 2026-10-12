@@ -1154,11 +1154,8 @@ function drawReportBoard(): void {
           ink: GRADE_TEXT[g.grade],
         },
       }),
-      r.safetyWarnings !== undefined
-        ? h("p", { class: "safety-line" }, `현장 안전 경고 ${r.safetyWarnings}회`,
-          h("small", null, r.safetyWarnings ? " · 현장에서 위험 설비 반경에 들어간 횟수입니다(등급과 무관)" : " · 현장에서 위험 반경에 들어가지 않았습니다"))
-        : null,
-      renderReport(r.result, state.data.scenario, state.data.max_rate, openFinding)));
+      // 현장 안전 경고는 평가서의 S 안전 칸에(4.14)
+      renderReport(r.result, state.data.scenario, state.data.max_rate, openFinding, r.safetyWarnings)));
 }
 
 // ---------------------------------------------------------------------------

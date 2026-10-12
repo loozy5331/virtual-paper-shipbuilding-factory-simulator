@@ -75,6 +75,9 @@ def space(sc: dict[str, Any]) -> dict[str, list[Any]]:
     # 역산 발주 여유일(4.13, D59): 분기가 열었을 때만 0~buffer_max일
     jit = sc["ordering"]["jit"]
     out["jit_buffer"] = list(range(jit["buffer_max"] + 1)) if opts.get("jit_buffer") else [jit["buffer_days"]]
+    # 안전 재고(4.14, D60): 분기가 열었을 때만 자재마다 0·1·2척분
+    for m in sc["materials"]:
+        out[f"safety.{m['id']}"] = list(sc["safety_stock"]["levels"]) if opts.get("safety_stock") else [0]
     out["gap"] = [1, 2, 3, 4, 5, 6, 8]
     return out
 
@@ -86,6 +89,7 @@ def to_config(sc: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
         "scenario": sc["id"],
         "ordering": plan["ordering"],
         "jit_buffer": plan["jit_buffer"],
+        "safety_stock": {m["id"]: plan[f"safety.{m['id']}"] for m in sc["materials"] if plan[f"safety.{m['id']}"]},
         "ships": {o["id"]: {"priority": k + 1, "start_day": min(sc["days"], 1 + k * plan["gap"])} for k, o in enumerate(by_due)},
         "stations": {st["id"]: {key: plan[f"{st['id']}.{key}"] for key in ("crew", "method", "overtime", "maintenance", "units", "split", "hoist")}
                      for st in active_stations(sc)},
@@ -179,7 +183,7 @@ def run(scenario_id: str, starts: int, seed: int, report: Callable[[str], None] 
         c = cfg["stations"][st["id"]]
         report(f"  {st['name']}: 인력 {c['crew']}, 공법 {c['method']}, 잔업 {c['overtime']}, 정비 {c['maintenance']}, 작업장 {c['units']}, 나눠 {c['split']}, 호이스트 {c['hoist']}")
     report(f"  자재 {cfg['materials']}, 직종별 인원 {cfg['pools']}, 트랜스포터 {cfg['transporters']['count']}대(정비 {cfg['transporters']['maintenance']}), 지게차 {cfg['forklifts']['count']}대(정비 {cfg['forklifts']['maintenance']}), 연구 {cfg['research']}, "
-           f"발주 {cfg['ordering']}(여유 {cfg['jit_buffer']}일), 착수 간격 {best_plan['gap']}일")
+           f"발주 {cfg['ordering']}(여유 {cfg['jit_buffer']}일), 안전 재고 {cfg['safety_stock']}, 착수 간격 {best_plan['gap']}일")
 
     # 상위 설정에서 선택지 사용 비율
     top = [p for s, p in found if s >= best_score - 5]
@@ -187,7 +191,7 @@ def run(scenario_id: str, starts: int, seed: int, report: Callable[[str], None] 
     for kind in ("crew", "method", "overtime", "maintenance", "units", "split", "hoist"):
         counts = Counter(p[f"{st['id']}.{kind}"] for p in top for st in active_stations(sc))
         report(f"  {kind:12s} " + ", ".join(f"{k}: {v}" for k, v in counts.most_common()))
-    for name in [n for n in sp if n.startswith("material.") or n.startswith("pool.")] + ["research", "ordering", "jit_buffer"]:
+    for name in [n for n in sp if n.startswith("material.") or n.startswith("pool.")] + ["research", "ordering", "jit_buffer"] + [n for n in sp if n.startswith("safety.")]:
         counts = Counter(p[name] for p in top)
         label = {"research": lambda k: "+".join(RESEARCH_SETS[k]) or "없음"}.get(name, str)
         report(f"  {name:12s} " + ", ".join(f"{label(k)}: {v}" for k, v in counts.most_common()))
@@ -203,8 +207,8 @@ def run(scenario_id: str, starts: int, seed: int, report: Callable[[str], None] 
     for kind, v in cases:
         fixed = {f"{st['id']}.{kind}": v for st in active_stations(sc) if v in sp[f"{st['id']}.{kind}"]}
         jobs += [({**p, **fixed}, fixed) for p in tops]
-    # 공정 밖의 한 칸(발주 방식, 역산 여유일, 4.13)도 하나로 고정해 본다
-    globals_ = [(name, v) for name in ("ordering", "jit_buffer") if len(sp[name]) > 1 for v in sp[name]]
+    # 공정 밖의 한 칸(발주 방식, 역산 여유일 4.13, 안전 재고 4.14)도 하나로 고정해 본다
+    globals_ = [(name, v) for name in ["ordering", "jit_buffer"] + [n for n in sp if n.startswith("safety.")] if len(sp[name]) > 1 for v in sp[name]]
     for name, v in globals_:
         jobs += [({**p, name: v}, {name: v}) for p in tops]
     cases += globals_
