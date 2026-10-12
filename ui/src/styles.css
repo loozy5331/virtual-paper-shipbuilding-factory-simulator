@@ -762,7 +762,8 @@ body { background: var(--desk); }
 .desk-fields dt { color: var(--ink-3); }
 .desk-fields dd { margin: 0; font-weight: 600; }
 .desk-fields dd small { font-weight: 400; color: var(--ink-3); }
-.desk-foot { display: flex; align-items: center; justify-content: space-between; margin-top: auto; }
+/* 난이도 줄은 칸 바로 아래에 두고 메모가 남은 높이를 채운다(4.15.8): 메모 길이가 달라도 네 장의 난이도 줄이 같은 높이 */
+.desk-foot { display: flex; align-items: center; justify-content: space-between; }
 .desk-level { display: inline-flex; align-items: center; gap: 4px; }
 .desk-level i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--ink-2); }
 .desk-level i.on { background: var(--ink-2); }
@@ -771,7 +772,7 @@ body { background: var(--desk); }
   width: 40px; height: 40px; border-radius: 50%; border: 2.5px solid; display: inline-flex; align-items: center; justify-content: center;
   font-weight: 800; font-size: 1.15rem; transform: rotate(-8deg);
 }
-.desk-memo { margin: 0; padding: 8px 10px; background: #f3efe2; border-left: 3px solid var(--board-edge); font-size: 0.8rem; color: var(--ink-2); line-height: 1.4; }
+.desk-memo { flex: 1; margin: 0; padding: 8px 10px; background: #f3efe2; border-left: 3px solid var(--board-edge); font-size: 0.8rem; color: var(--ink-2); line-height: 1.4; }
 .desk-memo b { color: var(--ink); }
 /* 집어 든 클립보드 말고는 흐려진다 */
 .desk.leaving .desk-board:not(.picked) { opacity: 0.25; }
