@@ -1105,7 +1105,9 @@ body { background: var(--desk); }
 /* 4.10 시점 전환(오른쪽 위), 4.11 1인칭 키 안내 */
 .field-head .field-view { margin-left: 12px; padding-left: 12px; border-left: 1px solid rgba(243, 241, 234, 0.25); }
 .field-head .fp-keys { margin-left: auto; }
-.fp-keys kbd { font: inherit; font-weight: 700; color: #f3f1ea; border: 1px solid rgba(243, 241, 234, 0.4); border-radius: 3px; padding: 0 4px; }
+.field-head .pan-keys { margin-left: auto; }
+.field-head .pan-keys + .field-cams { margin-left: 8px; }
+.fp-keys kbd, .pan-keys kbd { font: inherit; font-weight: 700; color: #f3f1ea; border: 1px solid rgba(243, 241, 234, 0.4); border-radius: 3px; padding: 0 4px; }
 /* 1인칭 명찰: 가까운 사람만, 가슴 높이 이름표처럼 조금 크게 */
 .scene-labels.first .name-tag { font-size: 12px; line-height: 18px; padding: 0 6px; border-top: 3px solid #2a78d6; border-radius: 3px; }
 .field-host { flex: 1; height: auto; border-radius: 0; color: var(--ink); }

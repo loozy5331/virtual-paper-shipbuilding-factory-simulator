@@ -42,6 +42,8 @@ export type CameraMode = "control" | "field";
 export type FieldView = "third" | "first";
 /** 1인칭: 걷는 빠르기(Shift는 2배), 명찰이 보이는 거리, 시야각(3인칭은 40) */
 const WALK_SPEED = 2.6, BADGE_R = 5.5, FP_FOV = 62;
+/** 3인칭 W·A·S·D 화면 옮기기(4.16.1): 1초에 카메라 거리의 몇 배를 옮기나(Shift는 2배), 보는 점이 머무는 땅 범위 */
+const PAN_RATE = 0.7, PAN_BOUNDS = { x0: -45, x1: 36, z0: -26, z1: 26 };
 /** 1인칭에서 이름표(작업장·설비·블록)가 보이는 거리. 멀리 것까지 띄우면 지평선에 겹쳐 쌓인다 */
 const FP_LABEL_R = 12;
 /** 내업 공장 벽 높이(4.11.1: 1.0 → 1.6, 1인칭에서 소인 키의 두 배 남짓이면 공장 벽 같지 않았다) */
@@ -918,7 +920,10 @@ export class Yard {
     }
   }
 
-  /** 1인칭 걷기 입력(main.ts가 W·A·S·D·Shift로): forward = 앞(+1)·뒤(−1), strafe = 오른쪽(+1)·왼쪽(−1) */
+  /**
+   * W·A·S·D 입력(main.ts가 W·A·S·D·Shift로): forward = 앞(+1)·뒤(−1), strafe = 오른쪽(+1)·왼쪽(−1).
+   * 1인칭은 걷고, 3인칭은 화면을 옮긴다(4.16.1).
+   */
   setMove(forward: number, strafe: number, run: boolean): void {
     Object.assign(this.keys, { forward, strafe, run });
   }
@@ -947,7 +952,11 @@ export class Yard {
   /** 1인칭 걷기 한 걸음: 바라보는 쪽 기준으로 움직이고, 막히면 벽을 따라 미끄러진다(x·z를 따로 본다) */
   private stepKeys(dt: number): void {
     const { forward, strafe, run } = this.keys;
-    if (this.view !== "first" || (!forward && !strafe)) return;
+    if (!forward && !strafe) return;
+    if (this.view === "third") {
+      this.panKeys(dt);
+      return;
+    }
     const sin = Math.sin(this.fpYaw), cos = Math.cos(this.fpYaw);
     let dx = -sin * forward + cos * strafe, dz = -cos * forward - sin * strafe;
     const len = Math.hypot(dx, dz);
@@ -960,6 +969,28 @@ export class Yard {
     if (walkable(pos.x + dx, pos.z, blockers)) pos.x += dx;
     if (walkable(pos.x, pos.z + dz, blockers)) pos.z += dz;
     this.manager.place(pos, Math.atan2(dx, dz), "stand", true);
+  }
+
+  /**
+   * 3인칭 화면 옮기기(4.16.1): 카메라와 보는 점을 땅 위에서 함께 민다. W·S는 화면 위아래(카메라가 보는 쪽을 땅에 눕힌 방향),
+   * A·D는 좌우. 높이와 각도는 그대로이고, 멀리서 볼수록 빨리 옮긴다. 보는 점은 야드 밖으로 나가지 않는다.
+   */
+  private panKeys(dt: number): void {
+    const { forward, strafe, run } = this.keys;
+    const target = this.controls.target;
+    const ahead = target.clone().sub(this.camera.position).setY(0);
+    if (ahead.lengthSq() < 1e-6) this.camera.getWorldDirection(ahead).setY(0);
+    ahead.normalize();
+    const right = new THREE.Vector3(-ahead.z, 0, ahead.x);
+    const move = ahead.multiplyScalar(forward).add(right.multiplyScalar(strafe));
+    const speed = PAN_RATE * this.camera.position.distanceTo(target) * (run ? 2 : 1);
+    move.setLength(speed * dt);
+    const b = PAN_BOUNDS;
+    move.x = THREE.MathUtils.clamp(target.x + move.x, b.x0, b.x1) - target.x;
+    move.z = THREE.MathUtils.clamp(target.z + move.z, b.z0, b.z1) - target.z;
+    this.camMoving = 0;   // 구획으로 날아가던 중이면 멈추고 손으로 옮긴다
+    target.add(move);
+    this.camera.position.add(move);
   }
 
   /** 위험 반경에 들어가면(설비가 다가왔거나 관리자가 걸어 들어갔거나) 부른다. 관리자는 그 자리에 멈춘다. */

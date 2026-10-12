@@ -1277,6 +1277,7 @@ function drawField(): void {
     first
       ? h("span", { class: "hint fp-keys" }, h("kbd", null, "W A S D"), " 걷기 · ", h("kbd", null, "Shift"), " 빨리 · 끌어서 둘러보기 · 휠로 당겨 보기")
       : [
+        h("span", { class: "hint pan-keys" }, h("kbd", null, "W A S D"), " 화면 옮기기"),
         h("div", { class: "field-cams", role: "group", "aria-label": "볼 곳" },
           h("button", { type: "button", class: state.fieldFocus === null ? "active" : "", onclick: () => { state.fieldFocus = null; drawField(); aimCamera(); } }, "전경"),
           shownSectors().map((sec) =>
@@ -1302,8 +1303,8 @@ function setFieldView(view: FieldView): void {
 }
 
 /**
- * 1인칭 걷기(4.11, D54): W·A·S·D와 Shift. 한글 자판에서도 되게 글자(key) 대신 자리(code)로 본다.
- * 누르고 있는 키를 모아 yard에 앞뒤·옆 방향으로 넘긴다. 경고 카드가 떠 있으면 걷지 않는다.
+ * 현장 W·A·S·D와 Shift: 1인칭은 걷기(4.11, D54), 3인칭은 화면 옮기기(4.16.1). 한글 자판에서도 되게 글자(key) 대신 자리(code)로 본다.
+ * 누르고 있는 키를 모아 yard에 앞뒤·옆 방향으로 넘긴다. 경고 카드가 떠 있으면 움직이지 않는다.
  */
 const MOVE_KEYS: Record<string, [number, number]> = { KeyW: [1, 0], KeyS: [-1, 0], KeyA: [0, -1], KeyD: [0, 1] };
 const held = new Set<string>();
@@ -1311,7 +1312,7 @@ const held = new Set<string>();
 function onMoveKey(e: KeyboardEvent, down: boolean): boolean {
   const move = e.code in MOVE_KEYS || e.key === "Shift";
   if (!move) return false;
-  if (down && (state.screen !== "field" || state.fieldView !== "first" || els.field.querySelector(".safety-alert"))) return false;
+  if (down && (state.screen !== "field" || els.field.querySelector(".safety-alert"))) return false;
   if (down) held.add(e.code); else held.delete(e.code);
   pushMove();
   return e.code in MOVE_KEYS;
