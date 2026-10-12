@@ -951,7 +951,7 @@ body { background: var(--desk); }
 .cc-feed .cc-tag.track { fill: #e0b43a; font-weight: 800; }
 .cam-track { position: absolute; right: 10px; bottom: 8px; z-index: 2; display: flex; align-items: center; gap: 5px; background: rgba(20, 24, 20, 0.62); color: #f3f1ea; font-size: 11px; font-weight: 700; padding: 2px 4px 2px 8px; border-radius: 3px; }
 .cam-track select { font: inherit; font-size: 11px; color: #1f2622; background: #f3f1ea; border: 0; border-radius: 2px; padding: 1px 2px; }
-.track-host { position: absolute; right: 10px; top: 40px; z-index: 3; width: min(340px, calc(100% - 20px)); max-height: calc(100% - 80px); overflow-y: auto; }
+.track-host { position: absolute; right: 10px; top: 60px; z-index: 3; width: min(340px, calc(100% - 20px)); max-height: calc(100% - 80px); overflow-y: auto; }
 .track-host:empty { display: none; }
 /* 인도 완료 로그(4.0): 오른쪽 위, 최근 것부터. 지연은 빨간 글 */
 .delivered-log { position: absolute; right: 10px; top: 8px; z-index: 2; margin: 0; padding: 4px 8px; list-style: none; max-height: 40%; overflow-y: auto;
@@ -962,6 +962,7 @@ body { background: var(--desk); }
 .delivered-log em { font-style: normal; color: #9fd8b4; }
 .delivered-log li.late em { color: #ff8a95; }
 .field-screen .delivered-log { top: 10px; }
+.right-top .delivered-log { top: 34px; }
 .trial-bubble { position: absolute; right: 14px; bottom: 40px; z-index: 2; background: var(--paper); color: var(--ink); border: 1px solid #c9cfc9;
   border-radius: 8px; padding: 5px 7px 7px; font-size: 11px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
 .trial-bubble[hidden] { display: none; }
@@ -1014,7 +1015,12 @@ body { background: var(--desk); }
 .cam-back { position: absolute; right: 10px; top: 8px; z-index: 2; background: #fff; border: 1px solid #c9cfc9; font: inherit; font-size: 12px; padding: 3px 9px; border-radius: 4px; font-weight: 700; color: var(--accent); cursor: pointer; }
 /* 익명 표시(2.1): 관제실 화면은 개인을 구분하지 않는다는 표시. 화면 이름 바로 아래, 눈에 띄지만 조용하게. */
 .cam-anon { position: absolute; left: 10px; top: 34px; z-index: 2; background: rgba(243, 241, 234, 0.92); color: var(--ink-2); font-size: 11px; padding: 2px 7px; border-radius: 3px; border: 1px solid #c9cfc9; }
-.cam-switch { position: absolute; left: 10px; bottom: 8px; z-index: 2; display: flex; gap: 4px; }
+.cam-switch { display: flex; gap: 4px; }
+/* 작업 현황 머리줄(4.15.2): 현장 머리줄처럼 제목 · 볼 구획 · 추적(오른쪽 끝)을 한 줄에. 줄 바깥 빈 곳은 그림을 누를 수 있게 */
+.cam-bar { position: absolute; left: 10px; right: 10px; top: 8px; z-index: 2; display: flex; align-items: center; gap: 8px; pointer-events: none; }
+.cam-bar > * { pointer-events: auto; }
+.cam-bar .cam-label, .cam-bar .cam-track { position: static; white-space: nowrap; }
+.cam-bar .cam-track { margin-left: auto; }
 .cam-switch button { border: 0; background: rgba(20, 24, 20, 0.62); color: #f3f1ea; font: inherit; font-size: 11px; padding: 2px 7px; border-radius: 3px; cursor: pointer; }
 .cam-switch button.active { background: rgba(20, 24, 20, 0.9); font-weight: 700; }
 .log { flex: 1; min-height: 0; margin: 0; padding: 4px 10px 6px; list-style: none; overflow-y: auto; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-2); background: #f6f3ea; }

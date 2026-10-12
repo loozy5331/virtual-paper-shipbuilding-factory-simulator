@@ -764,7 +764,7 @@ function setTrack(ship: string | null): void {
   tick(true);
 }
 
-/** 추적할 배 고르기(작업 현황 전경 오른쪽 아래, 현장 머리줄) */
+/** 추적할 배 고르기(작업 현황 머리줄 오른쪽 끝, 현장 머리줄) */
 function trackSelect(): HTMLElement {
   return h("label", { class: "cam-track" }, "추적",
     h("select", { onchange: (e: Event) => setTrack((e.target as HTMLSelectElement).value || null) },
@@ -1112,18 +1112,20 @@ function drawRightTop(): void {
   const label = els.monitorRight.querySelector(".win-title");
   mount(els.rightTop,
     h("div", { class: "cc-host" }),
-    h("span", { class: "cam-label" }, camLabel()),
+    // 머리줄(4.15.2): 현장 머리줄과 같은 차례로. 어디(제목) → 무엇을 볼까(전경·구획) → 무엇을 따라갈까(추적)
+    h("div", { class: "cam-bar" },
+      h("span", { class: "cam-label" }, camLabel()),
+      h("div", { class: "cam-switch", role: "group", "aria-label": "볼 구획" },
+        h("button", { type: "button", class: state.cctv === null ? "active" : "", onclick: () => openSector(null) }, "전경"),
+        shownSectors().map((sec) =>
+          h("button", { type: "button", class: sec.id === state.cctv ? "active" : "", onclick: () => openSector(sec.id) }, sec.name))),
+      // 추적할 배 고르기(3.1): 고른 배의 블록만 진하게, 선반에는 그 배 몫
+      trackSelect()),
     h("span", { class: "cam-anon", title: "관제실 화면은 사람을 기호로만 보여 줍니다. 얼굴과 이름은 현장에 직접 나가야 보입니다." },
       "익명 표시 · 개인을 구분하지 않습니다"),
     els.trackRoom,
     els.deliveredRoom,
-    els.trialRoom,
-    // 추적할 배 고르기(3.1): 고른 배의 블록만 진하게, 선반에는 그 배 몫
-    trackSelect(),
-    h("div", { class: "cam-switch", role: "group", "aria-label": "볼 구획" },
-      h("button", { type: "button", class: state.cctv === null ? "active" : "", onclick: () => openSector(null) }, "전경"),
-      shownSectors().map((sec) =>
-        h("button", { type: "button", class: sec.id === state.cctv ? "active" : "", onclick: () => openSector(sec.id) }, sec.name))));
+    els.trialRoom);
   if (label) label.textContent = `작업 현황 · ${cctvName()}`;
 }
 
