@@ -243,6 +243,8 @@ select.priority { max-width: 84px; }
 .legend i.hatch {
   background: repeating-linear-gradient(45deg, #6d7a72 0 2px, #c9d3cc 2px 5px);
 }
+/* 계획 줄(4.16): 실제로는 공정 색. 범례는 공정 색 셋을 이어 그린다 */
+.legend i.plan-mark { width: 18px; height: 4px; border-radius: 1px; background: linear-gradient(90deg, #2a78d6 0 33%, #e87ba4 33% 66%, #4a3aa7 66%); }
 .legend i.due-mark { width: 0; height: 14px; border-left: 2px dashed var(--ink); border-radius: 0; }
 .legend i.deliver-mark { width: 10px; height: 10px; background: var(--good); transform: rotate(45deg); border-radius: 1px; }
 .legend .sep { width: 1px; height: 14px; background: var(--line); }
