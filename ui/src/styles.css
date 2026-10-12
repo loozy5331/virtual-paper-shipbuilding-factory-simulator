@@ -155,12 +155,14 @@ select.priority { max-width: 84px; }
 .form-sec + .form-sec { margin-top: 2px; }
 .fold > summary { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; cursor: pointer; list-style: none; padding: 2px 0 6px; }
 .fold > summary::-webkit-details-marker { display: none; }
-.fold > summary::before { content: "▸"; color: var(--ink-3); font-size: 0.8rem; width: 10px; transition: transform 0.15s; align-self: center; }
-.fold[open] > summary::before { transform: rotate(90deg); }
+/* 접기 꺾쇠: 글자(▸)는 글꼴마다 크기가 달라 점처럼 보였다(4.15.4). 선 두 개로 그린다. 닫힘 › → 열림 ⌄ */
+.fold > summary::before { content: ""; flex: none; align-self: center; width: 8px; height: 8px; margin: 0 4px 0 2px;
+  border: solid var(--ink-2); border-width: 0 2.5px 2.5px 0; transform: rotate(-45deg); transition: transform 0.15s; }
+.fold[open] > summary::before { transform: translateY(-3px) rotate(45deg); }
 .fold > summary:hover .fold-title { text-decoration: underline; text-underline-offset: 3px; }
 .fold-title { font-family: var(--serif); font-size: 1.02rem; font-weight: 800; letter-spacing: 0.08em; color: var(--ink); }
 .fold-note { font-size: 0.76rem; color: var(--ink-3); }
-.fold-sum { flex-basis: 100%; padding-left: 18px; font-size: 0.8rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.fold-sum { flex-basis: 100%; padding-left: 24px; font-size: 0.8rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .fold[open] > summary .fold-sum { display: none; }   /* 펼치면 아래 내용이 곧 요약이다 */
 .fold:not([open]) > summary .fold-note { display: none; }
 .fold-body { display: flex; flex-direction: column; gap: 8px; padding-bottom: 6px; }
@@ -438,7 +440,7 @@ select.priority { max-width: 84px; }
 .queue li { font-size: 0.86rem; }
 .queue li small { margin-left: 6px; }
 .queue-btns { float: right; display: inline-flex; gap: 2px; }
-.icon-btn { border: 1px solid var(--line); background: #fff; border-radius: 6px; width: 24px; height: 22px; font-size: 0.7rem; cursor: pointer; padding: 0; }
+.icon-btn { border: 1px solid var(--line); background: #fff; border-radius: 6px; width: 28px; height: 26px; font-size: 0.9rem; line-height: 1; color: var(--ink-2); cursor: pointer; padding: 0; }
 .icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .queue-add { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip-btn { border: 1px dashed var(--accent-2); background: #fff; color: var(--accent); border-radius: 999px; padding: 3px 10px; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
@@ -873,7 +875,7 @@ body { background: var(--desk); }
 .win-buttons { display: flex; height: 100%; }
 /* 창 단추: 회색 바탕 위 진한 먹색 선 그림(대비 확보), 누를 자리임을 알게 옅은 바탕을 깐다 */
 .win-btn { width: 46px; height: 100%; border: 0; border-left: 1px solid #e1e1e1; background: #e9e9e9; color: #111; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-.win-btn svg { width: 12px; height: 12px; display: block; }
+.win-btn svg { width: 14px; height: 14px; display: block; }
 .win-btn:hover, .win-btn:focus-visible { background: #d4d4d4; }
 .win-btn.restore, .monitor.zoomed .win-btn.max { display: none; }
 .monitor.zoomed .win-btn.restore { display: flex; }
@@ -1000,7 +1002,7 @@ body { background: var(--desk); }
 .track-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
 .track-head b { font-size: 13px; }
 .track-kind { color: var(--ink-3); font-size: 11px; }
-.track-x { margin-left: auto; border: 0; background: transparent; font: inherit; color: var(--ink-2); cursor: pointer; padding: 0 2px; }
+.track-x { margin-left: auto; border: 0; background: transparent; font: inherit; font-size: 15px; line-height: 1; color: var(--ink-2); cursor: pointer; padding: 0 2px; }
 .track-card dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; }
 .track-card dt { color: var(--ink-3); font-weight: 700; white-space: nowrap; }
 .track-card dd { margin: 0; }
