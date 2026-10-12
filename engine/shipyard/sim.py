@@ -281,6 +281,12 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
     if ordering is not None and ordering not in scenario["ordering"]:
         errors.append(f"발주 방식은 {', '.join(scenario['ordering'])} 중 하나이거나 비워 둬야 합니다")
 
+    # 역산 발주 여유일(4.13): 0~buffer_max일
+    buffer = config.get("jit_buffer", 0)
+    buffer_max = scenario["ordering"]["jit"]["buffer_max"]
+    if not _is_int(buffer) or not 0 <= buffer <= buffer_max:
+        errors.append(f"역산 발주 여유일은 0~{buffer_max}일이어야 합니다")
+
     skilled = config.get("skilled_station")
     if skilled is not None and skilled not in station_ids:
         errors.append("시니어는 공정 하나에 두거나 미배치(null)여야 합니다")
@@ -330,6 +336,8 @@ def _locked_options(config: dict[str, Any], scenario: dict[str, Any]) -> list[st
     counts = opts.get("forklift_counts")
     if counts and (config.get("forklifts") or {}).get("count") not in counts:
         errors.append(f"{name}에서는 지게차를 {', '.join(map(str, counts))}대로만 둘 수 있습니다")
+    if config.get("jit_buffer", scenario["ordering"]["jit"]["buffer_days"]) != scenario["ordering"]["jit"]["buffer_days"] and not opts.get("jit_buffer"):
+        errors.append(f"{name}에서는 역산 발주 여유일을 바꿀 수 없습니다")
     for mid, grade in (config.get("materials") or {}).items():
         if grade not in opts["material_grades"]:
             errors.append(f"{name}에서는 자재 등급 '{scenario['material_grades'][grade]['name']}'을(를) 쓸 수 없습니다({mid})")
@@ -435,6 +443,23 @@ def max_rate(rules: dict[str, Any]) -> float:
     """작업장이 낼 수 있는 최대 처리량. OEE 성능가동률의 기준이다."""
     top_speed = max(m["speed"] for m in rules["methods"].values())
     return rules["max_workers_per_station"] * top_speed * rules["overtime"]["speed"]
+
+
+def jit_buffer(config: dict[str, Any], scenario: dict[str, Any]) -> int:
+    """역산 발주의 여유일(4.13, D58). 설정에 없으면 규칙의 기본값(0일)."""
+    return config.get("jit_buffer", scenario["ordering"]["jit"]["buffer_days"])
+
+
+def supply_delay_days(scenario: dict[str, Any], ship_id: str, material_id: str) -> int:
+    """입고 지연(4.13, D58): 그 발주가 며칠 늦게 들어오는지. 시나리오가 supply_delay를 켜지 않았으면 0.
+
+    난수표 random.supply[배][자재]가 확률보다 작으면 지연이다. 지연 일수는 자재마다 같다(rules.json supply_delay.days).
+    """
+    if not scenario.get("supply_delays"):
+        return 0
+    rule = scenario["supply_delay"]
+    r = scenario["random"].get("supply", {}).get(ship_id, {}).get(material_id, 1.0)
+    return rule["days"] if r < rule["probability"] else 0
 
 
 def research_schedule(queue: list[str], scenario: dict[str, Any]) -> list[dict[str, Any]]:
@@ -717,15 +742,24 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
 
     # 입고 일정: 발주일 + 리드타임 = 입고일.
     # order_days는 결과에 싣는 배별 발주일(필요 없는 자재와 비운 칸은 뺀다).
+    # 입고 지연(4.13, D58): 시나리오가 켠 분기에서 발주마다 난수표(random.supply)로 정한다. 지연되면 그만큼 늦게 들어온다.
     arrivals: dict[int, list[tuple[str, int, str]]] = {}
     order_days: list[dict[str, int]] = [{} for _ in orders]
+    arrival_day: list[dict[str, int]] = [{} for _ in orders]
+    delay_notes: dict[int, list[dict[str, Any]]] = {}      # 원래 입고일 → 그날 알게 되는 지연
     for i, order in enumerate(orders):
         for mid, day in (config["ships"][order["id"]].get("order_days") or {}).items():
             qty = bom_of(i, mid)
             if day is None or qty == 0:
                 continue
             order_days[i][mid] = day
-            arrivals.setdefault(day + materials[mid]["lead_days"], []).append((mid, qty, order["id"]))
+            arrive = day + materials[mid]["lead_days"]
+            late = supply_delay_days(scenario, order["id"], mid)
+            if late:
+                delay_notes.setdefault(arrive, []).append({"day": arrive, "type": "supply_delay", "material": mid, "ship": order["id"],
+                                                           "quantity": qty, "days": late, "arrival_day": arrive + late})
+            arrival_day[i][mid] = arrive + late
+            arrivals.setdefault(arrive + late, []).append((mid, qty, order["id"]))
 
     stock = {mid: scenario.get("initial_stock", {}).get(mid, 0) for mid in materials}
     # 자재 페깅(3.1, 기록만): 창고의 자재를 입고 묶음 [입고일, 몫인 배, 수량]으로도 들고 있다. 처음 재고는 몫이 없다(공용).
@@ -824,7 +858,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             ship_state[i] = entry
         station_today = [[{"state": "idle", "ship": None, "workers": 0} for _ in range(n)] for n in n_units]
 
-        # 1. 입고
+        # 1. 입고. 지연된 발주는 원래 입고일에 지연을 알린다(4.13)
+        events.extend(delay_notes.get(day, []))
         for mid, qty, for_ship in arrivals.get(day, []):
             stock[mid] += qty
             batches[mid].append([day, for_ship, qty])
@@ -1218,7 +1253,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             "priority": priority[i],
             "start_day": config["ships"][order["id"]]["start_day"],
             "order_days": order_days[i],
-            "arrival_days": {mid: day + materials[mid]["lead_days"] for mid, day in order_days[i].items()},
+            "arrival_days": arrival_day[i],
             "started_day": started[i],
             "delivered_day": delivered[i],
             "late_days": late_days[i],
@@ -1471,7 +1506,7 @@ def resolve_order_days(config: dict[str, Any], scenario: dict[str, Any] | None =
     lead = {m["id"]: m["lead_days"] for m in scenario["materials"]}
     if ordering == "bulk":
         return {sid: {mid: 1 for mid in lead} for sid in config["ships"]}
-    buffer = scenario["ordering"]["jit"]["buffer_days"]
+    buffer = jit_buffer(config, scenario)
     offset = {mid: (lead[mid] + buffer if ordering == "jit" else 0) for mid in lead}
     return {sid: {mid: _clamp_day(need - offset[mid], scenario) for mid, need in needs.items()}
             for sid, needs in _need_days(config, scenario).items()}

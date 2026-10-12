@@ -33,9 +33,9 @@ function msPerDay(): number {
   return state.screen === "field" ? FIELD_MS_PER_DAY : BASE_MS_PER_DAY / state.speed;
 }
 // 사건 기록에 남기는 사건. 투입, 완료, 출고, 운반은 너무 잦아서 뺀다.
-const LOG_EVENTS = new Set(["arrival", "defect", "accident", "breakdown", "delivery", "research_done"]);
-// 배 탭(크게 보기)의 그 배 사건: 투입, 완료, 입고, 불량, 사고, 운반, 인도
-const SHIP_EVENTS = new Set(["arrival", "enter", "complete", "defect", "accident", "transport_start", "delivery"]);
+const LOG_EVENTS = new Set(["arrival", "supply_delay", "defect", "accident", "breakdown", "delivery", "research_done"]);
+// 배 탭(크게 보기)의 그 배 사건: 투입, 완료, 입고(지연), 불량, 사고, 운반, 인도
+const SHIP_EVENTS = new Set(["arrival", "supply_delay", "enter", "complete", "defect", "accident", "transport_start", "delivery"]);
 
 interface Run {
   n: number;

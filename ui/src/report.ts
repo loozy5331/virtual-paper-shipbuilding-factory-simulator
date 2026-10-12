@@ -15,6 +15,7 @@ export function eventText(ev: SimEvent, scenario: Scenario): string {
   const material = (id: string) => scenario.materials.find((m) => m.id === id)?.name ?? id;
   switch (ev.type) {
     case "arrival": return `${material(ev.material)} ${ev.quantity}개 입고 (${ev.ship}용)`;
+    case "supply_delay": return `${material(ev.material)} ${ev.quantity}개 (${ev.ship}용) 입고 ${ev.days}일 지연 → ${ev.arrival_day}일 입고`;
     case "issue": return `${material(ev.material)} ${ev.quantity}개 출고 → ${ev.ship} ${station(ev.station)}${ev.forklift ? ` (지게차 ${ev.forklift} 자재 키트)` : ev.transporter ? ` (${ev.transporter} 자재 키트)` : ""}`;
     case "enter": return `${ev.ship} ${station(ev.station)} 투입${ev.units ? ` (${ev.units.join("·")}호에 나눠)` : ""}`;
     case "complete": return `${ev.ship} ${station(ev.station)} 완료`;
@@ -36,7 +37,7 @@ export function eventText(ev: SimEvent, scenario: Scenario): string {
 }
 
 function eventTone(ev: SimEvent): string {
-  if (ev.type === "defect" || ev.type === "accident" || ev.type === "breakdown") return "bad";
+  if (ev.type === "defect" || ev.type === "accident" || ev.type === "breakdown" || ev.type === "supply_delay") return "bad";
   if (ev.type === "delivery") return ev.late_days > 0 ? "bad" : "good";
   if (ev.type === "research_done") return "good";
   return "";
@@ -251,7 +252,7 @@ export function renderReport(result: Result, scenario: Scenario, maxRate: number
     inventoryChart(result.inventory_value_daily),
     h("p", { class: "hint" }, `재고비 = 매일 재고 금액의 1%, 합계 ${money(result.costs.holding)}. 일찍 발주할수록 면적이 커집니다.`));
 
-  const important = new Set(["defect", "accident", "breakdown", "delivery", "arrival", "research_done"]);
+  const important = new Set(["defect", "accident", "breakdown", "delivery", "arrival", "supply_delay", "research_done"]);
   const eventList = h("ol", { class: "events" }, result.events.map((ev) =>
     h("li", { class: `${eventTone(ev)}${important.has(ev.type) ? "" : " minor"}` },
       h("span", { class: "ev-day" }, `${ev.day}일`),
