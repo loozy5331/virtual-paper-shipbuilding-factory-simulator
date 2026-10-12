@@ -200,7 +200,7 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
 function openOptions(scenario: FormContext["scenario"]): ScenarioOptions {
   return scenario.options ?? {
     crews: Object.keys(scenario.rules.crews) as Crew[], methods: Object.keys(scenario.rules.methods),
-    material_grades: Object.keys(scenario.material_grades), max_units: scenario.expansion.max_units, split: true, hoist: true,
+    material_grades: Object.keys(scenario.material_grades), max_units: scenario.expansion.max_units, split: true, hoist: true, jit_buffer: true,
   };
 }
 
@@ -313,12 +313,24 @@ function commonPane(ctx: FormContext): HTMLElement {
     h("span", { class: "field-label" }, "자재 발주"),
     segmented("ordering", orderings.map(([id, o]) => ({ value: id, label: o.name })),
       config.ordering ?? "jit", (v) => { config.ordering = v; ctx.onEdit(true); }));
+  // 역산 발주 여유일(4.13, D59): 수주 증가부터. 입고 지연을 여유일로 메우고, 그만큼 재고비를 낸다.
+  const jit = scenario.ordering.jit;
+  const buffer = opts.jit_buffer && (config.ordering ?? "jit") === "jit"
+    ? h("div", { class: "field-row" },
+      h("span", { class: "field-label" }, "역산 여유"),
+      segmented("jit-buffer", Array.from({ length: (jit.buffer_max ?? 0) + 1 }, (_, k) => ({ value: k, label: `${k}일` })),
+        config.jit_buffer ?? jit.buffer_days ?? 0, (v) => { if (v) config.jit_buffer = v; else delete config.jit_buffer; ctx.onEdit(false); }),
+      h("small", null, "필요일보다 며칠 더 일찍 들어오게 발주한다"))
+    : null;
   const orderingHint = h("p", { class: "hint field-hint" },
     scenario.ordering[config.ordering ?? "jit"].summary,
+    scenario.supply_delays
+      ? ` 이 분기에는 입고 지연이 있습니다: 발주 몇 건은 ${scenario.supply_delay.days}일 늦게 들어옵니다(어느 발주인지는 미리 알 수 없습니다).`
+      : "",
     ` 배별 발주일은 ${scenario.orders[0].id}~${scenario.orders[scenario.orders.length - 1].id} 탭에 있습니다.`);
 
   return h("div", { class: "pane", "data-pane": "common" },
-    pool, transporter, forklift, ordering, orderingHint, opts.material_grades.includes("cheap") ? materialGrades(ctx) : null,
+    pool, transporter, forklift, ordering, buffer, orderingHint, opts.material_grades.includes("cheap") ? materialGrades(ctx) : null,
     researchQueue(ctx),
     h("div", { class: "stations" }, stationCards),
     h("p", { class: "hint fixed" },

@@ -607,8 +607,8 @@ class Scenarios(unittest.TestCase):
         self.assertEqual(simulate(cfg)["profit"], simulate(PRESETS["managed"])["profit"])
 
     def test_growth_presets(self):
-        # 4.3.0 조율 값(D40). 4.8: C안(전부 최대 투입)은 트랜스포터 2대
-        cases = {'unmanaged': (-30999.4, 45.0, 'F'), 'managed': (18248.2, 88.6, 'A'), 'all_in': (-22319.0, 51.1, 'C')}
+        # 4.3.0 조율 값(D40). 4.8: C안(전부 최대 투입)은 트랜스포터 2대. 4.13: 입고 지연(문자 등급은 그대로)
+        cases = {'unmanaged': (-30944.6, 45.0, 'F'), 'managed': (18295.0, 88.7, 'A'), 'all_in': (-22298.6, 51.1, 'C')}
         for pid, (profit, score, grade) in cases.items():
             r = simulate(GROWTH[pid])
             self.assertEqual((r["profit"], r["grade"]["score"], r["grade"]["grade"]), (profit, score, grade), pid)
@@ -714,7 +714,8 @@ class Surge(unittest.TestCase):
 
     def test_presets(self):
         # 4.3.0 조율 값(D40). 블록 운반이 한 대로 줄어 관리안도 한 척 지연(7/8)
-        cases = {'unmanaged': (-42029.2, 44.0, 'F'), 'managed': (25695.8, 89.4, 'A'), 'all_in': (-10440.8, 57.3, 'C')}   # 4.8: C안은 트랜스포터 2대
+        # 4.8: C안은 트랜스포터 2대. 4.13: 입고 지연, B안은 역산 여유 3일(문자 등급은 그대로)
+        cases = {'unmanaged': (-42532.8, 44.0, 'F'), 'managed': (25549.2, 89.2, 'A'), 'all_in': (-10415.6, 57.3, 'C')}
         for pid, (profit, score, grade) in cases.items():
             r = simulate(SURGE[pid])
             self.assertEqual((r["profit"], r["grade"]["score"], r["grade"]["grade"]), (profit, score, grade), pid)
@@ -791,7 +792,8 @@ class Pegging(unittest.TestCase):
 
     def test_planned_presets_never_borrow(self):
         # B안(JIT)과 C안(일괄)은 배마다 자기 필요일에 맞춰 발주해서 남의 몫을 빌릴 일이 없다.
-        for sid in ("basic", "growth", "surge"):
+        # 입고 지연(4.13)이 없는 분기만 본다. 지연이 있으면 늦은 몫을 남의 몫으로 메운다(Delays).
+        for sid in ("simple", "basic"):
             for preset in load_presets(sid):
                 if preset["id"] == "unmanaged":
                     continue
@@ -801,10 +803,12 @@ class Pegging(unittest.TestCase):
 
     def test_unmanaged_borrows_when_the_schedule_slips(self):
         # A안(무관리, 늦은 발주)은 일정이 발주 때 본 필요일과 어긋나면 남의 몫을 빌린다(4.2): 수주 증가에서 S6이 S5 몫 깃발을 쓴다.
+        # 4.13부터는 그 앞에 입고 지연도 있다: S2 종이가 16일로 늦어 15일에 S1 몫을 빌린다(Delays).
         r = simulate(next(p for p in load_presets("growth") if p["id"] == "unmanaged")["config"], baseline=False)
         borrowed = [(e["day"], e["ship"], e["material"], e["from"]) for e in r["events"]
                     if e["type"] == "issue" and e["from"] != [{"ship": e["ship"], "quantity": e["quantity"]}]]
-        self.assertEqual(borrowed[0], (56, "S6", "flag", [{"ship": "S5", "quantity": 2}]))
+        self.assertEqual(borrowed[0], (15, "S2", "paper", [{"ship": "S1", "quantity": 6}]))
+        self.assertIn((56, "S6", "flag", [{"ship": "S5", "quantity": 2}]), borrowed)
 
     def test_own_first_then_borrow_oldest(self):
         # 배별 발주일(1.0 방식): S3 종이를 1일에(3일 입고), S1 종이를 3일에(5일 입고) 발주한다.
@@ -1022,13 +1026,85 @@ class Hoist(unittest.TestCase):
                     simulate(cfg)
 
     def test_non_bottleneck_does_not_pay(self):
-        # 수주 증가 B안의 중조립에 호이스트: 도크가 병목이라 납기는 8 → 6척, 이익 18,248.2 → 16,996.0(병목 이론, D45)
+        # 수주 증가 B안의 중조립에 호이스트: 도크가 병목이라 납기는 8 → 6척, 이익 18,295.0 → 17,042.8(병목 이론, D45)
         cfg = copy.deepcopy(GROWTH["managed"])
         cfg["stations" if "stations" in cfg else "areas"]["block_assembly"]["hoist"] = True
         one, two = simulate(GROWTH["managed"], baseline=False), simulate(cfg, baseline=False)
         self.assertEqual((one["qcd"]["delivery"]["on_time"], two["qcd"]["delivery"]["on_time"]), (8, 6))
-        self.assertEqual((round(one["profit"], 1), round(two["profit"], 1)), (18248.2, 16996.0))
+        self.assertEqual((round(one["profit"], 1), round(two["profit"], 1)), (18295.0, 17042.8))
 
+
+
+class Delays(unittest.TestCase):
+    """입고 지연과 역산 발주 여유일(4.13, D59). 수주 증가·수주 급증에서 발주마다 난수표가 0.25보다 작으면 3일 늦게 들어온다."""
+
+    def one_ship(self, buffer):
+        # 착수 6일, S1 종이만 지연(난수 0.1). 종이 필요일 6일, 리드타임 2일
+        sc = one_ship_scenario({"paper": 0, "paint": 0, "flag": 0})
+        sc["supply_delays"] = True
+        sc["random"]["supply"] = {"S1": {"paper": 0.1}}
+        cfg = one_ship_config()
+        cfg["ships"]["S1"]["start_day"] = 6
+        cfg["ordering"] = "jit"
+        cfg["jit_buffer"] = buffer
+        return simulate(cfg, sc, baseline=False)
+
+    def test_buffer_absorbs_the_delay(self):
+        # 여유 0일: 4일 발주 → 6일 입고 예정 → 9일 입고, 절단은 6~8일 자재 대기, 인도 46일.
+        # 여유일 하루마다 대기가 하루 준다. 3일이면 1일 발주 → 6일 입고로 지연이 없을 때와 같은 43일 인도.
+        cases = {0: (4, 9, [("material_wait", 6, 8), ("work", 9, 10)], 46),
+                 1: (3, 8, [("material_wait", 6, 7), ("work", 8, 9)], 45),
+                 2: (2, 7, [("material_wait", 6, 6), ("work", 7, 8)], 44),
+                 3: (1, 6, [("work", 6, 7)], 43)}
+        for buffer, (order, arrival, cutting, delivered) in cases.items():
+            r = self.one_ship(buffer)
+            s = r["ships"][0]
+            self.assertEqual((s["order_days"]["paper"], s["arrival_days"]["paper"], segments(s, "cutting"), s["delivered_day"]),
+                             (order, arrival, cutting, delivered), buffer)
+            ev = [e for e in r["events"] if e["type"] == "supply_delay"]
+            self.assertEqual(ev, [{"day": arrival - 3, "type": "supply_delay", "material": "paper", "ship": "S1",
+                                   "quantity": 8, "days": 3, "arrival_day": arrival}])
+
+    def test_preview_shows_the_planned_arrival(self):
+        # 미리보기는 지연을 미리 알려 주지 않는다(입고 예정일 = 발주일 + 리드타임)
+        sc = one_ship_scenario({"paper": 0, "paint": 0, "flag": 0})
+        sc["supply_delays"] = True
+        sc["random"]["supply"] = {"S1": {"paper": 0.1}}
+        cfg = one_ship_config()
+        cfg["ships"]["S1"]["start_day"] = 6
+        cfg["ordering"] = "jit"
+        self.assertEqual(preview(cfg, sc)["materials"]["S1"]["paper"], {"order_day": 4, "arrival_day": 6})
+
+    def test_which_scenarios_have_delays(self):
+        delayed = {}
+        for sid in ("simple", "basic", "growth", "surge"):
+            r = simulate(load_presets(sid)[1]["config"], baseline=False)
+            delayed[sid] = sorted((e["ship"], e["material"]) for e in r["events"] if e["type"] == "supply_delay")
+        self.assertEqual(delayed, {
+            "simple": [], "basic": [],
+            "growth": [("S2", "paper"), ("S3", "paint"), ("S6", "paint"), ("S7", "paint"), ("S8", "paint")],
+            "surge": [("S1", "flag"), ("S1", "paint"), ("S1", "paper"), ("S3", "paper"), ("S7", "paint")]})
+
+    def test_surge_plan_needs_the_buffer(self):
+        # 수주 급증 B안은 여유 3일로 지연을 메운다. 여유 0일이면 총 9일 늦는다.
+        totals = {}
+        for buffer in (0, 3):
+            cfg = copy.deepcopy(SURGE["managed"])
+            cfg["jit_buffer"] = buffer
+            totals[buffer] = simulate(cfg, baseline=False)["qcd"]["delivery"]["total_late_days"]
+        self.assertEqual(totals, {0: 9, 3: 0})
+
+    def test_buffer_range_and_lock(self):
+        cfg = copy.deepcopy(GROWTH["managed"])
+        cfg["jit_buffer"] = 4
+        with self.assertRaises(ConfigError):
+            simulate(cfg)
+        # 기본 반기·간이공정은 여유일을 바꿀 수 없다(옵션 잠금, D33)
+        cfg = copy.deepcopy(PRESETS["managed"])
+        cfg["jit_buffer"] = 1
+        with self.assertRaises(ConfigError):
+            simulate(cfg)
+        open_sim(cfg)
 
 SIMPLE = {p["id"]: p["config"] for p in load_presets("simple")}
 

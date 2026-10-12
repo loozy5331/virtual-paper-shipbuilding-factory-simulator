@@ -33,7 +33,7 @@ function msPerDay(): number {
   return state.screen === "field" ? FIELD_MS_PER_DAY : BASE_MS_PER_DAY / state.speed;
 }
 // 사건 기록에 남기는 사건. 투입, 완료, 출고, 운반은 너무 잦아서 뺀다.
-const LOG_EVENTS = new Set(["arrival", "defect", "accident", "breakdown", "delivery", "research_done"]);
+const LOG_EVENTS = new Set(["arrival", "supply_delay", "defect", "accident", "breakdown", "delivery", "research_done"]);
 
 interface Run {
   n: number;

@@ -101,6 +101,7 @@ export const COST_ITEMS: { key: string; name: string; note: string }[] = [
 
 export const EVENT_NAME: Record<string, string> = {
   arrival: "입고",
+  supply_delay: "입고 지연",
   issue: "출고",
   enter: "투입",
   complete: "완료",

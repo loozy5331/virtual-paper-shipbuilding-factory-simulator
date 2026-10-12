@@ -273,13 +273,19 @@
     },
     "jit": {
       "name": "역산 발주",
-      "summary": "자재가 필요한 날에서 리드타임만큼 거꾸로 세어 발주한다.",
-      "buffer_days": 0
+      "summary": "자재가 필요한 날에서 리드타임과 여유일만큼 거꾸로 세어 발주한다.",
+      "buffer_days": 0,
+      "buffer_max": 3
     },
     "late": {
       "name": "늦은 발주",
       "summary": "자재가 필요한 날 발주한다. 리드타임만큼 자재 대기가 생긴다."
     }
+  },
+  "supply_delay": {
+    "_comment": "입고 지연(4.13, D59): 시나리오가 supply_delays를 켠 분기에서, 발주마다 난수표 random.supply[배][자재]가 probability보다 작으면 days일 늦게 들어온다.",
+    "probability": 0.25,
+    "days": 3
   },
   "blocks": {
     "cutting": 8,

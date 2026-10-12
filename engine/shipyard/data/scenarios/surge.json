@@ -1,7 +1,7 @@
 {
   "id": "surge",
   "name": "수주 급증",
-  "summary": "수주 10척(VLCC 4, 컨테이너선 3, LNG선 3). 16일마다 두 척씩 같은 날 인도한다. 작업장을 몇 곳 두고 배를 나눠 만들지 정한다.",
+  "summary": "수주 10척(VLCC 4, 컨테이너선 3, LNG선 3). 16일마다 두 척씩 같은 날 인도한다. 작업장을 몇 곳 두고 배를 나눠 만들지 정한다. 자재 입고가 3일 늦어지는 발주도 있다.",
   "level": 4,
   "period": "2027년 하반기",
   "days": 120,
@@ -88,7 +88,7 @@
     "on_time_rate": 1.0,
     "first_pass_yield": 0.9
   },
-  "unlocks": "작업장 3개, 나눠 하기(한 배를 작업장 여러 곳에서 동시에)",
+  "unlocks": "작업장 3개, 나눠 하기(한 배를 작업장 여러 곳에서 동시에), 역산 발주 여유일(0~3일)",
   "options": {
     "crews": [
       "normal",
@@ -115,8 +115,10 @@
     "transporter_counts": [
       1,
       2
-    ]
+    ],
+    "jit_buffer": true
   },
+  "supply_delays": true,
   "grade": {
     "weights": {
       "revenue": 30,
@@ -255,6 +257,58 @@
         "quay_outfitting": 0.19,
         "sea_trial": 0.11
       }
+    },
+    "supply": {
+      "S1": {
+        "paper": 0.05,
+        "paint": 0.12,
+        "flag": 0.09
+      },
+      "S2": {
+        "paper": 0.51,
+        "paint": 0.69,
+        "flag": 0.28
+      },
+      "S3": {
+        "paper": 0.21,
+        "paint": 0.6,
+        "flag": 0.67
+      },
+      "S4": {
+        "paper": 0.33,
+        "paint": 0.52,
+        "flag": 0.45
+      },
+      "S5": {
+        "paper": 0.92,
+        "paint": 0.71,
+        "flag": 0.78
+      },
+      "S6": {
+        "paper": 0.46,
+        "paint": 0.46,
+        "flag": 0.29
+      },
+      "S7": {
+        "paper": 0.94,
+        "paint": 0.22,
+        "flag": 0.42
+      },
+      "S8": {
+        "paper": 0.26,
+        "paint": 0.39,
+        "flag": 0.7
+      },
+      "S9": {
+        "paper": 0.26,
+        "paint": 0.84,
+        "flag": 0.63
+      },
+      "S10": {
+        "paper": 0.35,
+        "paint": 0.73,
+        "flag": 0.5
+      }
     }
   },
   "presets": [
@@ -383,6 +437,7 @@
       "summary": "병목인 도크를 2곳으로 늘리고 탑재 인원도 4명으로(도크와 사람을 함께), 소조립·중조립(숙련공)을 2곳으로 늘려 나눠 만든다(나눠 하기). 절단·선행의장·PE장도 2곳. 납기에서 역산해 착수, 자재는 역산 발주, 18명과 지게차 2대로 표준 공법에 정비를 한다.",
       "config": {
         "ordering": "jit",
+        "jit_buffer": 3,
         "ships": {
           "S1": {
             "priority": 1,
