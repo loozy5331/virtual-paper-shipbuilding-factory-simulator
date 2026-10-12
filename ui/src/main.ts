@@ -77,7 +77,7 @@ interface State {
   playing: boolean;
   speed: number;
   board: BoardState;
-  /** 오른쪽 모니터 위쪽 작업 현황에서 보는 구획. null이면 전경(4.15.1). (이름은 옛 CCTV에서 왔다) */
+  /** 오른쪽 모니터 위쪽 작업 현황에서 보는 구획. null이면 전경(4.15.1, 처음은 전경 4.15.5). (이름은 옛 CCTV에서 왔다) */
   cctv: SectorId | null;
   /** 크게 보고 있는 모니터 */
   zoomed: "left" | "right" | null;
@@ -451,7 +451,7 @@ async function switchScenario(id: string): Promise<void> {
   previewSeq++;
   Object.assign(state, {
     data, config: structuredClone(first.config), presetId: first.id, edited: false, preview: null, errors: [],
-    current: last ?? null, ganttShip: null, cctv: "shop", board: "none",
+    current: last ?? null, ganttShip: null, cctv: null, board: "none",
     day: last !== undefined && state.runs[last].finished ? data.scenario.days : 0,
   });
   drawForm();
@@ -606,7 +606,7 @@ async function run(signer: Signer | null = null): Promise<void> {
   }
   state.runs.push({ n: state.runs.length + 1, scenario: state.data.scenario.id, label: runLabel(), config, result, finished: false, signer });
   state.current = state.runs.length - 1;
-  Object.assign(state, { day: 0, ganttShip: null, cctv: "shop", board: "none", playing: false });
+  Object.assign(state, { day: 0, ganttShip: null, cctv: null, board: "none", playing: false });
 
   const source = els.plan.querySelector<HTMLElement>(".board-left");
   // 생산계획서 클립보드를 띄워 두고(복제), 관제실을 보이지 않게 그려 책상 위 자리를 잰다.
@@ -1029,7 +1029,7 @@ function drawPlates(): void {
         onclick: () => {
           pause();
           state.current = i;
-          Object.assign(state, { day: run.finished ? run.result.days : 0, ganttShip: null, cctv: "shop", board: run.finished ? "down" : "none" });
+          Object.assign(state, { day: run.finished ? run.result.days : 0, ganttShip: null, cctv: null, board: run.finished ? "down" : "none" });
           drawRoom();
         },
       }, `${run.n}`, run.finished ? gradeChip(run.result.grade.grade, "chip-grade") : null))) : null);
@@ -1108,7 +1108,7 @@ function shownSectors(): typeof SECTORS {
 
 /** 오른쪽 모니터 위쪽: 작업 현황, 구획 하나(위 단추로 바꾼다). 그림은 tick이 채운다. */
 function drawRightTop(): void {
-  if (state.cctv !== null && !shownSectors().some((sec) => sec.id === state.cctv)) state.cctv = "shop";
+  if (state.cctv !== null && !shownSectors().some((sec) => sec.id === state.cctv)) state.cctv = null;
   const label = els.monitorRight.querySelector(".win-title");
   mount(els.rightTop,
     h("div", { class: "cc-host" }),
@@ -1452,7 +1452,7 @@ async function start(): Promise<void> {
     playing: false,
     speed: 4,
     board: "none",
-    cctv: "shop",
+    cctv: null,
     zoomed: null,
     fieldFocus: null,
     track: null,
