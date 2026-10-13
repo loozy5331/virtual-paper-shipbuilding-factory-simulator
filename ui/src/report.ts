@@ -1,9 +1,11 @@
-// 한 번의 실행 레포트: 등급, 의문점 카드, QCD, 현황, 원가 내역, 리드타임 분해, 공정별 OEE, 재고 금액 추이, 사건 기록, 부록 7관리 지표.
+// 한 번의 실행 레포트: 등급, 의문점 카드, QCD, 현황, 원가 내역, 리드타임 분해, 공정별 OEE, 재고 금액 추이, 사건 기록.
+// 뒷장 메모(4.23): 부록 7관리 지표와 선배의 팁.
 // 모든 숫자는 엔진 결과에 있는 값이다. 막대 길이와 차트 좌표를 정하는 비율만 화면에서 구한다.
 
 import type { Finding, Grade, Management, MgmtPoint, Result, Scenario, ShipResult, SimEvent } from "./api";
 import { h, money, num, pct, s, signed } from "./dom";
 import { openOptions } from "./form";
+import { AUTHOR } from "./paper";
 import { COST_ITEMS, EVENT_NAME, GRADE_COLOR, GRADE_NOTE, GRADE_TEXT, LEAD_TIME_STATES, STATE_INFO, STATION_COLOR } from "./labels";
 
 export function eventText(ev: SimEvent, scenario: Scenario): string {
@@ -400,11 +402,39 @@ export function renderReport(result: Result, scenario: Scenario, maxRate: number
       leadCard),
     qcdSection("s", "S", "안전", `잔업 사고 ${safety.accidents}건 · 사고로 멈춘 날 ${safety.stop_days}일 · 잔업 ${safety.overtime_days}일${safetyWarnings === undefined ? "" : ` · 현장 안전 경고 ${safetyWarnings}회`}`,
       safetyCard),
-    qcdSection("events", null, "사건 기록", `${result.events.filter((ev) => important.has(ev.type)).length}건(주요 사건)`, eventsCard),
+    qcdSection("events", null, "사건 기록", `${result.events.filter((ev) => important.has(ev.type)).length}건(주요 사건)`, eventsCard));
+}
+
+// 선배의 팁(4.23): 이번 회차 한 줄(엔진의 grade.to_s)과 반기마다 정한 팁(시나리오 tips). 문구는 항목마다 정해 둔 것만 고른다.
+const FOCUS_TIP: Record<string, string> = {
+  revenue: "인도 매출이 가장 많이 남았어. 기간 안에 인도하지 못한 배가 있다는 뜻이야. 착수를 당기거나 병목을 풀어 봐.",
+  profit: "이익이 가장 많이 남았어. 쉰 인일, 재고비, 잔업처럼 돈만 나가는 칸부터 줄여 봐(평가서 C 원가).",
+  delivery: "납기를 놓친 배가 있어. 평가서 D 납기에서 리드타임이 어디서 샜는지 봐.",
+  quality: "직행률이 90%에 못 미쳐. 위 부록의 품질 포인트를 봐.",
+};
+
+function tipsCard(grade: Grade, scenario: Scenario): HTMLElement {
+  const toS = grade.to_s;
+  const lead = !toS ? null
+    : toS.need > 0 ? h("p", { class: "tip-lead" }, h("b", null, `S까지 ${toS.need.toFixed(1)}점.`), " ", toS.focus ? FOCUS_TIP[toS.focus] ?? "" : "")
+      : h("p", { class: "tip-lead" }, h("b", null, "S, 잘했어."), " ",
+        toS.focus === "profit" ? `이익 점수는 목표를 넘어도 ${num(grade.parts.find((p) => p.key === "profit")?.max ?? 0)}점까지 올라가. 더 짜낼 데가 있는지 봐.`
+          : toS.focus ? FOCUS_TIP[toS.focus] ?? "" : "더 볼 게 없네. 다음 반기로 가 봐.");
+  return h("section", { class: "tips" },
+    h("h3", { class: "tips-title" }, "선배의 팁"),
+    lead,
+    scenario.tips?.length ? h("ul", { class: "tips-list" }, scenario.tips.map((t) => h("li", null, t))) : null,
+    h("p", { class: "tips-sign" }, `— ${AUTHOR} 선배`));
+}
+
+/** 평가서 뒤에 같은 클립보드에 끼운 메모 한 장: 부록 7관리 지표와 선배의 팁(4.23). 등급과 무관한 "더 나은 결과"를 위한 종이다. */
+export function renderMemo(result: Result, scenario: Scenario, safetyWarnings?: number): HTMLElement {
+  return h("div", { class: "memo-sheet" },
     // 부록(4.15): 옛 회차 결과에는 management가 없어 칸을 그리지 않는다
     result.management
       ? qcdSection("mgmt", "부록", "7관리 지표",
         `개선 포인트 ${MGMT_ROWS.filter(({ key }) => result.management![key].point).length}개 / 6요소`,
         mgmtCard(result.management, scenario, safetyWarnings))
-      : null);
+      : null,
+    tipsCard(result.grade, scenario));
 }
