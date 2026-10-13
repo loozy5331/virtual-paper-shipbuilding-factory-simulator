@@ -763,7 +763,7 @@ function tick(jump: boolean): void {
   }
   if (feed) {
     mount(feed, renderCctv(buildFrame(result, scenario, r.config, state.day, 1), scenario, {
-      focus: state.cctv, onSector: openSector, track: state.track, onPick: openTrack,
+      focus: state.cctv, onSector: openSector, track: state.track, onPick: openTrack, manager: yard?.managerSpot(),
       due: Object.fromEntries(result.ships.map((sh) => [sh.id, sh.due_day])),
     }));
   }
@@ -1362,7 +1362,7 @@ function setFieldView(view: FieldView): void {
 
 /**
  * 현장 W·A·S·D와 Shift: 1인칭은 걷기(4.11, D54), 3인칭은 화면 옮기기(4.16.1). 한글 자판에서도 되게 글자(key) 대신 자리(code)로 본다.
- * 누르고 있는 키를 모아 yard에 앞뒤·옆 방향으로 넘긴다. 경고 카드가 떠 있으면 움직이지 않는다.
+ * 누르고 있는 키를 모아 yard에 앞뒤·옆 방향으로 넘긴다.
  */
 const MOVE_KEYS: Record<string, [number, number]> = { KeyW: [1, 0], KeyS: [-1, 0], KeyA: [0, -1], KeyD: [0, 1] };
 const held = new Set<string>();
@@ -1370,7 +1370,7 @@ const held = new Set<string>();
 function onMoveKey(e: KeyboardEvent, down: boolean): boolean {
   const move = e.code in MOVE_KEYS || e.key === "Shift";
   if (!move) return false;
-  if (down && (state.screen !== "field" || els.field.querySelector(".safety-alert"))) return false;
+  if (down && state.screen !== "field") return false;
   if (down) held.add(e.code); else held.delete(e.code);
   pushMove();
   return e.code in MOVE_KEYS;
@@ -1390,28 +1390,35 @@ function releaseMoveKeys(): void {
   pushMove();
 }
 
-/** 위험 설비 옆으로 갔다: 재생을 멈추고 알린다. 횟수는 그 회차 평가서에 한 줄(등급과 무관). */
-function warnHazard(hazard: { id: string; label: string }): void {
+/**
+ * 위험 설비 반경에 들었다(4.20.1): 재생을 멈추고 위에 주의 표시(노란 삼각형 안 느낌표)만 띄운다. 막지 않고, 안전한 자리로 옮겨 주지도 않는다.
+ * 관리자가 걸어 나오면(hazard = null) 표시를 지운다. 들어갈 때마다 그 회차 평가서의 경고 횟수에 하나(등급과 무관).
+ */
+function warnHazard(hazard: { id: string; label: string } | null): void {
+  const shown = els.field.querySelector(".safety-caution");
+  if (!hazard) {
+    shown?.remove();
+    return;
+  }
   const r = currentRun();
-  // 이미 경고 카드가 떠 있으면 한 번만 센다
-  if (!r || state.screen !== "field" || els.field.querySelector(".safety-alert")) return;
-  const wasPlaying = state.playing;
+  if (!r || state.screen !== "field") return;
+  const text = `주의: ${hazard.label}입니다`;
+  // 반경에서 반경으로 옮겨 가면 글만 바꾸고 다시 세지 않는다
+  if (shown) {
+    shown.querySelector("b")!.textContent = text;
+    return;
+  }
   pause();
   releaseMoveKeys();
   r.safetyWarnings = (r.safetyWarnings ?? 0) + 1;
-  const overlay = h("div", { class: "safety-alert", role: "alertdialog", "aria-label": "현장 안전 경고" },
-    h("div", { class: "safety-card" },
-      h("b", null, "⚠ 위험 반경입니다"),
-      h("p", null, `${hazard.label}에 들어왔습니다.`),
-      h("p", { class: "hint" }, "골리앗 크레인과 움직이는 트랜스포터 반경 10m 안에는 들어가지 않습니다."),
-      h("div", { class: "safety-actions" },
-        h("button", { class: "btn primary", type: "button", onclick: () => {
-          overlay.remove();
-          yard?.toSafeSpot();
-          if (wasPlaying) play();
-        } }, "안전한 자리로 돌아가기"))));
-  els.field.append(overlay);
-  overlay.querySelector<HTMLButtonElement>("button")?.focus();
+  els.field.append(h("div", { class: "safety-caution", role: "alert" },
+    svgEl("svg", { viewBox: "0 0 40 36", width: 34, height: 31, "aria-hidden": "true" },
+      svgEl("path", { d: "M20 2 L38 34 H2 Z", fill: "#f2c230", stroke: "#1f1f1f", "stroke-width": 2.5, "stroke-linejoin": "round" }),
+      svgEl("rect", { x: 18.2, y: 12, width: 3.6, height: 12, rx: 1.2, fill: "#1f1f1f" }),
+      svgEl("circle", { cx: 20, cy: 28.5, r: 2.1, fill: "#1f1f1f" })),
+    h("div", null,
+      h("b", null, text),
+      h("small", null, "반경 10m 밖으로 걸어 나오세요(W·A·S·D)"))));
 }
 
 // ---------------------------------------------------------------------------
