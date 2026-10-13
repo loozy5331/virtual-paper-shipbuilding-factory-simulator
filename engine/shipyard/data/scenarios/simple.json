@@ -43,7 +43,7 @@
   },
   "kpi": {
     "revenue": 14000,
-    "profit": 6500,
+    "profit": 6000,
     "on_time_rate": 1.0,
     "first_pass_yield": 0.9
   },
@@ -75,6 +75,9 @@
       2
     ],
     "transporter_counts": [
+      1
+    ],
+    "trial_pools": [
       1
     ]
   },
@@ -150,7 +153,7 @@
     {
       "id": "unmanaged",
       "name": "무관리",
-      "summary": "전부 한꺼번에 착수하고(우선순위도 납기 반대로, 마지막 배부터), 자재는 필요한 날에야 발주하고, 14명(가공 4, 조립 6, 탑재 4)을 잔업으로 밀어붙인다. 정비는 하지 않는다.",
+      "summary": "전부 한꺼번에 착수하고(우선순위도 납기 반대로, 마지막 배부터), 자재는 필요한 날에야 발주하고, 15명(가공 4, 조립 6, 탑재 4, 시운전 1)을 잔업으로 밀어붙인다. 정비는 하지 않는다.",
       "config": {
         "scenario": "simple",
         "ordering": "late",
@@ -175,7 +178,8 @@
         "pools": {
           "processing": 4,
           "assembly": 6,
-          "erection": 4
+          "erection": 4,
+          "trial": 1
         },
         "transporters": {
           "maintenance": false,
@@ -218,7 +222,7 @@
     {
       "id": "managed",
       "name": "관리",
-      "summary": "납기에서 역산해 착수를 나누고, 자재는 필요일에서 역산해 발주하고, 8명(가공 2, 조립 4, 탑재 2)으로 정비를 한다. 잔업은 하지 않는다.",
+      "summary": "납기에서 역산해 착수를 나누고, 자재는 필요일에서 역산해 발주하고, 9명(가공 2, 조립 4, 탑재 2, 시운전 1)으로 정비를 한다. 잔업은 하지 않는다.",
       "config": {
         "scenario": "simple",
         "ordering": "jit",
@@ -243,7 +247,8 @@
         "pools": {
           "processing": 2,
           "assembly": 4,
-          "erection": 2
+          "erection": 2,
+          "trial": 1
         },
         "transporters": {
           "maintenance": true,
@@ -286,7 +291,7 @@
     {
       "id": "all_in",
       "name": "전부 최대 투입",
-      "summary": "사람을 직종마다 최대로(가공 6, 조립 12, 탑재 6) 두고, 잔업과 정비를 전부 넣고, 자재는 1일에 모두 발주한다. 등급의 기준선이다.",
+      "summary": "사람을 직종마다 최대로(가공 6, 조립 12, 탑재 6, 시운전은 1명 고정) 두고, 잔업과 정비를 전부 넣고, 자재는 1일에 모두 발주한다. 등급의 기준선이다.",
       "config": {
         "scenario": "simple",
         "ordering": "bulk",
@@ -311,7 +316,8 @@
         "pools": {
           "processing": 6,
           "assembly": 12,
-          "erection": 6
+          "erection": 6,
+          "trial": 1
         },
         "transporters": {
           "maintenance": true,

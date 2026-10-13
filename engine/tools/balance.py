@@ -47,11 +47,11 @@ def space(sc: dict[str, Any]) -> dict[str, list[Any]]:
     out: dict[str, list[Any]] = {}
     for st in active_stations(sc):
         pid = st["id"]
-        external = sc["trades"].get(st.get("trade", ""), {}).get("external", False)
-        # 시운전(외부팀)은 인력·잔업을 고르지 않는다(4.0, D42)
-        out[f"{pid}.crew"] = ["normal"] if external else list(opts["crews"])
+        trial = st.get("trade") == "trial"
+        # 시운전팀은 인력·잔업을 고르지 않는다(4.0 D42, 4.22 D69). 인원은 아래 직종별 인원에서 고른다
+        out[f"{pid}.crew"] = ["normal"] if trial else list(opts["crews"])
         out[f"{pid}.method"] = list(opts["methods"])
-        out[f"{pid}.overtime"] = [False] if external else [False, True]
+        out[f"{pid}.overtime"] = [False] if trial else [False, True]
         out[f"{pid}.maintenance"] = [False, True]
         cap = sc["expansion"].get("max_units_by_station", {}).get(pid, opts["max_units"])
         out[f"{pid}.units"] = list(range(1, min(opts["max_units"], cap) + 1))
@@ -66,6 +66,8 @@ def space(sc: dict[str, Any]) -> dict[str, list[Any]]:
     # 직종별 대기소 인원(4.0, D42)
     for t in active_trades(sc):
         out[f"pool.{t}"] = list(range(1, sc["trades"][t]["max"] + 1))
+    if opts.get("trial_pools") and "pool.trial" in out:   # 시운전 인원을 고정한 분기(간이공정, 4.22)
+        out["pool.trial"] = list(opts["trial_pools"])
     out["tr_count"] = list(opts.get("transporter_counts") or [1])   # 블록 트랜스포터(4.8): 분기가 연 대수만
     out["tr_maintenance"] = [False, True]
     # 공용 지게차(4.3, D46): 분기가 연 대수만(기본 반기는 2대 고정)

@@ -57,7 +57,7 @@
   },
   "kpi": {
     "revenue": 33600,
-    "profit": 14500,
+    "profit": 13000,
     "on_time_rate": 1.0,
     "first_pass_yield": 0.9
   },
@@ -181,7 +181,7 @@
     {
       "id": "unmanaged",
       "name": "무관리",
-      "summary": "전부 한꺼번에 착수하고(우선순위도 납기 반대로, 마지막 배부터), 자재는 필요한 날에야 발주하고, 24명을 꽉 채워 속성 공법과 잔업으로 밀어붙인다. 정비는 하지 않는다.",
+      "summary": "전부 한꺼번에 착수하고(우선순위도 납기 반대로, 마지막 배부터), 자재는 필요한 날에야 발주하고, 26명(시운전 2명 포함)을 꽉 채워 속성 공법과 잔업으로 밀어붙인다. 정비는 하지 않는다.",
       "config": {
         "ordering": "late",
         "ships": {
@@ -215,7 +215,8 @@
           "assembly": 8,
           "erection": 4,
           "painting": 4,
-          "outfitting": 4
+          "outfitting": 4,
+          "trial": 2
         },
         "transporters": {
           "maintenance": false,
@@ -284,7 +285,7 @@
     {
       "id": "managed",
       "name": "관리",
-      "summary": "납기에서 역산해 착수를 나누고(VLCC는 2일·LNG선은 5일 먼저), 자재는 필요일에서 역산해 발주하고, 11명(조립 3, 나머지 직종 2명씩)과 지게차 2대로 표준 공법에 정비를 한다.",
+      "summary": "납기에서 역산해 착수를 나누고(VLCC는 2일·LNG선은 5일 먼저), 자재는 필요일에서 역산해 발주하고, 13명(조립 3, 나머지 직종 2명씩, 시운전 2명)과 지게차 2대로 표준 공법에 정비를 한다.",
       "config": {
         "ordering": "jit",
         "ships": {
@@ -318,7 +319,8 @@
           "assembly": 3,
           "erection": 2,
           "painting": 2,
-          "outfitting": 2
+          "outfitting": 2,
+          "trial": 2
         },
         "transporters": {
           "maintenance": true,
@@ -388,7 +390,7 @@
     {
       "id": "all_in",
       "name": "전부 최대 투입",
-      "summary": "사람 36명(직종마다 최대), 속도, 잔업, 정비를 전부 넣고 자재는 1일에 모두 발주한다. 등급의 기준선이다.",
+      "summary": "사람 39명(직종마다 최대), 속도, 잔업, 정비를 전부 넣고 자재는 1일에 모두 발주한다. 등급의 기준선이다.",
       "config": {
         "ordering": "bulk",
         "ships": {
@@ -422,7 +424,8 @@
           "assembly": 12,
           "erection": 6,
           "painting": 6,
-          "outfitting": 6
+          "outfitting": 6,
+          "trial": 3
         },
         "transporters": {
           "maintenance": true,

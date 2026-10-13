@@ -462,7 +462,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     tag(px(LAB.x + 3.6), py(LAB.z) + 11, r.current ? `${r.current.name} ${r.current.done}/${r.current.total}일` : r.finished.length ? `완료 ${r.finished.length}개` : "쉬는 중", "cc-tag")));
 
   // ----- 작업대기소: 벤치 둘과 쉬는 사람. 탑재·의장 직종은 남문 작업대기소(4.7.5) -----
-  for (const [at, name] of [[LOUNGE, "작업대기소"], [LOUNGE_SOUTH, "남문 작업대기소(탑재·의장)"]] as const) {
+  for (const [at, name] of [[LOUNGE, "작업대기소"], [LOUNGE_SOUTH, "남문 작업대기소(탑재·의장·시운전)"]] as const) {
     for (const row of [0, 1]) add(at.z - 0.6 + row * 1.2 - 0.01, box(at.x, at.z - 0.6 + row * 1.2, 2.6, 0.3, 0.3, "#6b5a48", "#5a4a3a"));
     // 직종마다 모자 색(4.0, D42). 많으면 8명까지만 그린다
     const idleHats = Object.entries(frame.idleByTrade).filter(([tr]) => loungeOf(tr) === at)
@@ -542,7 +542,7 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
     const first = view.units.find((u) => u.state !== "idle") ?? view.units[0];
     const info = first.state === "work" || first.state === "idle" ? null : STATE_INFO[first.state];
     const status = first.state === "work" ? "작업 중" : first.state === "idle" ? "비어 있음" : info?.name ?? first.state;
-    const extra = [view.overtime && view.crew !== "robot" ? "잔업" : "", { normal: "", skilled: "숙련공", robot: "로봇", external: "외부팀" }[view.crew]].filter(Boolean).join(" · ");
+    const extra = [view.overtime && view.crew !== "robot" ? "잔업" : "", { normal: "", skilled: "숙련공", robot: "로봇", trial: "" }[view.crew]].filter(Boolean).join(" · ");
     // 이름은 정반 안, 상태는 정반 앞 바닥에(4.15.7): 글자를 모니터 배율에 맞춰 키우면(--ts) 한 줄에 둘이 겹치고 블록을 가린다
     const ty = py(b0.z + MAT_D / 2) - 6;
     add(b0.z + MAT_D / 2 + 0.05, s("g", { class: "cc-mat-text" },

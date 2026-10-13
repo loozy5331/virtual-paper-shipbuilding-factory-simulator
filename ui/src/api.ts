@@ -17,7 +17,7 @@ export interface StationConfig {
   buffer?: number;
 }
 
-export type Crew = "normal" | "skilled" | "robot" | "external";
+export type Crew = "normal" | "skilled" | "robot" | "trial";
 
 export interface ShipConfig {
   priority: number;
@@ -40,7 +40,7 @@ export interface Config {
   stations: Record<string, StationConfig>;
   /** 대기소 전체 인원. 4.0부터는 pools의 합이다(옛 설정은 조립 인원으로 읽는다) */
   pool: number;
-  /** 4.0(D42): 직종별 대기소 인원. 사람은 자기 직종 공정에만 간다. 시운전은 외부팀이라 없다 */
+  /** 4.0(D42): 직종별 대기소 인원. 사람은 자기 직종 공정에만 간다. 4.22(D69)부터 시운전도 직종 */
   pools?: Record<string, number>;
   /** 4.3(D46): 블록 트랜스포터 한 대로 고정. count는 옛 설정에서만 읽고 엔진이 쓰지 않는다 */
   transporters: { count?: number; maintenance: boolean };
@@ -73,7 +73,7 @@ export interface StationInfo {
   split?: boolean;
   /** 4.9: 호이스트를 달 수 있는 공정(소조립·중조립) */
   hoist?: boolean;
-  /** 4.12: 기본 설비 이름(4.12.1, 고장 나는 것). false면 조선소 설비가 없는 공정(시운전, 외부팀): 고장·정비·미정비 불량이 없다 */
+  /** 4.12: 기본 설비 이름(4.12.1, 고장 나는 것). false면 조선소 설비가 없는 공정(시운전, 바다): 고장·정비·미정비 불량이 없다 */
   equipment?: string | false;
   /** 4.4(D47): 이 시나리오가 쓰지 않는 공정(간이공정). 번호는 그대로이고 처음부터 마친 것으로 건너뛴다 */
   skipped?: boolean;
@@ -82,8 +82,6 @@ export interface StationInfo {
 export interface TradeInfo {
   name: string;
   max?: number;
-  /** 시운전: 외부 전문팀(대기소 밖) */
-  external?: boolean;
   cost_per_team_day?: number;
 }
 
@@ -155,6 +153,8 @@ export interface ScenarioOptions {
   split: boolean;
   /** 4.3: 고를 수 있는 지게차 대수. 하나뿐이면 고정 */
   forklift_counts?: number[];
+  /** 4.22(D69): 시운전 인원을 고정한 분기(간이공정 [1]). 없으면 1~max */
+  trial_pools?: number[];
   /** 4.8: 고를 수 있는 블록 트랜스포터 대수. 하나뿐이면 고정 */
   transporter_counts?: number[];
   /** 4.9: 호이스트를 달 수 있는가(수주 증가부터) */
@@ -226,26 +226,32 @@ export function activeStations(scenario: Scenario): StationInfo[] {
   return scenario.stations.filter((st) => !st.skipped);
 }
 
-/** 사람을 보내는 직종(시운전 외부팀 제외, 쓰는 공정이 있는 직종만)과 그 정보 */
+/** 사람을 보내는 직종(쓰는 공정이 있는 직종만)과 그 정보. 4.22부터 시운전도 들어간다 */
 export function staffTrades(scenario: Scenario): [string, TradeInfo][] {
   const used = new Set(activeStations(scenario).map((st) => st.trade ?? "assembly"));
   return Object.entries(scenario.trades)
-    .filter((e): e is [string, TradeInfo] => !e[0].startsWith("_") && typeof e[1] === "object" && !e[1].external && used.has(e[0]));
+    .filter((e): e is [string, TradeInfo] => !e[0].startsWith("_") && typeof e[1] === "object" && used.has(e[0]));
 }
 
 /**
  * 엔진의 complete_config와 같은 기본값으로 설정을 채운다(4.0). 3.x 프리셋·회차를 생산계획서에 그대로 올릴 수 있게.
  * 없는 공정은 표준·잔업 없음·정비, pools가 없으면 pool을 조립 인원으로 읽고 나머지 직종은 default_pools.
+ * pools에 빠진 직종(4.21까지의 시운전)도 default_pools(간이공정은 options.trial_pools)로 채운다.
  */
 export function completeConfig(config: Config, scenario: Scenario): Config {
   for (const st of scenario.stations) {
     config.stations[st.id] ??= { method: "standard", overtime: false, maintenance: true };
   }
+  // 시운전 인원(4.22, D69): 4.21까지 설정에는 없다. 인원을 고정한 분기(간이공정)는 그 값으로 채운다
+  const fallback = (t: string): number => {
+    if (t === "trial" && scenario.options?.trial_pools?.length) return scenario.options.trial_pools[0];
+    const d = scenario.default_pools[t];
+    return typeof d === "number" ? d : 1;
+  };
   if (!config.pools) {
-    config.pools = Object.fromEntries(staffTrades(scenario).map(([t]) => {
-      const d = scenario.default_pools[t];
-      return [t, t === "assembly" ? config.pool : typeof d === "number" ? d : 1];
-    }));
+    config.pools = Object.fromEntries(staffTrades(scenario).map(([t]) => [t, t === "assembly" ? config.pool : fallback(t)]));
+  } else {
+    for (const [t] of staffTrades(scenario)) config.pools[t] ??= fallback(t);
   }
   config.pool = Object.values(config.pools).reduce((a, b) => a + b, 0);
   config.forklifts ??= { count: scenario.forklift.default_count, maintenance: config.transporters.maintenance };
@@ -298,7 +304,7 @@ export interface Preview {
   plan: Plan;
   /** 4.15(D62): 공정 여유를 넣은 납기와 선가(배마다) */
   contract?: Record<string, { due_day: number; price: number; buffer_days: number }>;
-  /** 4.17(D64): 선박 사양서. 배마다 쓰는 공정의 작업량(인·일, 호이스트 반영)·직종·자재와 직종별 합계(trial = 시운전 외부팀) */
+  /** 4.17(D64): 선박 사양서. 배마다 쓰는 공정의 작업량(인·일, 호이스트 반영)·직종·자재와 직종별 합계(trial = 시운전팀) */
   ships?: Record<string, ShipSpec>;
 }
 

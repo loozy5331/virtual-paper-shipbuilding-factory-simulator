@@ -1318,7 +1318,7 @@ export class Yard {
         r.visible = robot && u < st.units.length;
         r.userData.working = robot && (st.units[u]?.state === "work" || st.units[u]?.state === "rework");
       });
-      if (!robot && i !== ST.trial) {   // 시운전 외부팀은 배와 함께 먼바다에 있다
+      if (!robot && i !== ST.trial) {   // 일하는 시운전팀은 배와 함께 먼바다에 있다(그리지 않는다)
         st.units.forEach((unit, u) => {
           const unitWorking = unit.state === "work" || unit.state === "rework";
           // 진수하는 도크의 작업자는 도크 밖(앞쪽)으로 비켜 선다
@@ -1386,7 +1386,7 @@ export class Yard {
     this.people.forEach((p, i) => p.setVisible(i < used));
     const idleAt = (at: { x: number; z: number }) => Object.entries(f.idleByTrade).reduce((s, [tr, n]) => s + (loungeOf(tr) === at ? n : 0), 0);
     setLabel(this.lounge, `작업대기소 · 쉬는 사람 <b>${idleAt(LOUNGE)}</b>명`);
-    setLabel(this.loungeS, `남문 작업대기소(탑재·의장) · 쉬는 사람 <b>${idleAt(LOUNGE_SOUTH)}</b>명`);
+    setLabel(this.loungeS, `남문 작업대기소(탑재·의장·시운전) · 쉬는 사람 <b>${idleAt(LOUNGE_SOUTH)}</b>명`);
 
     // 지게차를 먼저: 날마다 로트의 held를 지우고 팔레트를 잡는다(트랜스포터가 실은 블록의 held는 그 뒤에 잡는다)
     this.driveForklifts(f, src.playing && !jump ? frac : 1);
