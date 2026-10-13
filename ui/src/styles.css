@@ -745,7 +745,23 @@ body { background: var(--desk); }
 .desk-intro { text-align: center; color: var(--ink); }
 .desk-intro h2 { margin: 0 0 6px; font-size: 1.35rem; letter-spacing: -0.01em; }
 .desk-intro p { margin: 0; color: var(--ink-2); font-size: 0.9rem; }
-.desk-boards { display: flex; flex-wrap: wrap; justify-content: center; gap: 36px; max-width: calc(3 * 280px + 2 * 36px); }   /* 반기 6개를 3장씩 두 줄로(4.21) */
+/* 4.22.1: 가로 한 줄, 가운데 한 장을 넘긴다(desk.ts). 카드 너비 280·간격 36은 desk.ts의 CARD_W·GAP과 같다 */
+.desk-carousel { display: flex; align-items: center; gap: 12px; width: 100%; max-width: 1400px; }
+.desk-viewport { flex: 1; min-width: 0; overflow: hidden; padding: 14px 0 18px; touch-action: pan-y; cursor: grab; user-select: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); }   /* 양 끝 카드는 잘리지 않고 흐려진다 */
+.desk-viewport.dragging { cursor: grabbing; }
+.desk-boards { display: flex; flex-wrap: nowrap; gap: 36px; width: max-content; transition: transform 0.35s ease; will-change: transform; }
+.desk-board:not(.current) { opacity: 0.5; }
+.desk-board:not(.current) .desk-sheet { pointer-events: none; }
+.desk-nav { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--board-edge); background: var(--paper); color: var(--ink); font: inherit; font-size: 1.6rem; line-height: 1; cursor: pointer; box-shadow: 0 1px 2px rgba(30, 28, 20, 0.15); }
+.desk-nav:hover:not(:disabled), .desk-nav:focus-visible { border-color: var(--ink-2); outline: none; }
+.desk-nav:focus-visible { box-shadow: 0 0 0 3px var(--accent); }
+.desk-nav:disabled { opacity: 0.3; cursor: default; }
+.desk-dots { display: flex; gap: 8px; margin-top: -8px; }
+.desk-dot { width: 10px; height: 10px; padding: 0; border-radius: 50%; border: 1.5px solid var(--ink-2); background: transparent; cursor: pointer; }
+.desk-dot[aria-selected="true"] { background: var(--ink-2); }
+.desk-dot:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 600px) { .desk-nav { width: 36px; height: 36px; font-size: 1.3rem; } .desk-carousel { gap: 4px; } }
 .desk-board {
   width: 280px; min-height: 360px; cursor: pointer; font: inherit; color: inherit; text-align: left;
   transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.2s ease;
@@ -786,7 +802,7 @@ body { background: var(--desk); }
 .bar-back:hover { text-decoration: underline; }
 .bar-quarter { font-size: 0.9rem; font-weight: 700; color: var(--ink); }
 .bar-quarter small { color: var(--ink-3); font-weight: 500; }
-@media (prefers-reduced-motion: reduce) { .desk-board { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .desk-board, .desk-boards { transition: none; } }
 .station .seg-item span { white-space: nowrap; }
 .field-label.sub { width: auto; min-width: 72px; }
 
