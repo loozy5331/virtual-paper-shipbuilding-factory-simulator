@@ -97,12 +97,14 @@ export interface MaterialInfo {
 }
 
 /** 선종의 그림(4.17, D66): 갑판 위 모양, 2D 반 길이, 크기 배율. 화면은 선종 코드가 아니라 이 값으로 그린다 */
-export interface ShipLookInfo { deck: "tanker" | "container" | "moss" | "tug"; length: number; size: number }
+export interface ShipLookInfo { deck: "tanker" | "container" | "moss" | "tug" | "bulk" | "pctc" | "lpg"; length: number; size: number }
 
 export interface ShipType {
   name: string;
   /** 4.17(D66): ship_categories의 키(상선·특수선·해양) */
   category?: string;
+  /** 4.19(D67): 선종 난이도 1 입문 · 2 표준 · 3 고난도. 시나리오 level은 쓰는 선종의 최고 난이도를 거스르지 않는다 */
+  difficulty?: number;
   look?: ShipLookInfo;
   /** 4.17(D64): 선박 사양서 글. delivery는 선종마다 덧붙는 인도 조건(설명) */
   spec?: { summary: string; real: string; build: string; delivery: string[] };

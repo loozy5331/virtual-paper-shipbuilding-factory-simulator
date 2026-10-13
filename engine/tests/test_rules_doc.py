@@ -607,7 +607,7 @@ class Scenarios(unittest.TestCase):
     def test_list(self):
         self.assertEqual([(s["id"], s["name"], s["ships"]) for s in list_scenarios()],
                          [("simple", "간이공정 분기", 4), ("basic", "기본 반기", 6), ("growth", "수주 증가", 8), ("surge", "수주 급증", 10)])
-        self.assertEqual([s["level"] for s in list_scenarios()], [1, 2, 3, 4])
+        self.assertEqual([s["level"] for s in list_scenarios()], [1, 2, 3, 5])   # 4는 4.20 선종 다변화 자리(D67)
 
     def test_config_without_scenario_runs_as_basic(self):
         # 하위 호환: 1.x 설정(scenario 없음)은 기본 분기로 돈다.
@@ -1401,9 +1401,31 @@ class ShipSpec(unittest.TestCase):
         sc = load_scenario("basic")
         for tid, t in sc["ship_types"].items():
             self.assertIn(t["category"], sc["ship_categories"], tid)
-            self.assertIn(t["look"]["deck"], {"tanker", "container", "moss", "tug"}, tid)
+            self.assertIn(t["look"]["deck"], {"tanker", "container", "moss", "tug", "bulk", "pctc", "lpg"}, tid)
             self.assertTrue(t["spec"]["summary"] and t["spec"]["delivery"], tid)
         self.assertTrue(sc["delivery"]["criteria"])
+
+    def test_new_ship_types_419(self):
+        # 4.19(D67): 신규 선종 4종. 작업량은 10공정 모두, BOM은 4자재 모두 적는다. 새 자재는 없다
+        sc = load_scenario("basic")
+        types = sc["ship_types"]
+        self.assertTrue({"BULK", "PCTC", "VLGC", "MEOH"} <= set(types))
+        materials = [m["id"] for m in sc["materials"]]
+        for tid, t in types.items():
+            self.assertEqual(list(t["work"]), STATIONS, tid)
+            self.assertEqual(list(t["bom"]), materials, tid)
+        self.assertEqual([types[t]["work"]["painting"] for t in ("BULK", "PCTC", "VLGC", "MEOH")], [5, 3, 4, 3])
+        self.assertEqual([types[t]["bom"]["insulation"] for t in ("BULK", "PCTC", "VLGC", "MEOH")], [0, 0, 2, 0])
+        self.assertEqual(types["MEOH"]["look"]["deck"], "container")
+
+    def test_difficulty_ladder(self):
+        # D67: 선종 난이도 1~3. 시나리오를 level 순으로 늘어놓으면 쓰는 선종의 최고 난이도가 줄지 않는다
+        rules = load_scenario("basic")["ship_types"]
+        self.assertEqual({t: v["difficulty"] for t, v in rules.items()},
+                         {"VLCC": 2, "CONT": 2, "LNG": 3, "TUG": 1, "FEEDER": 1, "BULK": 2, "PCTC": 3, "VLGC": 3, "MEOH": 3})
+        tops = [max(rules[o["type"]]["difficulty"] for o in load_scenario(s["id"])["orders"]) for s in list_scenarios()]
+        self.assertEqual(tops, sorted(tops))
+        self.assertEqual(tops, [1, 2, 3, 3])
 
     def test_preview_lists_work_trades_and_bom_per_ship(self):
         s1 = preview(PRESETS["managed"])["ships"]["S1"]   # VLCC

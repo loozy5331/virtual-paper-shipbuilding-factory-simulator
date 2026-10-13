@@ -16,7 +16,7 @@ export interface DeskContext {
   onPick(id: string, board: HTMLElement): void;
 }
 
-const LEVEL_NAME = ["", "입문", "중급", "고급", "심화"];
+const LEVEL_NAME = ["", "입문", "중급", "고급", "심화", "최상"];
 
 export function renderDesk(root: HTMLElement, ctx: DeskContext): void {
   const maxLevel = Math.max(...ctx.scenarios.map((sc) => sc.level));
