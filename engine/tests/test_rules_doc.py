@@ -345,12 +345,12 @@ class GradeTable(unittest.TestCase):
 
     def test_to_s(self):
         """선배의 팁(4.23): S까지 모자란 점수와 목표에 가장 많이 못 미친 항목."""
-        cases = [(PRESETS["managed"], 19.7, "profit"),
-                 (crew("managed", erection="normal"), 18.3, "profit")]
+        cases = [(PRESETS["managed"], 14.7, "profit"),
+                 (crew("managed", erection="normal"), 13.3, "profit")]
         for cfg, need, focus in cases:
             g = open_sim(cfg)["grade"]
             self.assertEqual(g["to_s"], {"need": need, "focus": focus})
-            self.assertAlmostEqual(g["to_s"]["need"], 105 - g["score"], places=1)
+            self.assertAlmostEqual(g["to_s"]["need"], 100 - g["score"], places=1)
 
     def test_tips_every_scenario(self):
         for s in list_scenarios():
