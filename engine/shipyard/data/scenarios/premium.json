@@ -1,0 +1,701 @@
+{
+  "id": "premium",
+  "name": "고부가가치 수주",
+  "summary": "수주 10척이 모두 선가 높은 고난도 선종(LNG선·LPG선·메탄올 추진 컨테이너선·자동차운반선). 지연 위약금은 선가에 비례해 하루 늦을 때마다 손해가 크다. 같은 날 인도할 두 척 중 어느 배를 먼저 지킬지, 보냉재가 늦게 오는 가스선을 어떻게 대비할지 판단한다.",
+  "level": 6,
+  "period": "2028년 하반기",
+  "days": 120,
+  "orders": [
+    {
+      "id": "S1",
+      "type": "PCTC",
+      "order_day": 1,
+      "due_day": 40,
+      "price": 7000
+    },
+    {
+      "id": "S2",
+      "type": "MEOH",
+      "order_day": 1,
+      "due_day": 40,
+      "price": 6500
+    },
+    {
+      "id": "S3",
+      "type": "LNG",
+      "order_day": 1,
+      "due_day": 56,
+      "price": 9000
+    },
+    {
+      "id": "S4",
+      "type": "VLGC",
+      "order_day": 1,
+      "due_day": 56,
+      "price": 8000
+    },
+    {
+      "id": "S5",
+      "type": "MEOH",
+      "order_day": 1,
+      "due_day": 72,
+      "price": 6500
+    },
+    {
+      "id": "S6",
+      "type": "LNG",
+      "order_day": 1,
+      "due_day": 72,
+      "price": 9000
+    },
+    {
+      "id": "S7",
+      "type": "VLGC",
+      "order_day": 1,
+      "due_day": 88,
+      "price": 8000
+    },
+    {
+      "id": "S8",
+      "type": "PCTC",
+      "order_day": 1,
+      "due_day": 88,
+      "price": 7000
+    },
+    {
+      "id": "S9",
+      "type": "LNG",
+      "order_day": 1,
+      "due_day": 104,
+      "price": 9000
+    },
+    {
+      "id": "S10",
+      "type": "VLGC",
+      "order_day": 1,
+      "due_day": 104,
+      "price": 8000
+    }
+  ],
+  "initial_stock": {
+    "paper": 0,
+    "paint": 0,
+    "flag": 0,
+    "insulation": 0
+  },
+  "kpi": {
+    "revenue": 78000,
+    "profit": 43000,
+    "on_time_rate": 1.0,
+    "first_pass_yield": 0.9
+  },
+  "unlocks": "새 선종 LPG선·메탄올 추진 컨테이너선. 옵션은 수주 급증과 같다(작업장 3개, 나눠 하기)",
+  "options": {
+    "plan_buffer": true,
+    "crews": [
+      "normal",
+      "skilled",
+      "robot"
+    ],
+    "methods": [
+      "standard",
+      "fast",
+      "new"
+    ],
+    "material_grades": [
+      "standard",
+      "cheap"
+    ],
+    "max_units": 3,
+    "hoist": true,
+    "split": true,
+    "forklift_counts": [
+      1,
+      2,
+      3
+    ],
+    "transporter_counts": [
+      1,
+      2
+    ],
+    "jit_buffer": true,
+    "safety_stock": true
+  },
+  "supply_delays": true,
+  "grade": {
+    "weights": {
+      "revenue": 30,
+      "profit": 40,
+      "delivery": 20,
+      "quality": 10
+    },
+    "profit_cap": 1.3,
+    "bands": {
+      "S": 105,
+      "A": 85,
+      "B": 70,
+      "C": 50
+    },
+    "baseline_preset": "all_in"
+  },
+  "random": {
+    "quality": {
+      "S1": {
+        "cutting": 0.72,
+        "processing": 0.9,
+        "sub_assembly": 0.72,
+        "block_assembly": 0.87,
+        "painting": 0.15,
+        "pre_outfitting": 0.57,
+        "grand_assembly": 0.44,
+        "erection": 0.29,
+        "quay_outfitting": 0.82,
+        "sea_trial": 0.35
+      },
+      "S2": {
+        "cutting": 0.93,
+        "processing": 0.38,
+        "sub_assembly": 0.55,
+        "block_assembly": 0.75,
+        "painting": 0.75,
+        "pre_outfitting": 0.09,
+        "grand_assembly": 0.71,
+        "erection": 0.15,
+        "quay_outfitting": 0.36,
+        "sea_trial": 0.13
+      },
+      "S3": {
+        "cutting": 0.59,
+        "processing": 0.23,
+        "sub_assembly": 0.22,
+        "block_assembly": 0.53,
+        "painting": 0.43,
+        "pre_outfitting": 0.53,
+        "grand_assembly": 0.52,
+        "erection": 0.68,
+        "quay_outfitting": 0.86,
+        "sea_trial": 0.92
+      },
+      "S4": {
+        "cutting": 0.58,
+        "processing": 0.61,
+        "sub_assembly": 0.58,
+        "block_assembly": 0.36,
+        "painting": 0.75,
+        "pre_outfitting": 0.16,
+        "grand_assembly": 0.9,
+        "erection": 0.48,
+        "quay_outfitting": 0.73,
+        "sea_trial": 0.67
+      },
+      "S5": {
+        "cutting": 0.12,
+        "processing": 0.43,
+        "sub_assembly": 0.4,
+        "block_assembly": 0.16,
+        "painting": 0.72,
+        "pre_outfitting": 0.43,
+        "grand_assembly": 0.64,
+        "erection": 0.09,
+        "quay_outfitting": 0.89,
+        "sea_trial": 0.42
+      },
+      "S6": {
+        "cutting": 0.8,
+        "processing": 0.74,
+        "sub_assembly": 0.13,
+        "block_assembly": 0.72,
+        "painting": 0.69,
+        "pre_outfitting": 0.77,
+        "grand_assembly": 0.75,
+        "erection": 0.28,
+        "quay_outfitting": 0.58,
+        "sea_trial": 0.92
+      },
+      "S7": {
+        "cutting": 0.27,
+        "processing": 0.39,
+        "sub_assembly": 0.46,
+        "block_assembly": 0.55,
+        "painting": 0.73,
+        "pre_outfitting": 0.39,
+        "grand_assembly": 0.62,
+        "erection": 0.81,
+        "quay_outfitting": 0.07,
+        "sea_trial": 0.52
+      },
+      "S8": {
+        "cutting": 0.14,
+        "processing": 0.82,
+        "sub_assembly": 0.57,
+        "block_assembly": 0.28,
+        "painting": 0.77,
+        "pre_outfitting": 0.24,
+        "grand_assembly": 0.36,
+        "erection": 0.84,
+        "quay_outfitting": 0.66,
+        "sea_trial": 0.76
+      },
+      "S9": {
+        "cutting": 0.11,
+        "processing": 0.3,
+        "sub_assembly": 0.76,
+        "block_assembly": 0.91,
+        "painting": 0.36,
+        "pre_outfitting": 0.31,
+        "grand_assembly": 0.58,
+        "erection": 0.43,
+        "quay_outfitting": 0.53,
+        "sea_trial": 0.73
+      },
+      "S10": {
+        "cutting": 0.83,
+        "processing": 0.14,
+        "sub_assembly": 0.28,
+        "block_assembly": 0.43,
+        "painting": 0.12,
+        "pre_outfitting": 0.72,
+        "grand_assembly": 0.23,
+        "erection": 0.77,
+        "quay_outfitting": 0.35,
+        "sea_trial": 0.66
+      }
+    },
+    "supply": {
+      "S1": {
+        "paper": 0.6,
+        "paint": 0.43,
+        "flag": 0.49
+      },
+      "S2": {
+        "paper": 0.8,
+        "paint": 0.88,
+        "flag": 0.38
+      },
+      "S3": {
+        "paper": 0.67,
+        "paint": 0.91,
+        "flag": 0.28,
+        "insulation": 0.73
+      },
+      "S4": {
+        "paper": 0.06,
+        "paint": 0.27,
+        "flag": 0.28,
+        "insulation": 0.35
+      },
+      "S5": {
+        "paper": 0.95,
+        "paint": 0.14,
+        "flag": 0.08
+      },
+      "S6": {
+        "paper": 0.67,
+        "paint": 0.5,
+        "flag": 0.6,
+        "insulation": 0.52
+      },
+      "S7": {
+        "paper": 0.25,
+        "paint": 0.77,
+        "flag": 0.84,
+        "insulation": 0.91
+      },
+      "S8": {
+        "paper": 0.31,
+        "paint": 0.76,
+        "flag": 0.84
+      },
+      "S9": {
+        "paper": 0.14,
+        "paint": 0.61,
+        "flag": 0.49,
+        "insulation": 0.36
+      },
+      "S10": {
+        "paper": 0.35,
+        "paint": 0.7,
+        "flag": 0.22,
+        "insulation": 0.6
+      }
+    }
+  },
+  "presets": [
+    {
+      "id": "unmanaged",
+      "name": "무관리",
+      "summary": "전부 한꺼번에 착수하고(우선순위도 납기 반대로, 마지막 배부터), 자재는 필요한 날에야 발주하고, 24명을 꽉 채워 속성 공법과 잔업으로 밀어붙인다. 증설과 정비는 하지 않고, 지게차는 1대만 둔다.",
+      "config": {
+        "ordering": "late",
+        "ships": {
+          "S1": {
+            "priority": 10,
+            "start_day": 1
+          },
+          "S2": {
+            "priority": 9,
+            "start_day": 1
+          },
+          "S3": {
+            "priority": 8,
+            "start_day": 1
+          },
+          "S4": {
+            "priority": 7,
+            "start_day": 1
+          },
+          "S5": {
+            "priority": 6,
+            "start_day": 1
+          },
+          "S6": {
+            "priority": 5,
+            "start_day": 1
+          },
+          "S7": {
+            "priority": 4,
+            "start_day": 1
+          },
+          "S8": {
+            "priority": 3,
+            "start_day": 1
+          },
+          "S9": {
+            "priority": 2,
+            "start_day": 1
+          },
+          "S10": {
+            "priority": 1,
+            "start_day": 1
+          }
+        },
+        "pools": {
+          "processing": 4,
+          "assembly": 8,
+          "erection": 4,
+          "painting": 4,
+          "outfitting": 4
+        },
+        "transporters": {
+          "maintenance": false,
+          "count": 1
+        },
+        "forklifts": {
+          "count": 1,
+          "maintenance": false
+        },
+        "research": [],
+        "stations": {
+          "cutting": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": false
+          },
+          "processing": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": false
+          },
+          "sub_assembly": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": false
+          },
+          "block_assembly": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": false
+          },
+          "painting": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": false
+          },
+          "pre_outfitting": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": false
+          },
+          "grand_assembly": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": false
+          },
+          "erection": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": false
+          },
+          "quay_outfitting": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": false
+          },
+          "sea_trial": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": false
+          }
+        },
+        "scenario": "premium"
+      }
+    },
+    {
+      "id": "managed",
+      "name": "관리",
+      "summary": "같은 날 인도할 두 척은 선가가 높은 배를 먼저 둔다(위약금은 선가에 비례). 절단·소조립·중조립(나눠 하기)과 도크를 2곳으로 늘리고, 가스선은 먼저 착수한다. 자재는 역산 발주에 보냉재 안전 재고 1척분, 17명(가공 3, 조립 5, 탑재 4, 도장 1, 의장 4)과 지게차 2대로 표준 공법에 정비를 하고, 자동 검사 연구로 재작업을 줄인다.",
+      "config": {
+        "ordering": "jit",
+        "safety_stock": {
+          "insulation": 1
+        },
+        "ships": {
+          "S1": {
+            "priority": 1,
+            "start_day": 3
+          },
+          "S2": {
+            "priority": 2,
+            "start_day": 3
+          },
+          "S3": {
+            "priority": 3,
+            "start_day": 3
+          },
+          "S4": {
+            "priority": 4,
+            "start_day": 2
+          },
+          "S5": {
+            "priority": 6,
+            "start_day": 20
+          },
+          "S6": {
+            "priority": 5,
+            "start_day": 18
+          },
+          "S7": {
+            "priority": 7,
+            "start_day": 42
+          },
+          "S8": {
+            "priority": 8,
+            "start_day": 40
+          },
+          "S9": {
+            "priority": 9,
+            "start_day": 51
+          },
+          "S10": {
+            "priority": 10,
+            "start_day": 54
+          }
+        },
+        "pools": {
+          "processing": 3,
+          "assembly": 5,
+          "erection": 4,
+          "painting": 1,
+          "outfitting": 4
+        },
+        "transporters": {
+          "maintenance": true,
+          "count": 1
+        },
+        "forklifts": {
+          "count": 2,
+          "maintenance": true
+        },
+        "research": [
+          "auto_inspect"
+        ],
+        "stations": {
+          "cutting": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true,
+            "units": 2
+          },
+          "processing": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          },
+          "sub_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true,
+            "units": 2,
+            "split": true
+          },
+          "block_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true,
+            "units": 2,
+            "split": true
+          },
+          "painting": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          },
+          "pre_outfitting": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true,
+            "units": 1
+          },
+          "grand_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true,
+            "units": 1
+          },
+          "erection": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true,
+            "units": 2
+          },
+          "quay_outfitting": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          },
+          "sea_trial": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          }
+        },
+        "scenario": "premium"
+      }
+    },
+    {
+      "id": "all_in",
+      "name": "전부 최대 투입",
+      "summary": "중조립 3곳(나눠 하기), 소조립·PE장·도크 2곳으로 증설하고, 사람 36명, 지게차 3대, 속도, 잔업, 정비를 전부 넣고 자재는 1일에 모두 발주한다. 등급의 기준선이다.",
+      "config": {
+        "ordering": "bulk",
+        "ships": {
+          "S1": {
+            "priority": 1,
+            "start_day": 1
+          },
+          "S2": {
+            "priority": 2,
+            "start_day": 1
+          },
+          "S3": {
+            "priority": 3,
+            "start_day": 1
+          },
+          "S4": {
+            "priority": 4,
+            "start_day": 1
+          },
+          "S5": {
+            "priority": 5,
+            "start_day": 1
+          },
+          "S6": {
+            "priority": 6,
+            "start_day": 1
+          },
+          "S7": {
+            "priority": 7,
+            "start_day": 1
+          },
+          "S8": {
+            "priority": 8,
+            "start_day": 1
+          },
+          "S9": {
+            "priority": 9,
+            "start_day": 1
+          },
+          "S10": {
+            "priority": 10,
+            "start_day": 1
+          }
+        },
+        "pools": {
+          "processing": 6,
+          "assembly": 12,
+          "erection": 6,
+          "painting": 6,
+          "outfitting": 6
+        },
+        "transporters": {
+          "maintenance": true,
+          "count": 2
+        },
+        "forklifts": {
+          "count": 3,
+          "maintenance": true
+        },
+        "research": [],
+        "stations": {
+          "cutting": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": true
+          },
+          "processing": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": true
+          },
+          "sub_assembly": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": true,
+            "units": 2
+          },
+          "block_assembly": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": true,
+            "crew": "skilled",
+            "units": 3,
+            "split": true
+          },
+          "painting": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": true
+          },
+          "pre_outfitting": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": true
+          },
+          "grand_assembly": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": true,
+            "units": 2
+          },
+          "erection": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": true,
+            "units": 2
+          },
+          "quay_outfitting": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": true
+          },
+          "sea_trial": {
+            "method": "fast",
+            "overtime": true,
+            "maintenance": true
+          }
+        },
+        "scenario": "premium"
+      }
+    }
+  ]
+}
