@@ -745,7 +745,7 @@ body { background: var(--desk); }
 .desk-intro { text-align: center; color: var(--ink); }
 .desk-intro h2 { margin: 0 0 6px; font-size: 1.35rem; letter-spacing: -0.01em; }
 .desk-intro p { margin: 0; color: var(--ink-2); font-size: 0.9rem; }
-.desk-boards { display: flex; flex-wrap: wrap; justify-content: center; gap: 36px; }
+.desk-boards { display: flex; flex-wrap: wrap; justify-content: center; gap: 36px; max-width: calc(3 * 280px + 2 * 36px); }   /* 반기 6개를 3장씩 두 줄로(4.21) */
 .desk-board {
   width: 280px; min-height: 360px; cursor: pointer; font: inherit; color: inherit; text-align: left;
   transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.2s ease;
