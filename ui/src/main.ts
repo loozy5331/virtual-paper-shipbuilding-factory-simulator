@@ -144,6 +144,8 @@ const els = {
   rightBottom: h("div", { class: "right-bottom" }),
   deskClip: h("button", { class: "desk-clip", type: "button", title: "생산계획서로 돌아가 계획을 고칩니다" }),
   hat: h("button", { class: "desk-hat", type: "button", title: "작업모를 쓰고 현장으로 나갑니다" }),
+  /** 책상 위 탁상 달력: 지금 반기를 보이고, 누르면 반기마다 한 장씩 펼쳐 다른 반기로 옮긴다 */
+  calendar: h("div", { class: "desk-cal-wrap" }),
   hands: h("div", { class: "hands", "aria-hidden": "true" }),
   reportBoard: h("div", { class: "report-board clipboard" }),
   /** 책상의 생산계획서를 펼친 클립보드(실행한 회차의 계획, 읽기 전용). */
@@ -992,13 +994,12 @@ function drawRoom(): void {
 const gradeChip = (grade: string, cls: string) =>
   h("b", { class: `${cls} grade-${grade}`, style: { background: GRADE_COLOR[grade], color: GRADE_TEXT[grade] } }, grade);
 
-/** 벽의 명판: 왼쪽은 관제실·분기·회차, 오른쪽은 목표와 이번 세션 최고, 회차 목록. */
-/** 관제실 명판의 반기 목록이 열려 있나(4.2: 관제실에서 바로 다른 반기로) */
-let plateMenuOpen = false;
+/** 책상 달력의 반기 장들이 펼쳐져 있나(4.18: 명판 메뉴 대신 달력으로 다른 반기로) */
+let calendarOpen = false;
 
 /** 관제실에서 다른 반기로: 책상으로 돌아가지 않고 그 반기의 생산계획서로 바로 간다. 같은 반기면 계획 고치기와 같다 */
 async function switchFromRoom(id: string): Promise<void> {
-  plateMenuOpen = false;
+  closeCalendar();
   if (id === state.data.scenario.id) { await backToPlan(); return; }
   pause();
   closePlanBoard();
@@ -1007,22 +1008,13 @@ async function switchFromRoom(id: string): Promise<void> {
   drawTopbar();
 }
 
+/** 벽의 명판: 왼쪽은 관제실·반기·회차(반기를 바꾸는 것은 책상 달력), 오른쪽은 목표와 이번 세션 최고, 회차 목록. */
 function drawPlates(): void {
   const r = currentRun();
   const sc = state.data.scenario;
   mount(els.plate,
     h("b", null, "종이배 조선소 관제실"),
-    h("span", { class: "plate-switch" },
-      h("button", {
-        type: "button", class: "plate-period", "aria-haspopup": "menu", "aria-expanded": String(plateMenuOpen),
-        title: "다른 반기로 바꾸기(그 반기의 생산계획서로 바로 갑니다)",
-        onclick: () => { plateMenuOpen = !plateMenuOpen; drawPlates(); },
-      }, `${sc.period} · ${sc.name} ▾`),
-      plateMenuOpen ? h("div", { class: "plate-menu", role: "menu" },
-        state.data.scenarios.map((x) => h("button", {
-          type: "button", role: "menuitem", class: x.id === sc.id ? "current" : "",
-          onclick: () => void switchFromRoom(x.id),
-        }, h("b", null, x.period), ` ${x.name} · ${x.ships}척${x.id === sc.id ? " (지금, 계획 고치기)" : ""}`))) : null),
+    h("span", null, `${sc.period} · ${sc.name}`),
     r ? h("span", null, `${r.n}회차 ${r.label}`) : null);
   const k = sc.kpi;
   const best = sessionBest(sc.id);
@@ -1141,6 +1133,56 @@ function drawDeskItems(): void {
   mount(els.deskClip,
     h("span", { class: "clip-sheet" }, h("b", null, "생산계획서"), h("small", null, r?.label ?? ""), h("i"), h("i"), h("i")),
     h("span", { class: "desk-label" }, r ? "누르면 실행한 계획 보기" : "누르면 계획 고치기"));
+  drawCalendar();
+}
+
+/** "2026년 하반기" → ["2026", "하반기"]. 형식이 다르면 통째로 아래 칸에 */
+function splitPeriod(period: string): [string, string] {
+  const m = /^(\d+)년\s*(.+)$/.exec(period);
+  return m ? [m[1], m[2]] : ["", period];
+}
+
+/** 책상 위 탁상 달력. 앞장은 지금 반기, 누르면 반기마다 한 장씩 펼친다(왼쪽 옛 반기 → 나중 반기, 첫 화면 클립보드와 같은 순서).
+ *  한 장을 고르면 그 반기의 생산계획서로 바로 간다(switchFromRoom). 지금 반기를 고르면 계획 고치기와 같다. */
+function drawCalendar(): void {
+  const sc = state.data.scenario;
+  const [year, half] = splitPeriod(sc.period);
+  const maxLevel = Math.max(...state.data.scenarios.map((x) => x.level));
+  mount(els.calendar,
+    h("button", {
+      type: "button", class: "desk-cal", "aria-haspopup": "menu", "aria-expanded": String(calendarOpen),
+      title: "달력을 넘겨 다른 반기로 바꿉니다(그 반기의 생산계획서로 바로 갑니다)",
+      onclick: () => { calendarOpen = !calendarOpen; drawCalendar(); (els.calendar.querySelector(calendarOpen ? ".cal-page.current" : ".desk-cal") as HTMLElement | null)?.focus(); },
+    },
+    h("span", { class: "cal-rings", "aria-hidden": "true" }, h("i"), h("i")),
+    h("span", { class: "cal-face" }, h("small", null, year), h("b", null, half), h("span", null, sc.name)),
+    h("span", { class: "desk-label" }, "달력 · 반기 바꾸기")),
+    calendarOpen ? h("div", { class: "cal-pages", role: "menu", "aria-label": "반기 고르기" },
+      state.data.scenarios.map((x) => {
+        const [y, hf] = splitPeriod(x.period);
+        const best = sessionBest(x.id);
+        const now = x.id === sc.id;
+        return h("button", {
+          type: "button", role: "menuitem", class: `cal-page${now ? " current" : ""}`,
+          title: now ? "지금 반기: 생산계획서로 돌아가 계획을 고칩니다" : `${x.period} ${x.name}의 생산계획서로 갑니다`,
+          onclick: () => void switchFromRoom(x.id),
+        },
+        h("span", { class: "cal-rings", "aria-hidden": "true" }, h("i"), h("i")),
+        h("small", null, y), h("b", null, hf),
+        h("span", { class: "cal-name" }, x.name),
+        h("span", { class: "cal-meta" }, `수주 ${x.ships}척 · ${x.days}일`),
+        h("span", { class: "desk-level", title: `난이도 ${x.level} / ${maxLevel}` },
+          Array.from({ length: maxLevel }, (_, k) => h("i", { class: k < x.level ? "on" : "" }))),
+        h("span", { class: "cal-foot" },
+          now ? h("em", null, "지금 · 계획 고치기") : null,
+          best ? gradeChip(best.result.grade.grade, "chip-grade") : null));
+      })) : null);
+}
+
+function closeCalendar(): void {
+  if (!calendarOpen) return;
+  calendarOpen = false;
+  drawCalendar();
 }
 
 /** 생산실적 평가서 클립보드: 60일이 끝나면 받는다. 내려 두면 아래 띠만 보이고, 누르면 다시 올라온다. */
@@ -1372,6 +1414,11 @@ function onKey(e: KeyboardEvent): void {
     e.preventDefault();
     return;
   }
+  if (e.key === "Escape" && calendarOpen) {
+    closeCalendar();
+    (els.calendar.querySelector(".desk-cal") as HTMLElement | null)?.focus();
+    return;
+  }
   if (e.key === "Escape" && planUp) {
     closePlanBoard();
     return;
@@ -1525,7 +1572,7 @@ async function start(): Promise<void> {
     // 듀얼 모니터암(가운데 기둥 하나): 기둥은 모니터 뒤로 지나가 두 모니터 사이와 아래로만 보이고, 책상에 클램프로 물린다
     h("div", { class: "monitor-arm", "aria-hidden": "true" }),
     h("div", { class: "monitors" }, els.monitorLeft, els.monitorRight),
-    h("div", { class: "room-desk" }, h("div", { class: "desk-top" }), h("div", { class: "arm-clamp", "aria-hidden": "true" }), els.deskClip, els.hands, els.hat),
+    h("div", { class: "room-desk" }, h("div", { class: "desk-top" }), h("div", { class: "arm-clamp", "aria-hidden": "true" }), els.deskClip, els.calendar, els.hands, els.hat),
     els.reportBoard, els.planBoard);
 
   els.sceneField.append(els.trackField, els.deliveredField, els.trialField);
@@ -1533,6 +1580,8 @@ async function start(): Promise<void> {
   mount(root, els.desk, els.plan, els.room, els.field);
 
   document.addEventListener("keydown", onKey);
+  // 펼친 달력은 달력 밖을 누르면 접는다
+  document.addEventListener("pointerdown", (e) => { if (!els.calendar.contains(e.target as Node)) closeCalendar(); });
   document.addEventListener("keyup", (e) => { onMoveKey(e, false); });
   window.addEventListener("blur", releaseMoveKeys);   // 키를 누른 채 창을 떠나면 keyup이 오지 않는다
   drawForm();

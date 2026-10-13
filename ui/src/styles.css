@@ -850,15 +850,6 @@ body { background: var(--desk); }
 .room { --wall: #cfd3cb; --desk-top: #a39784; position: relative; height: 100vh; min-height: 640px; overflow: hidden; background: var(--wall); }
 .room .plate { position: absolute; left: 26px; top: 6px; z-index: 2; font-size: 12px; color: var(--ink-2); display: flex; gap: 10px; align-items: center; }
 .room .plate b { color: var(--ink); font-size: 13px; }
-/* 명판의 반기 이름을 누르면 반기 목록(4.2): 고르면 그 반기의 생산계획서로 바로 */
-.plate-switch { position: relative; }
-.plate-period { border: 1px solid transparent; background: transparent; font: inherit; color: var(--ink-2); padding: 1px 6px; border-radius: 4px; cursor: pointer; }
-.plate-period:hover, .plate-period[aria-expanded="true"] { border-color: #c9cfc9; background: var(--paper); color: var(--ink); }
-.plate-menu { position: absolute; left: 0; top: calc(100% + 4px); z-index: 20; display: flex; flex-direction: column; min-width: 260px;
-  background: var(--paper); border: 1px solid #c9cfc9; border-radius: 6px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18); padding: 4px; }
-.plate-menu button { border: 0; background: transparent; text-align: left; font: inherit; font-size: 12px; color: var(--ink); padding: 6px 8px; border-radius: 4px; cursor: pointer; }
-.plate-menu button:hover { background: #eef1ec; }
-.plate-menu button.current { color: var(--ink-2); }
 .room .plate.right { left: auto; right: 26px; gap: 14px; }
 .plate-best { display: inline-flex; align-items: center; gap: 4px; }
 .plate-best .best-grade { width: 20px; height: 20px; font-size: 11px; }
@@ -1071,6 +1062,35 @@ body { background: var(--desk); }
 .desk-hat { position: absolute; right: 90px; top: 30px; width: 190px; border: 0; background: transparent; cursor: pointer; font: inherit; transition: transform 0.15s ease; }
 .desk-hat svg { width: 180px; display: block; margin: 0 auto; }
 .desk-hat:hover, .desk-hat:focus-visible { transform: translateY(-4px); }
+/* 탁상 달력(4.18): 앞장은 지금 반기. 누르면 반기마다 한 장씩 위로 펼치고, 한 장을 고르면 그 반기의 생산계획서로 */
+.desk-cal-wrap { position: absolute; left: 236px; top: 34px; z-index: 7; } /* 좁은 창에서 손(z 6)이 이름표를 가리지 않게 */
+.desk-cal { position: relative; display: block; width: 104px; border: 0; padding: 0; background: transparent; cursor: pointer; font: inherit; transition: transform 0.15s ease; }
+.desk-cal:hover, .desk-cal:focus-visible, .desk-cal[aria-expanded="true"] { transform: translateY(-4px); outline: none; }
+.desk-cal:focus-visible .cal-face { box-shadow: 0 0 0 3px var(--accent); }
+.desk-cal .desk-label { margin-top: 10px; }
+/* 고리 두 개: 장 위쪽에 걸린 철사 */
+.cal-rings { position: absolute; left: 0; right: 0; top: -5px; display: flex; justify-content: space-around; padding: 0 22px; z-index: 1; }
+.cal-rings i { width: 4px; height: 11px; border-radius: 2px; background: #5b625d; }
+.cal-face { display: flex; flex-direction: column; align-items: center; gap: 2px; height: 96px; padding: 0 6px 8px; background: var(--paper); border: 1px solid #b9b2a2; border-radius: 3px; color: var(--ink-2); overflow: hidden;
+  box-shadow: 0 4px 0 -1px #2b332e; }
+.cal-face small { align-self: stretch; text-align: center; margin: 0 -6px 6px; padding: 7px 0 3px; background: #2b332e; color: #f3f1ea; font-size: 11px; letter-spacing: 0.08em; }
+.cal-face b { font-size: 21px; color: var(--ink); letter-spacing: 0.02em; line-height: 1.15; }
+.cal-face span { font-size: 11px; }
+.cal-pages { position: absolute; left: -8px; bottom: calc(100% + 14px); z-index: 12; display: flex; gap: 10px; padding: 12px 10px 10px; background: rgba(43, 51, 46, 0.88); border-radius: 6px; box-shadow: 0 8px 22px rgba(20, 24, 20, 0.3); }
+.cal-page { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; width: 116px; padding: 0 8px 9px; border: 1px solid #b9b2a2; border-radius: 3px; background: var(--paper); cursor: pointer; font: inherit; color: var(--ink-2); overflow: visible; transition: transform 0.12s ease; }
+.cal-page:hover, .cal-page:focus-visible { transform: translateY(-3px); outline: none; box-shadow: 0 0 0 2px var(--accent); }
+.cal-page > small { align-self: stretch; text-align: center; margin: 0 -8px 4px; padding: 8px 0 3px; background: #4b5a51; color: #f3f1ea; font-size: 11px; letter-spacing: 0.08em; border-radius: 2px 2px 0 0; }
+.cal-page.current { border-color: #2b332e; box-shadow: inset 0 0 0 1px #2b332e; }
+.cal-page.current > small { background: #2b332e; }
+.cal-page b { font-size: 19px; color: var(--ink); line-height: 1.2; }
+.cal-name { font-size: 12px; font-weight: 600; color: var(--ink); }
+.cal-meta { font-size: 11px; }
+.cal-page .desk-level { margin-top: 2px; }
+.cal-page .desk-level i { width: 7px; height: 7px; }
+.cal-foot { display: flex; align-items: center; gap: 4px; min-height: 18px; font-size: 10.5px; }
+.cal-foot em { font-style: normal; font-weight: 600; color: var(--ink); }
+.cal-foot .chip-grade { margin-left: 0; }
+@media (prefers-reduced-motion: reduce) { .desk-cal, .cal-page { transition: none; } }
 .hands { position: absolute; left: 50%; transform: translateX(-50%); bottom: -6px; width: min(720px, 60vw); z-index: 6; pointer-events: none; }
 .hands svg { display: block; width: 100%; }
 .room.board-up .hands, .room.board-down .hands { display: none; }
