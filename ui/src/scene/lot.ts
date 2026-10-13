@@ -6,7 +6,7 @@ import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import { mesh } from "./people";
 import { shipLook } from "./ships";
 import { shipSize } from "./layout";
-import { clamp01, ease, flatOf, hullTris, type Tri } from "./model";
+import { clamp01, ease, flatOf, hullTris, PAPER_BOAT, type Tri } from "./model";
 import { chipHtml, label, PAINT, PAPER, paperMaterial } from "./util";
 
 const UNIT = 0.3;
@@ -118,7 +118,7 @@ export class Lot {
   private readonly scraps: THREE.Mesh[] = [];
   private readonly boat = new THREE.Group();
   private readonly hullMat = paperMaterial();
-  private readonly hull = new FoldMesh(hullTris(), this.hullMat);
+  private readonly hull: FoldMesh;
   /** 접힌 선체를 덮는 갑판(종이 한 장). 다 접힌 뒤에 보인다. */
   private readonly deck: THREE.Mesh;
   /** 선종별 구조물(의장). 탑재 끝에 크레인이 하나씩 올려 붙인다. 마지막이 선실. */
@@ -173,6 +173,8 @@ export class Lot {
     cloth.position.y = 0.54;
     this.flag.add(stick, cloth);
     const look = shipLook(kind);
+    const hullShape = look.shape ?? PAPER_BOAT;
+    this.hull = new FoldMesh(hullTris(hullShape), this.hullMat);
     this.flag.position.copy(look.flagAt);
     this.flag.scale.setScalar(0.6);
     this.deck = deckSheet();
@@ -195,7 +197,7 @@ export class Lot {
     // 작은 배(예인선·피더선, 4.6)는 블록과 배를 작게(소인국 눈높이로 같은 정반·도크에서 작아 보인다)
     this.group.scale.setScalar(shipSize(kind));
     const k = 0.85 * shipSize(kind);
-    this.dims = { halfLen: 1.15 * look.hull[0] * k, halfW: 0.4 * look.hull[2] * k, deck: 0.4 * look.hull[1] * k };
+    this.dims = { halfLen: Math.max(-hullShape.stern[0], hullShape.bow[0]) * look.hull[0] * k, halfW: 0.4 * look.hull[2] * k, deck: 0.4 * look.hull[1] * k };
   }
 
   /** 절단 중이면 자투리가 종이 둘레에서 튀어 나갔다가 떨어진다. time은 초. */

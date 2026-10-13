@@ -99,8 +99,32 @@ function ship(x: number, z: number, kind: string, scale = 1): SVGElement {
   } else if (look.deck === "moss") {
     for (let t = 0; t < 4; t++) {
       const tx = cx + (-0.35 + t * 0.4) * k;
-      g.append(s("ellipse", { cx: tx, cy: deckMid - 0.12 * k, rx: 0.19 * k, ry: 0.19 * k * 0.9, fill: PAPER, stroke: EDGE, "stroke-width": 0.6 }),
+      g.append(s("ellipse", { cx: tx, cy: deckMid - 0.15 * k, rx: 0.22 * k, ry: 0.22 * k * 0.9, fill: PAPER, stroke: EDGE, "stroke-width": 0.6 }),
         s("path", { d: `M${tx - 0.1 * k} ${deckMid - 0.2 * k} q${0.06 * k} ${-0.06 * k} ${0.14 * k} ${-0.02 * k}`, stroke: "#ffffff", "stroke-width": 1.2, fill: "none" }));
+    }
+  } else if (look.deck === "bulk") {
+    // 벌크선: 낮은 해치 커버 다섯 장
+    // 벌크선: 낮은 해치 커버 다섯 장. 덮개마다 가운데 능선(가는 선)이 있어 컨테이너 상자와 구분된다
+    for (let c = 0; c < 5; c++) {
+      const bx = -0.45 + c * 0.32;
+      blk(bx, 0.22, 0.66, 0.06, "#d9cba8");
+      const ry = deckMid - 0.06 * k * RISE;
+      g.append(s("line", { x1: cx + (bx - 0.11) * k, x2: cx + (bx + 0.11) * k, y1: ry, y2: ry, stroke: EDGE, "stroke-width": 0.6 }));
+    }
+  } else if (look.deck === "pctc") {
+    // 자동차운반선: 갑판 전체를 덮는 높은 상자. 선미 선실 없이 앞쪽 위에 선교 창문 선
+    blk(-0.1, 2 * len - 0.55, 0.74, 0.75, PAPER);
+    const top = deckMid - 0.37 * k * DEPTH - 0.75 * k * RISE;
+    g.append(s("line", { x1: cx + (len - 0.75) * k, x2: cx + (len - 0.4) * k, y1: top + 0.74 * k * DEPTH + 0.12 * k * RISE, y2: top + 0.74 * k * DEPTH + 0.12 * k * RISE, stroke: "#3a3f3c", "stroke-width": 1 }));
+    return g;
+  } else if (look.deck === "lpg") {
+    // LPG선: 가운데 긴 덮개 위에 각진 탱크 덮개 셋
+    blk(0.15, 1.5, 0.5, 0.06, PAPER_SIDE);
+    for (let t = 0; t < 3; t++) {
+      const tx = -0.35 + t * 0.5;
+      blk(tx, 0.38, 0.38, 0.12, PAPER);
+      // 덮개 위 작은 가스 돔
+      g.append(s("ellipse", { cx: cx + tx * k, cy: deckMid - 0.18 * k * RISE, rx: 0.06 * k, ry: 0.045 * k, fill: "#e6dcc6", stroke: EDGE, "stroke-width": 0.5 }));
     }
   } else {
     g.append(s("line", { x1: cx - 0.5 * k, x2: cx + 0.9 * k, y1: deckMid, y2: deckMid, stroke: PAPER_SIDE, "stroke-width": Math.max(1.5, 0.06 * k) }));

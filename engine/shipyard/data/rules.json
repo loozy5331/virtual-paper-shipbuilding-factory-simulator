@@ -212,6 +212,7 @@
     "VLCC": {
       "name": "VLCC",
       "category": "merchant",
+      "difficulty": 2,
       "look": {
         "deck": "tanker",
         "length": 1.45,
@@ -247,6 +248,7 @@
     "CONT": {
       "name": "컨테이너선",
       "category": "merchant",
+      "difficulty": 2,
       "look": {
         "deck": "container",
         "length": 1.3,
@@ -282,6 +284,7 @@
     "LNG": {
       "name": "LNG선",
       "category": "merchant",
+      "difficulty": 3,
       "look": {
         "deck": "moss",
         "length": 1.35,
@@ -317,6 +320,7 @@
     "TUG": {
       "name": "예인선",
       "category": "merchant",
+      "difficulty": 1,
       "look": {
         "deck": "tug",
         "length": 1.0,
@@ -352,6 +356,7 @@
     "FEEDER": {
       "name": "피더 컨테이너선",
       "category": "merchant",
+      "difficulty": 1,
       "look": {
         "deck": "container",
         "length": 1.15,
@@ -381,6 +386,152 @@
         "paper": 5,
         "paint": 3,
         "flag": 2,
+        "insulation": 0
+      }
+    },
+    "BULK": {
+      "name": "벌크선",
+      "category": "merchant",
+      "difficulty": 2,
+      "look": {
+        "deck": "bulk",
+        "length": 1.4,
+        "size": 1
+      },
+      "spec": {
+        "summary": "철광석·석탄·곡물을 포장 없이 싣는 벌크선. 갑판에 화물창 해치 커버가 줄지어 있다.",
+        "real": "실제 길이 약 290m(18만 톤급 케이프사이즈)",
+        "build": "화물창 안쪽까지 칠해 도장 작업량(5)과 물감(5)이 크다. 구조는 단순해 의장은 적다.",
+        "delivery": [
+          "해치 커버 수밀 시험: 물을 뿌려 화물창에 새지 않아야 한다."
+        ]
+      },
+      "work": {
+        "cutting": 3,
+        "processing": 3,
+        "sub_assembly": 7,
+        "block_assembly": 14,
+        "painting": 5,
+        "pre_outfitting": 3,
+        "grand_assembly": 8,
+        "erection": 12,
+        "quay_outfitting": 3,
+        "sea_trial": 3
+      },
+      "bom": {
+        "paper": 7,
+        "paint": 5,
+        "flag": 2,
+        "insulation": 0
+      }
+    },
+    "PCTC": {
+      "name": "자동차운반선",
+      "category": "merchant",
+      "difficulty": 3,
+      "look": {
+        "deck": "pctc",
+        "length": 1.25,
+        "size": 1
+      },
+      "spec": {
+        "summary": "자동차 7천 대를 싣는 자동차운반선. 선체가 높은 상자 모양이고 안에 차량 갑판이 여러 층.",
+        "real": "실제 길이 약 200m, 차량 갑판 12층",
+        "build": "차량 갑판과 경사로(램프) 의장이 많아 선행의장(6)·안벽의장(8)과 깃발(5)이 크다.",
+        "delivery": [
+          "램프 작동·하중 시험: 차량 무게를 싣고 경사로를 여닫는다."
+        ]
+      },
+      "work": {
+        "cutting": 2,
+        "processing": 3,
+        "sub_assembly": 8,
+        "block_assembly": 12,
+        "painting": 3,
+        "pre_outfitting": 6,
+        "grand_assembly": 6,
+        "erection": 14,
+        "quay_outfitting": 8,
+        "sea_trial": 4
+      },
+      "bom": {
+        "paper": 7,
+        "paint": 3,
+        "flag": 5,
+        "insulation": 0
+      }
+    },
+    "VLGC": {
+      "name": "LPG선",
+      "category": "merchant",
+      "difficulty": 3,
+      "look": {
+        "deck": "lpg",
+        "length": 1.3,
+        "size": 1
+      },
+      "spec": {
+        "summary": "영하 42도로 액화한 석유가스(LPG)를 싣는 초대형 가스운반선. 각진 독립형 화물 탱크를 갑판 덮개가 가린다.",
+        "real": "실제 길이 약 230m(8만 4천 m³급)",
+        "build": "선행의장에서 탱크 보냉재 2개를 붙이고, 재액화 설비 의장으로 안벽의장(8)이 크다.",
+        "delivery": [
+          "화물 탱크 보냉·가스 시험.",
+          "재액화 설비 시운전."
+        ]
+      },
+      "work": {
+        "cutting": 3,
+        "processing": 4,
+        "sub_assembly": 8,
+        "block_assembly": 14,
+        "painting": 4,
+        "pre_outfitting": 6,
+        "grand_assembly": 8,
+        "erection": 14,
+        "quay_outfitting": 8,
+        "sea_trial": 4
+      },
+      "bom": {
+        "paper": 8,
+        "paint": 4,
+        "flag": 4,
+        "insulation": 2
+      }
+    },
+    "MEOH": {
+      "name": "메탄올 추진 컨테이너선",
+      "category": "merchant",
+      "difficulty": 3,
+      "look": {
+        "deck": "container",
+        "length": 1.3,
+        "size": 1
+      },
+      "spec": {
+        "summary": "메탄올과 기름을 함께 쓰는 이중연료 엔진의 컨테이너선. 겉모습은 컨테이너선과 같다.",
+        "real": "실제 길이 약 350m(1만 6천 TEU급)",
+        "build": "메탄올 연료 탱크·배관 의장으로 안벽의장(6)이 크고, 연료 시험이 더해져 시운전(4)이 길다. 탑재(16)는 컨테이너선과 같다.",
+        "delivery": [
+          "컨테이너 고정 장치(래싱) 검사.",
+          "메탄올 연료 공급 장치 시험: 이중연료 엔진을 두 연료로 각각 돌린다."
+        ]
+      },
+      "work": {
+        "cutting": 2,
+        "processing": 3,
+        "sub_assembly": 6,
+        "block_assembly": 12,
+        "painting": 3,
+        "pre_outfitting": 5,
+        "grand_assembly": 4,
+        "erection": 16,
+        "quay_outfitting": 6,
+        "sea_trial": 4
+      },
+      "bom": {
+        "paper": 6,
+        "paint": 3,
+        "flag": 4,
         "insulation": 0
       }
     }

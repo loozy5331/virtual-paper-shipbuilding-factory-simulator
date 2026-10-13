@@ -8,6 +8,8 @@ import { h, num, pct, s } from "./dom";
 import { STATION_COLOR } from "./labels";
 import { shipProfile } from "./profile";
 
+const DIFFICULTY_NAME = ["", "입문", "표준", "고난도"];
+
 /** 공정의 공법·인력 한 줄: "표준 · 숙련공 · 잔업", 호이스트·증설도 붙인다 */
 function methodText(scenario: Scenario, config: Config, stationId: string, external: boolean): string {
   const cfg = config.stations[stationId];
@@ -43,7 +45,11 @@ export function renderShipSpec(scenario: Scenario, config: Config, preview: Prev
     outline,
     h("div", { class: "spec-id" },
       h("div", null, h("b", { class: "spec-ship" }, shipId), " ", h("span", { class: "spec-type" }, type.name),
-        category && typeof category === "object" ? h("span", { class: "spec-cat" }, category.name) : null),
+        category && typeof category === "object" ? h("span", { class: "spec-cat" }, category.name) : null,
+        // 선종 난이도(4.19, D67): 점 셋 중 몇 개 + 이름
+        type.difficulty ? h("span", { class: "desk-level spec-diff", title: `선종 난이도 ${type.difficulty} / 3` },
+          [1, 2, 3].map((k) => h("i", { class: k <= type.difficulty! ? "on" : "" })),
+          h("small", null, DIFFICULTY_NAME[type.difficulty] ?? "")) : null),
       type.spec ? h("p", null, type.spec.summary) : null,
       type.spec ? h("p", { class: "hint" }, type.spec.real) : null,
       h("p", { class: "spec-contract" }, `납기 ${due}일 · 선가 ${num(price)}`,
