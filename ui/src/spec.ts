@@ -11,13 +11,13 @@ import { shipProfile } from "./profile";
 const DIFFICULTY_NAME = ["", "입문", "표준", "고난도"];
 
 /** 공정의 공법·인력 한 줄: "표준 · 숙련공 · 잔업", 호이스트·증설도 붙인다 */
-function methodText(scenario: Scenario, config: Config, stationId: string, external: boolean): string {
+function methodText(scenario: Scenario, config: Config, stationId: string, trial: boolean): string {
   const cfg = config.stations[stationId];
   if (!cfg) return "";
   const parts = [scenario.rules.methods[cfg.method]?.name ?? cfg.method];
-  if (external) parts.push(scenario.rules.crews.external?.name ?? "외부팀");
+  if (trial) parts.push(scenario.rules.crews.trial?.name ?? "시운전팀");
   else if (cfg.crew && cfg.crew !== "normal") parts.push(scenario.rules.crews[cfg.crew]?.name ?? cfg.crew);
-  if (cfg.overtime && cfg.crew !== "robot" && !external) parts.push("잔업");
+  if (cfg.overtime && cfg.crew !== "robot" && !trial) parts.push("잔업");
   if (cfg.hoist) parts.push(scenario.rules.hoist.name);
   if ((cfg.units ?? 1) > 1) parts.push(`작업장 ${cfg.units}`);
   return parts.join(" · ");
@@ -68,7 +68,7 @@ export function renderShipSpec(scenario: Scenario, config: Config, preview: Prev
         h("td", null, t?.name ?? r.trade),
         h("td", { class: "r" }, num(r.work, 1)),
         h("td", null, m && r.quantity ? `${m.name} ${r.quantity}` : "—"),
-        h("td", { class: "hint" }, methodText(scenario, config, r.station, !!t?.external)));
+        h("td", { class: "hint" }, methodText(scenario, config, r.station, r.station === "sea_trial")));
     })));
 
   // 인력: 직종별 이 배의 작업량과 계획서의 대기소 인원
@@ -77,7 +77,7 @@ export function renderShipSpec(scenario: Scenario, config: Config, preview: Prev
       const t = trade(id);
       const pool = config.pools?.[id];
       return h("span", { class: "chip" }, h("b", null, t?.name ?? id), ` ${num(work, 1)}인·일`,
-        t?.external ? h("small", null, " (외부팀)") : pool !== undefined ? h("small", null, ` · 대기소 ${pool}명`) : null);
+        pool !== undefined ? h("small", null, ` · 대기소 ${pool}명`) : null);
     }));
 
   // 자재(BOM): 이 배 몫 수량, 쓰는 공정, 리드타임, 계획서의 발주 방식으로 정해진 발주·입고일

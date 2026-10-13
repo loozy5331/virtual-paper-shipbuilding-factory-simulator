@@ -4,10 +4,10 @@
 /** 고깔모자(작업모) 색: 역할. 3D 소인과 2D 작업 현황 기호가 함께 쓴다. */
 export const HAT = { worker: "#d6a400", manager: "#d9480f", senior: "#6f42c1" } as const;
 
-/** 공정의 직종(rules.json의 trade와 같다). 시운전은 외부팀이라 없다 */
+/** 공정의 직종(rules.json의 trade와 같다) */
 export const STATION_TRADE: Record<string, string> = {
   cutting: "processing", processing: "processing", sub_assembly: "assembly", block_assembly: "assembly", painting: "painting", pre_outfitting: "outfitting",
-  grand_assembly: "assembly", erection: "erection", quay_outfitting: "outfitting",
+  grand_assembly: "assembly", erection: "erection", quay_outfitting: "outfitting", sea_trial: "trial",
 };
 
 /** 직종별 작업모 색(4.0, D42). 조립은 원래 작업자 색. 모자 색만으로 구분하지 않게 현장 이름표와 대기소 글에 직종을 적는다 */
@@ -17,6 +17,7 @@ export const TRADE_HAT: Record<string, string> = {
   erection: "#2a78d6",
   painting: "#00a07a",
   outfitting: "#c0569e",
+  trial: "#20d0f0",        // 시운전(4.22, D69): 바다 하늘색. 다른 모자 7색과 정상시 ΔE 19 이상·색각 이상 시뮬레이션 ΔE 17 이상
 };
 
 // 공정 10색(4.0): 검증기 인접 쌍 통과(CVD 최소 7.1 = 안벽의장↔시운전, 정상시 최소 17.0 = 가공↔소조립). 손실 색(주황·노랑·빨강)과 겹치지 않게

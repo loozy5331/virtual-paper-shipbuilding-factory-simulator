@@ -147,6 +147,7 @@ def complete_config(config: dict[str, Any], scenario: dict[str, Any]) -> dict[st
 
     - 시나리오의 공정 중 설정에 없는 공정(1.x~3.x 설정의 도장·선행의장·안벽의장·시운전)은 기본값(표준, 잔업 없음, 정비).
     - 직종별 대기소 인원 pools. 없으면 옛 pool을 조립 인원으로 읽고 나머지 직종은 default_pools.
+      4.21까지 설정에 없는 시운전 인원도 default_pools(간이공정은 options.trial_pools)로 채운다(4.22).
     - pool은 대기소 전체 인원(pools 합)으로 맞춘다(결과·기준선 비교가 읽는다).
     """
     if not isinstance(config, dict) or not isinstance(config.get("stations"), dict):
@@ -159,12 +160,15 @@ def complete_config(config: dict[str, Any], scenario: dict[str, Any]) -> dict[st
     out["stations"] = stations
     trades = active_trades(scenario)
     pools = config.get("pools")
+    defaults = {k: v for k, v in scenario["default_pools"].items() if not k.startswith("_")}
+    # 시운전 인원(4.22, D69): 4.21까지 설정에는 없다. 인원을 고정한 분기(간이공정)는 그 값으로 채운다
+    fixed_trial = (scenario.get("options") or {}).get("trial_pools")
+    if fixed_trial:
+        defaults["trial"] = fixed_trial[0]
     if not isinstance(pools, dict):
-        defaults = {k: v for k, v in scenario["default_pools"].items() if not k.startswith("_")}
         pools = {t: (config.get("pool") if t == "assembly" else defaults.get(t, 1)) for t in trades}
     else:
-        # 4.0 개발 중 설정처럼 직종이 덜 적힌 pools(가공 직종 전)는 빠진 직종을 기본 인원으로 채운다
-        defaults = {k: v for k, v in scenario["default_pools"].items() if not k.startswith("_")}
+        # 4.0 개발 중 설정처럼 직종이 덜 적힌 pools(가공 직종 전, 4.21까지의 시운전)는 빠진 직종을 기본 인원으로 채운다
         pools = {**{t: defaults.get(t, 1) for t in trades if t not in pools}, **pools}
     pools = {t: v for t, v in pools.items() if t in trades}
     out["pools"] = pools
@@ -256,7 +260,7 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
             why = " (도크마다 골리앗 크레인이 있어야 하는데, 크레인은 걸리버의 두 손뿐입니다)" if pid == scenario["stations"][-1]["id"] and max_units < scenario["expansion"]["max_units"] else ""
             errors.append(f"{pid}: 작업장 수는 1~{max_units}개여야 합니다{why}")
 
-    # 직종별 대기소 인원(4.0, D42). 시운전은 외부팀이라 인원이 없다.
+    # 직종별 대기소 인원(4.0, D42). 시운전도 직종이다(4.22, D69).
     pools = config.get("pools") or {}
     for tid in active_trades(scenario):
         info = scenario["trades"][tid]
@@ -333,7 +337,7 @@ def _locked_options(config: dict[str, Any], scenario: dict[str, Any]) -> list[st
             continue
         cfg = config["stations"][pid]
         crew = crew_of(config, pid)
-        if crew != "external" and crew not in opts["crews"]:
+        if crew != "trial" and crew not in opts["crews"]:
             errors.append(f"{name}에서는 인력 '{rules['crews'][crew]['name']}'을(를) 쓸 수 없습니다({label})")
         if cfg["method"] not in opts["methods"]:
             errors.append(f"{name}에서는 공법 '{rules['methods'][cfg['method']]['name']}'을(를) 쓸 수 없습니다({label})")
@@ -345,6 +349,10 @@ def _locked_options(config: dict[str, Any], scenario: dict[str, Any]) -> list[st
             errors.append(f"{name}에서는 호이스트를 쓸 수 없습니다({label})")
         if cfg.get("buffer", 0) and not opts.get("plan_buffer", False):
             errors.append(f"{name}에서는 공정 여유를 둘 수 없습니다({label})")
+    # 시운전 인원(4.22): 분기가 고정했으면(간이공정 1명) 그 값만
+    trial_pools = opts.get("trial_pools")
+    if trial_pools and (config.get("pools") or {}).get("trial") not in trial_pools:
+        errors.append(f"{name}에서는 시운전 인원을 {', '.join(map(str, trial_pools))}명으로만 둘 수 있습니다")
     tcounts = opts.get("transporter_counts")
     if tcounts and (config.get("transporters") or {}).get("count") not in tcounts:
         errors.append(f"{name}에서는 트랜스포터를 {', '.join(map(str, tcounts))}대로만 둘 수 있습니다")
@@ -370,7 +378,7 @@ def crew_of(config: dict[str, Any], station_id: str) -> str:
     crew = config["stations"][station_id].get("crew")
     trade = _trade_of_station(station_id)
     if trade == "trial":
-        return "external"
+        return "trial"   # 시운전팀(4.22): 대기소 시운전 직종. 숙련공·로봇을 고르지 않는다
     if crew is not None:
         return crew
     return "skilled" if config.get("skilled_station") == station_id else "normal"
@@ -415,8 +423,8 @@ def station_work(config: dict[str, Any], scenario: dict[str, Any], station_id: s
 
 
 def is_overtime(station_cfg: dict[str, Any]) -> bool:
-    """잔업은 사람이 하는 일이다. 로봇 공정은 잔업을 켜도 하지 않는다."""
-    return station_cfg["overtime"] and station_cfg.get("crew") not in ("robot", "external")
+    """잔업은 사람이 하는 일이다. 로봇 공정은 잔업을 켜도 하지 않는다. 시운전(바다)도 하지 않는다."""
+    return station_cfg["overtime"] and station_cfg.get("crew") not in ("robot", "trial")
 
 
 def station_rate(station_cfg: dict[str, Any], rules: dict[str, Any], assigned: int, worker_factor: float = 1) -> float:
@@ -424,8 +432,6 @@ def station_rate(station_cfg: dict[str, Any], rules: dict[str, Any], assigned: i
     speed = rules["methods"][station_cfg["method"]]["speed"]
     if station_cfg.get("crew") == "robot":
         return rules["crews"]["robot"]["rate"] * speed
-    if station_cfg.get("crew") == "external":
-        assigned = rules["max_workers_per_station"]   # 시운전 외부팀은 늘 한 팀(대기소 사람을 쓰지 않는다)
     workers = min(assigned * worker_factor, rules["max_workers_per_station"])
     overtime = rules["overtime"]["speed"] if is_overtime(station_cfg) else 1.0
     return workers * speed * overtime
@@ -605,7 +611,7 @@ def fixed_costs(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, f
 def ship_specs(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     """선박 사양서(4.17, D64): 배마다 쓰는 공정의 작업량(호이스트 반영)·직종·자재와 직종별 작업량 합계.
 
-    작업량은 인·일(표준 공법 1명이 하루에 1)이다. 시운전은 외부팀이라 직종 합계에도 trial로 따로 둔다.
+    작업량은 인·일(표준 공법 1명이 하루에 1)이다. 시운전은 직종 합계의 trial이다.
     설명용이고 규칙에는 쓰지 않는다.
     """
     out = {}
@@ -692,15 +698,15 @@ def is_skipped(station: dict[str, Any]) -> bool:
 
 
 def has_equipment(station: dict[str, Any]) -> bool:
-    """조선소 설비가 있는 공정. rules.json 공정의 equipment는 기본 설비 이름(4.12.1), 시운전(외부팀)은 false라
+    """조선소 설비가 있는 공정. rules.json 공정의 equipment는 기본 설비 이름(4.12.1), 시운전(바다)은 false라
     고장·정비·미정비 불량이 없다(4.12)."""
     return station.get("equipment", True) is not False
 
 
 def active_trades(scenario: dict[str, Any]) -> list[str]:
-    """사람을 보내는 직종 가운데 쓰는 공정이 있는 직종(간이공정은 일부 직종이 빠진다). 시운전 외부팀은 제외."""
+    """사람을 보내는 직종 가운데 쓰는 공정이 있는 직종(간이공정은 일부 직종이 빠진다). 4.22부터 시운전도 들어간다."""
     used = {st.get("trade", "assembly") for st in scenario["stations"] if not is_skipped(st)}
-    return [t for t, info in scenario["trades"].items() if not t.startswith("_") and not info.get("external") and t in used]
+    return [t for t, info in scenario["trades"].items() if not t.startswith("_") and t in used]
 
 
 def plan_schedule(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
@@ -859,11 +865,10 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     skilled_extra = rules["crews"]["skilled"]["extra_wage_per_worker_day"]
     n_units = station_units(config, scenario)              # 공정마다 작업장 수 (증설하면 2~3)
     parts_max = [split_parts(config, scenario, p, n_units[p]) for p in range(n_st)]   # 나눠 하기: 배 한 척의 최대 부분 수
-    # 직종(4.0, D42): 공정마다 직종, 직종마다 대기소 인원. 시운전(외부팀)은 대기소 사람을 쓰지 않는다.
+    # 직종(4.0, D42): 공정마다 직종, 직종마다 대기소 인원. 시운전도 대기소의 시운전 직종이 한다(4.22, D69).
     trade_of = [s.get("trade", "assembly") for s in stations]
     pools: dict[str, int] = dict(config["pools"])
     pool: int = sum(pools.values())
-    trial_cost = scenario["trades"].get("trial", {}).get("cost_per_team_day", 0)
     after = station_after(scenario)
     # 블록 트랜스포터 1~2대(4.8). 자재 키트와 가공 → 소조립 부재 팔레트는 공용 지게차(작업자 대기소처럼 대수를 고른다).
     n_tr: int = config["transporters"]["count"]
@@ -1215,11 +1220,11 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         automated = "automation" in done_research
         need = automation["workers_needed"] if automated else rules["max_workers_per_station"]
         factor = automation["worker_factor"] if automated else 1
-        # 직종마다 따로: 사람은 자기 직종 공정에만 간다. 시운전 외부팀은 늘 한 팀이 붙는다.
+        # 직종마다 따로: 사람은 자기 직종 공정에만 간다.
         idle_by = dict(pools)
         assigned = [[0] * n for n in n_units]
         for p, u in sorted(((p, u) for p in range(n_st) for u in range(n_units[p])
-                            if current[p][u] and day > stop_until[p][u] and crews[p] not in ("robot", "external")),
+                            if current[p][u] and day > stop_until[p][u] and crews[p] != "robot"),
                            key=lambda pu: priority[current[pu[0]][pu[1]]["ship"]]):
             t = trade_of[p]
             assigned[p][u] = min(need, idle_by.get(t, 0))
@@ -1237,7 +1242,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                 continue
             pid = stations[p]["id"]
             i = cur["ship"]
-            if assigned[p][u] == 0 and crews[p] not in ("robot", "external"):
+            if assigned[p][u] == 0 and crews[p] != "robot":
                 labor_wait[p] += 1
                 put(i, (LABOR_WAIT, p, u))
                 station_today[p][u] = {"state": LABOR_WAIT, "ship": orders[i]["id"], "workers": 0}
@@ -1246,8 +1251,6 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             cur["remaining"] -= station_rate(st_cfg[p], rules, assigned[p][u], factor)
             if crews[p] == "skilled":
                 cost["labor"] += assigned[p][u] * skilled_extra
-            if crews[p] == "external":
-                cost["labor"] += trial_cost   # 시운전 외부팀: 일한 날마다 팀 비용(인건비에 넣는다)
             busy[p] += 1
             unit_busy[p][u] += 1
             state = REWORK if cur["rework"] else WORK

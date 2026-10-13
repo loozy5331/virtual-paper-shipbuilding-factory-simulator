@@ -451,7 +451,7 @@ export const OUTER_ROAD = { north: YARD_Z0 - 1.2, west: YARD_X0 - 1.2, south: YA
  * 나머지 직종은 북서 작업대기소(LOUNGE)
  */
 export const LOUNGE_SOUTH = { x: -2.3, z: 8.2 };   // 4.7.6: 남문 샛길(SPUR_X[4])과 PE장 옆 샛길(SPUR_X[5]) 사이
-export const SOUTH_TRADES = ["erection", "outfitting"];
+export const SOUTH_TRADES = ["erection", "outfitting", "trial"];   // 시운전팀(4.22)은 바다 쪽 남문에서 쉰다
 export const loungeOf = (trade: string) => (SOUTH_TRADES.includes(trade) ? LOUNGE_SOUTH : LOUNGE);
 
 /** 벽 판(4.11): 뒤와 양옆, 큰길 쪽(앞)은 열려 있다. door = 뒷벽의 문, backAtFront = 뒷벽을 앞(z1)에. 그림(coast.ts buildWalls)과 1인칭 충돌이 같이 쓴다 */

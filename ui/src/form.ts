@@ -296,7 +296,7 @@ export function openOptions(scenario: FormContext["scenario"]): ScenarioOptions 
 /** 공정 카드 머리글의 자리와 기본 설비. 자리 이름이 설비와 같으면(탑재 = 골리앗 크레인) 한 번만 */
 function stationPlace(st: FormContext["scenario"]["stations"][number]): string {
   const place = st.real.split(":")[0];
-  const eq = st.equipment === false ? "설비 없음(외부팀)" : st.equipment ?? "";
+  const eq = st.equipment === false ? "설비 없음(바다)" : st.equipment ?? "";
   return !eq || place === eq ? place : `${place} · ${eq}`;
 }
 
@@ -306,15 +306,21 @@ function commonPane(ctx: FormContext): HTMLElement {
   // 쉬운 분기에서는 가린 옵션을 아예 그리지 않는다(D33).
   const methods = Object.entries(scenario.rules.methods).filter(([id]) => opts.methods.includes(id));
 
-  // 작업대기소는 하나, 사람마다 직종이 있다(4.0, D42). 사람은 자기 직종 공정에만 간다. 시운전은 외부팀이라 칸이 없다.
+  // 작업대기소는 하나, 사람마다 직종이 있다(4.0, D42). 사람은 자기 직종 공정에만 간다. 시운전도 직종이다(4.22, D69).
+  // 시운전 인원을 고정한 분기(간이공정)는 고르지 않고 값만 적는다.
   const pools = config.pools!;
   const pool = h("div", { class: "pools" },
-    staffTrades(scenario).map(([t, info]) => h("div", { class: "field-row" },
-      h("span", { class: "field-label" }, `${info.name} 인원`),
-      segmented(`pool-${t}`,
-        Array.from({ length: info.max ?? 6 }, (_, k) => ({ value: k + 1, label: String(k + 1) })),
-        pools[t], (v) => { pools[t] = v; config.pool = Object.values(pools).reduce((a, b) => a + b, 0); ctx.onEdit(false); }),
-      h("small", null, `명 · ${activeStations(scenario).filter((st) => st.trade === t).map((st) => st.name).join("·")}`))));
+    staffTrades(scenario).map(([t, info]) => {
+      const fixed = t === "trial" && opts.trial_pools?.length === 1;
+      return h("div", { class: "field-row" },
+        h("span", { class: "field-label" }, `${info.name} 인원`),
+        fixed
+          ? h("b", null, String(pools[t]))
+          : segmented(`pool-${t}`,
+            Array.from({ length: info.max ?? 6 }, (_, k) => ({ value: k + 1, label: String(k + 1) })),
+            pools[t], (v) => { pools[t] = v; config.pool = Object.values(pools).reduce((a, b) => a + b, 0); ctx.onEdit(false); }),
+        h("small", null, `명${fixed ? "(고정)" : ""} · ${activeStations(scenario).filter((st) => st.trade === t).map((st) => st.name).join("·")}`));
+    }));
 
   // 블록 트랜스포터(4.8): 수주 증가부터 1~2대를 고른다. 두 대면 서로 다른 배를 같은 날 나른다(대마다 운행비·정비비).
   const trc = opts.transporter_counts ?? [1];
@@ -349,10 +355,9 @@ function commonPane(ctx: FormContext): HTMLElement {
       config.stations[config.skilled_station].crew ??= "skilled";
       config.skilled_station = null;
     }
-    const external = st.trade === "trial";   // 시운전: 외부 전문팀(인력·잔업 고르지 않음)
+    const trial = st.trade === "trial";   // 시운전팀(4.22): 인력·잔업을 고르지 않고 인원은 대기소에서 정한다
     const crew = cfg.crew ?? "normal";
     const robot = crew === "robot";
-    const trial = scenario.trades.trial;
     return h("div", { class: "station", style: { "--station": STATION_COLOR[st.id] } as Record<string, string> },
       // 머리글: 공정 · 자리 · 기본 설비(4.12.1, 4M의 설비, 고장은 이 설비가 난다)
       h("div", { class: "station-head" },
@@ -361,8 +366,8 @@ function commonPane(ctx: FormContext): HTMLElement {
         h("small", null, stationPlace(st))),
       h("div", { class: "station-grid" },
         h("span", { class: "field-label" }, "인력"),
-        external
-          ? h("span", { class: "hint" }, `외부 시운전팀 · 일한 날마다 팀당 ${typeof trial === "object" ? trial.cost_per_team_day ?? 0 : 0}`)
+        trial
+          ? h("span", { class: "hint", title: scenario.rules.crews.trial?.summary }, "시운전팀 · 인원은 작업대기소에서 정한다")
           : segmented(`crew-${st.id}`, crews.map(([id, c]) => ({
             value: id, label: c.install_cost ? `${c.name} (+${num(c.install_cost * (cfg.units ?? 1))})` : c.name,
           })), crew, (v) => { if (v === "normal") delete cfg.crew; else cfg.crew = v; ctx.onEdit(true); }),
@@ -371,7 +376,7 @@ function commonPane(ctx: FormContext): HTMLElement {
           cfg.method, (v) => { cfg.method = v; ctx.onEdit(false); }),
         h("span", { class: "field-label" }, "운영"),
         h("div", { class: "toggles" },
-          external ? null
+          trial ? null
             : robot
               ? h("span", { class: "hint", title: scenario.rules.crews.robot.summary }, "로봇은 잔업 없음")
               : toggle("잔업", cfg.overtime, (on) => { cfg.overtime = on; ctx.onEdit(false); }),
