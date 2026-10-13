@@ -12,8 +12,11 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import math
+import threading
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
@@ -745,7 +748,7 @@ def simulate(config: dict[str, Any], scenario: dict[str, Any] | None = None, bas
     base_cfg = _baseline_config(scenario) if baseline else None
     if base_cfg is not None:
         base_cfg = complete_config(normalize_config(base_cfg), scenario)
-    base = _run(_with_order_days(base_cfg, scenario), scenario) if base_cfg is not None else None
+    base = _baseline_summary(base_cfg, scenario) if base_cfg is not None else None
     result["grade"] = _grade(result, config, base, base_cfg, scenario)
     # 7관리 지표(4.15)는 평가서 부록용이라 기준선 실행에는 붙이지 않는다
     result["management"] = _management(result, config, scenario)
@@ -761,6 +764,50 @@ def _baseline_config(scenario: dict[str, Any]) -> dict[str, Any] | None:
     if set(preset["config"]["ships"]) != {o["id"] for o in scenario["orders"]}:
         return None
     return preset["config"]
+
+
+# 기준선 캐시(4.16.2): 엔진이 결정적이라 기준선 결과는 시나리오와 기준선 설정만으로 정해진다.
+# 채점마다 다시 돌리지 않고 등급에 쓰는 값만 남겨 둔다. 키는 시나리오·설정의 내용 전체라서
+# rules.json·시나리오 파일·프리셋을 고치거나 테스트가 시나리오를 바꿔 넘기면 키가 달라져 새로 계산한다.
+# 엔진 코드를 고치면 프로세스를 다시 띄우므로(서버 재시작) 메모리 캐시도 함께 비워진다.
+_BASELINE_CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
+_BASELINE_CACHE_SIZE = 16   # 시나리오 4개 + 테스트가 바꿔 넘기는 시나리오. 넘치면 오래 안 쓴 것부터 버린다
+_BASELINE_LOCK = threading.Lock()   # 서버는 요청마다 스레드(ThreadingHTTPServer)
+
+
+def _baseline_key(base_cfg: dict[str, Any], scenario: dict[str, Any]) -> str | None:
+    try:
+        text = json.dumps([scenario, base_cfg], sort_keys=True, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return None   # JSON으로 못 적는 값이 섞인 시나리오는 캐시하지 않는다
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _baseline_summary(base_cfg: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
+    """기준선 실행에서 등급에 쓰는 값(점수, 등급, 이익, 납기 준수 척수). 같은 내용이면 캐시에서 꺼낸다."""
+    key = _baseline_key(base_cfg, scenario)
+    if key is not None:
+        with _BASELINE_LOCK:
+            hit = _BASELINE_CACHE.get(key)
+            if hit is not None:
+                _BASELINE_CACHE.move_to_end(key)
+                return dict(hit)   # 꺼낸 쪽이 고쳐도 캐시는 그대로
+    base = _run(_with_order_days(base_cfg, scenario), scenario)
+    g = _grade(base, base_cfg, None, None, scenario)
+    summary = {"score": g["score"], "grade": g["grade"], "profit": base["profit"],
+               "on_time": base["qcd"]["delivery"]["on_time"]}
+    if key is not None:
+        with _BASELINE_LOCK:
+            _BASELINE_CACHE[key] = summary
+            while len(_BASELINE_CACHE) > _BASELINE_CACHE_SIZE:
+                _BASELINE_CACHE.popitem(last=False)
+    return dict(summary)
+
+
+def clear_baseline_cache() -> None:
+    """기준선 캐시를 비운다. 실행 중에 엔진 규칙을 코드로 바꾸는 경우(시험용)."""
+    with _BASELINE_LOCK:
+        _BASELINE_CACHE.clear()
 
 
 def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
@@ -1626,14 +1673,14 @@ def _grade(result: dict[str, Any], config: dict[str, Any], base: dict[str, Any] 
     out: dict[str, Any] = {"score": score, "grade": _band(score, g["bands"]), "parts": parts,
                            "baseline": None, "vs_baseline": None}
     if base is not None and base_cfg is not None:
-        base_grade = _grade(base, base_cfg, None, None, scenario)
+        # base는 기준선 요약(_baseline_summary): 점수·등급·이익·납기 준수 척수
         preset = next(p for p in load_presets(scenario.get("id", DEFAULT_SCENARIO)) if p["id"] == g["baseline_preset"])
-        out["baseline"] = {"preset": preset["id"], "name": preset["name"], "score": base_grade["score"],
-                           "grade": base_grade["grade"], "profit": base["profit"], "pool": base_cfg["pool"],
-                           "on_time": base["qcd"]["delivery"]["on_time"]}
+        out["baseline"] = {"preset": preset["id"], "name": preset["name"], "score": base["score"],
+                           "grade": base["grade"], "profit": base["profit"], "pool": base_cfg["pool"],
+                           "on_time": base["on_time"]}
         out["vs_baseline"] = {"profit": round(profit - base["profit"], 2),
                               "pool": config["pool"] - base_cfg["pool"],
-                              "score": round(score - base_grade["score"], 1)}
+                              "score": round(score - base["score"], 1)}
     return out
 
 
