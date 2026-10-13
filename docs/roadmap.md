@@ -88,7 +88,7 @@
 
 ### 4.17: 선박 사양서와 선종 데이터 (MINOR, D64·D66) — 2026-10-13, `v4.17.0`
 
-- 선종 데이터 정리: `ship_types`에 `category`·`hull`·사양 글. 화면의 선종 코드 분기(`cctv.ts`·`scene/ships.ts`)를 `hull`로. 새 선종은 rules.json에 넣기만 하면 그림이 따라온다
+- 선종 데이터 정리: `ship_types`에 `category`·`look`·`spec`. 화면의 선종 코드 분기(`cctv.ts`·`scene/ships.ts`)를 `look`으로. 새 선종은 rules.json에 넣기만 하면 그림이 따라온다
 - 생산계획서 ① 수주 목록에서 배를 누르면 선박 사양서: 외형, 공정별 BOM, 직종별 인력(미리보기), 적용 공법, 인도 기준(설명 글)
 
 ### 4.18: 관제실 선박별 진행 (MINOR, 화면만, D65) — 다음

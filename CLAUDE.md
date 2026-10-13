@@ -7,14 +7,14 @@
 - 목적: 조선업 생산관리 교육(7요소, QCD, 4M) 복습과 시연. 게임 완성도보다 "배운 개념이 화면에서 보이는가"가 기준이다.
 - 규칙의 기준 문서(Claude Docs): https://claude.ai/code/artifact/63f9424c-6a92-461b-8fb0-06a2820778d0
   docs 도구로 읽고 고친다. 통째로 읽지 말고 `search`나 `view` + `parentId`로 고칠 곳만 읽는다.
-- 버전: 4.17.0(2026-10-13, 생산계획서 선박 사양서, 선종 데이터 `look`·`spec`). 4.16.1: 현장 3인칭 W·A·S·D. 4.16.0: 관제실 간트의 계획 줄. 4.15.6~4.15.9: UI·그래픽 개선(간트 실제 픽셀, 작업 현황 지도 글자와 아래 줄, 첫 화면 카드, 언덕). 4.15.0: 7관리 지표와 공정 여유. 지난 버전은 `CHANGELOG.md`, 결정 기록은 `docs/handoff-v2.0.md`(D10~D66).
+- 버전: 4.17.0(2026-10-13, 생산계획서 선박 사양서, 선종 데이터 `look`·`spec`). 4.16.2: 기준선 캐시로 채점 속도. 4.16.1: 현장 3인칭 W·A·S·D. 4.16.0: 관제실 간트의 계획 줄. 4.15.6~4.15.9: UI·그래픽 개선(간트 실제 픽셀, 작업 현황 지도 글자와 아래 줄, 첫 화면 카드, 언덕). 4.15.0: 7관리 지표와 공정 여유. 지난 버전은 `CHANGELOG.md`, 결정 기록은 `docs/handoff-v2.0.md`(D10~D66).
 - 다음: 4.18 관제실 오른쪽 모니터 [작업 현황 / 선박별] 탭(D65). 그 뒤 4.x 이후 목록(인도 기준 엔진 규칙, 특수선·해양 야드 등). `docs/roadmap.md`
 - 브랜치: `main`은 MAJOR만, 작업은 `develop`에서 따서 `develop`으로 PR(규칙은 `CHANGELOG.md`). 버전은 엔진 `__init__.py`, `ui/package.json`·`package-lock.json`이 같은 값.
 - 세부 메모(시연 흐름, 규칙 요약, 화면·3D 세부, 예시 계획 점수): `docs/notes.md`. 필요한 절만 grep으로 찾아 읽는다.
 
 ## 구조
 
-- `engine/shipyard/sim.py`: 엔진. `simulate(config, scenario=None, baseline=True) -> dict`. 표준 라이브러리만, 화면·서버를 모른다. 결과의 `grade`를 위해 기준선 프리셋도 함께 돌린다.
+- `engine/shipyard/sim.py`: 엔진. `simulate(config, scenario=None, baseline=True) -> dict`. 표준 라이브러리만, 화면·서버를 모른다. 결과의 `grade`를 위해 기준선 프리셋도 함께 돌린다. 기준선은 시나리오·프리셋 내용 해시로 캐시한다(4.16.2, `_baseline_summary`). 기준선을 결과가 아닌 다른 것(코드 밖 전역 상태 등)에 기대게 바꾸면 키에 넣는다.
 - `engine/shipyard/data/rules.json`(공통 규칙 숫자) + `data/scenarios/<id>.json`(수주·기간·목표·등급·난수·프리셋 3개·`options`). `load_scenario(id)`가 합친다. 시나리오: simple(입문, 간이공정)·basic·growth(수주 증가)·surge(수주 급증).
 - 분기별 옵션(D33): 시나리오 `options`에 없는 옵션은 생산계획서(`form.ts` `openOptions`)가 그리지 않고 엔진(`_locked_options`)이 거절한다. 테스트는 `opened()`로 잠금을 푼다.
 - `engine/tests/test_rules_doc.py`: 규칙 문서 10장 값과 버전별 규칙 검증(112개). `engine/tools/balance.py`: 지배 전략 점검.
