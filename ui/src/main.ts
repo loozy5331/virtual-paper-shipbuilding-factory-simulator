@@ -1447,7 +1447,7 @@ function drawTopbar(): void {
     best
       ? h("p", { class: "postit-best" }, "이번 세션 최고 ", gradeChip(best.result.grade.grade, "best-grade"),
         ` ${best.result.grade.score.toFixed(1)}점 · ${best.n}회차 ${best.label}`)
-      : h("p", null, "S 105 · A 85 · B 70 · C 50"),
+      : h("p", null, "S 100 · A 85 · B 70 · C 50"),
     state.signer?.classCode
       ? h("p", { class: "postit-best" }, `우리 반(${state.signer.classCode}) 최고 `,
         state.classBest[sc.id]

@@ -206,7 +206,7 @@ function gradeCard(grade: Grade): HTMLElement {
           h("b", null, `인원 ${signed(vs.pool)}명`), ", ",
           h("b", { class: vs.score >= 0 ? "good" : "bad" }, `점수 ${signed(vs.score, (v) => v.toFixed(1))}`))
         : h("p", { class: "hint" }, "기준선과 비교할 수 없는 시나리오입니다."),
-      h("p", { class: "hint" }, "점수 = 매출 30 + 이익 40(최대 52) + 납기 20 + 직행률 10 · S 105, A 85, B 70, C 50")));
+      h("p", { class: "hint" }, "점수 = 매출 30 + 이익 40(최대 52) + 납기 20 + 직행률 10 · S 100, A 85, B 70, C 50")));
 }
 
 /** 재고 금액 추이. 한 계열이라 범례 없이 제목이 이름이다. 날마다 마우스를 올리면 금액이 나온다. */
