@@ -9,6 +9,7 @@
 // 고물(선미)은 −x 쪽이다.
 
 import * as THREE from "three";
+import { lookOf } from "./layout";
 
 export interface ShipLook {
   /** 선체 비율 [길이, 높이, 폭] */
@@ -55,9 +56,12 @@ function deckhouse(x: number, tall: number): { group: THREE.Group; top: number }
   return { group: g, top: top + 0.16 };
 }
 
+/** 선종의 3D 모양. 선종 코드가 아니라 rules.json의 look(갑판 위 모양·크기)으로 고른다(4.17, D66) */
 export function shipLook(kind: string): ShipLook {
   const parts: THREE.Object3D[] = [];
-  if (kind === "TUG") {
+  const { deck, size } = lookOf(kind);
+  const small = size < 1;   // 피더선처럼 작은 컨테이너선은 상자 열이 적고 선체가 짧다
+  if (deck === "tug") {
     // 예인선: 이물의 방현재, 예인 말뚝 둘, 높은 조타실과 그 뒤 굴뚝(조타실이 마지막 부품이라 깃발이 거기에 붙는다)
     const fender = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.5, 14), new THREE.MeshStandardMaterial({ color: INK, roughness: 0.9 })));
     fender.rotation.x = Math.PI / 2;
@@ -87,15 +91,15 @@ export function shipLook(kind: string): ShipLook {
     parts.push(house);
     return { hull: [0.85, 1.05, 0.95], parts, flagAt: new THREE.Vector3(0.06, DECK + 0.46, 0) };
   }
-  if (kind === "CONT" || kind === "FEEDER") {
+  if (deck === "container") {
     // 상자 층: 3열(앞뒤) × 2단(피더선은 2열), 열마다 종이 색을 조금씩 달리
-    const bays = kind === "FEEDER" ? 2 : 3;
+    const bays = small ? 2 : 3;
     for (let bay = 0; bay < bays; bay++) {
       const g = new THREE.Group();
       for (let tier = 0; tier < 2; tier++) {
         for (const z of [-0.18, 0.18]) {
           const box = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.34), paper(KRAFT[(bay + tier) % KRAFT.length])));
-          box.position.set((kind === "FEEDER" ? -0.02 : -0.12) + bay * 0.25, DECK + 0.06 + tier * 0.125, z);
+          box.position.set((small ? -0.02 : -0.12) + bay * 0.25, DECK + 0.06 + tier * 0.125, z);
           g.add(box);
         }
       }
@@ -103,9 +107,9 @@ export function shipLook(kind: string): ShipLook {
     }
     const house = deckhouse(-0.5, 1.05);
     parts.push(house.group);
-    return { hull: kind === "FEEDER" ? [1.0, 0.95, 0.9] : [1.1, 1, 0.95], parts, flagAt: new THREE.Vector3(-0.5, house.top, 0) };
+    return { hull: small ? [1.0, 0.95, 0.9] : [1.1, 1, 0.95], parts, flagAt: new THREE.Vector3(-0.5, house.top, 0) };
   }
-  if (kind === "LNG") {
+  if (deck === "moss") {
     // 모스형 탱크 4개: 갑판 위로 반구가 솟는다
     for (let k = 0; k < 4; k++) {
       const dome = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.17, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), paper()));

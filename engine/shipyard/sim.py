@@ -602,6 +602,29 @@ def fixed_costs(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, f
     }
 
 
+def ship_specs(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
+    """선박 사양서(4.17, D64): 배마다 쓰는 공정의 작업량(호이스트 반영)·직종·자재와 직종별 작업량 합계.
+
+    작업량은 인·일(표준 공법 1명이 하루에 1)이다. 시운전은 외부팀이라 직종 합계에도 trial로 따로 둔다.
+    설명용이고 규칙에는 쓰지 않는다.
+    """
+    out = {}
+    for o in scenario["orders"]:
+        bom = scenario["ship_types"][o["type"]]["bom"]
+        rows, trades = [], {}
+        for st in scenario["stations"]:
+            if is_skipped(st):
+                continue
+            work = round(station_work(config, scenario, st["id"], o["type"]), 2)
+            trade = st.get("trade", "assembly")
+            mat = st["material"]
+            rows.append({"station": st["id"], "trade": trade, "work": work,
+                         "material": mat, "quantity": bom.get(mat, 0) if mat else 0})
+            trades[trade] = round(trades.get(trade, 0) + work, 2)
+        out[o["id"]] = {"type": o["type"], "stations": rows, "trades": trades}
+    return out
+
+
 def preview(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> dict[str, Any]:
     """실행하지 않고 설정만으로 알 수 있는 값: 공정별 최대 처리량과 불량률, 고정비, 연구 일정."""
     config = normalize_config(config)
@@ -631,6 +654,8 @@ def preview(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> d
             "research": research_schedule(config.get("research", []), scenario),
             "materials": materials, "safety_stock": safety_stock(config, scenario), "abc": material_abc(scenario),
             "plan": plan_schedule(config, scenario),
+            # 선박 사양서(4.17): 배마다 공정별 작업량·직종·자재
+            "ships": ship_specs(config, scenario),
             # 공정 여유(4.15): 선주와 맺을 납기와 선가
             "contract": {o["id"]: {"due_day": o["due_day"], "price": o["price"], "buffer_days": o["buffer_days"]}
                          for o in contract_orders(config, scenario)}}
