@@ -18,6 +18,7 @@ import { docHead, REVIEWER } from "./paper";
 import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, PAIR_WAIT_EDGE, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, TRANSPORT_STATE } from "./labels";
 import { eventText, renderReport } from "./report";
 import { renderCctv } from "./cctv";
+import { renderShipBoard } from "./shipboard";
 import { renderTrackCard, type TrackPick } from "./track";
 import { buildFrame, TRIAL_DEPART, type Frame } from "./scene/frame";
 import type { FieldView, Yard } from "./scene/yard";
@@ -80,6 +81,8 @@ interface State {
   board: BoardState;
   /** 오른쪽 모니터 위쪽 작업 현황에서 보는 구획. null이면 전경(4.15.1, 처음은 전경 4.15.5). (이름은 옛 CCTV에서 왔다) */
   cctv: SectorId | null;
+  /** 오른쪽 모니터 위쪽 탭(4.18, D65): 작업 현황(2D 전경) 또는 선박별 진행 */
+  rightView: "map" | "ships";
   /** 크게 보고 있는 모니터 */
   zoomed: "left" | "right" | null;
   /** 현장에서 가까이 보는 구획. null이면 전경. */
@@ -747,7 +750,17 @@ function tick(jump: boolean): void {
   }
 
   // 오른쪽 모니터 위: 작업 현황(위에서 비스듬히 내려다본 2D 정지 화면). 전경 또는 고른 공정 확대.
+  // 선박별 탭(4.18)이면 배마다 공정·자재 진행표. 보던 스크롤 자리는 지킨다
   const feed = els.rightTop.querySelector(".cc-host");
+  const board = els.rightTop.querySelector<HTMLElement>(".sb-host");
+  if (board) {
+    const keepTop = board.scrollTop;
+    // 그날 아침(frac 0) 기준: 진행 중인 공정은 오늘 할 일이 남아 있다(하루가 끝난 값이면 마지막 날 남은 작업량이 0으로 보인다)
+    mount(board, renderShipBoard(result, scenario, buildFrame(result, scenario, r.config, state.day, 0), {
+      onPick: (ship) => openTrack({ kind: "ship", ship }), track: state.track, specs: r.preview?.ships,
+    }));
+    board.scrollTop = keepTop;
+  }
   if (feed) {
     mount(feed, renderCctv(buildFrame(result, scenario, r.config, state.day, 1), scenario, {
       focus: state.cctv, onSector: openSector, track: state.track, onPick: openTrack,
@@ -880,6 +893,7 @@ function cctvName(): string {
 function openSector(id: SectorId | null, day?: number): void {
   if (!currentRun()) return;
   state.cctv = id;
+  state.rightView = "map";   // 간트 막대·평가서 의문점에서 오면 선박별 탭이어도 작업 현황으로
   drawRightTop();
   if (day !== undefined) seek(day);
   else tick(true);
@@ -1109,7 +1123,11 @@ function shownSectors(): typeof SECTORS {
 /** 오른쪽 모니터 위쪽: 작업 현황, 구획 하나(위 단추로 바꾼다). 그림은 tick이 채운다. */
 function drawRightTop(): void {
   if (state.cctv !== null && !shownSectors().some((sec) => sec.id === state.cctv)) state.cctv = null;
-  const label = els.monitorRight.querySelector(".win-title");
+  drawRightTabs();
+  if (state.rightView === "ships") {
+    mount(els.rightTop, h("div", { class: "sb-host" }), els.trackRoom);
+    return;
+  }
   mount(els.rightTop,
     h("div", { class: "cc-host" }),
     // 머리줄(4.15.2): 현장 머리줄과 같은 차례로. 어디(제목) → 무엇을 볼까(전경·구획) → 무엇을 따라갈까(추적)
@@ -1124,7 +1142,28 @@ function drawRightTop(): void {
     h("span", { class: "cam-anon", title: "관제실 화면은 사람을 기호로만 보여 줍니다. 얼굴과 이름은 현장에 직접 나가야 보입니다." },
       "익명 표시 · 개인을 구분하지 않습니다"),
     els.trackRoom);
-  if (label) label.textContent = `작업 현황 · ${cctvName()}`;
+}
+
+/** 오른쪽 모니터 제목 줄의 [작업 현황 / 선박별] 탭(4.18, D65). 현장의 [3인칭 / 1인칭]처럼 같은 자리에서 바꿔 본다 */
+function drawRightTabs(): void {
+  const title = els.monitorRight.querySelector(".win-title");
+  if (!title) return;
+  const tab = (view: State["rightView"], label: string) =>
+    h("button", {
+      type: "button", class: `screen-tab${state.rightView === view ? " active" : ""}`, "aria-pressed": String(state.rightView === view),
+      ondblclick: (e: Event) => e.stopPropagation(),   // 제목 줄 두 번 누르기(크게 보기)와 겹치지 않게
+      onclick: () => setRightView(view),
+    }, label);
+  mount(title, h("span", { class: "right-tabs", role: "group", "aria-label": "오른쪽 모니터 화면" },
+    tab("map", "작업 현황"), tab("ships", "선박별")),
+    state.rightView === "map" ? h("span", { class: "win-sub" }, cctvName()) : null);
+}
+
+function setRightView(view: State["rightView"]): void {
+  if (state.rightView === view) return;
+  state.rightView = view;
+  drawRightTop();
+  tick(true);
 }
 
 /** 책상 위: 생산계획서 클립보드(누르면 계획 고치기). 평가서를 보고 있으면 손은 보이지 않는다(CSS). */
@@ -1508,6 +1547,7 @@ async function start(): Promise<void> {
     speed: 4,
     board: "none",
     cctv: null,
+    rightView: "map",
     zoomed: null,
     fieldFocus: null,
     track: null,
