@@ -9,6 +9,7 @@ import { h, mount, money, num, pct, s } from "./dom";
 import { STATION_COLOR } from "./labels";
 import { docHead } from "./paper";
 import { conflictText, renderPlanGantt } from "./plan-gantt";
+import { renderShipSpec } from "./spec";
 
 export interface FormContext {
   scenario: Scenario;
@@ -30,6 +31,36 @@ export interface FormContext {
 let activeTab = "common";
 // 미리보기가 도착하면 계획 간트를 다시 그려야 해서 마지막 양식의 상태를 들고 있는다.
 let current: FormContext | null = null;
+
+// 선박 사양서(4.17): 펼친 배와 마지막 미리보기. 미리보기가 새로 오면 펼친 사양서도 새 값으로 다시 그린다.
+let specShip: string | null = null;
+let lastPreview: Preview | null = null;
+let specHost: HTMLElement | null = null;
+
+function closeSpec(): void {
+  specShip = null;
+  specHost?.remove();
+  specHost = null;
+  document.removeEventListener("keydown", onSpecKey);
+}
+
+function onSpecKey(e: KeyboardEvent): void {
+  if (e.key === "Escape") closeSpec();
+}
+
+/** 사양서를 펼치거나(sid) 펼친 것을 새 값으로 다시 그린다(sid 없음) */
+function showSpec(sid?: string): void {
+  if (sid) specShip = sid;
+  if (!specShip || !current) return;
+  const { scenario, config } = current;
+  if (!scenario.orders.some((o) => o.id === specShip)) return closeSpec();
+  if (!specHost) {
+    specHost = h("div", { class: "spec-backdrop", onclick: (e: Event) => { if (e.target === specHost) closeSpec(); } });
+    document.body.append(specHost);
+    document.addEventListener("keydown", onSpecKey);
+  }
+  mount(specHost, renderShipSpec(scenario, config, lastPreview, specShip, closeSpec));
+}
 
 // 아코디언(접기, 4.14): 칸마다 열림 상태를 기억해 양식을 다시 그려도 그대로 둔다. 계획 간트는 접지 않는다.
 const FOLD_DEFAULT: Record<string, boolean> = { orders: false, people: true, shared: false, material: false, stations: false, research: false };
@@ -187,8 +218,9 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
       h("tbody", null, scenario.orders.map((order) => {
         const ship = config.ships[order.id];
         return h("tr", null,
-          h("td", null, h("b", null, order.id)),
-          h("td", null, scenario.ship_types[order.type].name),
+          // 배 이름을 누르면 선박 사양서(4.17)
+          h("td", null, h("button", { type: "button", class: "spec-link", title: `${order.id} 선박 사양서`, onclick: () => showSpec(order.id) }, order.id)),
+          h("td", null, h("button", { type: "button", class: "spec-link plain", title: `${order.id} 선박 사양서`, onclick: () => showSpec(order.id) }, scenario.ship_types[order.type].name)),
           // 공정 여유(4.15)를 넣으면 미리보기의 납기·선가로 바뀐다
           h("td", { class: "r" }, h("span", { "data-preview": `due:${order.id}` }, `${order.due_day}일`)),
           h("td", { class: "r" }, h("span", { "data-preview": `price:${order.id}` }, num(order.price))),
@@ -204,7 +236,7 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
           }, orderIds.map((_, k) => h("option", { value: k + 1, selected: ship.priority === k + 1 }, `${k + 1}순위`)))),
           h("td", null, h("b", { "data-preview": `start:${order.id}` }, `${ship.start_day}일`)));
       }))),
-    h("p", { class: "hint" }, "작업장, 사람, 운반 모두 우선순위 순으로 받습니다.")),
+    h("p", { class: "hint" }, "작업장, 사람, 운반 모두 우선순위 순으로 받습니다. 배를 누르면 선박 사양서(외형, BOM, 인력, 공법, 인도 기준)가 펼쳐집니다.")),
     // 계획 간트는 늘 보인다(접지 않는다)
     h("div", { class: "plan-head" },
       h("b", null, "계획 간트"),
@@ -246,6 +278,7 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
   });
 
   mount(root, head, summary, settings, runSection);
+  if (specShip) showSpec();   // 분기를 바꾸면 그 배가 없을 때 닫는다
   refreshFoldSummaries(root);
   showTab(root, activeTab);
 }
@@ -559,7 +592,8 @@ function shipPane(ctx: FormContext, sid: string): HTMLElement {
 
   return h("div", { class: "pane", "data-pane": sid, hidden: true },
     h("dl", { class: "ship-info" },
-      h("div", null, h("dt", null, "선종"), h("dd", null, type.name)),
+      h("div", null, h("dt", null, "선종"), h("dd", null,
+        h("button", { type: "button", class: "spec-link", title: `${sid} 선박 사양서`, onclick: () => showSpec(sid) }, `${type.name} · 사양서`))),
       h("div", null, h("dt", null, "수주"), h("dd", null, `${order.order_day}일`)),
       h("div", null, h("dt", null, "납기"), h("dd", null, h("span", { "data-preview": `due:${order.id}` }, `${order.due_day}일`))),
       h("div", null, h("dt", null, "계약금"), h("dd", null, h("span", { "data-preview": `price:${order.id}` }, num(order.price))))),
@@ -590,6 +624,8 @@ export function updatePreview(root: HTMLElement, preview: Preview | null, errors
   const slot = (key: string) => root.querySelector<HTMLElement>(`[data-preview="${key}"]`);
   refreshFoldSummaries(root);
   if (preview) {
+    lastPreview = preview;
+    if (specShip) showSpec();
     for (const [id, st] of Object.entries(preview.stations)) {
       const rate = slot(`rate:${id}`);
       const defect = slot(`defect:${id}`);

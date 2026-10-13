@@ -10,6 +10,7 @@
 
 import { activeStations, api, ApiError, type ClassBest, type Config, type Finding, type Preview, type Result, type ScenarioPayload } from "./api";
 import { h, mount, num, pct, s as svgEl } from "./dom";
+import { shipProfile } from "./profile";
 import { renderDesk } from "./desk";
 import { planLabel, renderForm, renderPlanBar, renderPlanNotes, renderPlanTabs, updatePreview, type FormContext } from "./form";
 import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
@@ -20,7 +21,7 @@ import { renderCctv } from "./cctv";
 import { renderTrackCard, type TrackPick } from "./track";
 import { buildFrame, TRIAL_DEPART, type Frame } from "./scene/frame";
 import type { FieldView, Yard } from "./scene/yard";
-import { sector, sectorOf, SECTORS, ST, type SectorId } from "./scene/layout";
+import { sector, sectorOf, SECTORS, setShipLooks, ST, type SectorId } from "./scene/layout";
 
 const SPEEDS = [1, 4];   // 관제실 배속. 기본 4배속(사용자 결정). 현장은 따로 1배속 고정(FIELD_MS_PER_DAY).
 const BASE_MS_PER_DAY = 500;   // 1배속은 하루에 0.5초, 60일이 30초다.
@@ -448,6 +449,7 @@ async function switchScenario(id: string): Promise<void> {
     notify(error instanceof ApiError ? error.messages.join(" ") : String(error));
     return;
   }
+  setShipLooks(data.scenario.ship_types);   // 선종 그림(4.17)
   const first = data.presets.find((p) => p.id === "managed") ?? data.presets[0];
   const last = state.runs.map((r, i) => (r.scenario === id ? i : -1)).filter((i) => i >= 0).pop();
   // 앞 분기의 설정으로 보낸 미리보기가 늦게 오면 버린다(배 수가 달라 계획 간트가 깨진다).
@@ -832,7 +834,7 @@ function drawSeaTrial(frame: Frame): void {
         `${i ? "" : `M${-8 + k * 5} ${sea + 7 + k * 9}`} q4 -3 8 0 t8 0`).join(" ") })));
     ships.forEach((t, k) => {
       const cx = 12 + 48 + k * 96;
-      const g = svgEl("g", { class: "trial-ship", style: `animation-delay: ${-k * 0.9}s` }, trialShip(t.type, cx, sea + 2));
+      const g = svgEl("g", { class: "trial-ship", style: `animation-delay: ${-k * 0.9}s` }, shipProfile(t.type, cx, sea + 2));
       const name = svgEl("text", { x: cx, y: H - 6, class: t.state === "work" ? "name" : "name loss" },
         `${t.ship} · ${t.day}/${t.days}일${t.state === "work" ? "" : ` · ${STATE_INFO[t.state]?.name ?? ""}`}`);
       // 시운전 첫날 현장 재생 중: 3D에서 배가 만을 빠져나간 뒤(TRIAL_DEPART.end) 그림 왼쪽에서 들어온다(4.11.2)
@@ -841,31 +843,6 @@ function drawSeaTrial(frame: Frame): void {
     });
     mount(host, h("div", { class: "trial-head" }, "시운전 · 먼바다"), svg);
   }
-}
-
-/** 시운전 중인 배의 옆모습(선종마다 갑판 위가 다르다). 물높이 y에 흘수선이 온다 */
-function trialShip(type: string, cx: number, y: number): SVGElement {
-  const L = type === "VLCC" ? 42 : type === "LNG" ? 40 : type === "TUG" ? 26 : type === "FEEDER" ? 33 : 38;
-  const tug = type === "TUG";
-  const g = svgEl("g", null,
-    // 선체: 위는 종이색, 물에 잠긴 아래는 칠한 색(3D와 같은 붉은 주황)
-    svgEl("path", { class: "hull", d: `M${cx - L} ${y - 9} L${cx + L + 6} ${y - 9} L${cx + L - 2} ${y + 3} L${cx - L + 4} ${y + 3} Z` }),
-    svgEl("path", { class: "bottom", d: `M${cx - L + 2} ${y} L${cx + L} ${y} L${cx + L - 2} ${y + 3} L${cx - L + 4} ${y + 3} Z` }),
-    // 선미 선실과 연돌(예인선은 가운데 높은 조타실과 굴뚝, 이물에 검은 방현재)
-    ...(tug
-      ? [svgEl("rect", { class: "deck", x: cx - 8, y: y - 24, width: 16, height: 15 }),
-        svgEl("rect", { class: "funnel", x: cx - 14, y: y - 29, width: 5, height: 8 }),
-        svgEl("rect", { class: "fender", x: cx + L - 1, y: y - 7, width: 5, height: 6 })]
-      : [svgEl("rect", { class: "deck", x: cx - L + 3, y: y - 20, width: 11, height: 11 }),
-        svgEl("rect", { class: "funnel", x: cx - L + 6, y: y - 25, width: 4, height: 5 })]));
-  if (type === "CONT" || type === "FEEDER") {
-    for (let i = 0; i < (type === "FEEDER" ? 3 : 4); i++) g.append(svgEl("rect", { class: `box b${i % 3}`, x: cx - L + 18 + i * 13, y: y - 16, width: 12, height: 7 }));
-  } else if (type === "LNG") {
-    for (let i = 0; i < 4; i++) g.append(svgEl("path", { class: "deck", d: `M${cx - L + 18 + i * 14} ${y - 9} a6 6 0 0 1 12 0 Z` }));
-  } else if (!tug) {
-    g.append(svgEl("path", { class: "pipe", d: `M${cx - L + 16} ${y - 11} L${cx + L} ${y - 11}` }));
-  }
-  return g;
 }
 
 function drawTrackCard(): void {
@@ -1464,6 +1441,7 @@ async function start(): Promise<void> {
       h("p", null, error instanceof ApiError ? error.messages.join(" ") : String(error))));
     return;
   }
+  setShipLooks(data.scenario.ship_types);   // 선종 그림(4.17)
 
   const first = data.presets.find((p) => p.id === "managed") ?? data.presets[0];
   state = {

@@ -16,7 +16,7 @@ import { nextStation, type Frame, type LotView } from "./scene/frame";
 import type { TrackPick } from "./track";
 import { quayWaiting, STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot, stockUsed } from "./scene/stock";
 // 배치는 현장 3D와 같은 scene/layout.ts
-import { shipSize, areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, LOUNGE_SOUTH, loungeOf, fenceSegments, GATES, OUTER_ROAD, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
+import { lookOf, shipSize, areaBounds, BAY_C, BAY_MOUTH, benchAt, CRANE_R, DEPOT, dockZ, LAB, LANE_Z, LOUNGE, LOUNGE_SOUTH, loungeOf, fenceSegments, GATES, OUTER_ROAD, MAT_D, MAT_W, MAT2_D, MOUTH_X, QUEUE_Z,
   along, BOLLARD, bollardX, isShop, LAB_TREES, LAND_ROUTE, PIER, QUAY, QUAY_ROAD_Z, QUAY_STORE, BERTHS, berthX, DEPOT_WALLS, GARAGE_WALLS, depotSpot, route, ST, SHIP_ROUTE, sectorBounds, SUPPLY_DAYS, SUPPLY_EXIT, SUPPLY_ROUTE, sectorOf, SECTORS, SHELF_Z, shelfAt, STEEL_YARD, STEEL_CONVEYOR, WAREHOUSE, SEA_EXIT, SHORE_X, SPUR_ROADS, SPUR_X, STATION_X, STOCK_AT, STOCK_D, STOCK_HALF, UNIT_Z,
   BACK_LANE_Z, CONVEYORS, DOCK2_AREA, FORKLIFT_GARAGE, garageSpot, kitDrop, QUAY_WORK_Z, STOCK_NAME, type SectorId } from "./scene/layout";
 
@@ -70,7 +70,8 @@ function robot(x: number, z: number): SVGElement {
 function ship(x: number, z: number, kind: string, scale = 1): SVGElement {
   const k = scale * S;   // 크기는 호출하는 lot()가 선종 크기(shipSize)를 이미 곱했다
   const cx = px(x), cy = py(z);
-  const len = shipLen(kind);   // 반 길이(단위)
+  const look = lookOf(kind);
+  const len = look.length;   // 반 길이(단위)
   const half = 0.42;                                                     // 반 폭
   const deckY = cy - 0.3 * k;                                            // 갑판 높이만큼 위로
   const g = s("g", { class: "cc-ship" });
@@ -85,17 +86,17 @@ function ship(x: number, z: number, kind: string, scale = 1): SVGElement {
       s("rect", { x: x0, y: top, width: w * k, height: d * k * DEPTH, fill, stroke: EDGE, "stroke-width": 0.5 }),
       s("rect", { x: x0, y: top + d * k * DEPTH, width: w * k, height: h * k * RISE, fill: PAPER_SIDE, stroke: EDGE, "stroke-width": 0.5 }));
   };
-  if (kind === "TUG") {
+  if (look.deck === "tug") {
     // 예인선: 가운데 높은 조타실, 그 뒤 굴뚝, 이물 방현재(검은 선). 선미 선실은 따로 그리지 않는다.
     blk(0.1, 0.36, 0.62, 0.6, PAPER);
     blk(-0.22, 0.14, 0.24, 0.45, PAPER_SIDE);
     g.append(s("line", { x1: cx + (len - 0.35) * k, x2: cx + (len - 0.35) * k, y1: deckMid - 0.25 * k * DEPTH, y2: deckMid + 0.25 * k * DEPTH, stroke: "#3a3f3c", "stroke-width": Math.max(2, 0.1 * k) }));
     return g;
-  } else if (kind === "CONT" || kind === "FEEDER") {
+  } else if (look.deck === "container") {
     const kraft = ["#efe7d4", "#d9cba8", "#e6dcc6"];
-    const bays = kind === "FEEDER" ? 3 : 4;
+    const bays = look.size < 1 ? 3 : 4;   // 피더선처럼 작은 배는 한 열 적게
     for (let bay = 0; bay < bays; bay++) blk(-0.35 + bay * 0.38, 0.32, 0.7, 0.3, kraft[bay % kraft.length]);
-  } else if (kind === "LNG") {
+  } else if (look.deck === "moss") {
     for (let t = 0; t < 4; t++) {
       const tx = cx + (-0.35 + t * 0.4) * k;
       g.append(s("ellipse", { cx: tx, cy: deckMid - 0.12 * k, rx: 0.19 * k, ry: 0.19 * k * 0.9, fill: PAPER, stroke: EDGE, "stroke-width": 0.6 }),
@@ -125,8 +126,8 @@ function hoist(x: number, z: number, d: number): SVGElement {
   return g;
 }
 
-/** 2D 배의 반 길이(단위, 선종 크기 곱하기 전). ship()과 같은 값 */
-const shipLen = (kind: string) => (kind === "VLCC" ? 1.45 : kind === "LNG" ? 1.35 : kind === "TUG" ? 1.0 : kind === "FEEDER" ? 1.15 : 1.3);
+/** 2D 배의 반 길이(단위, 선종 크기 곱하기 전). ship()과 같은 값(rules.json look.length) */
+const shipLen = (kind: string) => lookOf(kind).length;
 
 /**
  * 계류줄(4.8.1): 선석에 댄 배의 우현(앞쪽)에서 안벽 계선주로 넷. 선수줄·선미줄은 바깥쪽, 스프링 둘은 엇갈린다(현장 3D와 같은 자리).

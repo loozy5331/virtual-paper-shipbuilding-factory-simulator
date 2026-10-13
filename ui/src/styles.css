@@ -996,14 +996,14 @@ body { background: var(--desk); }
 .trial-sea .sky { fill: #e3edf2; }
 .trial-sea .water { fill: #3f6f8c; }
 .trial-sea .wave { fill: none; stroke: #9cc0d4; stroke-width: 1; opacity: 0.7; }
-.trial-sea .hull { fill: #f4f0e6; stroke: #5d6661; stroke-width: 0.8; }
-.trial-sea .bottom { fill: #c8553d; }
-.trial-sea .deck { fill: #f4f0e6; stroke: #5d6661; stroke-width: 0.7; }
-.trial-sea .funnel { fill: #c8553d; }
-.trial-sea .fender { fill: #3a3f3c; }
-.trial-sea .pipe { stroke: #8f9a93; stroke-width: 2; }
-.trial-sea .box { stroke: #5d6661; stroke-width: 0.5; }
-.trial-sea .b0 { fill: #efe7d4; } .trial-sea .b1 { fill: #d9cba8; } .trial-sea .b2 { fill: #e6dcc6; }
+.ship-profile .hull { fill: #f4f0e6; stroke: #5d6661; stroke-width: 0.8; }
+.ship-profile .bottom { fill: #c8553d; }
+.ship-profile .deck { fill: #f4f0e6; stroke: #5d6661; stroke-width: 0.7; }
+.ship-profile .funnel { fill: #c8553d; }
+.ship-profile .fender { fill: #3a3f3c; }
+.ship-profile .pipe { stroke: #8f9a93; stroke-width: 2; }
+.ship-profile .box { stroke: #5d6661; stroke-width: 0.5; }
+.ship-profile .b0 { fill: #efe7d4; } .ship-profile .b1 { fill: #d9cba8; } .ship-profile .b2 { fill: #e6dcc6; }
 .trial-sea .name { fill: #f3f1ea; font-size: 10px; font-weight: 700; text-anchor: middle; }
 .trial-sea .name.loss { fill: #ffb3bb; }
 .trial-ship { animation: trial-bob 3.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center bottom; }
@@ -1163,3 +1163,35 @@ body { background: var(--desk); }
 .warn-tag { background: #f6d77a !important; color: #3a2d00 !important; font-weight: 700; }
 .safety-line { margin: 0 0 10px; padding: 6px 10px; background: #fff4d6; border-left: 4px solid #e0b43a; border-radius: 4px; font-weight: 700; }
 .safety-line small { font-weight: 400; color: var(--ink-2); }
+
+/* ----- 선박 사양서(4.17): 수주 목록에서 배를 누르면 계획서 위에 펼쳐지는 종이 한 장 ----- */
+.spec-link { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; color: var(--accent); cursor: pointer;
+  text-decoration: underline dotted; text-underline-offset: 3px; }
+.spec-link.plain { font-weight: 400; color: inherit; }
+.spec-link:hover, .spec-link:focus-visible { color: var(--accent-2); text-decoration-style: solid; }
+.spec-backdrop { position: fixed; inset: 0; z-index: 70; background: rgba(30, 34, 30, 0.35); display: flex; justify-content: center;
+  align-items: flex-start; padding: 24px 16px; overflow-y: auto; }
+.spec-sheet { background: var(--paper); color: var(--ink); width: min(640px, 100%); border-radius: 3px; padding: 20px 22px 18px;
+  box-shadow: var(--sheet-shadow), 0 12px 32px rgba(20, 24, 20, 0.25); }
+.spec-title { display: flex; align-items: baseline; justify-content: space-between; border-bottom: 2px solid var(--ink); padding-bottom: 6px; margin-bottom: 10px; }
+.spec-title h2 { margin: 0; font-family: var(--serif); letter-spacing: 0.2em; }
+.spec-head { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.spec-head p { margin: 3px 0; }
+.spec-profile { flex: none; background: #e3edf2; border-radius: 4px; }
+.spec-profile .water { fill: #3f6f8c; }
+.spec-id { flex: 1; min-width: 220px; }
+.spec-ship { font-size: 1.2rem; }
+.spec-type { font-weight: 700; }
+.spec-cat { margin-left: 6px; padding: 1px 7px; border: 1px solid var(--line); border-radius: 999px; font-size: 11px; color: var(--muted, #5d6661); }
+.spec-contract { font-weight: 700; }
+.spec-build { margin: 10px 0 0; }
+.spec-sheet h3 { margin: 14px 0 6px; font-size: 0.95rem; }
+.spec-sheet h3 small { font-weight: 400; color: var(--muted, #5d6661); }
+.spec-table { width: 100%; }
+.spec-table td.r { text-align: right; }
+.spec-process td:last-child, .spec-process th:last-child { text-align: left; }
+.spec-table td .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: baseline; }
+.spec-trades { display: flex; flex-wrap: wrap; gap: 6px; }
+.spec-trades .chip { font-weight: 400; background: var(--paper-2); border: 1px solid var(--line-soft); font-size: 12px; padding: 2px 9px; }
+.spec-delivery { margin: 0; padding-left: 18px; }
+.spec-delivery li { margin: 2px 0; }
