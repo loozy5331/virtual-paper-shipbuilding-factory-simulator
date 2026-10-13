@@ -248,6 +248,8 @@ export interface CctvOptions {
   track: string | null;
   /** 블록이나 선반을 눌렀다(자재·블록 추적 상자) */
   onPick: (pick: TrackPick) => void;
+  /** 현장에서 걸어간 생산관리자 자리(4.20.1). 현장에 한 번도 나가지 않았으면 없다 */
+  manager?: { x: number; z: number };
 }
 
 export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions): SVGElement {
@@ -663,6 +665,9 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
   // 인도한 배는 조선소를 떠난다(관제실 모니터 오른쪽 위 인도 완료 로그). 착수 전 배만 안벽에 적어 둔다
   const waiting = frame.lots.filter((l) => l.place === "hidden" && l.state !== "material_wait").map((l) => l.ship);
   if (waiting.length) add(9, tag(px((QUAY.x0 + QUAY.x1) / 2), py(QUAY.z0 + 1.8), `착수 전 ${waiting.join(" ")}`, "cc-tag mid"));
+
+  // 생산관리자(4.20.1): 현장에서 걸어가 멈춘 자리에 주황 모자. 이름표는 없다(알아챈 사람만 아는 정도로)
+  if (opts.manager) add(opts.manager.z, person(opts.manager.x, opts.manager.z, HAT.manager));
 
   // ----- 그리기: 고른 구획을 화면 가득, 전경이면 구획을 모두 -----
   if (opts.focus === null) return overview(items, scenario, docks, frame.day);
