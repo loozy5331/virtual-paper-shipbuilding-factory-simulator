@@ -606,8 +606,9 @@ class Scenarios(unittest.TestCase):
 
     def test_list(self):
         self.assertEqual([(s["id"], s["name"], s["ships"]) for s in list_scenarios()],
-                         [("simple", "간이공정 분기", 4), ("basic", "기본 반기", 6), ("growth", "수주 증가", 8), ("surge", "수주 급증", 10)])
-        self.assertEqual([s["level"] for s in list_scenarios()], [1, 2, 3, 5])   # 4는 4.20 선종 다변화 자리(D67)
+                         [("simple", "간이공정 분기", 4), ("basic", "기본 반기", 6), ("growth", "수주 증가", 8), ("mix", "선종 다변화", 8),
+                          ("surge", "수주 급증", 10)])
+        self.assertEqual([s["level"] for s in list_scenarios()], [1, 2, 3, 4, 5])   # 4는 4.20 선종 다변화(D67)
 
     def test_config_without_scenario_runs_as_basic(self):
         # 하위 호환: 1.x 설정(scenario 없음)은 기본 분기로 돈다.
@@ -716,6 +717,39 @@ class AreasAndSplit(unittest.TestCase):
             open_sim(cfg)
 
 
+MIX = {p["id"]: p["config"] for p in load_presets("mix")}
+
+
+class Mix(unittest.TestCase):
+    """4.20 선종 다변화(8척, D67): 선종 다섯 가지가 섞여 리드타임과 부하가 배마다 다르다(혼류 생산)."""
+
+    def test_orders(self):
+        sc = load_scenario("mix")
+        self.assertEqual([o["type"] for o in sc["orders"]], ["CONT", "BULK", "VLCC", "PCTC", "BULK", "LNG", "PCTC", "VLCC"])
+        self.assertEqual([o["due_day"] for o in sc["orders"]], list(range(40, 104, 9)))   # 수주 증가와 같은 9일 간격
+        self.assertEqual((sc["kpi"]["revenue"], sc["kpi"]["profit"]), (50200, 25500))
+        self.assertEqual(sc["options"], load_scenario("growth")["options"])   # 옵션은 수주 증가와 같다(나눠 하기 잠김)
+
+    def test_presets(self):
+        # 4.20.0 조율 값(D40). 목표 이익 25,500 = 균형 점검 최고 이익 30,507 ÷ 약 1.2
+        cases = {'unmanaged': (-28316.0, 45.7, 'F'), 'managed': (19030.0, 89.9, 'A'), 'all_in': (-18235.8, 57.9, 'C')}
+        for pid, (profit, score, grade) in cases.items():
+            r = simulate(MIX[pid])
+            self.assertEqual((r["profit"], r["grade"]["score"], r["grade"]["grade"]), (profit, score, grade), pid)
+            self.assertEqual(r["grade"]["baseline"]["score"], 57.9)
+
+    def test_same_lead_for_every_type_misses_due_dates(self):
+        # 교육 포인트: 선종을 보지 않고 모든 배를 "납기 − 같은 일수"에 착수하면 무거운 배끼리 몰려 납기를 놓친다.
+        # B안은 선종마다 리드타임을 따로 역산해(벌크선 S2를 컨테이너선 S1보다 먼저) 8척을 모두 지킨다.
+        self.assertEqual(simulate(MIX["managed"], baseline=False)["qcd"]["delivery"]["on_time"], 8)
+        due = {o["id"]: o["due_day"] for o in load_scenario("mix")["orders"]}
+        for lead in (38, 42, 46):
+            cfg = copy.deepcopy(MIX["managed"])
+            for sid, ship in cfg["ships"].items():
+                ship["start_day"] = max(1, due[sid] - lead)
+            self.assertLess(simulate(cfg, baseline=False)["qcd"]["delivery"]["on_time"], 8, lead)
+
+
 SURGE = {p["id"]: p["config"] for p in load_presets("surge")}
 
 
@@ -743,7 +777,7 @@ class LevelOptions(unittest.TestCase):
     """분기(난이도)별 옵션(D33): 쉬운 분기는 옵션을 가리고, 엔진이 숨긴 옵션을 쓴 설정을 거절한다."""
 
     def test_presets_use_only_open_options(self):
-        for sid in ("basic", "growth", "surge"):
+        for sid in ("basic", "growth", "mix", "surge"):
             for p in load_presets(sid):
                 simulate(p["config"], baseline=False)   # 거절되지 않는다
 
@@ -793,7 +827,7 @@ class Pegging(unittest.TestCase):
     """자재 페깅(3.1, 기록만): 공용 재고를 몫(배)별로도 남긴다. 규칙과 숫자는 그대로다."""
 
     def test_pegging_adds_up_to_stock_every_day(self):
-        for sid in ("basic", "growth", "surge"):
+        for sid in ("basic", "growth", "mix", "surge"):
             for preset in load_presets(sid):
                 r = simulate(preset["config"], baseline=False)
                 for day, stock in enumerate(r["inventory_daily"]):
@@ -967,7 +1001,7 @@ class TrialHasNoEquipment(unittest.TestCase):
         self.assertEqual(simulate(on)["profit"], simulate(off)["profit"])
 
     def test_never_breaks_down(self):
-        for sid in ("basic", "growth", "surge"):
+        for sid in ("basic", "growth", "mix", "surge"):
             for p in load_presets(sid):
                 events = simulate(p["config"], baseline=False)["events"]
                 self.assertFalse([e for e in events if e["type"] == "breakdown" and e.get("station") == "sea_trial"], (sid, p["id"]))
@@ -1093,13 +1127,14 @@ class Delays(unittest.TestCase):
 
     def test_which_scenarios_have_delays(self):
         delayed = {}
-        for sid in ("simple", "basic", "growth", "surge"):
+        for sid in ("simple", "basic", "growth", "mix", "surge"):
             r = simulate(load_presets(sid)[1]["config"], baseline=False)
             delayed[sid] = sorted((e["ship"], e["material"]) for e in r["events"] if e["type"] == "supply_delay")
         self.assertEqual(delayed, {
             "simple": [], "basic": [],
             # 4.14: 종이는 5%·1일이라 표에서 지연이 없고, LNG 보냉재는 60%·16일
             "growth": [("S3", "paint"), ("S4", "insulation"), ("S6", "paint"), ("S7", "insulation"), ("S7", "paint"), ("S8", "paint")],
+            "mix": [("S3", "paint"), ("S5", "paint"), ("S6", "paint")],   # 4.20: LNG선 S6 보냉재는 표에서 늦지 않는다
             "surge": [("S1", "flag"), ("S1", "paint"), ("S6", "insulation"), ("S7", "paint")]})
 
     def test_buffer_cannot_cover_a_long_delay(self):
@@ -1425,7 +1460,7 @@ class ShipSpec(unittest.TestCase):
                          {"VLCC": 2, "CONT": 2, "LNG": 3, "TUG": 1, "FEEDER": 1, "BULK": 2, "PCTC": 3, "VLGC": 3, "MEOH": 3})
         tops = [max(rules[o["type"]]["difficulty"] for o in load_scenario(s["id"])["orders"]) for s in list_scenarios()]
         self.assertEqual(tops, sorted(tops))
-        self.assertEqual(tops, [1, 2, 3, 3])
+        self.assertEqual(tops, [1, 2, 3, 3, 3])
 
     def test_preview_lists_work_trades_and_bom_per_ship(self):
         s1 = preview(PRESETS["managed"])["ships"]["S1"]   # VLCC
