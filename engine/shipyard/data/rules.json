@@ -188,9 +188,43 @@
       }
     }
   ],
+  "ship_categories": {
+    "_comment": "선종 분류(4.17, D66). 지금 야드는 상선만 짓는다. 특수선·해양구조물은 다른 야드(맵)에서 따로.",
+    "merchant": {
+      "name": "상선"
+    },
+    "special": {
+      "name": "특수선"
+    },
+    "offshore": {
+      "name": "해양구조물"
+    }
+  },
+  "delivery": {
+    "_comment": "인도 기준(4.17, D64): 선박 사양서에 보이는 설명 글. 엔진 규칙이 아니라 엔진이 이미 하는 일을 적는다. 지연 위약금 줄은 화면이 rules.costs.late_penalty_rate_per_day로 적는다. 선종마다 덧붙는 조건은 ship_types.<선종>.spec.delivery",
+    "criteria": [
+      "마지막 공정(시운전)을 마친 날 선주에게 인도하고 선가를 받는다.",
+      "불량이 난 공정은 재작업을 마쳐야 다음 공정으로 넘어간다(불량인 채 인도하지 않는다)."
+    ]
+  },
+  "_ship_types_note": "선종(4.17, D66): category는 ship_categories의 키, look은 그림(deck = 갑판 위 모양 tanker·container·moss·tug, length = 2D 반 길이, size = 크기 배율), spec은 사양서 글. 새 선종은 여기에 넣으면 그림·사양서가 따라온다",
   "ship_types": {
     "VLCC": {
       "name": "VLCC",
+      "category": "merchant",
+      "look": {
+        "deck": "tanker",
+        "length": 1.45,
+        "size": 1
+      },
+      "spec": {
+        "summary": "원유를 30만 톤 싣는 초대형 유조선. 길고 낮은 선체에 평평한 갑판과 화물 배관.",
+        "real": "실제 길이 약 330m, 폭 60m",
+        "build": "선체가 단순하고 블록이 커서 중조립 작업량(16)이 가장 크다.",
+        "delivery": [
+          "화물창 기밀 시험: 공기를 넣어 새는 곳이 없어야 한다."
+        ]
+      },
       "work": {
         "cutting": 3,
         "processing": 4,
@@ -212,6 +246,20 @@
     },
     "CONT": {
       "name": "컨테이너선",
+      "category": "merchant",
+      "look": {
+        "deck": "container",
+        "length": 1.3,
+        "size": 1
+      },
+      "spec": {
+        "summary": "갑판 위에 컨테이너를 층층이 싣는 컨테이너선. 선실은 뒤쪽.",
+        "real": "실제 길이 약 400m(2만 4천 TEU급)",
+        "build": "선체가 길어 탑재(도크) 작업량(16)이 가장 크다. 도크가 병목이 되기 쉽다.",
+        "delivery": [
+          "컨테이너 고정 장치(래싱) 검사."
+        ]
+      },
       "work": {
         "cutting": 2,
         "processing": 3,
@@ -233,6 +281,20 @@
     },
     "LNG": {
       "name": "LNG선",
+      "category": "merchant",
+      "look": {
+        "deck": "moss",
+        "length": 1.35,
+        "size": 1
+      },
+      "spec": {
+        "summary": "영하 162도로 액화한 천연가스를 싣는 LNG선. 둥근 화물 탱크 4개(모스형).",
+        "real": "실제 길이 약 295m",
+        "build": "선행의장에서 탱크 보냉재 4개를 붙이고, 안벽의장 작업량(10)이 다른 배의 두 배가 넘는다.",
+        "delivery": [
+          "화물 탱크 보냉·가스 시험."
+        ]
+      },
       "work": {
         "cutting": 3,
         "processing": 5,
@@ -254,6 +316,20 @@
     },
     "TUG": {
       "name": "예인선",
+      "category": "merchant",
+      "look": {
+        "deck": "tug",
+        "length": 1.0,
+        "size": 0.7
+      },
+      "spec": {
+        "summary": "큰 배를 밀고 끄는 예인선. 가운데 높은 조타실과 이물의 검은 방현재.",
+        "real": "실제 길이 약 30m",
+        "build": "공정마다 작업량이 작아 입문 분기에 맞다.",
+        "delivery": [
+          "예인력(볼라드 풀) 시험."
+        ]
+      },
       "work": {
         "cutting": 2,
         "processing": 2,
@@ -275,6 +351,20 @@
     },
     "FEEDER": {
       "name": "피더 컨테이너선",
+      "category": "merchant",
+      "look": {
+        "deck": "container",
+        "length": 1.15,
+        "size": 0.85
+      },
+      "spec": {
+        "summary": "큰 항구와 작은 항구 사이를 오가는 작은 컨테이너선.",
+        "real": "실제 길이 약 170m(1천 TEU급)",
+        "build": "컨테이너선보다 작아 탑재 작업량(10)이 적다.",
+        "delivery": [
+          "컨테이너 고정 장치(래싱) 검사."
+        ]
+      },
       "work": {
         "cutting": 2,
         "processing": 3,

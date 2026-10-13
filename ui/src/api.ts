@@ -96,8 +96,16 @@ export interface MaterialInfo {
   cheap_name: string;
 }
 
+/** 선종의 그림(4.17, D66): 갑판 위 모양, 2D 반 길이, 크기 배율. 화면은 선종 코드가 아니라 이 값으로 그린다 */
+export interface ShipLookInfo { deck: "tanker" | "container" | "moss" | "tug"; length: number; size: number }
+
 export interface ShipType {
   name: string;
+  /** 4.17(D66): ship_categories의 키(상선·특수선·해양) */
+  category?: string;
+  look?: ShipLookInfo;
+  /** 4.17(D64): 선박 사양서 글. delivery는 선종마다 덧붙는 인도 조건(설명) */
+  spec?: { summary: string; real: string; build: string; delivery: string[] };
   work: Record<string, number>;
   bom: Record<string, number>;
 }
@@ -180,6 +188,10 @@ export interface Scenario {
   default_pools: Record<string, number | string>;
   materials: MaterialInfo[];
   ship_types: Record<string, ShipType>;
+  /** 4.17(D66): 선종 분류. _comment 같은 밑줄 키는 설명 */
+  ship_categories?: Record<string, { name: string } | string>;
+  /** 4.17(D64): 공통 인도 기준(설명 글, 엔진 규칙 아님) */
+  delivery?: { criteria: string[] };
   orders: Order[];
   blocks: Record<string, number>;
   rules: {
@@ -189,6 +201,7 @@ export interface Scenario {
     crews: Record<Crew, CrewInfo>;
     overtime: { speed: number };
     hoist: HoistInfo;
+    costs: { late_penalty_rate_per_day: number };
   };
   transporter: { max_count: number; default_count?: number; capacity: number; lot_weight: number; roles: "block"[] };
   forklift: { default_count: number; max_count: number; jobs_per_day: number; cost_per_day: number; maintenance_cost: number };
@@ -283,6 +296,14 @@ export interface Preview {
   plan: Plan;
   /** 4.15(D62): 공정 여유를 넣은 납기와 선가(배마다) */
   contract?: Record<string, { due_day: number; price: number; buffer_days: number }>;
+  /** 4.17(D64): 선박 사양서. 배마다 쓰는 공정의 작업량(인·일, 호이스트 반영)·직종·자재와 직종별 합계(trial = 시운전 외부팀) */
+  ships?: Record<string, ShipSpec>;
+}
+
+export interface ShipSpec {
+  type: string;
+  stations: { station: string; trade: string; work: number; material: string | null; quantity: number }[];
+  trades: Record<string, number>;
 }
 
 export interface AbcRow {

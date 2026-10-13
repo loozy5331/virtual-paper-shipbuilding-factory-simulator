@@ -8,6 +8,8 @@
 // 큰길(가로)이 내업에서 두 도크 구획 사이를 지나 안벽까지 간다. 구획은 그림일 뿐 엔진 규칙이 아니다.
 // PE장 작업장과 도크의 짝도 그림에서만: 도크가 둘이면 PE장 1호는 1도크, 2·3호는 2도크 구획. 도크가 하나면 PE장은 모두 1도크 구획.
 
+import type { ShipLookInfo } from "../api";
+
 export type SectorId = "shop" | "dock" | "quay";
 export interface Sector { id: SectorId; name: string; x0: number; x1: number; z0: number; z1: number }
 
@@ -104,11 +106,18 @@ export const SPUR_ROADS = [0, 2, 3, 4, 5, 6];
 export const SPUR_IN = [0, 0, 1, 2, 3, 3, 5, 5, -1, -1], SPUR_OUT = [1, 1, 2, 3, 4, 4, 6, 6, -1, -1];
 
 /**
- * 선종별 그림 크기(4.6, 소인국): 작은 배는 블록과 배를 작게 그려 같은 정반·도크에서 작아 보이게 한다. 없으면 1.
- * 예인선은 짧고 뭉툭해 더 작게, 피더 컨테이너선은 컨테이너선보다 조금 작게.
+ * 선종의 그림(4.17, D66): rules.json ship_types.<선종>.look을 시나리오를 받을 때 담아 두고, 2D·3D가 선종 코드 대신 이 값으로 그린다.
+ * 새 선종은 rules.json에 넣기만 하면 된다. look이 없는 선종은 유조선 모양, 크기 1.
  */
-export const SHIP_SIZE: Record<string, number> = { TUG: 0.7, FEEDER: 0.85 };
-export const shipSize = (kind: string) => SHIP_SIZE[kind] ?? 1;
+const LOOKS = new Map<string, ShipLookInfo>();
+const DEFAULT_LOOK: ShipLookInfo = { deck: "tanker", length: 1.3, size: 1 };
+export function setShipLooks(types: Record<string, { look?: ShipLookInfo }>): void {
+  LOOKS.clear();
+  for (const [id, t] of Object.entries(types)) if (t.look) LOOKS.set(id, t.look);
+}
+export const lookOf = (kind: string): ShipLookInfo => LOOKS.get(kind) ?? DEFAULT_LOOK;
+/** 선종별 그림 크기(4.6, 소인국): 작은 배는 블록과 배를 작게 그려 같은 정반·도크에서 작아 보이게 한다(예인선 0.7, 피더선 0.85) */
+export const shipSize = (kind: string) => lookOf(kind).size;
 
 /** 큰길의 왼쪽 끝(작업대기소·연구소 앞) */
 export const LANE_X0 = -42.6;

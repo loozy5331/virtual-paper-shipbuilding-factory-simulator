@@ -1394,5 +1394,47 @@ class PlanBuffer(unittest.TestCase):
         # 옛 설정(여유 없음)은 결과가 그대로다: 프리셋 표 테스트가 지킨다
 
 
+class ShipSpec(unittest.TestCase):
+    """선박 사양서(4.17, D64·D66): 선종 데이터(분류·그림·사양 글)와 미리보기의 배별 공정 작업량·직종·자재."""
+
+    def test_every_ship_type_has_category_look_and_spec(self):
+        sc = load_scenario("basic")
+        for tid, t in sc["ship_types"].items():
+            self.assertIn(t["category"], sc["ship_categories"], tid)
+            self.assertIn(t["look"]["deck"], {"tanker", "container", "moss", "tug"}, tid)
+            self.assertTrue(t["spec"]["summary"] and t["spec"]["delivery"], tid)
+        self.assertTrue(sc["delivery"]["criteria"])
+
+    def test_preview_lists_work_trades_and_bom_per_ship(self):
+        s1 = preview(PRESETS["managed"])["ships"]["S1"]   # VLCC
+        self.assertEqual(s1["type"], "VLCC")
+        self.assertEqual([r["station"] for r in s1["stations"]], STATIONS)
+        work = load_scenario("basic")["ship_types"]["VLCC"]["work"]
+        self.assertEqual(sum(s1["trades"].values()), sum(work.values()))
+        # 조립 직종 = 소조립 8 + 중조립 16 + PE장 8, 시운전은 외부팀(trial)
+        self.assertEqual(s1["trades"]["assembly"], 32)
+        self.assertEqual(s1["trades"]["trial"], 3)
+        # 자재는 쓰는 공정에 붙는다: 종이 → 절단, 물감 → 도장, 깃발 → 안벽의장
+        used = {r["material"]: (r["station"], r["quantity"]) for r in s1["stations"] if r["material"]}
+        self.assertEqual(used["paper"], ("cutting", 8))
+        self.assertEqual(used["paint"], ("painting", 4))
+        self.assertEqual(used["flag"], ("quay_outfitting", 2))
+        self.assertEqual(used["insulation"], ("pre_outfitting", 0))   # VLCC는 보냉재를 쓰지 않는다
+
+    def test_hoist_and_skipped_stations(self):
+        # 호이스트를 단 중조립은 작업량 80%(16 → 12.8)
+        cfg = copy.deepcopy(PRESETS["managed"])
+        cfg["stations"]["block_assembly"]["hoist"] = True
+        rows = {r["station"]: r for r in open_preview(cfg)["ships"]["S1"]["stations"]}
+        self.assertEqual(rows["block_assembly"]["work"], 12.8)
+        # 간이공정(4.5)은 쓰는 공정만, 자재는 그 분기의 공정별 자재(station_material)로
+        simple = load_presets("simple")[1]["config"]
+        spec = preview(simple)["ships"]
+        first = spec[next(iter(spec))]
+        self.assertEqual([r["station"] for r in first["stations"]],
+                         ["cutting", "processing", "sub_assembly", "grand_assembly", "erection", "sea_trial"])
+        self.assertEqual({r["material"] for r in first["stations"] if r["material"]}, {"paper", "paint", "flag"})
+
+
 if __name__ == "__main__":
     unittest.main()
