@@ -179,6 +179,8 @@ export interface Scenario {
   unlocks?: string;
   /** 난이도 1~3(옛 분기가 쉽다) */
   level?: number;
+  /** 4.23: 평가서 뒷장 "선배의 팁"에 적는 이 반기의 고정 팁 */
+  tips?: string[];
   /** 계획 기간의 이름. 60일은 이 분기의 작업일로 본다. */
   period: string;
   days: number;
@@ -461,6 +463,8 @@ export interface Grade {
   score: number;
   grade: string;
   parts: GradePart[];
+  /** 4.23: S까지 모자란 점수와 가장 많이 남은 항목(다 채웠으면 null). 옛 회차 결과에는 없다 */
+  to_s?: { need: number; focus: string | null };
   baseline: { preset: string; name: string; score: number; grade: string; profit: number; pool: number; on_time: number } | null;
   vs_baseline: { profit: number; pool: number; score: number } | null;
 }

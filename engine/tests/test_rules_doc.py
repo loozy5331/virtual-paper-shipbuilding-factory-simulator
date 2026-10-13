@@ -343,6 +343,21 @@ class GradeTable(unittest.TestCase):
         self.assertEqual([p["key"] for p in g["parts"]], ["revenue", "profit", "delivery", "quality"])
         self.assertAlmostEqual(sum(p["points"] for p in g["parts"]), g["score"], places=1)
 
+    def test_to_s(self):
+        """선배의 팁(4.23): S까지 모자란 점수와 목표에 가장 많이 못 미친 항목."""
+        cases = [(PRESETS["managed"], 19.7, "profit"),
+                 (crew("managed", erection="normal"), 18.3, "profit")]
+        for cfg, need, focus in cases:
+            g = open_sim(cfg)["grade"]
+            self.assertEqual(g["to_s"], {"need": need, "focus": focus})
+            self.assertAlmostEqual(g["to_s"]["need"], 105 - g["score"], places=1)
+
+    def test_tips_every_scenario(self):
+        for s in list_scenarios():
+            with self.subTest(s["id"]):
+                tips = load_scenario(s["id"])["tips"]
+                self.assertTrue(2 <= len(tips) <= 4 and all(isinstance(t, str) and t for t in tips))
+
     def test_one_ship_scenario_has_no_baseline(self):
         g = simulate(one_ship_config(), one_ship_scenario(FULL))["grade"]
         self.assertIsNone(g["baseline"])

@@ -1698,8 +1698,15 @@ def _grade(result: dict[str, Any], config: dict[str, Any], base: dict[str, Any] 
     for part in parts:
         part["points"] = round(part["points"], 2)
 
+    # 선배의 팁(4.23): S까지 모자란 점수와 먼저 볼 항목. 목표(가중치 점수)에 가장 많이 못 미친 항목이고,
+    # 모두 목표를 채웠으면 상한(1.3배)까지 남은 이익. 그것도 다 채웠으면 None
+    short = max(parts, key=lambda p: w[p["key"]] - p["points"])
+    profit_part = parts[1]
+    focus = (short["key"] if w[short["key"]] - short["points"] >= 0.05
+             else "profit" if profit_part["max"] - profit_part["points"] >= 0.05 else None)
+    to_s = {"need": round(max(g["bands"]["S"] - score, 0), 1), "focus": focus}
     out: dict[str, Any] = {"score": score, "grade": _band(score, g["bands"]), "parts": parts,
-                           "baseline": None, "vs_baseline": None}
+                           "to_s": to_s, "baseline": None, "vs_baseline": None}
     if base is not None and base_cfg is not None:
         # base는 기준선 요약(_baseline_summary): 점수·등급·이익·납기 준수 척수
         preset = next(p for p in load_presets(scenario.get("id", DEFAULT_SCENARIO)) if p["id"] == g["baseline_preset"])

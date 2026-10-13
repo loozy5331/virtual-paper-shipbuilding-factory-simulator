@@ -16,7 +16,7 @@ import { planLabel, renderForm, renderPlanBar, renderPlanNotes, renderPlanTabs, 
 import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
 import { docHead, REVIEWER } from "./paper";
 import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, PAIR_WAIT_EDGE, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, TRANSPORT_STATE } from "./labels";
-import { eventText, renderReport } from "./report";
+import { eventText, renderMemo, renderReport } from "./report";
 import { renderCctv } from "./cctv";
 import { renderShipBoard } from "./shipboard";
 import { renderTrackCard, type TrackPick } from "./track";
@@ -1232,7 +1232,8 @@ function drawReportBoard(): void {
   els.reportBoard.hidden = !shown;
   if (!shown || !r) return;
   const g = r.result.grade;
-  mount(els.reportBoard,
+  // 같은 클립보드에 두 장: 평가서와 그 뒤에 끼운 메모(부록·선배의 팁, 4.23). 둘이 함께 스크롤된다
+  mount(els.reportBoard, h("div", { class: "board-pages" },
     h("div", { class: "report-sheet" },
       h("div", { class: "report-actions" },
         h("span", { class: "hint" }, state.board === "up" ? "바깥 어두운 곳을 누르면 내려 둡니다" : "생산실적 평가서 · 누르면 다시 올림"),
@@ -1249,7 +1250,8 @@ function drawReportBoard(): void {
         },
       }),
       // 현장 안전 경고는 평가서의 S 안전 칸에(4.14)
-      renderReport(r.result, state.data.scenario, state.data.max_rate, openFinding, r.safetyWarnings)));
+      renderReport(r.result, state.data.scenario, state.data.max_rate, openFinding, r.safetyWarnings)),
+    renderMemo(r.result, state.data.scenario, r.safetyWarnings)));
 }
 
 // ---------------------------------------------------------------------------

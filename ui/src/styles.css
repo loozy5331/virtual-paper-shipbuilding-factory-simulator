@@ -1118,6 +1118,19 @@ body { background: var(--desk); }
 .room.board-up::before { content: ""; position: absolute; inset: 0; z-index: 15; background: rgba(30, 34, 30, 0.35); cursor: pointer; }
 .report-sheet { height: 100%; overflow-y: auto; background: var(--paper); border-radius: 3px; padding: 14px 20px 20px; }
 .room.board-down .report-sheet { overflow: hidden; }
+/* 평가서 클립보드의 종이 두 장(4.23): 평가서 + 뒤에 끼운 메모. 둘을 함께 스크롤한다 */
+.board-pages { height: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding-bottom: 14px; }
+.board-pages > .report-sheet { height: auto; overflow: visible; flex: none; }
+.room.board-down .board-pages { overflow: hidden; }
+/* 메모: 평가서보다 조금 좁고, 살짝 기울고, 누런 메모지. 서식 머리글·결재란은 없다 */
+.memo-sheet { flex: none; width: 94%; align-self: center; transform: rotate(-0.6deg); background: #fbf5df; border-radius: 2px;
+  padding: 16px 20px 18px; box-shadow: 0 1px 0 #e4d9b8, 0 3px 10px rgba(30, 28, 20, 0.16); }
+.memo-sheet > .report-sec:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+.tips { margin-top: 14px; padding-top: 12px; border-top: 1px dashed #cfc3a0; }
+.tips-title { margin: 0 0 8px; font-family: var(--serif); font-size: 1.05rem; font-weight: 800; letter-spacing: 0.08em; color: var(--ink); }
+.tip-lead { margin: 0 0 8px; font-size: 0.92rem; color: var(--ink); }
+.tips-list { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 5px; font-size: 0.88rem; color: var(--ink-2); line-height: 1.5; }
+.tips-sign { margin: 10px 0 0; text-align: right; font-size: 0.86rem; font-style: italic; color: #1f2a6b; }
 /* 내려 둔 평가서 띠에는 "계획 고치기"를 두지 않는다(펼친 생산계획서에 가려 잘렸다). 올리면 맨 위에 있다. */
 .room.board-down .report-board:not(.plan-board) .report-actions .btn { display: none; }
 .report-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
