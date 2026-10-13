@@ -1238,7 +1238,6 @@ body { background: var(--desk); }
 /* 오른쪽 모니터 제목 줄 [작업 현황 / 선박별] 탭(4.18, D65) */
 .right-tabs { display: inline-flex; gap: 2px; vertical-align: middle; }
 .right-tabs .screen-tab { font-size: 12px; padding: 2px 9px; }
-.win-sub { margin-left: 8px; color: #5b5b5b; }
 /* 선박별 진행(4.18): 종이 바탕 표. 줄 = 배, 칸 = 공정(쓰는 것만), 끝 칸 = 자재 */
 .sb-host { position: absolute; inset: 0; overflow: auto; background: var(--paper); }
 .ship-board { padding: 6px 10px 8px; font-size: 12px; color: var(--ink); }

@@ -1155,8 +1155,7 @@ function drawRightTabs(): void {
       onclick: () => setRightView(view),
     }, label);
   mount(title, h("span", { class: "right-tabs", role: "group", "aria-label": "오른쪽 모니터 화면" },
-    tab("map", "작업 현황"), tab("ships", "선박별")),
-    state.rightView === "map" ? h("span", { class: "win-sub" }, cctvName()) : null);
+    tab("map", "작업 현황"), tab("ships", "선박별")));
 }
 
 function setRightView(view: State["rightView"]): void {
