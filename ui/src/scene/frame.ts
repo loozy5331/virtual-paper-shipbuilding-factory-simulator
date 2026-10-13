@@ -35,6 +35,8 @@ export interface LotView {
   form: number;
   /** 칠한 정도 0~1(4.0: 도장 공정에서 칠한다. 도장을 마친 블록은 1) */
   paint: number;
+  /** 정반 위면 그 공정의 진행률 0~1(form과 같은 값, 4.18 선박별 진행). 그 밖에는 없다 */
+  progress?: number;
   state: ShipState;
   late: boolean;
 }
@@ -233,7 +235,7 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
         const into = span && day === span.start ? (fromUnit >= 0 ? (frac - LIFT_END) / (1 - LIFT_END) : afterLead(frac)) : frac;
         const progress = span ? clamp01((day - span.start + into) / (span.end - span.start + 1)) : 0;
         const paint = stationIds[p] === "painting" ? progress : base.paint;
-        return { ...base, place: "bench", station: p, unit, form: formOf(p, progress), paint, state: rec.state, ...(parts ? { parts } : {}) };
+        return { ...base, place: "bench", station: p, unit, form: formOf(p, progress), paint, progress, state: rec.state, ...(parts ? { parts } : {}) };
       }
     }
   });

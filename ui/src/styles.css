@@ -1218,3 +1218,51 @@ body { background: var(--desk); }
 .spec-trades .chip { font-weight: 400; background: var(--paper-2); border: 1px solid var(--line-soft); font-size: 12px; padding: 2px 9px; }
 .spec-delivery { margin: 0; padding-left: 18px; }
 .spec-delivery li { margin: 2px 0; }
+
+/* 오른쪽 모니터 제목 줄 [작업 현황 / 선박별] 탭(4.18, D65) */
+.right-tabs { display: inline-flex; gap: 2px; vertical-align: middle; }
+.right-tabs .screen-tab { font-size: 12px; padding: 2px 9px; }
+.win-sub { margin-left: 8px; color: #5b5b5b; }
+/* 선박별 진행(4.18): 종이 바탕 표. 줄 = 배, 칸 = 공정(쓰는 것만), 끝 칸 = 자재 */
+.sb-host { position: absolute; inset: 0; overflow: auto; background: var(--paper); }
+.ship-board { padding: 6px 10px 8px; font-size: 12px; color: var(--ink); }
+.ship-board table { width: 100%; border-collapse: separate; border-spacing: 2px 3px; table-layout: fixed; }
+.ship-board thead th { position: sticky; top: 0; z-index: 1; background: var(--paper); font-size: 11px; font-weight: 700; color: var(--ink-2); text-align: center; padding: 2px 0; line-height: 1.15; word-break: break-all; vertical-align: bottom; }
+.ship-board th.sb-ship { width: 92px; text-align: left; vertical-align: middle; font-weight: 400; }
+.ship-board thead th.sb-ship { font-weight: 700; }
+.ship-board .sb-mats { width: 30%; text-align: left; }
+.sb-name { display: flex; align-items: baseline; gap: 5px; border: 0; background: transparent; padding: 0; font: inherit; color: var(--ink); cursor: pointer; text-align: left; }
+.sb-name b { font-size: 13px; text-decoration: underline; text-decoration-color: #c9cfc9; text-underline-offset: 2px; }
+.sb-name small { color: var(--ink-3); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-name:hover b, .sb-name:focus-visible b { text-decoration-color: currentColor; }
+.sb-due { display: block; font-size: 11px; color: var(--ink-3); }
+.sb-due.late { color: #c0262d; font-weight: 700; }
+.ship-board tr.tracked th.sb-ship { box-shadow: inset 3px 0 0 #e0b43a; padding-left: 5px; }
+.sb-cell { height: 30px; padding: 0; border-radius: 3px; text-align: center; vertical-align: middle; font-size: 11px; line-height: 1.1; }
+.sb-cell.todo { border: 1px dashed #cfcabd; }
+.sb-cell.done .sb-fill { display: flex; align-items: center; justify-content: center; height: 100%; border-radius: 3px; font-weight: 800; opacity: 0.5; }
+.sb-cell.doing { border: 1.5px solid var(--ink); background: #fff; padding: 2px 3px; }
+.sb-cell.doing.loss { border-color: #de9644; }
+.sb-bar { display: block; height: 6px; background: #e6e1d4; border-radius: 2px; overflow: hidden; }
+.sb-bar i { display: block; height: 100%; }
+.sb-left { display: block; margin-top: 3px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-cell.doing.loss .sb-left { color: #9a5a10; }
+.sb-cell.wait { background: #ece8dd; border: 1px solid #898781; color: var(--ink-2); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ship-board td.sb-mats { vertical-align: middle; padding-left: 6px; }
+.sb-mat { display: inline-block; margin: 1px 4px 1px 0; padding: 1px 6px; border-radius: 10px; border: 1px solid #cfcabd; font-size: 11px; white-space: nowrap; color: var(--ink-2); }
+.sb-mat b { margin-right: 4px; color: var(--ink); }
+.sb-mat.before { border-style: dashed; color: var(--ink-3); }
+.sb-mat.ordered { border-color: #898781; }
+.sb-mat.arrived { background: #f1ede2; border-color: #898781; }
+.sb-mat.using { background: var(--ink); border-color: var(--ink); color: #f3f1ea; }
+.sb-mat.using b { color: #fff; }
+.sb-mat.used { color: var(--ink-3); text-decoration: line-through; text-decoration-color: #b8b3a6; }
+.sb-mat.late { border: 1.5px solid #de9644; color: #9a5a10; font-weight: 700; }
+.sb-note { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 6px 2px 0; color: var(--ink-2); font-size: 11px; }
+.sb-note span { display: inline-flex; align-items: center; gap: 4px; }
+.sb-key { display: inline-block; width: 16px; height: 10px; border-radius: 2px; }
+.sb-key.done { background: #5b6770; opacity: 0.5; }
+.sb-key.doing { border: 1.5px solid var(--ink); background: linear-gradient(90deg, #5b6770 50%, #fff 50%); }
+.sb-key.wait { background: #ece8dd; border: 1px solid #898781; }
+.sb-key.todo { border: 1px dashed #cfcabd; }
+.sb-hint { margin-left: auto; color: var(--ink-3); }
