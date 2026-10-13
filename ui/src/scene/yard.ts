@@ -155,9 +155,9 @@ export class Yard {
   /** 1인칭 팔(카메라에 붙음)과 걸음에 따라 흔들리는 박자 */
   private readonly fpArms = buildFirstPersonArms();
   private stride = 0;
-  /** 자동 안전 경고(4.10): 지금 관리자가 들어 있는 위험 반경, 들어갈 때 부를 곳(main.ts) */
+  /** 자동 안전 경고(4.10): 지금 관리자가 들어 있는 위험 반경, 들고 날 때 부를 곳(main.ts) */
   private hazardNow: string | null = null;
-  private hazardHandler: ((hazard: Hazard) => void) | null = null;
+  private hazardHandler: ((hazard: Hazard | null) => void) | null = null;
 
   private readonly hemi = new THREE.HemisphereLight("#fff8ec", "#8a6a4a", 1.5);
   private readonly sun = new THREE.DirectionalLight("#fff1da", 2.6);
@@ -300,7 +300,7 @@ export class Yard {
     for (const p of [...this.people, this.senior, this.manager]) p.showTag(on);
   }
 
-  /** 관리자를 안전한 자리(도크의 큰길 맞은편, 어느 공정을 보든 같은 자리)로. 경고 카드의 "안전한 자리로 돌아가기"도 이것 */
+  /** 관리자를 안전한 자리(도크의 큰길 맞은편, 어느 공정을 보든 같은 자리)로 */
   toSafeSpot(): void {
     const at = new THREE.Vector3(SAFE_SPOT.x, 0, SAFE_SPOT.z);
     // 멀리 있으면(1인칭으로 걸어간 뒤) 건물을 뚫고 걷지 않게 바로 옮긴다
@@ -993,9 +993,15 @@ export class Yard {
     this.camera.position.add(move);
   }
 
-  /** 위험 반경에 들어가면(설비가 다가왔거나 관리자가 걸어 들어갔거나) 부른다. 관리자는 그 자리에 멈춘다. */
-  setHazardHandler(fn: (hazard: Hazard) => void): void {
+  /** 위험 반경에 들어가면(설비가 다가왔거나 관리자가 걸어 들어갔거나) 그 반경을, 나오면 null로 부른다. 들어가면 관리자는 그 자리에 멈춘다. */
+  setHazardHandler(fn: (hazard: Hazard | null) => void): void {
     this.hazardHandler = fn;
+  }
+
+  /** 관리자가 서 있는 자리(x·z). 관제실 작업 현황 지도에도 그린다(4.20.1) */
+  managerSpot(): { x: number; z: number } {
+    const p = this.manager.root.position;
+    return { x: p.x, z: p.z };
   }
 
   /** 관리자 자리가 위험 반경 안인가: 골리앗 크레인(늘), 움직이는 트랜스포터 */
@@ -1014,10 +1020,12 @@ export class Yard {
   private checkHazard(): void {
     const hazard = this.hazardAt(this.manager.root.position);
     if (hazard && hazard.id !== this.hazardNow) {
-      // 그 자리에 멈춘다(경고 카드의 "안전한 자리로 돌아가기"가 옮긴다)
+      // 그 자리에 멈춘다. 나오는 것은 관리자가 걸어서(4.20.1, 안전한 자리로 옮겨 주지 않는다)
       this.setMove(0, 0, false);
       this.manager.place(this.manager.root.position.clone(), this.manager.root.rotation.y, "stand", true);
       this.hazardHandler?.(hazard);
+    } else if (!hazard && this.hazardNow) {
+      this.hazardHandler?.(null);
     }
     this.hazardNow = hazard?.id ?? null;
   }
