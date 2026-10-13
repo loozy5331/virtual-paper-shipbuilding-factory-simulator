@@ -1187,7 +1187,10 @@ body { background: var(--desk); }
 .spec-build { margin: 10px 0 0; }
 .spec-sheet h3 { margin: 14px 0 6px; font-size: 0.95rem; }
 .spec-sheet h3 small { font-weight: 400; color: var(--muted, #5d6661); }
-.spec-table { width: 100%; }
+.spec-table { width: 100%; border-collapse: collapse; border: 1px solid var(--line); }
+/* 세로선과 머리줄 바탕: 열 이름이 어느 칸의 것인지 바로 보이게(서식 표처럼) */
+.spec-table.plan th, .spec-table.plan td { border: 1px solid var(--line); padding: 4px 8px; }
+.spec-table thead th { background: var(--paper-2); text-align: center; font-weight: 700; }
 .spec-table td.r { text-align: right; }
 .spec-process td:last-child, .spec-process th:last-child { text-align: left; }
 .spec-table td .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: baseline; }
