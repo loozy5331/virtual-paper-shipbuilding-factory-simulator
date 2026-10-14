@@ -106,7 +106,7 @@ export class Yard {
   private track: string | null = null;
   private readonly shelfHits: THREE.Mesh[] = [];
   private readonly raycaster = new THREE.Raycaster();
-  private readonly trackRing: THREE.Mesh;
+  private readonly trackRings: THREE.Mesh[] = [];
   private readonly lounge: CSS2DObject;
   /** 남문 작업대기소 이름표(탑재·의장, 4.7.5) */
   private readonly loungeS: CSS2DObject;
@@ -203,11 +203,16 @@ export class Yard {
       down = null;
       last = null;
     });
-    this.trackRing = new THREE.Mesh(new THREE.RingGeometry(1.15, 1.3, 48),
-      new THREE.MeshBasicMaterial({ color: "#e0b43a", side: THREE.DoubleSide, transparent: true, opacity: 0.9 }));
-    this.trackRing.rotation.x = -Math.PI / 2;
-    this.trackRing.visible = false;
-    this.scene.add(this.trackRing);
+    // 나눠 하기면 부분마다(작업장 1~3호) 고리 하나씩
+    const ringGeo = new THREE.RingGeometry(1.15, 1.3, 48);
+    const ringMat = new THREE.MeshBasicMaterial({ color: "#e0b43a", side: THREE.DoubleSide, transparent: true, opacity: 0.9 });
+    for (let k = 0; k < 3; k++) {
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.visible = false;
+      this.trackRings.push(ring);
+      this.scene.add(ring);
+    }
 
     const { hemi, sun } = this;
     // 야드가 넓어(구획 넷) 그림자 범위도 넓다. 해상도를 함께 올린다.
@@ -1112,8 +1117,15 @@ export class Yard {
     this.animateProps(t);
     // 추적: 그 배 블록 밑에 고리, 이름표는 그 배만 진하게
     const tracked = this.track ? this.lots.get(this.track) : undefined;
-    this.trackRing.visible = !!tracked?.group.visible;
-    if (tracked) this.trackRing.position.set(tracked.group.position.x, Math.max(0.05, tracked.group.position.y) + 0.03, tracked.group.position.z);
+    // 나눠 하는 중이면 블록 부분마다(위쪽 작업장 2·3호, 짝 대기 적치장 포함) 고리를 둔다
+    const spots = tracked?.group.visible ? (tracked.splitDrawn ?? [new THREE.Vector3()]) : [];
+    tracked?.group.updateMatrixWorld();
+    this.trackRings.forEach((ring, k) => {
+      ring.visible = k < spots.length;
+      if (!ring.visible) return;
+      const at = tracked!.group.localToWorld(spots[k].clone());
+      ring.position.set(at.x, Math.max(0.05, at.y) + 0.03, at.z);
+    });
     for (const lot of this.lots.values()) {
       lot.tag.element.classList.toggle("tracked", this.track === lot.ship);
       lot.tag.element.classList.toggle("untracked", this.track !== null && this.track !== lot.ship);
