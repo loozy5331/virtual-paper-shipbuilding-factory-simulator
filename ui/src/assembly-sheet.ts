@@ -68,7 +68,7 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
   if (zoomed && (!bst.length || view !== "schedule")) { zoomed = false; if (layer) mount(layer, null); }
   if (!bst.length) { mount(root, null); return; }
   // 배 탭은 수주 목록 순서(실습은 목록이 납기 빠른 순, 4.26·4.27.2 사용자). 처음 여는 탭도 목록 첫 배
-  const ships = scenario.orders;   // 실습은 수주 목록이 납기 빠른 순(S2 → S1 → S3, 4.27.2)
+  const ships = scenario.orders;   // 실습은 수주 번호가 납기 빠른 순(S1 벌크선 → S2 → S3, 4.27.3)
   ship = ships.some((o) => o.id === ship) ? ship : ships[0].id;
 
   // ② 우선순위 규칙: 블록 공정마다 한 줄. 규칙은 블록 순서를 정하지 않은 블록의 순서이고, 평가서 추천이 비교하는 것이다

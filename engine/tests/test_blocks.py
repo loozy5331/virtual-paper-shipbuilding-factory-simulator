@@ -121,28 +121,28 @@ class Dues(unittest.TestCase):
         return load_presets("block")[1]["config"]
 
     def test_default_back_calc(self):
-        # 실습 S2(벌크선, 납기 32일): 탑재 32 → PE장 25 → 중조립 19 → 소조립 10 → 가공 5 → 절단 2
+        # 실습 S1(벌크선, 납기 32일): 탑재 32 → PE장 25 → 중조립 19 → 소조립 10 → 가공 5 → 절단 2
         dues = preview(self.managed())["dues"]
-        self.assertEqual(dues["stations"]["S2"], {"cutting": 2, "processing": 5, "sub_assembly": 10,
+        self.assertEqual(dues["stations"]["S1"], {"cutting": 2, "processing": 5, "sub_assembly": 10,
                                                   "block_assembly": 19, "grand_assembly": 25, "erection": 32})
-        self.assertEqual(dues["blocks"]["S2-SA1"], 10)
-        self.assertEqual(dues["blocks"]["S2-GA2"], 25)
+        self.assertEqual(dues["blocks"]["S1-SA1"], 10)
+        self.assertEqual(dues["blocks"]["S1-GA2"], 25)
         self.assertEqual(len(dues["blocks"]), 3 * 14)
 
     def test_presets_fix_dock_due(self):
-        # 실습 S1(예인선, 납기 34일)은 프리셋이 PE장 납기를 도크 일정 26일로 적어 둔다(역산값 30일보다 앞). 앞 공정은 26일에서 역산
+        # 실습 S2(예인선, 납기 34일)은 프리셋이 PE장 납기를 도크 일정 26일로 적어 둔다(역산값 30일보다 앞). 앞 공정은 26일에서 역산
         for preset in load_presets("block"):
-            self.assertEqual(preset["config"]["due"], {"stations": {"S1": {"grand_assembly": 26}}})
-        self.assertEqual(preview(self.managed())["dues"]["stations"]["S1"],
+            self.assertEqual(preset["config"]["due"], {"stations": {"S2": {"grand_assembly": 26}}})
+        self.assertEqual(preview(self.managed())["dues"]["stations"]["S2"],
                          {"cutting": 12, "processing": 14, "sub_assembly": 17, "block_assembly": 22, "grand_assembly": 26, "erection": 34})
 
     def test_station_override_moves_upstream(self):
-        # S2 PE장 납기를 20일로 당기면 앞 공정은 그 값에서 다시 역산한다: 중조립 14, 소조립 5, 가공·절단은 1일 아래로 → 1. 탑재는 그대로
-        cfg = {**self.managed(), "due": {"stations": {"S2": {"grand_assembly": 20}}}}
+        # S1 PE장 납기를 20일로 당기면 앞 공정은 그 값에서 다시 역산한다: 중조립 14, 소조립 5, 가공·절단은 1일 아래로 → 1. 탑재는 그대로
+        cfg = {**self.managed(), "due": {"stations": {"S1": {"grand_assembly": 20}}}}
         dues = preview(cfg)["dues"]
-        self.assertEqual(dues["stations"]["S2"], {"cutting": 1, "processing": 1, "sub_assembly": 5,
+        self.assertEqual(dues["stations"]["S1"], {"cutting": 1, "processing": 1, "sub_assembly": 5,
                                                   "block_assembly": 14, "grand_assembly": 20, "erection": 32})
-        self.assertEqual(dues["blocks"]["S2-GA1"], 20)
+        self.assertEqual(dues["blocks"]["S1-GA1"], 20)
 
     def test_back_calc_floor_is_day_one(self):
         # 소조립을 3일로 당기면 가공 3 − 2 − 1 = 0, 절단은 더 앞선다 → 둘 다 1일. 계획 간트 끝(가공 2일)이 넘쳐 계획상 위험
@@ -186,7 +186,7 @@ class Dues(unittest.TestCase):
         self.assertEqual(r["block_due"]["blocks"], 42)
         self.assertLess(r["block_due"]["on_time"], 42)
         self.assertEqual(r["management"]["schedule"]["block_due"], r["block_due"])
-        # B안(선박 순서의 블록 순서)은 인도 납기는 다 지키지만 S1의 도크 일정(PE장 26일)을 넘기는 블록이 있다
+        # B안(선박 순서의 블록 순서)은 인도 납기는 다 지키지만 S2의 도크 일정(PE장 26일)을 넘기는 블록이 있다
         managed = simulate(self.managed(), baseline=False)
         self.assertTrue(all(s["on_time"] for s in managed["ships"]))
         self.assertLess(managed["block_due"]["rate"], 1.0)
@@ -279,18 +279,18 @@ class BlockPlan(unittest.TestCase):
         self.assertIn("X-SA1", bp["risks"])
 
     def test_listed_order_is_shown_even_if_block_arrives_later(self):
-        # 목록 맨 앞이어도 아직 닿지 않은 블록은 기다리지 않는다: 실습 A안에서 S2-SA1(5일에 닿음)을 맨 앞에 두면
-        # 보이는 순서는 목록 그대로(S2-SA1이 첫 줄)이고, 막대는 3일에 닿는 S1 블록보다 늦다
-        cfg = {**load_presets("block")[0]["config"], "block_order": {"sub_assembly": ["S2-SA1"]}}
+        # 목록 맨 앞이어도 아직 닿지 않은 블록은 기다리지 않는다: 실습 A안에서 S1-SA1(5일에 닿음)을 맨 앞에 두면
+        # 보이는 순서는 목록 그대로(S1-SA1이 첫 줄)이고, 막대는 3일에 닿는 S2 블록보다 늦다
+        cfg = {**load_presets("block")[0]["config"], "block_order": {"sub_assembly": ["S1-SA1"]}}
         bp = preview(cfg)["block_plan"]
-        self.assertEqual(bp["order"]["sub_assembly"][:2], ["S2-SA1", "S1-SA1"])
-        self.assertGreater(bp["blocks"]["S2-SA1"]["start"], bp["blocks"]["S1-SA1"]["start"])
+        self.assertEqual(bp["order"]["sub_assembly"][:2], ["S1-SA1", "S2-SA1"])
+        self.assertGreater(bp["blocks"]["S1-SA1"]["start"], bp["blocks"]["S2-SA1"]["start"])
 
     def test_preset_sets_first_order(self):
-        # B안(관리)은 처음 블록 순서를 우선순위대로 S2(벌크선) 블록부터 둔다
+        # B안(관리)은 처음 블록 순서를 우선순위대로 S1(벌크선) 블록부터 둔다
         managed = load_presets("block")[1]["config"]
-        self.assertEqual(managed["block_order"]["sub_assembly"][:2], ["S2-SA1", "S2-SA2"])
-        self.assertEqual(preview(managed)["block_plan"]["order"]["sub_assembly"][0], "S2-SA1")
+        self.assertEqual(managed["block_order"]["sub_assembly"][:2], ["S1-SA1", "S1-SA2"])
+        self.assertEqual(preview(managed)["block_plan"]["order"]["sub_assembly"][0], "S1-SA1")
 
 
 class BlockStart(unittest.TestCase):
@@ -311,13 +311,13 @@ class BlockStart(unittest.TestCase):
         self.assertEqual((bp["Y-SA1"]["start"], bp["Y-SA1"]["end"]), (3, 3))
 
     def test_pinned_block_goes_before_listed_order(self):
-        # B안은 블록 순서 목록이 S2 블록을 앞에 둔다. S1-BA4는 11일에 들어갈 수 있지만(ready) S2 블록을 하느라 15일에 시작한다.
-        # 11일로 정하면 11일에 S2 블록보다 먼저 들어간다(막대가 놓은 자리에 머문다)
+        # B안은 블록 순서 목록이 S1 블록을 앞에 둔다. S2-BA4는 11일에 들어갈 수 있지만(ready) S1 블록을 하느라 15일에 시작한다.
+        # 11일로 정하면 11일에 S1 블록보다 먼저 들어간다(막대가 놓은 자리에 머문다)
         cfg = copy.deepcopy(load_presets("block")[1]["config"])
-        ba4 = preview(cfg)["block_plan"]["blocks"]["S1-BA4"]
+        ba4 = preview(cfg)["block_plan"]["blocks"]["S2-BA4"]
         self.assertEqual((ba4["ready"], ba4["start"]), (11, 15))
-        cfg["block_start"] = {"S1-BA4": 11}
-        self.assertEqual(preview(cfg)["block_plan"]["blocks"]["S1-BA4"]["start"], 11)
+        cfg["block_start"] = {"S2-BA4": 11}
+        self.assertEqual(preview(cfg)["block_plan"]["blocks"]["S2-BA4"]["start"], 11)
 
     def test_validation(self):
         cfg, sc = mini([("X", "FEEDER", 1, 40)])
@@ -331,7 +331,7 @@ class BlockStart(unittest.TestCase):
         # 추천은 블록 순서만 비우고 착수일은 그대로 둔다: 착수일을 늦추면 네 규칙의 비교도 따라 바뀐다
         cfg = copy.deepcopy(load_presets("block")[1]["config"])
         base = simulate(cfg, baseline=False)["recommend"]["rules"]
-        cfg["block_start"] = {f"S2-SA{k}": 9 for k in range(1, 9)}
+        cfg["block_start"] = {f"S1-SA{k}": 9 for k in range(1, 9)}
         later = simulate(cfg, baseline=False)["recommend"]["rules"]
         self.assertNotEqual([r["profit"] for r in base], [r["profit"] for r in later])
 
@@ -344,7 +344,7 @@ class Recommend(unittest.TestCase):
         return rc, {row["rule"]: row for row in rc["rules"]}
 
     def test_managed_gets_edd(self):
-        # B안: 네 규칙이 모두 다른 답(⑧ 조율). 인도 납기는 SPT만 놓치고(큰 S2를 미룸), 블록 납기는 지정한 S1 PE장 납기를 따르는
+        # B안: 네 규칙이 모두 다른 답(⑧ 조율). 인도 납기는 SPT만 놓치고(큰 S1을 미룸), 블록 납기는 지정한 S2 PE장 납기를 따르는
         # 납기 빠른 순(EDD)이 가장 높다. 인도 납기만 보는 여유 작은 순(slack)은 선박 순서보다도 낮다
         rc, rows = self.rows(1)
         self.assertEqual([row["rule"] for row in rc["rules"]], ["ship", "edd", "slack", "spt"])
@@ -357,7 +357,7 @@ class Recommend(unittest.TestCase):
         self.assertTrue(rc["current"]["block_order"])
 
     def test_dock_due_splits_edd_and_slack(self):
-        # B안에서 규칙만 바꾸면: 여유 작은 순은 인도 납기만 봐서 S1 PE장을 28일에 끝내 도크 일정 26일을 넘기고,
+        # B안에서 규칙만 바꾸면: 여유 작은 순은 인도 납기만 봐서 S2 PE장을 28일에 끝내 도크 일정 26일을 넘기고,
         # 납기 빠른 순은 21일에 지킨다. 도크 일정(공정 납기)을 지우면 둘은 같은 답이다
         def s1_pe_end(rule, dock=True):
             cfg = copy.deepcopy(load_presets("block")[1]["config"])
@@ -367,12 +367,12 @@ class Recommend(unittest.TestCase):
             for sid in ("sub_assembly", "block_assembly", "grand_assembly"):
                 cfg["stations"][sid]["dispatch"] = rule
             r = simulate(cfg, baseline=False)
-            return next(s for s in r["ships"] if s["id"] == "S1")["station_dues"]["grand_assembly"]["end"], r["block_due"]["rate"]
+            return next(s for s in r["ships"] if s["id"] == "S2")["station_dues"]["grand_assembly"]["end"], r["block_due"]["rate"]
         self.assertEqual((s1_pe_end("slack")[0], s1_pe_end("edd")[0]), (28, 21))
         self.assertEqual(s1_pe_end("slack", dock=False), s1_pe_end("edd", dock=False))
 
     def test_unmanaged_rule_alone_cannot_save_all(self):
-        # 무관리(수주 번호 순서): 규칙만으로는 3척을 다 지키지 못한다. 작업 짧은 순은 척수로 앞서지만 큰 S2를 크게 늦춘다
+        # 무관리(작은 배부터: 예인선 S2 → 벌크선 S1 → S3): 규칙만으로는 3척을 다 지키지 못한다. 작업 짧은 순은 척수로 앞서지만 큰 S1을 크게 늦춘다
         rc, rows = self.rows(0)
         self.assertEqual(rc["best"], "spt")
         self.assertTrue(all(r["on_time"] < 3 for r in rc["rules"]))
@@ -409,10 +409,10 @@ class DrillScenario(unittest.TestCase):
         self.assertEqual((r["grade"]["grade"], r["qcd"]["delivery"]["on_time"]), ("S", 3))
 
     def test_ship_order_misses_bulk(self):
-        # 실습의 판(4.25 ⑧): 수주 번호 순서로만 하면 가장 크고 납기가 빠른 벌크선 S2(32일)와 S3가 늦는다. S2를 1순위로 두면 다 지킨다
+        # 실습의 판(4.25 ⑧): 작은 배(예인선 S2)부터 하면 가장 크고 납기가 빠른 벌크선 S1(32일)과 S3가 늦는다. S1을 1순위로 두면 다 지킨다
         unmanaged, managed, _ = load_presets("block")
         late = {s["id"]: s["late_days"] for s in simulate(unmanaged["config"], baseline=False)["ships"]}
-        self.assertGreater(late["S2"], 0)
+        self.assertGreater(late["S1"], 0)
         self.assertGreater(late["S3"], 0)
         self.assertTrue(all(s["on_time"] for s in simulate(managed["config"], baseline=False)["ships"]))
 
