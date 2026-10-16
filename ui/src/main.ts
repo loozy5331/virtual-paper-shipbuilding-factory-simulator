@@ -8,17 +8,18 @@
 // 공정을 들여다보는 길: 전경의 정반, 간트 막대, 평가서의 "작업 현황에서 보기" → 오른쪽 모니터의 공정 확대(재생 중에도 오늘을 본다).
 // 사람의 얼굴과 이름은 작업모를 쓰고 현장(3D)에 직접 나가야 보인다(D24). 화면에는 "CCTV"라는 말을 쓰지 않는다(감시처럼 느껴져서).
 
-import { activeStations, api, ApiError, type ClassBest, type Config, type Finding, type Preview, type Result, type ScenarioPayload } from "./api";
+import { activeStations, api, ApiError, blockStations, type ClassBest, type Config, type DispatchRule, type Finding, type Preview, type Result, type ScenarioPayload } from "./api";
 import { h, mount, num, pct, s as svgEl } from "./dom";
 import { shipProfile } from "./profile";
 import { renderDesk } from "./desk";
 import { planLabel, renderForm, renderPlanBar, renderPlanNotes, renderPlanTabs, updatePreview, type FormContext } from "./form";
-import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
+import { renderGantt, renderShipGantt, renderStationGantt, type GanttPick } from "./gantt";
 import { docHead, REVIEWER } from "./paper";
 import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, PAIR_WAIT_EDGE, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, TRANSPORT_STATE } from "./labels";
-import { eventText, renderMemo, renderReport } from "./report";
+import { eventText, renderAssemblyReport, renderMemo, renderReport } from "./report";
 import { renderCctv } from "./cctv";
 import { renderShipBoard } from "./shipboard";
+import { assemblyBadge, focusAssemblyShip, isAssemblyError, renderAssemblySheet, updateAssemblySheet } from "./assembly-sheet";
 import { renderTrackCard, type TrackPick } from "./track";
 import { buildFrame, TRIAL_DEPART, type Frame } from "./scene/frame";
 import type { FieldView, Yard } from "./scene/yard";
@@ -75,6 +76,8 @@ interface State {
   current: number | null;        // 보고 있는 회차의 인덱스
   /** 간트에서 보는 배. null이면 전체. */
   ganttShip: string | null;
+  /** 4.25 공정 탭: 배 탭에서 고른 블록 공정(전체 > 선박 > 공정). null이면 그 배의 공정 전체 */
+  ganttStation?: string | null;
   day: number;
   playing: boolean;
   speed: number;
@@ -113,6 +116,9 @@ const els = {
   fieldOsd: h("div", { class: "osd field-osd", "data-group": "speed-field" }),
   sceneField: h("div", { class: "scene-host field-host" }),
   form: h("aside", { class: "form" }),
+  // 4.25(D71): 블록 조립 실습의 두 번째 낱장(조립 공정 계획서)과 클립보드 위 인덱스 탭
+  assemblyForm: h("aside", { class: "form assembly-form", hidden: true }),
+  sheetTabs: h("nav", { class: "sheet-tabs", "aria-label": "낱장" }),
   planBar: h("div", { class: "bar-row" }),
   planTabs: h("nav", { class: "plan-tabs", "aria-label": "계획안" }),
   // 생산계획서 오른쪽 포스트잇: 안·분기 설명(form.ts), 목표와 이번 세션 최고(goalNote)
@@ -186,8 +192,12 @@ function drawForm(): void {
     onPreset: loadPreset,
     onDesk: showDesk,
     onRun: run,
+    onOpenAssembly: (_station, ship) => { focusAssemblyShip(ship); planSheet = "assembly"; drawForm(); },
   };
   renderForm(els.form, ctx);
+  if (!state.data.scenario.block_mode) planSheet = "plan";
+  renderAssemblySheet(els.assemblyForm, { scenario: state.data.scenario, config: state.config, onEdit: ctx.onEdit });
+  drawSheetTabs();
   renderPlanBar(els.planBar, ctx);
   renderPlanNotes(els.planNotes, ctx);
   renderPlanTabs(els.planTabs, ctx);
@@ -195,8 +205,33 @@ function drawForm(): void {
 }
 
 /** 양식의 미리보기 숫자와 오류, 승인 버튼 상태를 갱신한다. */
+/** 평가서 클립보드의 낱장(4.25): 생산실적 평가서 | 조립 공정 실적서 | 뒷장 메모 */
+let reportSheet: "report" | "assembly" | "memo" = "report";
+
+/** 생산계획서 클립보드의 낱장(4.25, D71): 생산계획서 | 조립 공정 계획서. 한 번에 한 장만 보이고 탭으로 넘긴다(스크롤로 잇지 않는다) */
+let planSheet: "plan" | "assembly" = "plan";
+
+function drawSheetTabs(): void {
+  const block = !!state.data.scenario.block_mode;
+  els.form.hidden = block && planSheet !== "plan";
+  els.assemblyForm.hidden = !block || planSheet !== "assembly";
+  if (!block) { mount(els.sheetTabs, null); return; }
+  const badge = assemblyBadge(state.preview);
+  const warn = state.errors.some(isAssemblyError);
+  const tab = (id: typeof planSheet, label: string, extra: HTMLElement | null) => h("button", {
+    type: "button", class: `sheet-tab${planSheet === id ? " active" : ""}`, "aria-pressed": String(planSheet === id),
+    onclick: () => { planSheet = id; drawSheetTabs(); window.scrollTo(0, 0); },
+  }, label, extra);
+  mount(els.sheetTabs,
+    tab("plan", "생산계획서", state.errors.some((e) => !isAssemblyError(e)) ? h("span", { class: "warn" }, " ⚠") : null),
+    tab("assembly", "조립 공정 계획서",
+      warn ? h("span", { class: "warn" }, " ⚠") : badge ? h("span", { class: "sheet-badge", title: `계획상 위험 ${badge}곳` }, String(badge)) : null));
+}
+
 function updateForm(): void {
   updatePreview(els.form, state.preview, state.errors, state.busy);
+  updateAssemblySheet(els.assemblyForm, state.preview, state.errors);
+  drawSheetTabs();
   const blocked = state.busy || state.errors.length > 0;
   els.pen.classList.toggle("blocked", blocked);
   els.pen.setAttribute("aria-disabled", String(blocked));
@@ -461,11 +496,27 @@ async function switchScenario(id: string): Promise<void> {
   previewSeq++;
   Object.assign(state, {
     data, config: structuredClone(first.config), presetId: first.id, edited: false, preview: null, errors: [],
-    current: last ?? null, ganttShip: null, cctv: null, board: "none",
+    current: last ?? null, ganttShip: null, ganttStation: null, cctv: null, board: "none",
     day: last !== undefined && state.runs[last].finished ? data.scenario.days : 0,
   });
   drawForm();
   schedulePreview();
+}
+
+/** 평가서 선배의 팁의 "추천대로 다시 계획"(4.25, D71): 실행한 계획에서 블록 공정의 규칙만 추천 규칙으로 바꾸고
+ *  블록 순서를 비운 생산계획서로 간다. 나머지(인원, 착수일, 납기 등)는 그대로다. */
+async function applyRecommendedRule(runConfig: Config, rule: DispatchRule): Promise<void> {
+  const config = structuredClone(runConfig);
+  for (const b of blockStations(state.data.scenario)) {
+    if (rule === "ship") delete config.stations[b.id].dispatch;
+    else config.stations[b.id].dispatch = rule;
+  }
+  delete config.block_order;
+  state.config = config;
+  state.edited = true;
+  drawForm();   // 양식은 고친 설정으로 다시 그린다(openPlan은 화면만 옮긴다)
+  schedulePreview();
+  await backToPlan();
 }
 
 /** 평가서나 펼친 생산계획서의 "계획 고치기": 생산계획서 화면으로 계획을 고치러 간다. */
@@ -555,6 +606,7 @@ async function signAndRun(): Promise<void> {
     els.form.querySelector(".errors")?.scrollIntoView({ behavior: "smooth", block: "center" });
     return;
   }
+  if (planSheet !== "plan") { planSheet = "plan"; drawSheetTabs(); }   // 결재란은 생산계획서(PP-01)에 있다
   const box = els.form.querySelector<HTMLElement>('[data-sign="승인"]');
   if (!box) return void run();
   signing = true;
@@ -620,7 +672,8 @@ async function run(signer: Signer | null = null): Promise<void> {
   }
   state.runs.push({ n: state.runs.length + 1, scenario: state.data.scenario.id, label: runLabel(), config, result, finished: false, signer, preview });
   state.current = state.runs.length - 1;
-  Object.assign(state, { day: 0, ganttShip: null, cctv: null, board: "none", playing: false });
+  reportSheet = "report";   // 새 회차의 평가서는 첫 장부터
+  Object.assign(state, { day: 0, ganttShip: null, ganttStation: null, cctv: null, board: "none", playing: false });
 
   const source = els.plan.querySelector<HTMLElement>(".board-left");
   // 생산계획서 클립보드를 띄워 두고(복제), 관제실을 보이지 않게 그려 책상 위 자리를 잰다.
@@ -723,7 +776,9 @@ function drawGanttChart(): void {
   const screen = els.ganttScreen.getBoundingClientRect();
   const size = { width: chart.clientWidth, height: screen.bottom - chart.getBoundingClientRect().top - els.ganttScreen.scrollTop - 8 };
   const plan = r.preview?.plan;
-  mount(chart, ship ? renderShipGantt(result, scenario, ship.id, state.day, pickBar, size, plan) : renderGantt(result, scenario, state.day, pickBar, size, plan));
+  mount(chart, ship && state.ganttStation && result.blocks
+    ? renderStationGantt(result, scenario, ship.id, state.ganttStation, state.day, size)
+    : ship ? renderShipGantt(result, scenario, ship.id, state.day, pickBar, size, plan) : renderGantt(result, scenario, state.day, pickBar, size, plan));
 }
 
 /** 날짜가 바뀔 때마다 모니터(간트, 작업 현황, 사건 기록)와 재생 막대를 갱신한다. jump면 3D 소인이 걷지 않고 바로 옮긴다. */
@@ -1042,7 +1097,7 @@ function drawPlates(): void {
         onclick: () => {
           pause();
           state.current = i;
-          Object.assign(state, { day: run.finished ? run.result.days : 0, ganttShip: null, cctv: null, board: run.finished ? "down" : "none" });
+          Object.assign(state, { day: run.finished ? run.result.days : 0, ganttShip: null, ganttStation: null, cctv: null, board: run.finished ? "down" : "none" });
           drawRoom();
         },
       }, `${run.n}`, run.finished ? gradeChip(run.result.grade.grade, "chip-grade") : null))) : null);
@@ -1092,11 +1147,20 @@ function drawGanttScreen(): void {
   const shipTab = (id: string | null, label: string) =>
     h("button", {
       type: "button", class: `screen-tab${state.ganttShip === id ? " active" : ""}`,
-      onclick: () => { state.ganttShip = id; drawGanttScreen(); tick(true); },
+      onclick: () => { state.ganttShip = id; state.ganttStation = null; drawGanttScreen(); tick(true); },
+    }, label);
+  // 4.25 공정 탭(블록 조립 실습): 배를 고르면 [공정 전체 | 소조립 | 중조립 | PE장]
+  const blockSt = state.ganttShip && r.result.blocks ? blockStations(scenario) : [];
+  const stationTab = (id: string | null, label: string) =>
+    h("button", {
+      type: "button", class: `screen-tab small${(state.ganttStation ?? null) === id ? " active" : ""}`,
+      onclick: () => { state.ganttStation = id; drawGanttScreen(); tick(true); },
     }, label);
   const sameColor = LOSS_STATES.filter((l) => l.state !== "rework");
   mount(els.ganttScreen,
     h("div", { class: "screen-tabs" }, shipTab(null, "전체"), r.result.ships.map((sh) => shipTab(sh.id, sh.id))),
+    blockSt.length ? h("div", { class: "screen-tabs sub" }, stationTab(null, `${state.ganttShip} 공정 전체`),
+      blockSt.map((b) => stationTab(b.id, b.name))) : null,
     h("div", { class: "gantt-chart" }));
   mount(els.ganttLegend,
     // 공정 색은 전체 탭에만. 배 탭은 줄마다 공정 이름이 있다(4.12.7).
@@ -1234,8 +1298,28 @@ function drawReportBoard(): void {
   els.reportBoard.hidden = !shown;
   if (!shown || !r) return;
   const g = r.result.grade;
-  // 같은 클립보드에 두 장: 평가서와 그 뒤에 끼운 메모(부록·선배의 팁, 4.23). 둘이 함께 스크롤된다
-  mount(els.reportBoard, h("div", { class: "board-pages" },
+  // 같은 클립보드에 낱장 여러 장(4.25, 사용자): 생산실적 평가서 | 조립 공정 실적서(블록 실습만) | 뒷장 메모(부록·선배의 팁).
+  // 위 인덱스 탭으로 넘기고 한 번에 한 장만 보인다(4.23의 "함께 스크롤"을 바꿨다)
+  const assembly = renderAssemblyReport(r.result, state.data.scenario, (rule) => void applyRecommendedRule(r.config, rule));
+  if (reportSheet === "assembly" && !assembly) reportSheet = "report";
+  const sheetTab = (id: typeof reportSheet, label: string) => h("button", {
+    type: "button", class: `sheet-tab${reportSheet === id ? " active" : ""}`, "aria-pressed": String(reportSheet === id),
+    onclick: () => { reportSheet = id; drawReportBoard(); },
+  }, label);
+  const tabs = h("nav", { class: "sheet-tabs", "aria-label": "낱장" },
+    sheetTab("report", "생산실적 평가서"), assembly ? sheetTab("assembly", "조립 공정 실적서") : null, sheetTab("memo", "뒷장 메모"));
+  const actions = h("div", { class: "report-actions" },
+    h("span", { class: "hint" }, state.board === "up" ? "바깥 어두운 곳을 누르면 내려 둡니다" : "생산실적 평가서 · 누르면 다시 올림"),
+    h("button", { class: "btn primary small", type: "button", onclick: () => void backToPlan() }, "계획 고치기"));
+  const sheet = reportSheet === "memo"
+    ? h("div", { class: "report-sheet memo-page" }, actions, renderMemo(r.result, state.data.scenario, r.safetyWarnings))
+    : reportSheet === "assembly"
+      ? h("div", { class: "report-sheet" }, actions,
+        docHead({ title: "조립 공정 실적서", code: `PE-${r.n}-A`, approver: r.signer?.nickname,
+          fields: [["회차", `${r.n}회차`], ["설정", r.label]] }),
+        assembly)
+      : null;
+  mount(els.reportBoard, h("div", { class: "board-pages single" }, tabs, sheet ??
     h("div", { class: "report-sheet" },
       h("div", { class: "report-actions" },
         h("span", { class: "hint" }, state.board === "up" ? "바깥 어두운 곳을 누르면 내려 둡니다" : "생산실적 평가서 · 누르면 다시 올림"),
@@ -1252,8 +1336,7 @@ function drawReportBoard(): void {
         },
       }),
       // 현장 안전 경고는 평가서의 S 안전 칸에(4.14)
-      renderReport(r.result, state.data.scenario, state.data.max_rate, openFinding, r.safetyWarnings)),
-    renderMemo(r.result, state.data.scenario, r.safetyWarnings)));
+      renderReport(r.result, state.data.scenario, state.data.max_rate, openFinding, r.safetyWarnings))));
 }
 
 // ---------------------------------------------------------------------------
@@ -1579,7 +1662,7 @@ async function start(): Promise<void> {
     h("div", { class: "plan-bar" }, els.planBar),
     h("div", { class: "plan-body" },
       els.planTabs,
-      h("div", { class: "clipboard board-left" }, els.form),
+      h("div", { class: "clipboard board-left" }, els.sheetTabs, els.form, els.assemblyForm),
       h("aside", { class: "plan-notes", "aria-label": "메모" }, els.planNotes, els.goalNote)));
 
   monitor(els.monitorLeft, "left", "공정 간트", els.ganttScreen, els.ganttLegend, els.osd);

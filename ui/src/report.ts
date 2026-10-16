@@ -2,11 +2,11 @@
 // 뒷장 메모(4.23): 부록 7관리 지표와 선배의 팁.
 // 모든 숫자는 엔진 결과에 있는 값이다. 막대 길이와 차트 좌표를 정하는 비율만 화면에서 구한다.
 
-import type { Finding, Grade, Management, MgmtPoint, Result, Scenario, ShipResult, SimEvent } from "./api";
+import type { DispatchMetrics, DispatchRule, Finding, Grade, Management, MgmtPoint, Result, Scenario, ShipResult, SimEvent } from "./api";
 import { h, money, num, pct, s, signed } from "./dom";
 import { openOptions } from "./form";
 import { AUTHOR } from "./paper";
-import { COST_ITEMS, EVENT_NAME, GRADE_COLOR, GRADE_NOTE, GRADE_TEXT, LEAD_TIME_STATES, STATE_INFO, STATION_COLOR } from "./labels";
+import { COST_ITEMS, DISPATCH_INFO, EVENT_NAME, GRADE_COLOR, GRADE_NOTE, GRADE_TEXT, LEAD_TIME_STATES, STATE_INFO, STATION_COLOR } from "./labels";
 
 export function eventText(ev: SimEvent, scenario: Scenario): string {
   const station = (id: string) => scenario.stations.find((st) => st.id === id)?.name ?? id;
@@ -413,6 +413,46 @@ const FOCUS_TIP: Record<string, string> = {
   quality: "직행률이 90%에 못 미쳐. 위 부록의 품질 포인트를 봐.",
 };
 
+/** 블록 우선순위 추천(4.25, D71): 블록 순서를 비우고 규칙만 바꿔 더 돌린 네 결과와 지금 계획. 실행 뒤에만 보인다.
+ *  순위는 엔진이 정했다(인도 납기 → 블록 납기 → 이익 → 직행률). 화면은 숫자를 옮겨 적기만 한다. */
+function recommendCard(result: Result, onApplyRule?: (rule: DispatchRule) => void): HTMLElement | null {
+  const rc = result.recommend;
+  if (!rc) return null;
+  const best = rc.rules.find((r) => r.rule === rc.best)!;
+  const ships = result.qcd.delivery.ships;
+  const rate = (v: number | null) => (v === null ? "—" : pct(v, 0));
+  const row = (label: string, m: DispatchMetrics, cls: string) =>
+    h("tr", { class: cls }, h("th", null, label), h("td", null, `${m.on_time}/${ships}척`), h("td", null, rate(m.block_rate)),
+      h("td", null, money(m.profit)), h("td", null, rate(m.first_pass_yield)));
+  const diff = (name: string, a: number, b: number, unit: string, digits = 0) =>
+    (a === b ? null : `${name} ${a > b ? "+" : "−"}${num(Math.abs(a - b), digits)}${unit}`);
+  const gains = [
+    diff("인도 납기", best.on_time, rc.current.on_time, "척"),
+    best.block_rate !== null && rc.current.block_rate !== null
+      ? diff("블록 납기", Math.round(best.block_rate * 100), Math.round(rc.current.block_rate * 100), "%p") : null,
+    diff("이익", best.profit, rc.current.profit, "", 1),
+  ].filter(Boolean);
+  return h("div", { class: "tip-recommend" },
+    h("h4", null, "블록 우선순위"),
+    rc.current_is_best
+      ? h("p", null, h("b", null, "지금 계획이 네 규칙보다 못하지 않아."), " 블록 순서를 잘 정했어.")
+      : h("p", null, "블록 공정을 ", h("b", null, DISPATCH_INFO[rc.best].name), "으로 하면 ",
+        gains.length ? `${gains.join(", ")}.` : "같은 결과에 순위가 앞서.",
+        " 납기(D)를 먼저 보고, 같으면 이익(C)·직행률(Q)로 골랐어."),
+    best.on_time < ships
+      ? h("p", null, "규칙만 바꿔서는 납기를 못 맞추는 배가 있어. 블록 공정 앞(절단·가공)은 배 우선순위대로 하니까 ① 수주 목록의 우선순위부터 봐.")
+      : null,
+    h("table", { class: "tip-table" },
+      h("thead", null, h("tr", null, h("th", null, "규칙"), h("th", null, "인도 납기"), h("th", null, "블록 납기"), h("th", null, "이익"), h("th", null, "직행률"))),
+      h("tbody", null,
+        rc.rules.map((r) => row(DISPATCH_INFO[r.rule].name, r, r.rule === rc.best ? "tip-best" : "")),
+        row(rc.current.block_order ? "지금 계획(정한 순서)" : "지금 계획", rc.current, "tip-now"))),
+    !rc.current_is_best && onApplyRule
+      ? h("button", { type: "button", class: "btn small", onclick: () => onApplyRule(rc.best) },
+        `추천대로 다시 계획(${DISPATCH_INFO[rc.best].name})`)
+      : null);
+}
+
 function tipsCard(grade: Grade, scenario: Scenario): HTMLElement {
   const toS = grade.to_s;
   const lead = !toS ? null
@@ -437,4 +477,45 @@ export function renderMemo(result: Result, scenario: Scenario, safetyWarnings?: 
         mgmtCard(result.management, scenario, safetyWarnings))
       : null,
     tipsCard(result.grade, scenario));
+}
+
+/** 조립 공정 실적서(4.25, D71): 블록 조립 실습의 평가서 클립보드에 끼운 낱장. 조립 공정에 대한 결과를 모은다.
+ *  블록 납기 준수 요약, 배별 공정 납기 준수, 블록 우선순위 추천. 등급 점수와는 무관하다. 스크롤 없이 한 장에 든다. */
+export function renderAssemblyReport(result: Result, scenario: Scenario, onApplyRule?: (rule: DispatchRule) => void): HTMLElement | null {
+  const bd = result.block_due;
+  if (!bd || !result.blocks) return null;
+  const stations = activeStationsOf(scenario);
+  const blockSt = new Set(result.blocks.map((b) => b.station));
+  // 공정별 블록 납기 준수(블록 공정만)
+  const perStation = stations.filter((st) => blockSt.has(st.id)).map((st) => {
+    const bs = result.blocks!.filter((b) => b.station === st.id);
+    return { st, on: bs.filter((b) => b.on_time).length, n: bs.length, late: bs.reduce((a, b) => a + b.late_days, 0) };
+  });
+  const summary = h("div", { class: "asm-summary" },
+    h("div", { class: "qcd-card" }, h("small", null, "블록 납기 준수"), h("b", null, `${bd.on_time} / ${bd.blocks}`),
+      h("span", null, `준수율 ${bd.rate === null ? "—" : pct(bd.rate, 0)} · 늦은 날 합 ${bd.late_days}일`)),
+    h("table", { class: "tip-table asm-station-table" },
+      h("thead", null, h("tr", null, h("th", null, "블록 공정"), h("th", null, "지킨 블록"), h("th", null, "늦은 날 합"))),
+      h("tbody", null, perStation.map((r) => h("tr", null,
+        h("th", null, h("i", { class: "swatch", style: { background: STATION_COLOR[r.st.id] } }), r.st.name),
+        h("td", null, `${r.on} / ${r.n}`), h("td", null, `${r.late}일`))))));
+  // 배별 공정 납기: 마친 날 / 공정 납기, 넘겼으면 붉게
+  const dueTable = h("table", { class: "tip-table asm-due-table" },
+    h("thead", null, h("tr", null, h("th", null, "배"), stations.map((st) => h("th", null, st.name)))),
+    h("tbody", null, result.ships.map((sh) => h("tr", null,
+      h("th", null, sh.id),
+      stations.map((st) => {
+        const d = sh.station_dues?.[st.id];
+        if (!d) return h("td", null, "—");
+        return h("td", { class: d.late_days ? "late" : "", title: `공정 납기 ${d.due}일` },
+          d.end === null ? "못 마침" : `${d.end}일`, h("small", null, d.late_days ? ` +${d.late_days}` : ""));
+      })))));
+  return h("div", { class: "asm-report" },
+    h("section", { class: "report-sec" }, h("h3", null, "블록 납기"), summary),
+    h("section", { class: "report-sec" }, h("h3", null, "공정 납기 (마친 날, 붉은 칸은 납기를 넘김)"), dueTable),
+    h("section", { class: "report-sec" }, recommendCard(result, onApplyRule)));
+}
+
+function activeStationsOf(scenario: Scenario) {
+  return scenario.stations.filter((st) => !scenario.skip?.includes(st.id));
 }

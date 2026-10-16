@@ -402,6 +402,8 @@ export interface Segment {
 }
 
 export interface ShipResult {
+  /** 4.25(D71, 블록 조립 실습만): 공정마다 공정 납기, 마친 날(못 마쳤으면 null), 늦은 날 */
+  station_dues?: Record<string, { due: number; end: number | null; late_days: number }>;
   id: string;
   type: string;
   type_name: string;
@@ -432,6 +434,8 @@ export interface StationDay {
   state: string;
   ship: string | null;
   workers: number;
+  /** 4.25(블록 조립 실습): 그날 이 작업장에서 일한 블록(이어 하기로 여럿일 수 있다) */
+  blocks?: string[];
 }
 
 export interface StationResult {
@@ -581,6 +585,12 @@ export interface Result {
   grade: Grade;
   /** 4.15 7관리 지표. 옛 회차 결과에는 없다 */
   management?: Management;
+  /** 4.25(D71, 블록 조립 실습만): 블록마다 작업장·완료일·납기·하루 상태 */
+  blocks?: BlockResult[];
+  /** 4.25(D71, 블록 조립 실습만): 블록 납기 요약 */
+  block_due?: { blocks: number; on_time: number; rate: number | null; late_days: number };
+  /** 4.25: 평가서 선배의 팁의 우선순위 추천. 블록 순서를 비우고 규칙만 바꿔 더 돌린 네 결과와 지금 계획 */
+  recommend?: Recommend;
 }
 
 export class ApiError extends Error {
@@ -653,4 +663,19 @@ export const api = {
 export interface Peg {
   ship: string | null;
   quantity: number;
+}
+
+/** 추천이 비교하는 네 숫자(4.25): 인도 납기 준수 척 수, 블록 납기 준수율, 이익, 직행률 */
+export interface DispatchMetrics { on_time: number; block_rate: number | null; profit: number; first_pass_yield: number | null }
+export interface Recommend {
+  rules: (DispatchMetrics & { rule: DispatchRule })[];
+  best: DispatchRule;
+  current: DispatchMetrics & { rules: Record<string, DispatchRule>; block_order?: boolean };
+  current_is_best: boolean;
+}
+
+export interface BlockResult {
+  id: string; ship: string; station: string; no: number; unit: number | null; start: number | null; end: number | null;
+  done_day: number | null; defect: boolean; due: number; late_days: number; on_time: boolean;
+  daily: { state: string; unit: number | null }[];
 }

@@ -28,7 +28,7 @@ export interface PlanGanttContext {
   pickable?: string[];
   picked?: string | null;
   /** 끌지 않고 공정 막대를 눌렀다 */
-  onPickStation?(station: string): void;
+  onPickStation?(station: string, ship: string): void;
 }
 
 // 다시 그린 뒤에도 키보드로 옮기던 줄에 포커스를 돌려준다.
@@ -136,7 +136,7 @@ export function renderPlanGantt(ctx: PlanGanttContext): SVGElement {
       const rect = svg.getBoundingClientRect();
       const day = Math.floor((((e as PointerEvent).clientX - rect.left) * (W / rect.width) - LEFT) / dayW) + 1;
       const hit = activeStations(scenario).find((st) => spans[st.id] && spans[st.id].start <= day && day <= spans[st.id].end);
-      if (hit && ctx.pickable?.includes(hit.id)) ctx.onPickStation(hit.id);
+      if (hit && ctx.pickable?.includes(hit.id)) ctx.onPickStation(hit.id, sid);
     };
     row.addEventListener("pointerup", drop);
     row.addEventListener("pointercancel", () => drop());
