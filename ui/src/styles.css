@@ -1346,3 +1346,32 @@ details.block-plan > summary small { color: var(--ink-3); }
 .tip-table tbody th { font-weight: 500; text-align: left; }
 .tip-table tr.tip-best th, .tip-table tr.tip-best td { font-weight: 800; }
 .tip-table tr.tip-now th, .tip-table tr.tip-now td { color: var(--ink-2); font-style: italic; }
+/* 4.25 낱장 인덱스 탭: 클립보드 위 가장자리의 종이 탭. 누른 장만 보인다 */
+.sheet-tabs { display: flex; gap: 4px; padding: 0 10px; margin-bottom: -1px; position: relative; z-index: 1; }
+.sheet-tabs:empty { display: none; }
+.sheet-tab { padding: 4px 12px 3px; font: inherit; font-size: 0.82rem; font-weight: 700; color: var(--ink-2);
+  background: var(--paper-2, #f4f0e4); border: 1px solid var(--line); border-bottom: 0; border-radius: 6px 6px 0 0; cursor: pointer; }
+.sheet-tab.active { background: var(--paper, #fcfaf4); color: var(--ink); }
+.sheet-tab .warn { color: var(--bad); }
+.sheet-badge { display: inline-block; min-width: 1.3em; margin-left: 5px; padding: 0 4px; border-radius: 9px; background: var(--bad); color: #fff; font-size: 0.72rem; text-align: center; }
+/* 조립 공정 계획서(PP-02): 한 화면에 든다 */
+.assembly-form .asm-rule-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; align-items: center; }
+.assembly-form .asm-rule-grid .seg { justify-self: start; flex-wrap: wrap; }
+.assembly-form .asm-st { font-weight: 700; white-space: nowrap; }
+.assembly-form .asm-st .swatch, .block-table th .swatch { display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 2px; vertical-align: middle; }
+.assembly-form .asm-st small { color: var(--ink-3); font-weight: 500; }
+.asm-tabs, .asm-subtabs { margin: 4px 0; }
+.asm-subtabs .tab { font-size: 0.8rem; padding: 3px 10px; }
+/* 4.25 평가서 낱장: 탭으로 한 장씩(장끼리 스크롤로 잇지 않는다) */
+.board-pages.single { gap: 0; overflow: hidden; padding-bottom: 0; }
+.board-pages.single > .sheet-tabs { flex: none; padding-top: 2px; }
+.board-pages.single > .report-sheet { flex: 1 1 auto; min-height: 0; height: auto; overflow-y: auto; }
+.report-sheet.memo-page .memo-sheet { width: 100%; transform: none; }
+.asm-report .asm-summary { display: grid; grid-template-columns: minmax(150px, 0.8fr) minmax(0, 1.2fr); gap: 12px; align-items: start; }
+.asm-report .qcd-card { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); }
+.asm-report .qcd-card b { font-size: 1.5rem; }
+.asm-report .qcd-card small, .asm-report .qcd-card span { color: var(--ink-2); font-size: 0.8rem; }
+.asm-report .tip-table th .swatch { display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 2px; vertical-align: middle; }
+.asm-due-table td.late { color: var(--bad); font-weight: 700; }
+.asm-due-table td small { font-size: 0.72rem; }
+.asm-report .tip-recommend { border-top: 0; padding-top: 0; }

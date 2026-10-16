@@ -8,12 +8,12 @@ import { blockLabel, type BlockPlan, type Scenario } from "./api";
 import { s } from "./dom";
 import { STATION_COLOR } from "./labels";
 
-const W = 440;
+const W = 640;   // 조립 공정 계획서 폭에서 거의 1:1로 그려진다(글자·줄이 커지지 않게)
 const LEFT = 64;
 const RIGHT = 10;
 const TOP = 20;
-const ROW_H = 15;
-const BAR_H = 10;
+const ROW_H = 11;
+const BAR_H = 7;
 
 export interface BlockGanttContext {
   scenario: Scenario;

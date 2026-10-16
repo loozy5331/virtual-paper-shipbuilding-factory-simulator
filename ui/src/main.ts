@@ -16,9 +16,10 @@ import { planLabel, renderForm, renderPlanBar, renderPlanNotes, renderPlanTabs, 
 import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
 import { docHead, REVIEWER } from "./paper";
 import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, PAIR_WAIT_EDGE, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, TRANSPORT_STATE } from "./labels";
-import { eventText, renderMemo, renderReport } from "./report";
+import { eventText, renderAssemblyReport, renderMemo, renderReport } from "./report";
 import { renderCctv } from "./cctv";
 import { renderShipBoard } from "./shipboard";
+import { assemblyBadge, focusAssemblyStation, isAssemblyError, renderAssemblySheet, updateAssemblySheet } from "./assembly-sheet";
 import { renderTrackCard, type TrackPick } from "./track";
 import { buildFrame, TRIAL_DEPART, type Frame } from "./scene/frame";
 import type { FieldView, Yard } from "./scene/yard";
@@ -113,6 +114,9 @@ const els = {
   fieldOsd: h("div", { class: "osd field-osd", "data-group": "speed-field" }),
   sceneField: h("div", { class: "scene-host field-host" }),
   form: h("aside", { class: "form" }),
+  // 4.25(D71): 블록 조립 실습의 두 번째 낱장(조립 공정 계획서)과 클립보드 위 인덱스 탭
+  assemblyForm: h("aside", { class: "form assembly-form", hidden: true }),
+  sheetTabs: h("nav", { class: "sheet-tabs", "aria-label": "낱장" }),
   planBar: h("div", { class: "bar-row" }),
   planTabs: h("nav", { class: "plan-tabs", "aria-label": "계획안" }),
   // 생산계획서 오른쪽 포스트잇: 안·분기 설명(form.ts), 목표와 이번 세션 최고(goalNote)
@@ -186,8 +190,12 @@ function drawForm(): void {
     onPreset: loadPreset,
     onDesk: showDesk,
     onRun: run,
+    onOpenAssembly: (station) => { focusAssemblyStation(station); planSheet = "assembly"; drawForm(); },
   };
   renderForm(els.form, ctx);
+  if (!state.data.scenario.block_mode) planSheet = "plan";
+  renderAssemblySheet(els.assemblyForm, { scenario: state.data.scenario, config: state.config, onEdit: ctx.onEdit });
+  drawSheetTabs();
   renderPlanBar(els.planBar, ctx);
   renderPlanNotes(els.planNotes, ctx);
   renderPlanTabs(els.planTabs, ctx);
@@ -195,8 +203,33 @@ function drawForm(): void {
 }
 
 /** 양식의 미리보기 숫자와 오류, 승인 버튼 상태를 갱신한다. */
+/** 평가서 클립보드의 낱장(4.25): 생산실적 평가서 | 조립 공정 실적서 | 뒷장 메모 */
+let reportSheet: "report" | "assembly" | "memo" = "report";
+
+/** 생산계획서 클립보드의 낱장(4.25, D71): 생산계획서 | 조립 공정 계획서. 한 번에 한 장만 보이고 탭으로 넘긴다(스크롤로 잇지 않는다) */
+let planSheet: "plan" | "assembly" = "plan";
+
+function drawSheetTabs(): void {
+  const block = !!state.data.scenario.block_mode;
+  els.form.hidden = block && planSheet !== "plan";
+  els.assemblyForm.hidden = !block || planSheet !== "assembly";
+  if (!block) { mount(els.sheetTabs, null); return; }
+  const badge = assemblyBadge(state.preview);
+  const warn = state.errors.some(isAssemblyError);
+  const tab = (id: typeof planSheet, label: string, extra: HTMLElement | null) => h("button", {
+    type: "button", class: `sheet-tab${planSheet === id ? " active" : ""}`, "aria-pressed": String(planSheet === id),
+    onclick: () => { planSheet = id; drawSheetTabs(); window.scrollTo(0, 0); },
+  }, label, extra);
+  mount(els.sheetTabs,
+    tab("plan", "생산계획서", state.errors.some((e) => !isAssemblyError(e)) ? h("span", { class: "warn" }, " ⚠") : null),
+    tab("assembly", "조립 공정 계획서",
+      warn ? h("span", { class: "warn" }, " ⚠") : badge ? h("span", { class: "sheet-badge", title: `계획상 위험 ${badge}곳` }, String(badge)) : null));
+}
+
 function updateForm(): void {
   updatePreview(els.form, state.preview, state.errors, state.busy);
+  updateAssemblySheet(els.assemblyForm, state.preview, state.errors);
+  drawSheetTabs();
   const blocked = state.busy || state.errors.length > 0;
   els.pen.classList.toggle("blocked", blocked);
   els.pen.setAttribute("aria-disabled", String(blocked));
@@ -571,6 +604,7 @@ async function signAndRun(): Promise<void> {
     els.form.querySelector(".errors")?.scrollIntoView({ behavior: "smooth", block: "center" });
     return;
   }
+  if (planSheet !== "plan") { planSheet = "plan"; drawSheetTabs(); }   // 결재란은 생산계획서(PP-01)에 있다
   const box = els.form.querySelector<HTMLElement>('[data-sign="승인"]');
   if (!box) return void run();
   signing = true;
@@ -636,6 +670,7 @@ async function run(signer: Signer | null = null): Promise<void> {
   }
   state.runs.push({ n: state.runs.length + 1, scenario: state.data.scenario.id, label: runLabel(), config, result, finished: false, signer, preview });
   state.current = state.runs.length - 1;
+  reportSheet = "report";   // 새 회차의 평가서는 첫 장부터
   Object.assign(state, { day: 0, ganttShip: null, cctv: null, board: "none", playing: false });
 
   const source = els.plan.querySelector<HTMLElement>(".board-left");
@@ -1250,8 +1285,28 @@ function drawReportBoard(): void {
   els.reportBoard.hidden = !shown;
   if (!shown || !r) return;
   const g = r.result.grade;
-  // 같은 클립보드에 두 장: 평가서와 그 뒤에 끼운 메모(부록·선배의 팁, 4.23). 둘이 함께 스크롤된다
-  mount(els.reportBoard, h("div", { class: "board-pages" },
+  // 같은 클립보드에 낱장 여러 장(4.25, 사용자): 생산실적 평가서 | 조립 공정 실적서(블록 실습만) | 뒷장 메모(부록·선배의 팁).
+  // 위 인덱스 탭으로 넘기고 한 번에 한 장만 보인다(4.23의 "함께 스크롤"을 바꿨다)
+  const assembly = renderAssemblyReport(r.result, state.data.scenario, (rule) => void applyRecommendedRule(r.config, rule));
+  if (reportSheet === "assembly" && !assembly) reportSheet = "report";
+  const sheetTab = (id: typeof reportSheet, label: string) => h("button", {
+    type: "button", class: `sheet-tab${reportSheet === id ? " active" : ""}`, "aria-pressed": String(reportSheet === id),
+    onclick: () => { reportSheet = id; drawReportBoard(); },
+  }, label);
+  const tabs = h("nav", { class: "sheet-tabs", "aria-label": "낱장" },
+    sheetTab("report", "생산실적 평가서"), assembly ? sheetTab("assembly", "조립 공정 실적서") : null, sheetTab("memo", "뒷장 메모"));
+  const actions = h("div", { class: "report-actions" },
+    h("span", { class: "hint" }, state.board === "up" ? "바깥 어두운 곳을 누르면 내려 둡니다" : "생산실적 평가서 · 누르면 다시 올림"),
+    h("button", { class: "btn primary small", type: "button", onclick: () => void backToPlan() }, "계획 고치기"));
+  const sheet = reportSheet === "memo"
+    ? h("div", { class: "report-sheet memo-page" }, actions, renderMemo(r.result, state.data.scenario, r.safetyWarnings))
+    : reportSheet === "assembly"
+      ? h("div", { class: "report-sheet" }, actions,
+        docHead({ title: "조립 공정 실적서", code: `PE-${r.n}-A`, approver: r.signer?.nickname,
+          fields: [["회차", `${r.n}회차`], ["설정", r.label]] }),
+        assembly)
+      : null;
+  mount(els.reportBoard, h("div", { class: "board-pages single" }, tabs, sheet ??
     h("div", { class: "report-sheet" },
       h("div", { class: "report-actions" },
         h("span", { class: "hint" }, state.board === "up" ? "바깥 어두운 곳을 누르면 내려 둡니다" : "생산실적 평가서 · 누르면 다시 올림"),
@@ -1268,8 +1323,7 @@ function drawReportBoard(): void {
         },
       }),
       // 현장 안전 경고는 평가서의 S 안전 칸에(4.14)
-      renderReport(r.result, state.data.scenario, state.data.max_rate, openFinding, r.safetyWarnings)),
-    renderMemo(r.result, state.data.scenario, r.safetyWarnings, (rule) => void applyRecommendedRule(r.config, rule))));
+      renderReport(r.result, state.data.scenario, state.data.max_rate, openFinding, r.safetyWarnings))));
 }
 
 // ---------------------------------------------------------------------------
@@ -1595,7 +1649,7 @@ async function start(): Promise<void> {
     h("div", { class: "plan-bar" }, els.planBar),
     h("div", { class: "plan-body" },
       els.planTabs,
-      h("div", { class: "clipboard board-left" }, els.form),
+      h("div", { class: "clipboard board-left" }, els.sheetTabs, els.form, els.assemblyForm),
       h("aside", { class: "plan-notes", "aria-label": "메모" }, els.planNotes, els.goalNote)));
 
   monitor(els.monitorLeft, "left", "공정 간트", els.ganttScreen, els.ganttLegend, els.osd);
