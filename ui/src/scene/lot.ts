@@ -135,6 +135,8 @@ export class Lot {
   floatPhase = 0;
   /** 나눠 하는 중이면 부분마다 로트 기준 자리(로컬)와 짝 대기 여부. 블록을 열(짝) 단위로 나눠 그린다. 3.0 */
   split: { offset: THREE.Vector3; waiting: boolean }[] | null = null;
+  /** 블록 조각(4.25 블록 실습)이면 보일 소블록 자리(0~7). 나머지 블록은 다른 조각이 그린다. null이면 모두 */
+  mask: Set<number> | null = null;
   /** 지금 블록을 나눠 그린 부분 자리(로컬). 나눠 그리지 않으면 null(추적 고리를 부분마다 둔다) */
   splitDrawn: THREE.Vector3[] | null = null;
   /** 부분마다 "짝 대기" 칩(2호·3호 부분용 2개 + 1호 부분용 1개) */
@@ -259,7 +261,7 @@ export class Lot {
       const z = (r - 0.5) * (BLOCK_Z + gr);
       let zLift: number | null = null;
       let y = BLOCK_H / 2;
-      let visible = u < visibleUnits && stage < 4;
+      let visible = u < visibleUnits && stage < 4 && (!this.mask || this.mask.has(u));
       if (stage === 3 && lift) {
         // 탑재 첫날 아침(4.7.5): 걸리버 손이 PE장 정반(dx, dz)에서 대블록 둘을 하나씩 도크로 옮긴다.
         // 한 번 오갈 때: 앞 35%는 빈손으로 PE장에 가고, 그다음 블록을 들어 도크 쌓는 자리에 내려놓는다.

@@ -24,19 +24,21 @@ export function stockSpot(station: number, index: number): { x: number; z: numbe
 /**
  * 적치장에 놓일 블록과 그 자리. 키: `q:배`(들어갈 차례), `o:배`(운반 대기), `w:배:작업장`(짝 대기).
  * station은 적치장 칸 번호(stockSpot에 그대로 넘긴다). 칸이 없는 공정(탑재·안벽의장·시운전)의 블록은 넣지 않는다.
+ * pieces(3D, 4.25 블록 실습): 블록이 흩어진 배는 로트 대신 블록 조각이 칸을 쓴다. 키의 배 자리에 조각 이름(id)
  */
-export function stockAssign(f: Frame): Map<string, { station: number; index: number; reason: "queue" | "outbound" | "pair" }> {
+export function stockAssign(f: Frame, pieces = false): Map<string, { station: number; index: number; reason: "queue" | "outbound" | "pair" }> {
   const out = new Map<string, { station: number; index: number; reason: "queue" | "outbound" | "pair" }>();
+  const lots = pieces ? [...f.lots.filter((l) => !l.inBlocks), ...f.pieces] : f.lots;
   for (let slot = 0; slot < STOCK_STATIONS; slot++) {
     let i = 0;
     const here = (p: number) => STOCK_OF[p] === slot;
-    for (const l of f.lots.filter((v) => v.place === "queue" && here(v.station)).sort((a, b) => a.slot - b.slot)) {
-      out.set(`q:${l.ship}`, { station: slot, index: i++, reason: "queue" });
+    for (const l of lots.filter((v) => v.place === "queue" && here(v.station)).sort((a, b) => a.slot - b.slot)) {
+      out.set(`q:${l.id ?? l.ship}`, { station: slot, index: i++, reason: "queue" });
     }
-    for (const l of f.lots.filter((v) => v.place === "outbound" && here(v.station)).sort((a, b) => a.slot - b.slot)) {
-      out.set(`o:${l.ship}`, { station: slot, index: i++, reason: "outbound" });
+    for (const l of lots.filter((v) => v.place === "outbound" && here(v.station)).sort((a, b) => a.slot - b.slot)) {
+      out.set(`o:${l.id ?? l.ship}`, { station: slot, index: i++, reason: "outbound" });
     }
-    for (const l of f.lots.filter((v) => v.place === "bench" && here(v.station) && v.parts)) {
+    for (const l of lots.filter((v) => v.place === "bench" && here(v.station) && v.parts)) {
       for (const pt of l.parts!) {
         if (pt.state === "pair_wait") out.set(`w:${l.ship}:${pt.unit}`, { station: slot, index: i++, reason: "pair" });
       }
