@@ -1380,7 +1380,6 @@ details.block-plan > summary small { color: var(--ink-3); }
 .asm-report .tip-recommend { border-top: 0; padding-top: 0; }
 .block-gantt .block-group { font-size: 9px; font-weight: 800; fill: var(--ink-2); }
 .block-gantt .block-group-line { stroke: var(--line); }
-.asm-view { margin: 2px 0 4px; }
 /* 4.25 관제실 간트 공정 탭(전체 > 선박 > 공정) */
 .screen-tabs.sub { margin-top: -2px; }
 .screen-tab.small { font-size: 0.78rem; padding: 2px 9px; }
@@ -1418,3 +1417,16 @@ details.block-plan > summary small { color: var(--ink-3); }
 .block-gantt .lane-id { font-size: 8px; fill: var(--ink-3); }
 .block-gantt .unit-label { font-size: 6.5px; font-weight: 700; text-anchor: middle; pointer-events: none; }
 .block-gantt .lane { fill: var(--paper-2); }
+.block-gantt .block-window.extra { opacity: 0.08; }
+/* 4.27.1 조립 공정 계획서 블록 일정 크게 보기: 관제실 모니터 최대화처럼 화면 가득(body에 붙인 층) */
+.asm-mode { margin: 2px 0 4px; }
+.asm-zoom-backdrop { position: fixed; inset: 0; z-index: 90; background: rgba(20, 24, 20, 0.55); cursor: zoom-out; }
+.asm-zoom { position: fixed; inset: 14px; z-index: 91; display: flex; flex-direction: column; background: var(--paper); border-radius: 6px; overflow: hidden; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35); }
+.asm-zoom .win-titlebar { display: flex; align-items: center; gap: 12px; }
+.asm-zoom .win-buttons { margin-left: auto; height: 100%; }
+.asm-zoom .restore-btn { width: auto; padding: 0 14px; font-size: 13px; }
+.asm-zoom-tabs { display: flex; gap: 4px; }
+.asm-zoom-tabs .tab { border: 1px solid var(--line); background: var(--paper-2); border-radius: 4px; padding: 2px 10px; font-size: 13px; cursor: pointer; }
+.asm-zoom-tabs .tab.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.asm-zoom-body { flex: 1; min-height: 0; overflow: auto; padding: 10px 18px 14px; }
+.asm-zoom-body .block-gantt { max-height: calc(100vh - 150px); }

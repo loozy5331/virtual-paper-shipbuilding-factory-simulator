@@ -4,7 +4,8 @@
 //   위: 작업장마다 한 줄. 이 배의 블록은 공정 색(블록 이름), 다른 배의 블록은 회색이라 "다른 배 블록을 하느라 늦는다"가 보인다.
 //   아래: 이 배의 블록마다 한 줄(블록 번호 순, 착수일을 바꿔도 줄은 그대로). 들어갈 수 있는데 작업장이 차서 기다린 날은 얇은 띠.
 // 막대를 좌우로 끌어 그 블록의 착수일(block_start)을 정한다. Alt+←/→도 같다(하루씩). 끌 수 있는 범위는 생산계획서 계획 간트의
-// 그 배 그 공정 기간(옅은 띠)이고, 막대가 띠 밖에 있으면 지금 자리까지 넓힌다(끌 때 막대가 반대쪽으로 튀지 않게).
+// 그 배 그 공정 시작일부터 공정 납기까지(4.27.1 사용자 "가": 공정 기간만으로는 막대가 띠를 꽉 채워 움직일 데가 없다)이고 옅은 띠로
+// 보인다(계획 공정 기간은 조금 진하게). 막대가 띠 밖에 있으면 지금 자리까지 넓힌다(끌 때 막대가 반대쪽으로 튀지 않게).
 // 화면은 계산하지 않는다: 착수일을 바꾸면 미리보기가 새 막대를 준다(작업장이 차 있으면 정한 날보다 늦게 놓일 수 있다).
 
 import { blockLabel, type BlockPlan, type Scenario, type Span } from "./api";
@@ -30,8 +31,10 @@ export interface BlockGanttContext {
   stations: { id: string; name: string }[];
   /** 공정마다 작업장 수 */
   units: Record<string, number>;
-  /** 공정마다 끌 수 있는 범위: 생산계획서 계획 간트의 이 배 공정 기간 */
+  /** 생산계획서 계획 간트의 이 배 공정 기간(끌 수 있는 범위의 시작) */
   windows: Record<string, Span | undefined>;
+  /** 이 배의 공정 납기(끌 수 있는 범위의 끝, 공정 기간보다 이르면 공정 기간 끝) */
+  dues: Record<string, number | undefined>;
   /** 착수일을 정한 블록(블록 이름 → 날) */
   starts: Record<string, number>;
   /** 블록 하나의 착수일을 정했다 */
@@ -45,14 +48,14 @@ export function renderBlockGantt(ctx: BlockGanttContext): SVGElement {
   const items = Object.entries(plan.blocks);
   // 공정마다 이 배의 블록(블록 번호 순)과 그 공정의 모든 블록(작업장 줄)
   const groups = ctx.stations.map((st) => ({
-    st, win: ctx.windows[st.id], n: Math.max(1, ctx.units[st.id] ?? 1),
+    st, win: ctx.windows[st.id], until: Math.max(ctx.windows[st.id]?.end ?? 0, ctx.dues[st.id] ?? 0), n: Math.max(1, ctx.units[st.id] ?? 1),
     all: items.map(([, b]) => b).filter((b) => b.station === st.id),
     ids: items.filter(([, b]) => b.station === st.id && b.ship === ship).sort(([, a], [, b]) => a.no - b.no).map(([id]) => id),
   }));
   const mine = groups.flatMap((g) => g.ids.map((id) => plan.blocks[id]));
   const wins = groups.flatMap((g) => (g.win ? [g.win] : []));
   const first = Math.max(1, Math.min(...mine.map((b) => Math.min(b.ready, b.start)), ...wins.map((w) => w.start)) - 1);
-  const last = Math.min(ctx.scenario.days, Math.max(...mine.map((b) => Math.max(b.end, b.due)), ...wins.map((w) => w.end)) + 1);
+  const last = Math.min(ctx.scenario.days, Math.max(...mine.map((b) => Math.max(b.end, b.due)), ...groups.map((g) => g.until)) + 1);
   const span = last - first + 1;
   const dayW = (W - LEFT - RIGHT) / span;
   const x = (day: number) => LEFT + (day - first) * dayW;
@@ -68,7 +71,7 @@ export function renderBlockGantt(ctx: BlockGanttContext): SVGElement {
   svg.append(axis);
 
   let y = TOP;
-  for (const { st, win, n, all, ids } of groups) {
+  for (const { st, win, until, n, all, ids } of groups) {
     svg.append(s("text", { x: 4, y: y + HEAD_H - 3, class: "block-group" }, st.name));
     svg.append(s("line", { x1: 0, x2: W, y1: y + 0.5, y2: y + 0.5, class: "block-group-line" }));
     y += HEAD_H;
@@ -110,19 +113,25 @@ export function renderBlockGantt(ctx: BlockGanttContext): SVGElement {
     }
     y += n * UNIT_H + GAP;
 
-    // 끌 수 있는 범위: 이 공정 블록 줄 뒤에 옅은 공정 색 띠
+    // 끌 수 있는 범위: 이 공정 블록 줄 뒤에 옅은 공정 색 띠. 계획 공정 기간은 조금 진하게, 그 뒤 공정 납기까지는 더 옅게
     if (win) {
       svg.append(s("rect", {
         x: x(win.start), y, width: (win.end - win.start + 1) * dayW, height: ids.length * ROW_H, rx: 2,
         fill: STATION_COLOR[st.id], class: "block-window",
-      }, s("title", null, `${st.name} 블록을 옮길 수 있는 범위: 생산계획서 계획 간트의 ${ship} ${st.name} ${win.start}~${win.end}일`)));
+      }, s("title", null, `${st.name} 블록을 옮길 수 있는 범위 ${win.start}~${until}일 중 생산계획서 계획 간트의 ${ship} ${st.name} 공정 기간 ${win.start}~${win.end}일`)));
+      if (until > win.end) {
+        svg.append(s("rect", {
+          x: x(win.end + 1), y, width: (until - win.end) * dayW, height: ids.length * ROW_H, rx: 2,
+          fill: STATION_COLOR[st.id], class: "block-window extra",
+        }, s("title", null, `${st.name} 블록을 옮길 수 있는 범위 ${win.start}~${until}일 중 공정 기간 뒤 공정 납기(${until}일)까지`)));
+      }
     }
     ids.forEach((id, i) => {
       const b = plan.blocks[id];
       const len = b.end - b.start + 1;
-      // 막대 끝까지 띠 안에 들게: 착수일은 띠 시작 ~ 띠 끝 − 막대 길이 + 1. 막대가 띠 밖이면 지금 자리까지 넓힌다
+      // 막대 끝까지 띠 안에 들게: 착수일은 공정 시작일 ~ 공정 납기 − 막대 길이 + 1. 막대가 띠 밖이면 지금 자리까지 넓힌다
       const lo = Math.min(win ? win.start : 1, b.start);
-      const hi = Math.max(win ? win.end - len + 1 : ctx.scenario.days, b.start);
+      const hi = Math.max(win ? until - len + 1 : ctx.scenario.days, b.start);
       const pinned = ctx.starts[id] !== undefined;
       const waited = b.start - b.ready;
       const ry = y + i * ROW_H;
