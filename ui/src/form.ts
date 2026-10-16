@@ -8,6 +8,7 @@ import { activeStations, blockId, blockLabel, blockStations, completeConfig, sta
 import { h, mount, money, num, pct, s } from "./dom";
 import { DISPATCH_INFO, STATION_COLOR } from "./labels";
 import { docHead } from "./paper";
+import { renderBlockGantt } from "./block-plan-gantt";
 import { conflictText, renderPlanGantt, riskText } from "./plan-gantt";
 import { renderShipSpec } from "./spec";
 
@@ -252,7 +253,10 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
     h("p", { class: "hint", "data-preview": "conflicts" }),
     // 4.25(D71): 계획상 위험은 겹침과 원인이 다르다. 겹침 = 같은 작업장을 다툼, 위험 = 혼자 써도 공정 납기에 못 맞춤
     scenario.block_mode ? h("p", { class: "hint plan-risk", "data-preview": "risks" }) : null,
-    h("p", { class: "hint" }, "막대는 배 한 척이 작업장을 혼자 쓸 때의 일정입니다. 겹치는 날은 뒤 순위 배가 기다립니다."),
+    // 4.25: 블록 공정 막대를 누르면 그 공정의 블록 일정이 여기에 펼쳐진다(끌어서 순서를 바꾼다)
+    scenario.block_mode ? h("div", { class: "block-panel", "data-block-panel": "" }) : null,
+    h("p", { class: "hint" }, "막대는 배 한 척이 작업장을 혼자 쓸 때의 일정입니다. 겹치는 날은 뒤 순위 배가 기다립니다.",
+      scenario.block_mode ? " 소조립·중조립·PE장 막대를 누르면 그 공정의 블록 일정이 펼쳐지고, 블록을 끌어 작업 순서를 바꿉니다." : ""),
   );
 
   // ② 탭
@@ -636,9 +640,9 @@ function shipPane(ctx: FormContext, sid: string, onSpec: () => void): HTMLElemen
     blockPlan(ctx, sid));
 }
 
-/** 블록 계획(4.25, D71, 블록 조립 실습만): 이 배의 공정 납기, 블록 납기, 서두름.
+/** 공정·블록 납기 표(4.25, D71, 블록 조립 실습만): 이 배의 공정 납기와 블록 납기를 숫자로 고친다(접혀 있다).
  *  빈 칸은 엔진이 역산한 기본값이다(자리 표시 글자로 미리보기 값을 보인다). 숫자를 적은 칸만 기본값을 바꾼다.
- *  입력 중에는 다시 그리지 않는다. 서두름은 누를 때 순서 번호가 바뀌므로 다시 그린다. */
+ *  입력 중에는 다시 그리지 않는다. 블록 작업 순서는 ① 계획 간트에서 공정을 펼쳐 끌어 정한다. */
 function blockPlan(ctx: FormContext, sid: string): HTMLElement | null {
   const { scenario, config } = ctx;
   const bst = blockStations(scenario);
@@ -663,12 +667,6 @@ function blockPlan(ctx: FormContext, sid: string): HTMLElement | null {
     if (v === null) delete blocks[bid]; else blocks[bid] = v;
     tidy();
   };
-  const toggleRush = (bid: string) => {
-    const rush = config.rush ?? [];
-    config.rush = rush.includes(bid) ? rush.filter((b) => b !== bid) : [...rush, bid];
-    if (!config.rush.length) delete config.rush;
-    ctx.onEdit(true);
-  };
   const dayInput = (value: number | undefined, key: string, label: string, onSet: (v: number | null) => void) =>
     h("input", {
       type: "number", class: "day-input", min: 1, max: scenario.days, value: value ?? "", "data-preview": key,
@@ -689,23 +687,18 @@ function blockPlan(ctx: FormContext, sid: string): HTMLElement | null {
       h("td", null, b
         ? h("div", { class: "block-chips" }, Array.from({ length: b.count }, (_, k) => {
           const bid = blockId(sid, st.id, k + 1);
-          const order = (config.rush ?? []).indexOf(bid);
-          return h("span", { class: `block-chip${order >= 0 ? " rush" : ""}` },
+          return h("span", { class: "block-chip" },
             h("b", null, blockLabel(st.id, k + 1)),
-            dayInput(config.due?.blocks?.[bid], `bdue:${bid}`, `${bid} 블록 납기`, (v) => setBlockDue(bid, v)),
-            h("button", {
-              type: "button", class: "rush-btn", "aria-pressed": String(order >= 0),
-              title: order >= 0 ? "서두름을 뺍니다" : "규칙보다 먼저 합니다(누른 순서대로)",
-              onclick: () => toggleRush(bid),
-            }, order >= 0 ? `서두름 ${order + 1}` : "서두름"));
+            dayInput(config.due?.blocks?.[bid], `bdue:${bid}`, `${bid} 블록 납기`, (v) => setBlockDue(bid, v)));
         }))
         : h("small", { class: "hint" }, "배 한 척 단위")));
   });
-  return h("div", { class: "block-plan" },
-    h("div", { class: "field-row" }, h("span", { class: "field-label" }, "블록 계획"),
-      h("small", null, "공정 납기 · 블록 납기 · 서두름. 빈 칸은 인도 납기에서 역산한 기본값")),
+  // 블록 순서는 ① 계획 간트에서 끌어 정한다. 납기 숫자를 직접 고칠 때만 이 표를 펼친다
+  return h("details", { class: "block-plan" },
+    h("summary", null, h("b", null, "공정·블록 납기 표"),
+      h("small", null, " 빈 칸은 인도 납기에서 역산한 기본값 · 블록 순서는 ① 계획 간트에서")),
     h("table", { class: "plan block-table" },
-      h("thead", null, h("tr", null, h("th", null, "공정"), h("th", null, "공정 납기"), h("th", null, "블록 (납기 · 서두름)"))),
+      h("thead", null, h("tr", null, h("th", null, "공정"), h("th", null, "공정 납기"), h("th", null, "블록 납기"))),
       h("tbody", null, rows)),
     h("p", { class: "hint" }, "공정 납기를 당기면 앞 공정의 기본 납기도 함께 당겨집니다. 블록 납기는 \"납기 빠른 순\" 규칙이 쓰고, 지켰는지는 평가서에서 봅니다(등급 점수에는 넣지 않습니다)."));
 }
@@ -804,8 +797,14 @@ function drawPlan(root: HTMLElement, preview: Preview): void {
   const ctx = current;
   const { scenario, config } = ctx;
   const startDays = Object.fromEntries(Object.entries(config.ships).map(([sid, ship]) => [sid, ship.start_day]));
+  const pickable = blockStations(scenario).map((b) => b.id);
   mount(host, renderPlanGantt({
     scenario, plan: preview.plan, startDays, contract: preview.contract,
+    pickable, picked: openBlockStation,
+    onPickStation: (station) => {
+      openBlockStation = openBlockStation === station ? null : station;
+      drawPlan(root, preview);
+    },
     onMove: (sid, day) => {
       config.ships[sid].start_day = day;
       const label = root.querySelector<HTMLElement>(`[data-preview="start:${sid}"]`);
@@ -815,4 +814,49 @@ function drawPlan(root: HTMLElement, preview: Preview): void {
   }));
   const text = root.querySelector<HTMLElement>(`[data-preview="conflicts"]`);
   if (text) text.textContent = conflictText(scenario, preview.plan);
+  drawBlockPanel(root, preview);
+}
+
+/** 펼친 블록 공정(4.25). 다른 분기로 가면 닫는다 */
+let openBlockStation: string | null = null;
+
+/** 블록 일정 패널: 펼친 공정의 블록을 들일 순서대로. 끌어서 순서를 바꾸면 config.block_order에 그 공정의 목록을 적는다 */
+function drawBlockPanel(root: HTMLElement, preview: Preview): void {
+  const host = root.querySelector<HTMLElement>("[data-block-panel]");
+  if (!host || !current) return;
+  const ctx = current;
+  const { scenario, config } = ctx;
+  const st = blockStations(scenario).find((b) => b.id === openBlockStation);
+  if (!st || !preview.block_plan) {
+    openBlockStation = null;
+    mount(host, null);
+    return;
+  }
+  const custom = !!config.block_order?.[st.id];
+  const rule = DISPATCH_INFO[config.stations[st.id].dispatch ?? "ship"].name;
+  const risks = (preview.block_plan.order[st.id] ?? []).filter((id) => preview.block_plan!.blocks[id].risk).length;
+  mount(host,
+    h("div", { class: "block-panel-head" },
+      h("b", null, `${st.name} 블록 일정`),
+      h("small", null, custom ? "정한 순서대로 들입니다" : `규칙(${rule}) 순서입니다`, " · 줄을 위아래로 끌거나 Alt+↑/↓"),
+      custom ? h("button", {
+        type: "button", class: "btn small",
+        onclick: () => {
+          delete config.block_order![st.id];
+          if (!Object.keys(config.block_order!).length) delete config.block_order;
+          ctx.onEdit(false);
+        },
+      }, "규칙 순서로 되돌리기") : null,
+      h("button", { type: "button", class: "btn small", onclick: () => { openBlockStation = null; drawBlockPanel(root, preview); } }, "닫기")),
+    renderBlockGantt({
+      scenario, plan: preview.block_plan, station: st.id,
+      onReorder: (order) => {
+        (config.block_order ??= {})[st.id] = order;
+        ctx.onEdit(false);
+      },
+    }),
+    h("p", { class: "hint" },
+      risks ? `블록 납기를 넘기는 블록 ${risks}개(붉은 테두리). ` : "모든 블록이 블록 납기 안에 끝나는 계획입니다. ",
+      "막대는 고장·대기 없이 이 순서로 했을 때의 계획이고, 세로 눈금은 블록 납기입니다. ",
+      "위 줄일수록 먼저 들이지만, 아직 앞 공정에서 닿지 않은 블록은 기다리지 않고 다음 블록부터 합니다(그래서 막대가 늦게 그려질 수 있습니다)."));
 }

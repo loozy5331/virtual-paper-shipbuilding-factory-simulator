@@ -45,8 +45,8 @@ export interface Config {
   stations: Record<string, StationConfig>;
   /** 4.25(D71, 블록 조립 실습만): 공정 납기(배 → 공정 → 날)와 블록 납기(블록 → 날). 적은 것만 기본값(역산)을 바꾼다 */
   due?: { stations?: Record<string, Record<string, number>>; blocks?: Record<string, number> };
-  /** 4.25: 서두름. 규칙보다 먼저 할 블록(고른 순서대로) */
-  rush?: string[];
+  /** 4.25: 블록 순서. 블록 공정 → 먼저 할 블록 이름 목록(계획 간트에서 끌어 정한다). 없는 블록은 규칙 순으로 뒤에 */
+  block_order?: Record<string, string[]>;
   /** 대기소 전체 인원. 4.0부터는 pools의 합이다(옛 설정은 조립 인원으로 읽는다) */
   pool: number;
   /** 4.0(D42): 직종별 대기소 인원. 사람은 자기 직종 공정에만 간다. 4.22(D69)부터 시운전도 직종 */
@@ -348,9 +348,15 @@ export interface Preview {
   dues?: { stations: Record<string, Record<string, number>>; blocks: Record<string, number> };
   /** 4.25: 계획 간트(배가 혼자 쓴다고 본 일정)의 공정 끝이 공정 납기를 넘기는 배·공정 */
   plan_risks?: PlanRisk[];
+  /** 4.25: 블록 계획 일정(계획 간트에서 펼친 공정의 블록 막대) */
+  block_plan?: BlockPlan;
 }
 
 export interface PlanRisk { ship: string; station: string; plan_end: number; due: number; days: number }
+
+/** 4.25 블록 계획 일정(엔진 block_plan): 고장·대기 없이 들일 순서대로 놓은 블록 막대 */
+export interface BlockPlanItem { station: string; ship: string; no: number; start: number; end: number; unit: number; due: number; risk: boolean }
+export interface BlockPlan { blocks: Record<string, BlockPlanItem>; order: Record<string, string[]>; risks: string[] }
 
 export interface ShipSpec {
   type: string;

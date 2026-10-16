@@ -1308,10 +1308,31 @@ body { background: var(--desk); }
 .block-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .block-chip { display: inline-flex; align-items: center; gap: 3px; padding: 2px 4px; border: 1px solid var(--line); border-radius: 3px; font-size: 0.78rem; }
 .block-chip .day-input { width: 3.2em; }
-.block-chip.rush { border-color: var(--accent); background: var(--accent-soft); }
-.rush-btn { padding: 0 4px; font: inherit; font-size: 0.72rem; border: 1px solid var(--line); border-radius: 2px; background: transparent; cursor: pointer; }
-.block-chip.rush .rush-btn { font-weight: 700; }
 .dispatch { display: flex; flex-direction: column; gap: 2px; }
 .plan-risk { color: var(--ink-2); }
 .dispatch .seg { flex-wrap: wrap; row-gap: 4px; }
 .block-table td { text-align: left; }
+/* 4.25 블록 일정 패널(① 계획 간트에서 블록 공정을 누르면) */
+.plan-gantt rect.pickable { cursor: pointer; }
+.plan-gantt rect.picked { stroke: var(--ink); stroke-width: 1.5; }
+.block-panel:empty { display: none; }
+.block-panel { margin: 6px 0 4px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); }
+.block-panel-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; margin-bottom: 4px; }
+.block-panel-head small { color: var(--ink-3); }
+.block-panel-head .btn { margin-left: auto; }
+.block-panel-head .btn + .btn { margin-left: 0; }
+.block-gantt { width: 100%; height: auto; display: block; }
+.block-gantt .block-row { cursor: grab; outline: none; }
+.block-gantt .block-row.dragging { cursor: grabbing; opacity: 0.85; }
+.block-gantt .block-row:focus .plan-hit { fill: var(--accent-soft); }
+.block-gantt .block-row.risk .block-bar { stroke: var(--bad); stroke-width: 1.5; }
+.block-gantt .ship-id.alt { font-weight: 400; fill: var(--ink-3); }
+.block-gantt .block-due { stroke-width: 1.5; }
+details.block-plan > summary { cursor: pointer; margin: 8px 0 4px; }
+details.block-plan > summary small { color: var(--ink-3); }
+.block-gantt .plan-hit { fill: transparent; }
+.block-gantt .block-row:hover .plan-hit { fill: var(--accent-soft); }
+.block-gantt .ship-id.small { font-size: 9px; font-weight: 700; }
+.block-gantt .tick { font-size: 9px; }
+.block-gantt .plan-late { font-size: 10px; font-weight: 800; fill: var(--bad); }
+.block-gantt .block-due { stroke: var(--ink); stroke-dasharray: 2 1.5; }

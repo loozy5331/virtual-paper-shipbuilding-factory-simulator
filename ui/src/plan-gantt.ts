@@ -24,6 +24,11 @@ export interface PlanGanttContext {
   contract?: Preview["contract"];
   /** 착수 예정일을 바꿨다. 범위(1~마지막 날)는 여기서 맞춰서 넘긴다. */
   onMove(shipId: string, startDay: number): void;
+  /** 4.25: 눌러서 펼칠 수 있는 공정(블록 공정)과 지금 펼친 공정 */
+  pickable?: string[];
+  picked?: string | null;
+  /** 끌지 않고 공정 막대를 눌렀다 */
+  onPickStation?(station: string): void;
 }
 
 // 다시 그린 뒤에도 키보드로 옮기던 줄에 포커스를 돌려준다.
@@ -79,7 +84,8 @@ export function renderPlanGantt(ctx: PlanGanttContext): SVGElement {
       row.append(s("rect", {
         x: x(sp.start) + 0.5, y: barY, width: Math.max(1, (end - sp.start + 1) * dayW - 1), height: BAR_H, rx: 2,
         fill: STATION_COLOR[st.id],
-      }, s("title", null, `${sid} ${stationName[st.id]} ${sp.start}~${sp.end}일`)));
+        class: ctx.pickable?.includes(st.id) ? `pickable${ctx.picked === st.id ? " picked" : ""}` : "",
+      }, s("title", null, `${sid} ${stationName[st.id]} ${sp.start}~${sp.end}일${ctx.pickable?.includes(st.id) ? " · 누르면 블록 일정" : ""}`)));
       // 공정 여유(4.15): 막대 뒤에 같은 색 테두리의 빈 칸
       if (sp.buffer && end < days) {
         const bEnd = Math.min(sp.end + sp.buffer, days);
@@ -103,8 +109,10 @@ export function renderPlanGantt(ctx: PlanGanttContext): SVGElement {
     // ----- 끌기 -----
     let from: number | null = null;
     let shift = 0;
+    let moved = 0;
     const move = (px: number) => {
       const scale = W / svg.getBoundingClientRect().width;
+      moved = Math.max(moved, Math.abs(px - from!));
       shift = clamp(start + Math.round(((px - from!) * scale) / dayW)) - start;
       row.setAttribute("transform", `translate(${shift * dayW} 0)`);
       label.textContent = `${start + shift}일`;
@@ -113,18 +121,25 @@ export function renderPlanGantt(ctx: PlanGanttContext): SVGElement {
       const ev = e as PointerEvent;
       from = ev.clientX;
       shift = 0;
+      moved = 0;
       row.setPointerCapture(ev.pointerId);
       row.classList.add("dragging");
     });
     row.addEventListener("pointermove", (e) => { if (from !== null) move((e as PointerEvent).clientX); });
-    const drop = () => {
+    const drop = (e?: Event) => {
       if (from === null) return;
       from = null;
       row.classList.remove("dragging");
-      if (shift !== 0) ctx.onMove(sid, start + shift);
+      if (shift !== 0) { ctx.onMove(sid, start + shift); return; }
+      // 끌지 않고 눌렀으면(4.25): 누른 날의 공정이 펼칠 수 있는 공정이면 그 블록 일정을 연다
+      if (!e || moved > 4 || !ctx.onPickStation) return;
+      const rect = svg.getBoundingClientRect();
+      const day = Math.floor((((e as PointerEvent).clientX - rect.left) * (W / rect.width) - LEFT) / dayW) + 1;
+      const hit = activeStations(scenario).find((st) => spans[st.id] && spans[st.id].start <= day && day <= spans[st.id].end);
+      if (hit && ctx.pickable?.includes(hit.id)) ctx.onPickStation(hit.id);
     };
     row.addEventListener("pointerup", drop);
-    row.addEventListener("pointercancel", drop);
+    row.addEventListener("pointercancel", () => drop());
 
     // ----- 키보드 -----
     row.addEventListener("keydown", (e) => {
