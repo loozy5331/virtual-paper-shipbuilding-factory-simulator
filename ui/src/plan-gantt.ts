@@ -4,7 +4,7 @@
 // 막대 앞 위에 착수 예정일을 숫자로 적는다. 끄는 동안에도 그 숫자가 따라 바뀐다.
 // 끄는 동안에는 줄만 옮겨 보이고, 놓을 때 onMove로 알린다. 새 막대는 다음 미리보기에서 다시 그린다.
 
-import { activeStations, byDue, type Plan, type PlanRisk, type Preview, type Scenario } from "./api";
+import { activeStations, type Plan, type PlanRisk, type Preview, type Scenario } from "./api";
 import { s } from "./dom";
 import { STATE_INFO, STATION_COLOR } from "./labels";
 
@@ -39,7 +39,7 @@ export function renderPlanGantt(ctx: PlanGanttContext): SVGElement {
   const days = scenario.days;
   const dayW = (W - LEFT - RIGHT) / days;
   const x = (day: number) => LEFT + (day - 1) * dayW;
-  const orders = byDue(scenario, scenario.orders);   // 블록 실습은 납기 빠른 배가 위(4.26)
+  const orders = scenario.orders;
   const height = TOP + orders.length * ROW_H + 4;
   const stationName = Object.fromEntries(scenario.stations.map((st) => [st.id, st.name]));
   const clamp = (day: number) => Math.min(days, Math.max(1, day));

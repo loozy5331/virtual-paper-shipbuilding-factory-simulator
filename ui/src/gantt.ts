@@ -6,7 +6,7 @@
 // 막대를 누르면 onPick으로 그 배·공정·기간을 넘긴다(현장 들어가는 길, D7).
 // 재생 중에는 today까지만 그린다. 엔진이 준 segments와 daily를 자르고 묶기만 하고 새로 계산하지 않는다.
 
-import { activeStations, blockLabel, byDue, type ForkliftJob, type Plan, type Result, type Scenario, type Segment } from "./api";
+import { activeStations, blockLabel, type ForkliftJob, type Plan, type Result, type Scenario, type Segment } from "./api";
 import { s } from "./dom";
 import { PAIR_WAIT_EDGE, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, STATION_TEXT } from "./labels";
 
@@ -186,7 +186,7 @@ export function renderGantt(result: Result, scenario: Scenario, today: number, o
   const bar = barEl;
 
   // ----- 배 -----
-  byDue(scenario, result.ships).forEach((ship, row) => {
+  result.ships.forEach((ship, row) => {
     const y = TOP + row * ROW_H + 10;
     const g = s("g", { class: "ship-row" });
     g.append(

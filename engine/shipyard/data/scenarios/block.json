@@ -8,18 +8,18 @@
   "days": 50,
   "orders": [
     {
-      "id": "S1",
-      "type": "TUG",
-      "order_day": 1,
-      "due_day": 34,
-      "price": 3000
-    },
-    {
       "id": "S2",
       "type": "BULK",
       "order_day": 1,
       "due_day": 32,
       "price": 5000
+    },
+    {
+      "id": "S1",
+      "type": "TUG",
+      "order_day": 1,
+      "due_day": 34,
+      "price": 3000
     },
     {
       "id": "S3",
