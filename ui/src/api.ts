@@ -47,6 +47,8 @@ export interface Config {
   due?: { stations?: Record<string, Record<string, number>>; blocks?: Record<string, number> };
   /** 4.25: 블록 순서. 블록 공정 → 먼저 할 블록 이름 목록(계획 간트에서 끌어 정한다). 없는 블록은 규칙 순으로 뒤에 */
   block_order?: Record<string, string[]>;
+  /** 4.26: 블록 착수일(블록 이름 → 그날보다 먼저 들이지 않는 날). 조립 공정 계획서에서 막대를 좌우로 끌어 정한다 */
+  block_start?: Record<string, number>;
   /** 대기소 전체 인원. 4.0부터는 pools의 합이다(옛 설정은 조립 인원으로 읽는다) */
   pool: number;
   /** 4.0(D42): 직종별 대기소 인원. 사람은 자기 직종 공정에만 간다. 4.22(D69)부터 시운전도 직종 */
