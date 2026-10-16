@@ -505,7 +505,7 @@ async function switchScenario(id: string): Promise<void> {
 }
 
 /** 평가서 선배의 팁의 "추천대로 다시 계획"(4.25, D71): 실행한 계획에서 블록 공정의 규칙만 추천 규칙으로 바꾸고
- *  블록 순서를 비운 생산계획서로 간다. 나머지(인원, 착수일, 납기 등)는 그대로다. */
+ *  블록 순서를 비운 계획으로 간다. 나머지(인원, 착수일, 납기 등)는 그대로다. 규칙이 있는 조립 공정 계획서(PP-02)를 펼친다(4.28.2 사용자) */
 async function applyRecommendedRule(runConfig: Config, rule: DispatchRule): Promise<void> {
   const config = structuredClone(runConfig);
   for (const b of blockStations(state.data.scenario)) {
@@ -515,14 +515,17 @@ async function applyRecommendedRule(runConfig: Config, rule: DispatchRule): Prom
   delete config.block_order;
   state.config = config;
   state.edited = true;
+  planSheet = "assembly";
   drawForm();   // 양식은 고친 설정으로 다시 그린다(openPlan은 화면만 옮긴다)
   schedulePreview();
-  await backToPlan();
+  await backToPlan("assembly");
+  els.assemblyForm.querySelector(".asm-rules")?.scrollIntoView({ block: "center" });
 }
 
-/** 평가서나 펼친 생산계획서의 "계획 고치기": 생산계획서 화면으로 계획을 고치러 간다. */
-async function backToPlan(): Promise<void> {
+/** 평가서나 펼친 생산계획서의 "계획 고치기": 생산계획서 화면으로 계획을 고치러 간다. sheet: 펼칠 낱장(블록 실습) */
+async function backToPlan(sheet?: typeof planSheet): Promise<void> {
   pause();
+  if (sheet && state.data.scenario.block_mode && planSheet !== sheet) { planSheet = sheet; drawSheetTabs(); }
   const source = planUp ? els.planBoard : state.board === "up" ? els.reportBoard : els.deskClip;
   closePlanBoard();
   await openPlan(source);
@@ -535,6 +538,8 @@ async function backToPlan(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 let planUp = false;
+/** 펼친 계획서에서 보던 낱장(블록 실습). "계획 고치기"는 이 장을 펼친 채로 간다 */
+let boardSheet: "plan" | "assembly" = "plan";
 
 async function openPlanBoard(): Promise<void> {
   const r = currentRun();
@@ -548,34 +553,59 @@ async function openPlanBoard(): Promise<void> {
   els.room.classList.add("plan-up");
   els.planBoard.hidden = false;
   const sheet = h("aside", { class: "form plan-readonly" });
+  // 블록 실습(4.28.2, 사용자): 생산계획서 화면처럼 낱장 탭 [생산계획서 | 조립 공정 계획서]. 한 번에 한 장
+  const block = !!state.data.scenario.block_mode;
+  const asmSheet = block ? h("aside", { class: "form assembly-form plan-readonly", hidden: boardSheet !== "assembly" }) : null;
+  if (!block) boardSheet = "plan";
+  sheet.hidden = boardSheet !== "plan";
+  const tabs = h("nav", { class: "sheet-tabs", "aria-label": "낱장" });
+  const drawTabs = () => mount(tabs, !block ? null : (["plan", "assembly"] as const).map((id) => h("button", {
+    type: "button", class: `sheet-tab${boardSheet === id ? " active" : ""}`, "aria-pressed": String(boardSheet === id),
+    onclick: () => { boardSheet = id; sheet.hidden = id !== "plan"; asmSheet!.hidden = id !== "assembly"; drawTabs(); },
+  }, id === "plan" ? "생산계획서" : "조립 공정 계획서")));
+  drawTabs();
   mount(els.planBoard,
-    h("div", { class: "report-sheet" },
-      h("div", { class: "report-actions" },
-        h("span", { class: "hint" }, `${r.n}회차에 실행한 계획 · 바깥 어두운 곳을 누르면 내려 둡니다`),
-        h("button", { class: "btn primary small", type: "button", onclick: () => void backToPlan() }, "계획 고치기")),
-      sheet));
+    h("div", { class: "board-pages single" }, tabs,
+      h("div", { class: "report-sheet" },
+        h("div", { class: "report-actions" },
+          h("span", { class: "hint" }, `${r.n}회차에 실행한 계획 · 바깥 어두운 곳을 누르면 내려 둡니다`),
+          h("button", { class: "btn primary small", type: "button", onclick: () => void backToPlan(boardSheet) }, "계획 고치기")),
+        sheet, asmSheet)));
   try {
     r.preview ??= await api.preview(r.config);
   } catch {
     // 미리보기가 없어도 계획 내용은 보인다(계획 간트만 빈다).
   }
   if (!planUp) return;
+  const runConfig = structuredClone(r.config);
   // 같은 양식 그리기를 그 회차의 설정으로 한 번 더 쓴다. 양식 모듈은 마지막으로 그린 양식을 기억하므로
   // 다 그린 뒤 생산계획서 화면의 양식을 다시 그려 되돌린다.
   renderForm(sheet, {
     scenario: state.data.scenario, scenarios: state.data.scenarios, presets: state.data.presets,
-    config: structuredClone(r.config), presetId: null, edited: false, busy: true,
+    config: runConfig, presetId: null, edited: false, busy: true,
     onEdit: () => {}, onPreset: () => {}, onDesk: () => {}, onRun: () => {},
   });
   // 라디오는 name이 같으면 문서 전체에서 한 묶음이다. 아래에서 생산계획서 화면의 양식을 다시 그리면
   // 같은 name의 라디오가 이 펼친 계획서의 선택(대기소 인원, 공법 등)을 빼앗는다. 그리기 전에 name을 뗀다.
-  sheet.querySelectorAll<HTMLInputElement>("input[name]").forEach((el) => el.removeAttribute("name"));
+  // 읽기 전용: 탭과 선박 사양서 링크만 누를 수 있고, 입력·버튼·간트 끌기는 막는다.
+  const readonly = (root: HTMLElement) => {
+    root.querySelectorAll<HTMLInputElement>("input[name]").forEach((el) => el.removeAttribute("name"));
+    root.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>("input, select, textarea, button:not([role=tab]):not(.spec-link)")
+      .forEach((el) => { el.disabled = true; });
+  };
   updatePreview(sheet, r.preview ?? null, [], true);
-  // 읽기 전용: [공통 | 배별] 탭과 선박 사양서 링크만 누를 수 있고, 입력·버튼·계획 간트 끌기는 막는다.
-  sheet.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>("input, select, textarea, button:not([role=tab]):not(.spec-link)")
-    .forEach((el) => { el.disabled = true; });
-  sheet.querySelector<HTMLElement>('[data-sign="승인"]')?.append(
-    h("span", { class: "sign-name" }, r.signer?.nickname ?? REVIEWER));
+  readonly(sheet);
+  // 조립 공정 계획서: 배 탭을 누르면(onEdit(true)) 이 장만 다시 그리고, 다 그린 뒤 화면의 양식으로 되돌린다
+  const drawAsm = () => {
+    if (!asmSheet || !planUp) return;
+    renderAssemblySheet(asmSheet, { scenario: state.data.scenario, config: runConfig, onEdit: (redraw) => { if (redraw) { drawAsm(); drawForm(); } } });
+    updateAssemblySheet(asmSheet, r.preview ?? null, []);
+    readonly(asmSheet);
+  };
+  drawAsm();
+  for (const s of [sheet, asmSheet]) {
+    s?.querySelector<HTMLElement>('[data-sign="승인"]')?.append(h("span", { class: "sign-name" }, r.signer?.nickname ?? REVIEWER));
+  }
   drawForm();
 }
 
