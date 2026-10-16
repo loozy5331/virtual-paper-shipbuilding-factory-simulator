@@ -246,12 +246,6 @@ export function blockStations(scenario: Scenario): { id: string; name: string; c
     .map((st) => ({ id: st.id, name: st.name, count: scenario.blocks[st.id] }));
 }
 
-/** 블록 조립 실습(4.26 사용자)의 간트는 납기가 빠른 배를 위에 둔다(같으면 수주 번호 순). 다른 반기는 받은 순서 그대로 */
-export function byDue<T extends { id: string; due_day: number }>(scenario: Scenario, ships: T[]): T[] {
-  if (!scenario.block_mode) return ships;
-  return [...ships].sort((a, b) => a.due_day - b.due_day || a.id.localeCompare(b.id));
-}
-
 const BLOCK_CODE: Record<string, string> = { sub_assembly: "SA", block_assembly: "BA", grand_assembly: "GA" };
 const BLOCK_SHORT: Record<string, string> = { sub_assembly: "소", block_assembly: "중", grand_assembly: "PE" };
 

@@ -6,7 +6,7 @@
 //    4.26 사용자: 일정을 먼저, 규칙을 뒤로. 배 탭은 납기가 빠른 배부터, 블록 막대는 좌우로 끌어 착수일을 정한다)
 // 화면은 계산하지 않는다: 블록 일정·납기·위험은 미리보기(block_plan, dues, plan_risks)를 그린다.
 
-import { activeStations, blockId, byDue, blockLabel, blockStations, type Config, type DispatchRule, type Preview, type Scenario } from "./api";
+import { activeStations, blockId, blockLabel, blockStations, type Config, type DispatchRule, type Preview, type Scenario } from "./api";
 import { renderBlockGantt } from "./block-plan-gantt";
 import { h, mount } from "./dom";
 import { DISPATCH_INFO, STATION_COLOR } from "./labels";
@@ -67,8 +67,8 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
   // 크게 보기는 블록 일정에서만: 다른 반기나 납기 표로 바뀌면 닫는다
   if (zoomed && (!bst.length || view !== "schedule")) { zoomed = false; if (layer) mount(layer, null); }
   if (!bst.length) { mount(root, null); return; }
-  // 배 탭은 납기가 빠른 배부터(4.26 사용자), 같으면 수주 번호 순. 처음 여는 탭도 납기가 가장 빠른 배
-  const ships = byDue(scenario, scenario.orders);
+  // 배 탭은 수주 목록 순서(실습은 목록이 납기 빠른 순, 4.26·4.27.2 사용자). 처음 여는 탭도 목록 첫 배
+  const ships = scenario.orders;   // 실습은 수주 목록이 납기 빠른 순(S2 → S1 → S3, 4.27.2)
   ship = ships.some((o) => o.id === ship) ? ship : ships[0].id;
 
   // ② 우선순위 규칙: 블록 공정마다 한 줄. 규칙은 블록 순서를 정하지 않은 블록의 순서이고, 평가서 추천이 비교하는 것이다
@@ -95,7 +95,9 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
     h("div", { class: "panel-head" }, h("span", { class: "step" }, "1"), h("h2", null, "배별 블록 일정과 납기")),
     h("p", { class: "hint plan-risk", "data-asm": "risks" }, "…"), tabs,
     h("div", { class: "asm-mode" }, seg("asm-mode", [{ value: "schedule", label: "블록 일정" }, { value: "dues", label: "공정·블록 납기" }] as { value: typeof view; label: string }[],
-      view, (v) => { view = v; ctx.onEdit(true); })),
+      view, (v) => { view = v; ctx.onEdit(true); }),
+      // 크게 보기는 이 줄 오른쪽 끝에 고정(4.27.2): 단추가 늘었다 줄었다 하는 블록 일정 머리줄에 두면 다음 줄로 밀렸다
+      view === "schedule" ? h("button", { type: "button", class: "btn small asm-zoom-btn", title: "블록 일정을 화면 가득", onclick: () => setZoom(true) }, "크게 보기") : null),
     view === "schedule" ? h("div", { class: "asm-schedule", "data-asm": "gantt" }) : dueTable(ctx));
 
   const head = docHead({
@@ -207,7 +209,7 @@ export function updateAssemblySheet(root: HTMLElement, preview: Preview | null, 
             type: "button", class: "btn small",
             onclick: () => { delete config.block_order; ctx.onEdit(false); },
           }, "정한 순서 지우기(규칙대로)") : null,
-          zoomed ? null : h("button", { type: "button", class: "btn small asm-zoom-btn", title: "크게 보기", onclick: () => setZoom(true) }, "크게 보기")),
+          ),
         renderBlockGantt({
           scenario, plan: bp, ship: sid, stations: bst,
           units: Object.fromEntries(bst.map((b) => [b.id, config.stations[b.id]?.units ?? 1])),
@@ -229,7 +231,7 @@ export function updateAssemblySheet(root: HTMLElement, preview: Preview | null, 
           h("div", { class: "asm-zoom", role: "dialog", "aria-modal": "true", "aria-label": `${sid} 블록 일정 크게 보기` },
             h("div", { class: "win-titlebar" },
               h("span", { class: "win-title" }, `조립 공정 계획서 · ${sid} ${scenario.ship_types[order.type].name} 블록 일정`),
-              h("div", { class: "asm-zoom-tabs" }, byDue(scenario, scenario.orders).map((o) => h("button", {
+              h("div", { class: "asm-zoom-tabs" }, scenario.orders.map((o) => h("button", {
                 type: "button", class: `tab${o.id === sid ? " active" : ""}`, onclick: () => { ship = o.id; ctx.onEdit(true); },
               }, o.id))),
               h("div", { class: "win-buttons" },
