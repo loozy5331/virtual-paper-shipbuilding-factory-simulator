@@ -136,6 +136,13 @@ class Dues(unittest.TestCase):
                                                   "block_assembly": 16, "grand_assembly": 20, "erection": 30})
         self.assertEqual(dues["blocks"]["S3-GA1"], 20)
 
+    def test_back_calc_floor_is_day_one(self):
+        # 소조립을 3일로 당기면 가공 3 − 2 − 1 = 0, 절단은 더 앞선다 → 둘 다 1일. 계획 간트 끝(가공 2일)이 넘쳐 계획상 위험
+        cfg = {**self.managed(), "due": {"stations": {"S3": {"sub_assembly": 3}}}}
+        pv = preview(cfg)
+        self.assertEqual((pv["dues"]["stations"]["S3"]["cutting"], pv["dues"]["stations"]["S3"]["processing"]), (1, 1))
+        self.assertIn(("S3", "processing"), [(r["ship"], r["station"]) for r in pv["plan_risks"]])
+
     def test_block_override(self):
         cfg = {**self.managed(), "due": {"blocks": {"S3-SA1": 5}}}
         dues = preview(cfg)["dues"]["blocks"]
@@ -175,14 +182,12 @@ class Dues(unittest.TestCase):
 
 
 class Dispatch(unittest.TestCase):
-    """우선순위 규칙 4종과 서두름(규칙 문서 3장 "우선순위 규칙과 추천"). 예시 9의 판으로 본다."""
+    """우선순위 규칙 4종과 블록 순서(규칙 문서 3장 "우선순위 규칙과 추천"). 예시 9의 판으로 본다."""
 
-    def run_sub(self, rule, ship_dues=(40, 40), rush=None, priorities=(1, 2)):
+    def run_sub(self, rule, ship_dues=(40, 40), priorities=(1, 2)):
         cfg, sc = mini([("X", "FEEDER", priorities[0], ship_dues[0]), ("Y", "TUG", priorities[1], ship_dues[1])])
         cfg["stations"]["sub_assembly"]["dispatch"] = rule
         cfg["due"] = {"stations": {"X": {"sub_assembly": 6}, "Y": {"sub_assembly": 3}}}
-        if rush:
-            cfg["rush"] = rush
         r = simulate(cfg, sc, baseline=False)
         return done_days(r, "X", "sub_assembly"), done_days(r, "Y", "sub_assembly")
 
@@ -202,28 +207,79 @@ class Dispatch(unittest.TestCase):
     def test_ship_rule_is_default(self):
         self.assertEqual(self.run_sub("ship"), ([1, 1, 2, 2, 2, 3, 3, 3], [4, 4, 4, 4, 5, 5, 5, 5]))
 
-    def test_rush_goes_first(self):
-        # Y가 1순위(선박 순서)여도 서두름에 고른 X-SA8이 맨 먼저: 1일에 X-SA8 0.75, Y1·Y2, Y3 0.25
-        x, y = self.run_sub("ship", rush=["X-SA8"], priorities=(2, 1))
-        self.assertEqual(x[7], 1)
-        self.assertEqual(y[:3], [1, 1, 2])
+    def test_block_order_list(self):
+        # 블록 순서: Y 블록을 모두 앞에 두면(선박 순서 규칙이어도) 예시 9의 납기 빠른 순과 같다
+        order = [f"Y-SA{k}" for k in range(1, 9)] + [f"X-SA{k}" for k in range(1, 9)]
+        cfg, sc = mini([("X", "FEEDER", 1, 40), ("Y", "TUG", 2, 40)])
+        cfg["block_order"] = {"sub_assembly": order}
+        r = simulate(cfg, sc, baseline=False)
+        self.assertEqual(done_days(r, "Y", "sub_assembly"), [1, 1, 1, 1, 2, 2, 2, 2])
+        self.assertEqual(done_days(r, "X", "sub_assembly"), [3, 3, 4, 4, 4, 5, 5, 5])
+
+    def test_partial_order_goes_first(self):
+        # 목록에 적은 블록만 앞으로, 나머지는 규칙대로: Y가 1순위여도 X-SA8이 맨 먼저(1일에 X-SA8 0.75, Y1·Y2, Y3 0.25)
+        cfg, sc = mini([("X", "FEEDER", 2, 40), ("Y", "TUG", 1, 40)])
+        cfg["block_order"] = {"sub_assembly": ["X-SA8"]}
+        r = simulate(cfg, sc, baseline=False)
+        self.assertEqual(done_days(r, "X", "sub_assembly")[7], 1)
+        self.assertEqual(done_days(r, "Y", "sub_assembly")[:3], [1, 1, 2])
 
     def test_dispatch_validation(self):
         cfg, sc = mini([("X", "FEEDER", 1, 40)])
         for change in ({"stations": {"sub_assembly": {"dispatch": "fifo"}}}, {"stations": {"erection": {"dispatch": "edd"}}},
-                       {"rush": ["X-SA9"]}, {"rush": ["X-SA1", "X-SA1"]}):
+                       {"block_order": {"sub_assembly": ["X-SA9"]}}, {"block_order": {"sub_assembly": ["X-SA1", "X-SA1"]}},
+                       {"block_order": {"sub_assembly": ["X-BA1"]}}, {"block_order": {"erection": []}}):
             bad = {**cfg, "stations": {k: dict(v) for k, v in cfg["stations"].items()}}
             for sid, st in change.get("stations", {}).items():
                 bad["stations"][sid].update(st)
-            if "rush" in change:
-                bad["rush"] = change["rush"]
+            if "block_order" in change:
+                bad["block_order"] = change["block_order"]
             with self.subTest(change=change), self.assertRaises(ConfigError):
                 simulate(bad, sc, baseline=False)
         simple = load_presets("simple")[1]["config"]
-        for bad in ({**simple, "rush": []},
+        for bad in ({**simple, "block_order": {}},
                     {**simple, "stations": {**simple["stations"], "sub_assembly": {**simple["stations"]["sub_assembly"], "dispatch": "edd"}}}):
             with self.assertRaises(ConfigError):
                 simulate(bad, baseline=False)
+
+
+class BlockPlan(unittest.TestCase):
+    """블록 계획 일정(미리보기 block_plan): 계획 간트에서 공정을 펼치면 보이는 블록 막대."""
+
+    def test_example9_plan(self):
+        # 예시 9 판의 계획: 소조립 X 블록은 1·1·2·2·2·3·3·3일, Y는 4·4·4·4·5·5·5·5일에 끝난다(실행과 같다, 고장 없음)
+        cfg, sc = mini([("X", "FEEDER", 1, 40), ("Y", "TUG", 2, 40)])
+        bp = preview(cfg, sc)["block_plan"]
+        ends = lambda ship: [bp["blocks"][f"{ship}-SA{k}"]["end"] for k in range(1, 9)]
+        self.assertEqual(ends("X"), [1, 1, 2, 2, 2, 3, 3, 3])
+        self.assertEqual(ends("Y"), [4, 4, 4, 4, 5, 5, 5, 5])
+        self.assertEqual(bp["order"]["sub_assembly"][:2], ["X-SA1", "X-SA2"])
+        # 중조립 1번 블록은 소조립 1·2번이 끝난 다음 날(2일)부터
+        self.assertEqual(bp["blocks"]["X-BA1"]["start"], 2)
+
+    def test_order_changes_plan_and_risk(self):
+        # Y를 앞에 두면 Y 블록이 1~2일에 끝나고, X 블록 납기 2일은 계획상 위험
+        cfg, sc = mini([("X", "FEEDER", 1, 40), ("Y", "TUG", 2, 40)])
+        cfg["block_order"] = {"sub_assembly": [f"Y-SA{k}" for k in range(1, 9)]}
+        cfg["due"] = {"blocks": {"X-SA1": 2}}
+        bp = preview(cfg, sc)["block_plan"]
+        self.assertEqual(bp["order"]["sub_assembly"][:8], [f"Y-SA{k}" for k in range(1, 9)])
+        self.assertEqual(bp["blocks"]["X-SA1"]["end"], 3)
+        self.assertIn("X-SA1", bp["risks"])
+
+    def test_listed_order_is_shown_even_if_block_arrives_later(self):
+        # 목록 맨 앞이어도 아직 닿지 않은 블록은 기다리지 않는다: 실습 A안에서 S1-SA1(4일에 닿음)을 맨 앞에 두면
+        # 보이는 순서는 목록 그대로(S1-SA1이 첫 줄)이고, 막대는 3일에 닿는 S3 블록보다 늦다
+        cfg = {**load_presets("block")[0]["config"], "block_order": {"sub_assembly": ["S1-SA1"]}}
+        bp = preview(cfg)["block_plan"]
+        self.assertEqual(bp["order"]["sub_assembly"][:2], ["S1-SA1", "S3-SA1"])
+        self.assertGreater(bp["blocks"]["S1-SA1"]["start"], bp["blocks"]["S3-SA1"]["start"])
+
+    def test_preset_sets_first_order(self):
+        # B안(관리)은 처음 블록 순서를 S3 블록부터 둔다
+        managed = load_presets("block")[1]["config"]
+        self.assertEqual(managed["block_order"]["sub_assembly"][:2], ["S3-SA1", "S3-SA2"])
+        self.assertEqual(preview(managed)["block_plan"]["order"]["sub_assembly"][0], "S3-SA1")
 
 
 class Recommend(unittest.TestCase):
@@ -249,9 +305,11 @@ class Recommend(unittest.TestCase):
 
 
 class DrillScenario(unittest.TestCase):
-    def test_hidden_from_ladder_but_loadable(self):
-        # 사다리(D67) 밖 실습: 첫 화면 목록에는 아직 없고(실습 카드는 생산계획서 PR에서), 이름으로는 불러 돌릴 수 있다
-        self.assertNotIn("block", [s["id"] for s in list_scenarios()])
+    def test_listed_last_as_drill(self):
+        # 사다리(D67) 밖 실습: 첫 화면 목록의 맨 끝, track "drill"(난이도 점 대신 "실습" 카드)
+        listed = list_scenarios()
+        self.assertEqual((listed[-1]["id"], listed[-1].get("track")), ("block", "drill"))
+        self.assertTrue(all("track" not in s for s in listed[:-1]))
         self.assertTrue(load_scenario("block")["block_mode"])
 
     def test_other_scenarios_have_no_blocks(self):

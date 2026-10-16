@@ -15,7 +15,12 @@ export interface StationConfig {
   hoist?: boolean;
   /** 공정 여유(4.15, D62): 0~max_days일. 배의 여유 합계만큼 납기가 늦어지고 선가가 하루 1% 준다. 없으면 0 */
   buffer?: number;
+  /** 블록 공정의 우선순위 규칙(4.25, D71, 블록 조립 실습만). 없으면 선박 순서 */
+  dispatch?: DispatchRule;
 }
+
+/** 블록 우선순위 규칙(4.25): 선박 순서 · 납기 빠른 순 · 여유 작은 순 · 작업 짧은 순 */
+export type DispatchRule = "ship" | "edd" | "slack" | "spt";
 
 export type Crew = "normal" | "skilled" | "robot" | "trial";
 
@@ -38,6 +43,10 @@ export interface Config {
   safety_stock?: Record<string, number>;
   ships: Record<string, ShipConfig>;
   stations: Record<string, StationConfig>;
+  /** 4.25(D71, 블록 조립 실습만): 공정 납기(배 → 공정 → 날)와 블록 납기(블록 → 날). 적은 것만 기본값(역산)을 바꾼다 */
+  due?: { stations?: Record<string, Record<string, number>>; blocks?: Record<string, number> };
+  /** 4.25: 블록 순서. 블록 공정 → 먼저 할 블록 이름 목록(계획 간트에서 끌어 정한다). 없는 블록은 규칙 순으로 뒤에 */
+  block_order?: Record<string, string[]>;
   /** 대기소 전체 인원. 4.0부터는 pools의 합이다(옛 설정은 조립 인원으로 읽는다) */
   pool: number;
   /** 4.0(D42): 직종별 대기소 인원. 사람은 자기 직종 공정에만 간다. 4.22(D69)부터 시운전도 직종 */
@@ -179,6 +188,10 @@ export interface Scenario {
   unlocks?: string;
   /** 난이도 1~3(옛 분기가 쉽다) */
   level?: number;
+  /** 4.25: 사다리 밖 실습("drill") */
+  track?: string;
+  /** 4.25(D71): 조립 직종 공정을 블록으로 계산하는 실습 */
+  block_mode?: boolean;
   /** 4.23: 평가서 뒷장 "선배의 팁"에 적는 이 반기의 고정 팁 */
   tips?: string[];
   /** 계획 기간의 이름. 60일은 이 분기의 작업일로 본다. */
@@ -221,6 +234,27 @@ export interface Scenario {
   /** 4.15(D62): 공정 여유 상한과 여유 하루의 선가 차감률 */
   plan_buffer: { max_days: number; price_cut_per_day: number };
   kpi: { revenue: number; profit: number; on_time_rate: number; first_pass_yield: number };
+}
+
+/** 블록 공정(4.25, D71): 블록 조립 실습에서 조립 직종 공정(소조립 8 · 중조립 4 · PE장 2). 엔진 block_counts와 같은 규칙 */
+export function blockStations(scenario: Scenario): { id: string; name: string; count: number }[] {
+  if (!scenario.block_mode) return [];
+  return activeStations(scenario)
+    .filter((st) => st.trade === "assembly" && (scenario.blocks[st.id] ?? 1) > 1)
+    .map((st) => ({ id: st.id, name: st.name, count: scenario.blocks[st.id] }));
+}
+
+const BLOCK_CODE: Record<string, string> = { sub_assembly: "SA", block_assembly: "BA", grand_assembly: "GA" };
+const BLOCK_SHORT: Record<string, string> = { sub_assembly: "소", block_assembly: "중", grand_assembly: "PE" };
+
+/** 블록 이름(엔진 block_id와 같다): S1-SA3 */
+export function blockId(ship: string, station: string, no: number): string {
+  return `${ship}-${BLOCK_CODE[station] ?? station.slice(0, 2).toUpperCase()}${no}`;
+}
+
+/** 화면에 쓰는 짧은 블록 이름: 소3 · 중2 · PE1 */
+export function blockLabel(station: string, no: number): string {
+  return `${BLOCK_SHORT[station] ?? station}${no}`;
 }
 
 /** 이 시나리오가 쓰는 공정(간이공정은 일부가 빠진다, 4.4) */
@@ -266,8 +300,10 @@ export interface ScenarioSummary {
   name: string;
   summary: string;
   period: string;
-  /** 난이도. 옛 분기가 쉽다(1부터). */
+  /** 난이도. 옛 분기가 쉽다(1부터). 실습은 0 */
   level: number;
+  /** 4.25: 사다리 밖 실습이면 "drill"(첫 화면 맨 끝 카드) */
+  track?: string;
   ships: number;
   /** 선종 이름 → 척수 */
   ship_mix: Record<string, number>;
@@ -308,7 +344,19 @@ export interface Preview {
   contract?: Record<string, { due_day: number; price: number; buffer_days: number }>;
   /** 4.17(D64): 선박 사양서. 배마다 쓰는 공정의 작업량(인·일, 호이스트 반영)·직종·자재와 직종별 합계(trial = 시운전팀) */
   ships?: Record<string, ShipSpec>;
+  /** 4.25(D71, 블록 조립 실습만): 공정 납기(역산 + 고친 값)와 블록 납기 */
+  dues?: { stations: Record<string, Record<string, number>>; blocks: Record<string, number> };
+  /** 4.25: 계획 간트(배가 혼자 쓴다고 본 일정)의 공정 끝이 공정 납기를 넘기는 배·공정 */
+  plan_risks?: PlanRisk[];
+  /** 4.25: 블록 계획 일정(계획 간트에서 펼친 공정의 블록 막대) */
+  block_plan?: BlockPlan;
 }
+
+export interface PlanRisk { ship: string; station: string; plan_end: number; due: number; days: number }
+
+/** 4.25 블록 계획 일정(엔진 block_plan): 고장·대기 없이 들일 순서대로 놓은 블록 막대 */
+export interface BlockPlanItem { station: string; ship: string; no: number; start: number; end: number; unit: number; due: number; risk: boolean }
+export interface BlockPlan { blocks: Record<string, BlockPlanItem>; order: Record<string, string[]>; risks: string[] }
 
 export interface ShipSpec {
   type: string;

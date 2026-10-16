@@ -275,7 +275,7 @@
     {
       "id": "managed",
       "name": "관리",
-      "summary": "납기가 빠른 예인선(S3)을 우선순위 1로 두고, 자재는 역산 발주한다. 조립 4명에 정비를 한다.",
+      "summary": "납기가 빠른 예인선(S3)을 우선순위 1로 두고, 블록 순서도 S3 블록부터 둔다. 자재는 역산 발주한다. 조립 4명에 정비를 한다.",
       "config": {
         "scenario": "block",
         "ordering": "jit",
@@ -338,6 +338,56 @@
             "overtime": false,
             "maintenance": true
           }
+        },
+        "block_order": {
+          "sub_assembly": [
+            "S3-SA1",
+            "S3-SA2",
+            "S3-SA3",
+            "S3-SA4",
+            "S3-SA5",
+            "S3-SA6",
+            "S3-SA7",
+            "S3-SA8",
+            "S1-SA1",
+            "S1-SA2",
+            "S1-SA3",
+            "S1-SA4",
+            "S1-SA5",
+            "S1-SA6",
+            "S1-SA7",
+            "S1-SA8",
+            "S2-SA1",
+            "S2-SA2",
+            "S2-SA3",
+            "S2-SA4",
+            "S2-SA5",
+            "S2-SA6",
+            "S2-SA7",
+            "S2-SA8"
+          ],
+          "block_assembly": [
+            "S3-BA1",
+            "S3-BA2",
+            "S3-BA3",
+            "S3-BA4",
+            "S1-BA1",
+            "S1-BA2",
+            "S1-BA3",
+            "S1-BA4",
+            "S2-BA1",
+            "S2-BA2",
+            "S2-BA3",
+            "S2-BA4"
+          ],
+          "grand_assembly": [
+            "S3-GA1",
+            "S3-GA2",
+            "S1-GA1",
+            "S1-GA2",
+            "S2-GA1",
+            "S2-GA2"
+          ]
         }
       }
     },

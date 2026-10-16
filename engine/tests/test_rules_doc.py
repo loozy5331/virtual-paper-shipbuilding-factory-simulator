@@ -618,10 +618,11 @@ class Scenarios(unittest.TestCase):
     """2.0 시나리오 둘: 기본 분기(4척)와 수주 증가(6척, LNG선 2척). 규칙은 함께 쓴다."""
 
     def test_list(self):
-        self.assertEqual([(s["id"], s["name"], s["ships"]) for s in list_scenarios()],
+        ladder = [s for s in list_scenarios() if s.get("track") != "drill"]   # 실습(4.25)은 사다리 밖
+        self.assertEqual([(s["id"], s["name"], s["ships"]) for s in ladder],
                          [("simple", "간이공정 분기", 4), ("basic", "기본 반기", 6), ("growth", "수주 증가", 8), ("mix", "선종 다변화", 8),
                           ("surge", "수주 급증", 10), ("premium", "고부가가치 수주", 10)])
-        self.assertEqual([s["level"] for s in list_scenarios()], [1, 2, 3, 4, 5, 6])   # 4.20 선종 다변화, 4.21 고부가가치 수주(D67)
+        self.assertEqual([s["level"] for s in ladder], [1, 2, 3, 4, 5, 6])   # 4.20 선종 다변화, 4.21 고부가가치 수주(D67)
 
     def test_config_without_scenario_runs_as_basic(self):
         # 하위 호환: 1.x 설정(scenario 없음)은 기본 분기로 돈다.
@@ -1568,7 +1569,8 @@ class ShipSpec(unittest.TestCase):
         rules = load_scenario("basic")["ship_types"]
         self.assertEqual({t: v["difficulty"] for t, v in rules.items()},
                          {"VLCC": 2, "CONT": 2, "LNG": 3, "TUG": 1, "FEEDER": 1, "BULK": 2, "PCTC": 3, "VLGC": 3, "MEOH": 3})
-        tops = [max(rules[o["type"]]["difficulty"] for o in load_scenario(s["id"])["orders"]) for s in list_scenarios()]
+        tops = [max(rules[o["type"]]["difficulty"] for o in load_scenario(s["id"])["orders"])
+                for s in list_scenarios() if s.get("track") != "drill"]   # 실습(4.25)은 사다리 밖
         self.assertEqual(tops, sorted(tops))
         self.assertEqual(tops, [1, 2, 3, 3, 3, 3])
 

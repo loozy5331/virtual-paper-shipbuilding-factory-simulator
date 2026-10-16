@@ -1185,7 +1185,7 @@ function splitPeriod(period: string): [string, string] {
 function drawCalendar(): void {
   const sc = state.data.scenario;
   const [year, half] = splitPeriod(sc.period);
-  const maxLevel = Math.max(...state.data.scenarios.map((x) => x.level));
+  const maxLevel = Math.max(...state.data.scenarios.filter((x) => x.track !== "drill").map((x) => x.level));
   mount(els.calendar,
     h("button", {
       type: "button", class: "desk-cal", "aria-haspopup": "menu", "aria-expanded": String(calendarOpen),
@@ -1209,8 +1209,10 @@ function drawCalendar(): void {
         h("small", null, y), h("b", null, hf),
         h("span", { class: "cal-name" }, x.name),
         h("span", { class: "cal-meta" }, `수주 ${x.ships}척 · ${x.days}일`),
-        h("span", { class: "desk-level", title: `난이도 ${x.level} / ${maxLevel}` },
-          Array.from({ length: maxLevel }, (_, k) => h("i", { class: k < x.level ? "on" : "" }))),
+        x.track === "drill"
+          ? h("span", { class: "desk-drill" }, "실습")
+          : h("span", { class: "desk-level", title: `난이도 ${x.level} / ${maxLevel}` },
+            Array.from({ length: maxLevel }, (_, k) => h("i", { class: k < x.level ? "on" : "" }))),
         h("span", { class: "cal-foot" },
           now ? h("em", null, "지금 · 계획 고치기") : null,
           best ? gradeChip(best.result.grade.grade, "chip-grade") : null));

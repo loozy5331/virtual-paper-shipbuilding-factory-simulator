@@ -93,14 +93,14 @@ def list_scenarios() -> list[dict[str, Any]]:
     out = []
     for sid in scenario_ids():
         sc = _read(DATA_DIR / "scenarios" / f"{sid}.json")
-        if sc.get("track") == "drill":
-            continue   # 실습 카드는 첫 화면이 실습 묶음을 그릴 때(4.25 생산계획서 PR) 연다. 엔진·API로는 돌릴 수 있다
         mix: dict[str, int] = {}
         for o in sc["orders"]:
             name = rules["ship_types"][o["type"]]["name"]
             mix[name] = mix.get(name, 0) + 1
         out.append({"id": sid, "name": sc["name"], "summary": sc["summary"], "period": sc["period"],
                     "level": sc.get("level", 0), "ships": len(sc["orders"]), "ship_mix": mix,
+                    # 실습(4.25)은 사다리 밖: 첫 화면은 맨 끝에 "실습" 카드로 그린다
+                    **({"track": sc["track"]} if sc.get("track") else {}),
                     "kpi": sc["kpi"], "days": sc["days"]})
     return out
 
@@ -346,13 +346,21 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
                 elif not ok_day(d):
                     errors.append(f"{bid}: 블록 납기는 1~{days} 사이의 정수여야 합니다")
 
-    # 서두름(4.25): 규칙보다 먼저 할 블록 목록(고른 순서대로)
-    rush = config.get("rush")
-    if rush is not None:
-        if not block_counts(scenario):
-            errors.append("서두름(rush)은 블록 조립 실습에서만 정할 수 있습니다")
-        elif not isinstance(rush, list) or len(set(rush)) != len(rush) or any(b not in set(block_ids(scenario)) for b in rush):
-            errors.append("서두름(rush)은 있는 블록 이름을 한 번씩만 적은 목록이어야 합니다")
+    # 블록 순서(4.25): 블록 공정마다 먼저 할 블록 목록(계획 간트에서 끌어 정한다). 그 공정의 블록만, 한 번씩
+    border = config.get("block_order")
+    if border is not None:
+        bst = block_counts(scenario)
+        if not bst:
+            errors.append("블록 순서(block_order)는 블록 조립 실습에서만 정할 수 있습니다")
+        elif not isinstance(border, dict):
+            errors.append("블록 순서(block_order)는 공정 → 블록 이름 목록이어야 합니다")
+        else:
+            for pid, ids in border.items():
+                own = {block_id(o["id"], pid, k) for o in scenario["orders"] for k in range(1, bst.get(pid, 0) + 1)}
+                if pid not in bst:
+                    errors.append(f"블록 순서: {pid}는 블록 공정이 아닙니다")
+                elif not isinstance(ids, list) or len(set(ids)) != len(ids) or any(b not in own for b in ids):
+                    errors.append(f"블록 순서: {pid}에는 그 공정의 블록 이름을 한 번씩만 적어야 합니다")
 
     skilled = config.get("skilled_station")
     if skilled is not None and skilled not in station_ids:
@@ -727,7 +735,8 @@ def _due_preview(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, 
     plan = plan_schedule(config, scenario)["ships"]
     risks = [{"ship": sid, "station": pid, "plan_end": span["end"], "due": dues[sid][pid], "days": span["end"] - dues[sid][pid]}
              for sid, spans in plan.items() for pid, span in spans.items() if span["end"] > dues[sid][pid]]
-    return {"dues": {"stations": dues, "blocks": block_dues(config, scenario, dues)}, "plan_risks": risks}
+    return {"dues": {"stations": dues, "blocks": block_dues(config, scenario, dues)}, "plan_risks": risks,
+            "block_plan": block_plan(config, scenario)}
 
 
 def move_days_between(scenario: dict[str, Any], a: int, b: int) -> int:
@@ -786,6 +795,100 @@ def ideal_days(config: dict[str, Any], scenario: dict[str, Any], p: int, ship_ty
     return math.ceil(station_work(config, scenario, st["id"], ship_type) / rate / spread - EPS)
 
 
+def remaining_ideal(config: dict[str, Any], scenario: dict[str, Any], p: int, ship_type: str) -> int:
+    """여유(slack) 규칙의 남은 일: 공정 p와 그 뒤에 오는 모든 공정의 이상 소요일 합(이동일 없음, 4.25)."""
+    after = station_after(scenario)
+    later: set[int] = set()
+    frontier = [p]
+    while frontier:
+        a = frontier.pop()
+        for q, prev in enumerate(after):
+            if a in prev and q not in later:
+                later.add(q)
+                frontier.append(q)
+    return sum(ideal_days(config, scenario, q, ship_type) for q in {p} | later if not is_skipped(scenario["stations"][q]))
+
+
+def block_sort_key(rule: str, order_pos: int | None, due: int, amount: float, slack: int, priority: int, no: int) -> tuple[Any, ...]:
+    """블록을 들일 순서(4.25, 작을수록 먼저): 블록 순서 목록의 자리(없으면 목록 뒤) → 규칙 → 배 우선순위 → 블록 번호.
+    실행(_run)과 블록 계획 일정(block_plan)이 같이 쓴다."""
+    main: tuple[Any, ...] = {"edd": (due,), "slack": (slack,), "spt": (amount,)}.get(rule, ())
+    return (order_pos if order_pos is not None else 1 << 30,) + main + (priority, no)
+
+
+def block_plan(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
+    """블록 계획 일정(4.25, D71): 생산계획서 계획 간트에서 공정을 펼치면 보이는 블록 막대.
+
+    블록 공정마다 작업장 수만큼, 하루 처리량 2명 × 공법 속도로 이어 하기를 하며 들일 순서(block_sort_key)대로 놓는다.
+    첫 블록 공정의 블록은 배의 계획 간트에서 그 공정을 시작하는 날, 다음 공정 블록은 앞 블록이 모두 끝난 다음 날부터
+    들어갈 수 있다(블록은 하루에 다 실린다). 고장·사고·인력 대기·운반 대기는 넣지 않는 계획이다.
+    돌려주는 것: blocks(블록 → 공정·배·시작·끝·작업장·납기·위험), order(공정 → 정한 목록 + 나머지는 시작 순),
+    risks(끝 > 블록 납기)."""
+    bst = block_counts(scenario)
+    if not bst:
+        return {}
+    stations = scenario["stations"]
+    ids = [s["id"] for s in stations]
+    after = station_after(scenario)
+    rules = scenario["rules"]
+    plan = plan_schedule(config, scenario)["ships"]
+    dues = block_dues(config, scenario)
+    order_rank = {bid: k for lst in (config.get("block_order") or {}).values() for k, bid in enumerate(lst)}
+    orders = contract_orders(config, scenario)
+    out: dict[str, dict[str, Any]] = {}
+    order_by_station: dict[str, list[str]] = {}
+    for sid, n in bst.items():
+        p = ids.index(sid)
+        cfg = config["stations"][sid]
+        rate = rules["max_workers_per_station"] * rules["methods"][cfg["method"]]["speed"]
+        prev = next((ids[q] for q in after[p] if ids[q] in bst), None)
+        rule = cfg.get("dispatch", "ship")
+        todo = []
+        for o in orders:
+            r = bst[prev] // n if prev else 0
+            for k in range(1, n + 1):
+                bid = block_id(o["id"], sid, k)
+                avail = (plan[o["id"]][sid]["start"] if prev is None
+                         else max(out[block_id(o["id"], prev, c)]["end"] for c in range((k - 1) * r + 1, k * r + 1)) + 1)
+                amount = station_work(config, scenario, sid, o["type"]) / n
+                todo.append({"id": bid, "ship": o["id"], "no": k, "avail": avail, "left": amount, "amount": amount})
+        rem = {o["id"]: remaining_ideal(config, scenario, p, o["type"]) for o in orders}
+        due_of = {o["id"]: o["due_day"] for o in orders}
+        prio = {o["id"]: config["ships"][o["id"]]["priority"] for o in orders}
+        units: list[dict[str, Any] | None] = [None] * cfg.get("units", 1)
+        started: list[str] = []
+        day = min(b["avail"] for b in todo)
+        while todo or any(units):
+            for u in range(len(units)):
+                cap = rate
+                while cap > EPS:
+                    if units[u] is None:
+                        ready = [b for b in todo if b["avail"] <= day]
+                        if not ready:
+                            break
+                        b = min(ready, key=lambda b: block_sort_key(rule, order_rank.get(b["id"]), dues[b["id"]], b["amount"],
+                                                                    due_of[b["ship"]] - day - rem[b["ship"]], prio[b["ship"]], b["no"]))
+                        todo.remove(b)
+                        units[u] = b
+                        b["start"] = day
+                        started.append(b["id"])
+                    b = units[u]
+                    use = min(cap, b["left"])
+                    b["left"] -= use
+                    cap -= use
+                    if b["left"] <= EPS:
+                        out[b["id"]] = {"station": sid, "ship": b["ship"], "no": b["no"], "start": b["start"], "end": day,
+                                        "unit": u + 1, "due": dues[b["id"]], "risk": day > dues[b["id"]]}
+                        units[u] = None
+            day += 1
+        # 보이는 순서: 정한 목록(block_order)이 있으면 그 순서 그대로, 목록에 없는 블록은 그 뒤에 시작 순.
+        # 목록 앞이어도 아직 닿지 않은 블록은 기다리지 않으므로, 막대가 목록 순서보다 늦게 그려질 수 있다
+        listed = [bid for bid in (config.get("block_order") or {}).get(sid, []) if bid in out]
+        order_by_station[sid] = listed + [bid for bid in started if bid not in listed]
+    return {"blocks": out, "order": order_by_station,
+            "risks": [bid for bid, b in out.items() if b["risk"]]}
+
+
 def station_dues(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, dict[str, int]]:
     """배마다 공정 납기(4.25, D71). 마지막 공정 = 계약 납기, 앞 공정 = 뒤 공정 납기 − 뒤 공정 이상 소요일 − 이동일
     (뒤 공정이 둘 이상이면 가장 이른 값). 설정 due.stations에 적은 값은 그대로 쓰고, 그 앞 공정은 그 값에서 역산한다."""
@@ -803,9 +906,9 @@ def station_dues(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, 
                 due[p] = fixed
             elif not succ:
                 due[p] = order["due_day"]
-            else:
-                due[p] = min(due[q] - ideal_days(config, scenario, q, order["type"]) - move_days_between(scenario, p, q)
-                             for q in succ)
+            else:   # 1일보다 앞서면 1일(그 공정은 계획상 위험으로 보인다)
+                due[p] = max(1, min(due[q] - ideal_days(config, scenario, q, order["type"]) - move_days_between(scenario, p, q)
+                                    for q in succ))
         out[order["id"]] = {stations[p]["id"]: due[p] for p in active}
     return out
 
@@ -934,16 +1037,17 @@ def _dispatch_rank(m: dict[str, Any]) -> tuple[Any, ...]:
 
 
 def _recommend(config: dict[str, Any], scenario: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
-    """평가서 선배의 팁의 우선순위 추천(4.25, D71): 블록 공정의 규칙만 한 규칙으로 바꿔 4번 더 돌려 비교한다.
-    서두름과 나머지 설정은 그대로. 순위가 같으면 DISPATCH_RULES 순서. 실행 전 생산계획서에는 보이지 않는다."""
+    """평가서 선배의 팁의 우선순위 추천(4.25, D71): 블록 순서를 비우고 블록 공정의 규칙만 한 규칙으로 바꿔 4번 더
+    돌려 비교한다. 나머지 설정은 그대로. 순위가 같으면 DISPATCH_RULES 순서. 실행 전 생산계획서에는 보이지 않는다."""
     bst = block_counts(scenario)
     rows = []
     for rule in DISPATCH_RULES:
-        cfg = {**config, "stations": {sid: ({**st, "dispatch": rule} if sid in bst else st)
-                                      for sid, st in config["stations"].items()}}
+        cfg = {**{k: v for k, v in config.items() if k != "block_order"},
+               "stations": {sid: ({**st, "dispatch": rule} if sid in bst else st) for sid, st in config["stations"].items()}}
         rows.append({"rule": rule, **_dispatch_metrics(_run(_with_order_days(cfg, scenario), scenario))})
     best = max(rows, key=_dispatch_rank)   # 같으면 앞 규칙(max는 처음 만난 것)
-    current = {"rules": {sid: config["stations"][sid].get("dispatch", "ship") for sid in bst}, **_dispatch_metrics(result)}
+    current = {"rules": {sid: config["stations"][sid].get("dispatch", "ship") for sid in bst},
+               "block_order": bool(config.get("block_order")), **_dispatch_metrics(result)}
     return {"rules": rows, "best": best["rule"], "current": current,
             "current_is_best": _dispatch_rank(current) >= _dispatch_rank(best)}
 
@@ -1172,14 +1276,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
 
     # 우선순위 규칙과 서두름(4.25). 여유(slack) = 인도 납기 − 오늘 − 이 공정과 뒤 공정의 이상 소요일 합
     dispatch = {p: config["stations"][stations[p]["id"]].get("dispatch", "ship") for p in block_set}
-    rush_rank = {bid: k for k, bid in enumerate(config.get("rush") or [])}
-    no_rush = len(rush_rank)
-    later: dict[int, set[int]] = {p: set() for p in range(n_st)}
-    for q in reversed(range(n_st)):
-        for a in after[q]:
-            later[a] |= {q} | later[q]
-    rem_ideal = {(i, p): sum(ideal_days(config, scenario, q, orders[i]["type"]) for q in {p} | later[p] if q not in skipped_p)
-                 for i in range(n_ships) for p in block_set}
+    order_rank = {bid: k for ids in (config.get("block_order") or {}).values() for k, bid in enumerate(ids)}
+    rem_ideal = {(i, p): remaining_ideal(config, scenario, p, orders[i]["type"]) for i in range(n_ships) for p in block_set}
     sdues = station_dues(config, scenario) if block_mode else {}
     bdues = block_dues(config, scenario, sdues) if block_mode else {}
 
@@ -1199,17 +1297,10 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                 all_blocks.append(b)
 
     def block_key(b: dict[str, Any], day: int) -> tuple[Any, ...]:
-        """블록 우선순위(4.25): 서두름(고른 순서) → 그 공정의 규칙 → 배 우선순위 → 블록 번호."""
+        """블록 우선순위(4.25): 블록 순서(목록에 있으면 그 자리) → 그 공정의 규칙 → 배 우선순위 → 블록 번호."""
         i, p = b["ship"], b["p"]
-        rule = dispatch[p]
-        main: tuple[Any, ...] = ()
-        if rule == "edd":
-            main = (b["due"],)
-        elif rule == "slack":
-            main = (orders[i]["due_day"] - day - rem_ideal[(i, p)],)
-        elif rule == "spt":
-            main = (b["amount"],)
-        return (rush_rank.get(b["id"], no_rush),) + main + (priority[i], b["no"])
+        return block_sort_key(dispatch[p], order_rank.get(b["id"]), b["due"], b["amount"],
+                              orders[i]["due_day"] - day - rem_ideal[(i, p)], priority[i], b["no"])
 
     def parent_of(b: dict[str, Any]) -> dict[str, Any]:
         """b가 닿아서 만들 다음 블록 공정의 블록."""
@@ -1629,9 +1720,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         assigned = [[0] * n for n in n_units]
         for p, u in sorted(((p, u) for p in range(n_st) for u in range(n_units[p])
                             if current[p][u] and day > stop_until[p][u] and crews[p] != "robot"),
-                           key=lambda pu: (rush_rank.get(current[pu[0]][pu[1]]["block"]["id"], no_rush)
-                                           if "block" in current[pu[0]][pu[1]] else no_rush,
-                                           priority[current[pu[0]][pu[1]]["ship"]])):
+                           key=lambda pu: priority[current[pu[0]][pu[1]]["ship"]]):
             t = trade_of[p]
             assigned[p][u] = min(need, idle_by.get(t, 0))
             idle_by[t] = idle_by.get(t, 0) - assigned[p][u]

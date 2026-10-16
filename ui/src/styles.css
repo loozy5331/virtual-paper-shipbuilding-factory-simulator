@@ -786,6 +786,8 @@ body { background: var(--desk); }
 .desk-level i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--ink-2); }
 .desk-level i.on { background: var(--ink-2); }
 .desk-level small { margin-left: 4px; color: var(--ink-2); font-size: 0.78rem; font-weight: 600; }
+/* 4.25 실습 카드: 난이도 점 대신 테두리 글자 하나 */
+.desk-drill { display: inline-block; padding: 1px 8px; border: 1.5px solid var(--ink-2); border-radius: 3px; color: var(--ink-2); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.1em; }
 .desk-stamp {
   width: 40px; height: 40px; border-radius: 50%; border: 2.5px solid; display: inline-flex; align-items: center; justify-content: center;
   font-weight: 800; font-size: 1.15rem; transform: rotate(-8deg);
@@ -1295,3 +1297,42 @@ body { background: var(--desk); }
 .sb-key.todo { border: 1px dashed #cfcabd; }
 .sb-hint { margin-left: auto; color: var(--ink-3); }
 .spec-diff { margin-left: 8px; vertical-align: middle; }
+
+/* 4.25 블록 계획(배별 탭): 공정 납기 · 블록 납기 · 서두름 */
+.block-plan { margin-top: 10px; }
+.block-table th { text-align: left; white-space: nowrap; font-weight: 600; }
+.block-table th .swatch { display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 2px; vertical-align: middle; }
+.block-table tr.at-risk th, .block-table tr.at-risk .risk-note { color: var(--bad); }
+.block-table .risk-note { display: block; font-size: 0.72rem; }
+.day-input { width: 4.2em; padding: 1px 4px; font: inherit; font-size: 0.82rem; }
+.block-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.block-chip { display: inline-flex; align-items: center; gap: 3px; padding: 2px 4px; border: 1px solid var(--line); border-radius: 3px; font-size: 0.78rem; }
+.block-chip .day-input { width: 3.2em; }
+.dispatch { display: flex; flex-direction: column; gap: 2px; }
+.plan-risk { color: var(--ink-2); }
+.dispatch .seg { flex-wrap: wrap; row-gap: 4px; }
+.block-table td { text-align: left; }
+/* 4.25 블록 일정 패널(① 계획 간트에서 블록 공정을 누르면) */
+.plan-gantt rect.pickable { cursor: pointer; }
+.plan-gantt rect.picked { stroke: var(--ink); stroke-width: 1.5; }
+.block-panel:empty { display: none; }
+.block-panel { margin: 6px 0 4px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); }
+.block-panel-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; margin-bottom: 4px; }
+.block-panel-head small { color: var(--ink-3); }
+.block-panel-head .btn { margin-left: auto; }
+.block-panel-head .btn + .btn { margin-left: 0; }
+.block-gantt { width: 100%; height: auto; display: block; }
+.block-gantt .block-row { cursor: grab; outline: none; }
+.block-gantt .block-row.dragging { cursor: grabbing; opacity: 0.85; }
+.block-gantt .block-row:focus .plan-hit { fill: var(--accent-soft); }
+.block-gantt .block-row.risk .block-bar { stroke: var(--bad); stroke-width: 1.5; }
+.block-gantt .ship-id.alt { font-weight: 400; fill: var(--ink-3); }
+.block-gantt .block-due { stroke-width: 1.5; }
+details.block-plan > summary { cursor: pointer; margin: 8px 0 4px; }
+details.block-plan > summary small { color: var(--ink-3); }
+.block-gantt .plan-hit { fill: transparent; }
+.block-gantt .block-row:hover .plan-hit { fill: var(--accent-soft); }
+.block-gantt .ship-id.small { font-size: 9px; font-weight: 700; }
+.block-gantt .tick { font-size: 9px; }
+.block-gantt .plan-late { font-size: 10px; font-weight: 800; fill: var(--bad); }
+.block-gantt .block-due { stroke: var(--ink); stroke-dasharray: 2 1.5; }

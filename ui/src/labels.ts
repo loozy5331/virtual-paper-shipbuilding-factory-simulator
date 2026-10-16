@@ -131,3 +131,11 @@ export const GRADE_EDGE: Record<string, string> = { S: "#9a6a00" };
 
 /** 강조하는 등급의 한마디. 색만으로 알리지 않으려고 쓴다. */
 export const GRADE_NOTE: Record<string, string> = { S: "목표 초과", F: "목표 미달" };
+
+/** 블록 우선순위 규칙(4.25, D71). 생산계획서 ④ 블록 공정 카드와 평가서 추천에 쓴다 */
+export const DISPATCH_INFO: Record<string, { name: string; note: string }> = {
+  ship: { name: "선박 순서", note: "배 우선순위대로. 같은 배는 블록 번호 순" },
+  edd: { name: "납기 빠른 순", note: "블록 납기가 이른 블록부터(배별 탭의 블록 계획에서 정한 납기)" },
+  slack: { name: "여유 작은 순", note: "인도 납기까지 남은 날에서 남은 공정 일수를 뺀 여유가 작은 블록부터" },
+  spt: { name: "작업 짧은 순", note: "블록 작업량이 작은 블록부터. 작은 배 블록이 먼저 끝나 짝 대기가 생기기 쉽다" },
+};
