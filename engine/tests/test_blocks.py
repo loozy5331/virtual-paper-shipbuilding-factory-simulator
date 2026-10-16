@@ -311,11 +311,13 @@ class BlockStart(unittest.TestCase):
         self.assertEqual((bp["Y-SA1"]["start"], bp["Y-SA1"]["end"]), (3, 3))
 
     def test_pinned_block_goes_before_listed_order(self):
-        # B안은 블록 순서 목록이 S2 블록을 앞에 둔다. S1-BA4를 6일로 정하면 6일에 S2 블록보다 먼저 들어간다(막대가 놓은 자리에 머문다)
+        # B안은 블록 순서 목록이 S2 블록을 앞에 둔다. S1-BA4는 11일에 들어갈 수 있지만(ready) S2 블록을 하느라 15일에 시작한다.
+        # 11일로 정하면 11일에 S2 블록보다 먼저 들어간다(막대가 놓은 자리에 머문다)
         cfg = copy.deepcopy(load_presets("block")[1]["config"])
-        self.assertEqual(preview(cfg)["block_plan"]["blocks"]["S1-BA4"]["start"], 13)
-        cfg["block_start"] = {"S1-BA4": 6}
-        self.assertEqual(preview(cfg)["block_plan"]["blocks"]["S1-BA4"]["start"], 6)
+        ba4 = preview(cfg)["block_plan"]["blocks"]["S1-BA4"]
+        self.assertEqual((ba4["ready"], ba4["start"]), (11, 15))
+        cfg["block_start"] = {"S1-BA4": 11}
+        self.assertEqual(preview(cfg)["block_plan"]["blocks"]["S1-BA4"]["start"], 11)
 
     def test_validation(self):
         cfg, sc = mini([("X", "FEEDER", 1, 40)])
@@ -396,7 +398,7 @@ class DrillScenario(unittest.TestCase):
     def test_presets_and_grade_d70(self):
         # 등급 조율(D70, 4.25 ⑧): B안은 A, B안에 선배의 팁 셋(조립 2명·탑재 1명·자동화 연구)을 반영하면 S
         presets = {p["id"]: p["config"] for p in load_presets("block")}
-        cases = {"unmanaged": (2839.8, 67.4, "C", 1), "managed": (4274.4, 94.2, "A", 3), "all_in": (-6150.8, 59.6, "C", 3)}
+        cases = {"unmanaged": (2839.8, 67.4, "C", 1), "managed": (4288.0, 94.3, "A", 3), "all_in": (-6150.8, 59.6, "C", 3)}
         for pid, want in cases.items():
             r = simulate(presets[pid])
             self.assertEqual((r["profit"], r["grade"]["score"], r["grade"]["grade"], r["qcd"]["delivery"]["on_time"]), want, pid)

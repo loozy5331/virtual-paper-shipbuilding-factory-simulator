@@ -1414,3 +1414,7 @@ details.block-plan > summary small { color: var(--ink-3); }
 .block-gantt .block-row.pinned .block-bar { stroke: var(--ink); stroke-width: 1; }
 .asm-tabs .tab small { font-weight: 400; color: var(--ink-3); }
 .block-gantt .block-row.risk .block-bar { stroke: var(--bad); stroke-width: 1.5; }
+/* 4.26 조립 공정 계획서: 작업장 줄(관제실 공정 탭처럼) */
+.block-gantt .lane-id { font-size: 8px; fill: var(--ink-3); }
+.block-gantt .unit-label { font-size: 6.5px; font-weight: 700; text-anchor: middle; pointer-events: none; }
+.block-gantt .lane { fill: var(--paper-2); }

@@ -8,7 +8,7 @@
 // 공정을 들여다보는 길: 전경의 정반, 간트 막대, 평가서의 "작업 현황에서 보기" → 오른쪽 모니터의 공정 확대(재생 중에도 오늘을 본다).
 // 사람의 얼굴과 이름은 작업모를 쓰고 현장(3D)에 직접 나가야 보인다(D24). 화면에는 "CCTV"라는 말을 쓰지 않는다(감시처럼 느껴져서).
 
-import { activeStations, api, ApiError, blockStations, type ClassBest, type Config, type DispatchRule, type Finding, type Preview, type Result, type ScenarioPayload } from "./api";
+import { activeStations, api, ApiError, blockStations, byDue, type ClassBest, type Config, type DispatchRule, type Finding, type Preview, type Result, type ScenarioPayload } from "./api";
 import { h, mount, num, pct, s as svgEl } from "./dom";
 import { shipProfile } from "./profile";
 import { renderDesk } from "./desk";
@@ -1162,7 +1162,7 @@ function drawGanttScreen(): void {
     }, label);
   const sameColor = LOSS_STATES.filter((l) => l.state !== "rework");
   mount(els.ganttScreen,
-    h("div", { class: "screen-tabs" }, shipTab(null, "전체"), r.result.ships.map((sh) => shipTab(sh.id, sh.id))),
+    h("div", { class: "screen-tabs" }, shipTab(null, "전체"), byDue(scenario, r.result.ships).map((sh) => shipTab(sh.id, sh.id))),
     blockSt.length ? h("div", { class: "screen-tabs sub" }, stationTab(null, `${state.ganttShip} 공정 전체`),
       blockSt.map((b) => stationTab(b.id, b.name))) : null,
     h("div", { class: "gantt-chart" }));

@@ -839,7 +839,7 @@ def block_plan(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, An
     첫 블록 공정의 블록은 배의 계획 간트에서 그 공정을 시작하는 날, 다음 공정 블록은 앞 블록이 모두 끝난 다음 날부터
     들어갈 수 있다(블록은 하루에 다 실린다). 착수일(block_start)을 정한 블록은 그날부터다(4.26).
     고장·사고·인력 대기·운반 대기는 넣지 않는 계획이다.
-    돌려주는 것: blocks(블록 → 공정·배·시작·끝·작업장·납기·위험), order(공정 → 정한 목록 + 나머지는 시작 순),
+    돌려주는 것: blocks(블록 → 공정·배·들어갈 수 있는 날(ready, 4.26)·시작·끝·작업장·납기·위험), order(공정 → 정한 목록 + 나머지는 시작 순),
     risks(끝 > 블록 납기)."""
     bst = block_counts(scenario)
     if not bst:
@@ -897,7 +897,7 @@ def block_plan(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, An
                     b["left"] -= use
                     cap -= use
                     if b["left"] <= EPS:
-                        out[b["id"]] = {"station": sid, "ship": b["ship"], "no": b["no"], "start": b["start"], "end": day,
+                        out[b["id"]] = {"station": sid, "ship": b["ship"], "no": b["no"], "ready": b["avail"], "start": b["start"], "end": day,
                                         "unit": u + 1, "due": dues[b["id"]], "risk": day > dues[b["id"]]}
                         units[u] = None
             day += 1

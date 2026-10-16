@@ -1,6 +1,6 @@
 """종이배 조선소 시뮬레이션 엔진."""
 
-__version__ = "4.26.0"
+__version__ = "4.27.0"
 
 from .sim import (
     ConfigError,
