@@ -203,10 +203,10 @@ export class Yard {
       down = null;
       last = null;
     });
-    // 나눠 하기면 부분마다(작업장 1~3호) 고리 하나씩
+    // 나눠 하기면 부분마다(작업장 1~3호), 블록 실습이면 블록 조각마다 고리 하나씩
     const ringGeo = new THREE.RingGeometry(1.15, 1.3, 48);
     const ringMat = new THREE.MeshBasicMaterial({ color: "#e0b43a", side: THREE.DoubleSide, transparent: true, opacity: 0.9 });
-    for (let k = 0; k < 3; k++) {
+    for (let k = 0; k < 8; k++) {
       const ring = new THREE.Mesh(ringGeo, ringMat);
       ring.rotation.x = -Math.PI / 2;
       ring.visible = false;
@@ -844,17 +844,33 @@ export class Yard {
       lot.pairTags.forEach((t) => t.element.remove());
     }
     this.lots.clear();
-    ships.forEach(({ id, type }, i) => {
-      const lot = new Lot(id, type);
-      lot.floatPhase = i * 1.7;
-      lot.group.userData.pick = { kind: "ship", ship: id } satisfies TrackPick;
-      // 이름표(S3 칩)도 누를 수 있다(라벨 층은 원래 누름을 통과시킨다)
-      lot.tag.element.classList.add("pickable");
-      lot.tag.element.addEventListener("click", () => this.pickHandler?.({ kind: "ship", ship: id }));
-      lot.group.visible = false;
-      this.lots.set(id, lot);
-      this.scene.add(lot.group);
-    });
+    ships.forEach(({ id, type }, i) => { this.makeLot(id, id, type).floatPhase = i * 1.7; });
+  }
+
+  /** 로트 하나(배, 또는 블록 실습의 블록 조각 key = 조각 이름). 누르면 그 배를 추적한다 */
+  private makeLot(key: string, ship: string, type: string): Lot {
+    const lot = new Lot(ship, type);
+    lot.group.userData.pick = { kind: "ship", ship } satisfies TrackPick;
+    // 이름표(S3 칩)도 누를 수 있다(라벨 층은 원래 누름을 통과시킨다)
+    lot.tag.element.classList.add("pickable");
+    lot.tag.element.addEventListener("click", () => this.pickHandler?.({ kind: "ship", ship }));
+    lot.group.visible = false;
+    this.lots.set(key, lot);
+    this.scene.add(lot.group);
+    return lot;
+  }
+
+  /** 오늘 그림의 로트(블록 조각은 처음 보이는 날 만든다) */
+  private lotOf(view: LotView): Lot | undefined {
+    if (!view.id) return this.lots.get(view.ship);
+    return this.lots.get(view.id) ?? this.makeLot(view.id, view.ship, view.type);
+  }
+
+  /** 그 배를 오늘 그린 로트들: 블록이 흩어졌으면 조각들(station이면 그 공정의 조각만), 아니면 배 로트 하나 */
+  private shipLots(f: Frame, ship: string, station?: number): Lot[] {
+    const pcs = f.pieces.filter((pc) => pc.ship === ship && (station === undefined || pc.station === station));
+    if (!pcs.length) { const lot = this.lots.get(ship); return lot ? [lot] : []; }
+    return pcs.map((pc) => this.lots.get(pc.id!)).filter((l): l is Lot => !!l);
   }
 
   /** 블록이나 선반을 누르면 부를 함수(자재·블록 추적 상자) */
@@ -1116,14 +1132,15 @@ export class Yard {
     }
     this.animateProps(t);
     // 추적: 그 배 블록 밑에 고리, 이름표는 그 배만 진하게
-    const tracked = this.track ? this.lots.get(this.track) : undefined;
     // 나눠 하는 중이면 블록 부분마다(위쪽 작업장 2·3호, 짝 대기 적치장 포함) 고리를 둔다
-    const spots = tracked?.group.visible ? (tracked.splitDrawn ?? [new THREE.Vector3()]) : [];
-    tracked?.group.updateMatrixWorld();
+    // 블록 실습에서 블록이 흩어졌으면 조각마다 고리
+    const spots = this.track === null ? [] : [...this.lots.values()]
+      .filter((l) => l.ship === this.track && l.group.visible)
+      .flatMap((l) => { l.group.updateMatrixWorld(); return (l.splitDrawn ?? [new THREE.Vector3()]).map((v) => l.group.localToWorld(v.clone())); });
     this.trackRings.forEach((ring, k) => {
       ring.visible = k < spots.length;
       if (!ring.visible) return;
-      const at = tracked!.group.localToWorld(spots[k].clone());
+      const at = spots[k];
       ring.position.set(at.x, Math.max(0.05, at.y) + 0.03, at.z);
     });
     for (const lot of this.lots.values()) {
@@ -1167,7 +1184,7 @@ export class Yard {
     const docks = f.stations[ST.dock]?.units.length ?? 1;
     if (docks !== this.layoutDocks) this.placeStations(docks);
     // 로트. 기다리는 블록의 적치장 자리를 먼저 정한다.
-    this.stock = stockAssign(f);
+    this.stock = stockAssign(f, true);
     let hook: { x: number; y: number; z: number } | null = null;
     let hook2: { x: number; y: number; z: number } | null = null;   // 2호 도크(왼손)
     // 진수: 재생 중 하루 안의 비율로 단계를 나눈다(멈춰 있으면 frac = 1이라 다 끝난 모습).
@@ -1177,9 +1194,14 @@ export class Yard {
     this.harbor.drawLaunchDocks(docking);
     const towed: ({ lot: Lot; pose: LaunchPose; g: number } | null)[] = [null, null];
     const departing: { lot: Lot; pose: LaunchPose }[] = [];
-    for (const view of f.lots) {
-      const lot = this.lots.get(view.ship);
+    // 블록 실습(4.25): 블록이 흩어진 배는 배 로트를 숨기고 블록 조각을 그린다. 오늘 없는 조각도 숨긴다
+    const pieceIds = new Set(f.pieces.map((pc) => pc.id!));
+    for (const [key, lot] of this.lots) if (key.includes(":") && !pieceIds.has(key)) lot.group.visible = false;
+    for (const view of [...f.lots, ...f.pieces]) {
+      const lot = this.lotOf(view);
       if (!lot) continue;
+      if (view.inBlocks) { lot.group.visible = false; lot.prev = null; continue; }
+      lot.mask = view.mask ? new Set(view.mask) : null;
       // 인도한 배(sea)는 선주에게 넘어가 조선소를 떠났다(화면 오른쪽 위 인도 완료 로그에 남는다)
       // 인도한 배는 떠났고, 시운전 중인 배는 먼바다에 나가 있다(화면 오른쪽 아래 말풍선). 시운전 첫날 재생 중에는 만을 빠져나가는 모습까지
       const trial = view.place === "bench" && view.station === ST.trial;
@@ -1273,6 +1295,7 @@ export class Yard {
         else if (view.unit === 1) hook2 = { x: lot.hookX, y: lot.hookY, z: lot.hookZ };
       }
       setLabel(lot.tag, this.lotLabel(view));
+      lot.tag.visible = !view.quiet;
       lot.tag.position.y = view.form >= 3 ? 1.9 : 1.0;
     }
 
@@ -1411,7 +1434,8 @@ export class Yard {
       const cart = this.carts[k];
       if (!cart) return;
       cart.group.visible = true;
-      const lot = tr.ship ? f.lots.find((l) => l.ship === tr.ship) : undefined;
+      // 블록 실습이면 이 배의 운반 중인 블록 조각
+      const lot = tr.ship ? f.pieces.find((l) => l.ship === tr.ship && l.place === "carried") ?? f.lots.find((l) => l.ship === tr.ship) : undefined;
       let at: THREE.Vector3;
       let parked = false;
       if (tr.state === "move" && lot) {
@@ -1435,7 +1459,7 @@ export class Yard {
       // 전에는 로트가 제 운반 자리로 먼저 가 있어 차고에서 오는 트랜스포터를 앞질렀다).
       // 수레가 아직 멀면 로트는 실을 자리(운반 출발점)에서 기다리고, 닿으면 수레 위에 얹혀 함께 간다.
       if (tr.state === "move" && lot?.place === "carried") {
-        const lotObj = this.lots.get(lot.ship);
+        const lotObj = this.lots.get(lot.id ?? lot.ship);
         if (lotObj) {
           lotObj.held = true;
           const loaded = cart.group.position.distanceTo(at) < 0.8 || lotObj.loaded;
@@ -1584,7 +1608,7 @@ export class Yard {
       case "queue":
       case "outbound": {
         // 공용 적치장 칸(탑재 앞 대기는 예외: 도크 앞)
-        const spot = this.stock.get(`${view.place === "queue" ? "q" : "o"}:${view.ship}`);
+        const spot = this.stock.get(`${view.place === "queue" ? "q" : "o"}:${view.id ?? view.ship}`);
         if (spot) {
           const at = stockSpot(spot.station, spot.index);
           return new THREE.Vector3(at.x, 0, at.z);
@@ -1612,11 +1636,15 @@ export class Yard {
   }
 
   private lotLabel(view: LotView): string {
+    // 블록 조각: 배 이름 옆에 블록 이름(둘까지, 많으면 소×5). 짝 대기는 엔진 블록 상태(배 상태에는 없다)
+    const names = view.blockNames ?? [];
+    const blocks = !names.length ? "" : ` <span class="lot-blocks">${names.length <= 2 ? names.join("·") : `${names[0].replace(/\d+$/, "")}×${names.length}`}</span>`;
+    if ((view.state as string) === "pair_wait") return `<b>${view.ship}</b>${blocks}${chipHtml("pair_wait", "짝 대기")}`;
     const chip = view.state === "rework" ? chipHtml("rework", "재작업")
       : view.place === "bench" && view.state === "work" ? ""
       : view.place === "sea" ? (view.late ? `<span class="chip late">지연 인도</span>` : "")
       : STATE_INFO[view.state] ? chipHtml(view.state, STATE_INFO[view.state].name) : "";
-    return `<b>${view.ship}</b>${chip}`;
+    return `<b>${view.ship}</b>${blocks}${chip}`;
   }
 
   /**
@@ -1685,7 +1713,7 @@ export class Yard {
           legs.push({ r: roadPath(at, side, KIT_PICK, "back"), job: null }, { r: roadPath(KIT_PICK, "back", drop, ds), job });
           at = drop; side = ds;
         } else {
-          const lot = this.lots.get(job.ship);
+          const lot = this.shipLots(f, job.ship, ST.sub)[0];
           const bench = benchAt(ST.proc, job.unit, this.layoutDocks);
           const pick = { x: bench.x + 0.9, z: bench.z };
           const drop = lot ? { x: lot.target.x, z: lot.target.z } : kitDrop(ST.sub);
@@ -1726,15 +1754,17 @@ export class Yard {
       // 부재 팔레트: 실을 구간 전에는 가공 정반에서 기다리고, 싣는 구간에는 포크(앞 0.55) 위에
       legs.forEach((l, n) => {
         if (l.job?.kind !== "pallet") return;
-        const lot = this.lots.get(l.job.ship);
-        if (!lot || leg < 0 || n < leg) return;
-        lot.held = true;
-        if (n > leg) {
-          const p = picks.get(l.job)!;
-          lot.group.position.set(p.x, MAT_TOP, p.z);
-        } else {
-          const fx = Math.cos(fk.group.rotation.y), fz = -Math.sin(fk.group.rotation.y);
-          lot.group.position.set(fk.group.position.x + fx * 0.55, 0.22, fk.group.position.z + fz * 0.55);
+        if (leg < 0 || n < leg) return;
+        // 블록 실습이면 소조립에 든 블록 조각 모두(소블록 자리가 서로 달라 겹치지 않는다)
+        for (const lot of this.shipLots(f, l.job.ship, ST.sub)) {
+          lot.held = true;
+          if (n > leg) {
+            const p = picks.get(l.job)!;
+            lot.group.position.set(p.x, MAT_TOP, p.z);
+          } else {
+            const fx = Math.cos(fk.group.rotation.y), fz = -Math.sin(fk.group.rotation.y);
+            lot.group.position.set(fk.group.position.x + fx * 0.55, 0.22, fk.group.position.z + fz * 0.55);
+          }
         }
       });
     });

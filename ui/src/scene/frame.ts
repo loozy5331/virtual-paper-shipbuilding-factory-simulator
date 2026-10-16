@@ -2,7 +2,7 @@
 // 엔진 결과의 일자별 기록(ships[].daily, stations[].daily, transporters[].daily, workforce, inventory)을 읽어 옮기기만 한다.
 // 규칙을 다시 계산하지 않는다. 3D 코드(Three.js)도 모른다.
 
-import type { Config, Crew, Peg, Result, Scenario, ShipState } from "../api";
+import { blockId, blockLabel, type BlockResult, type Config, type Crew, type Peg, type Result, type Scenario, type ShipState } from "../api";
 import { SEA_MATERIALS, SUPPLY_DAYS } from "./layout";
 
 /** 로트가 있는 자리. */
@@ -39,6 +39,14 @@ export interface LotView {
   progress?: number;
   state: ShipState;
   late: boolean;
+  /** 블록 실습(4.25)에서 블록이 여러 자리에 흩어진 날: 3D는 이 로트 대신 Frame.pieces로 그린다(2D는 그대로 이 로트) */
+  inBlocks?: boolean;
+  /** 블록 조각(Frame.pieces)이면 조각 이름(배:자리)과 그 조각에 든 소블록 자리(0~7, Lot의 4열 × 2줄)와 블록 이름(소3, 중1 …) */
+  id?: string;
+  mask?: number[];
+  blockNames?: string[];
+  /** 같은 정반에서 이어 하는 블록 조각: 이름표는 그 정반의 첫 조각이 블록 이름을 모아 단다 */
+  quiet?: boolean;
 }
 
 /** 작업장 하나(증설하면 공정마다 2개)의 오늘. */
@@ -118,6 +126,11 @@ export interface ResearchView {
 export interface Frame {
   day: number;
   lots: LotView[];
+  /**
+   * 블록 조각(4.25 블록 실습, 3D용): 블록 공정에 든 배의 블록이 실제로 있는 자리마다 하나. 그 배의 로트는 inBlocks.
+   * 다른 반기와 블록 공정 밖의 날은 비어 있다
+   */
+  pieces: LotView[];
   stations: StationView[];
   transporters: TransporterView[];
   /** 공용 지게차(4.3, D46): 대마다 오늘 일감 */
@@ -240,15 +253,18 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
     }
   });
 
-  // 같은 자리에 여럿이면 우선순위 순으로 줄을 세운다.
+  const pieces = blockPieces(result, stationIds, day, frac, formOf);
+  for (const lot of lots) if (pieces.some((pc) => pc.ship === lot.ship)) lot.inBlocks = true;
+
+  // 같은 자리에 여럿이면 우선순위 순으로 줄을 세운다(블록 조각은 조각끼리).
   const priority = Object.fromEntries(result.ships.map((s) => [s.id, s.priority]));
   const groups = new Map<string, LotView[]>();
-  for (const lot of lots) {
+  for (const lot of [...lots, ...pieces]) {
     const key = `${lot.place}:${lot.station}`;
     groups.set(key, [...(groups.get(key) ?? []), lot]);
   }
   for (const group of groups.values()) {
-    group.sort((a, b) => priority[a.ship] - priority[b.ship]).forEach((lot, i) => { lot.slot = i; });
+    group.sort((a, b) => priority[a.ship] - priority[b.ship] || (a.id ?? "").localeCompare(b.id ?? "")).forEach((lot, i) => { lot.slot = i; });
   }
 
   const stations: StationView[] = result.stations.map((st, p) => {
@@ -336,6 +352,7 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
   return {
     day,
     lots,
+    pieces,
     launches,
     quayKits: day > 0 ? result.ships.flatMap((ship) => {
       const kit = result.events.find((ev) => ev.type === "issue" && ev.ship === ship.id && ev.station === "quay_outfitting");
@@ -361,6 +378,90 @@ export function buildFrame(result: Result, scenario: Scenario, config: Config, d
     shelves,
     research,
   };
+}
+
+/** 블록 공정의 블록 수(소조립 8 → 중조립 4 → PE장 2). 3D Lot 배치가 이 수에 맞춰져 있어 다르면 조각을 만들지 않는다 */
+const PIECE_COUNTS = [8, 4, 2];
+/** 정반 위에 있는 블록 상태(작업장을 차지한다) */
+const ON_BENCH = new Set(["work", "rework", "labor_wait", "accident_stop", "breakdown_stop"]);
+
+/**
+ * 블록 조각(4.25 블록 실습): Lot의 소블록 자리 u(4열 × 2줄)마다 그 자리를 품은 블록 사슬(소 → 중 → PE)에서
+ * 오늘 있는(시작 전·끝남이 아닌) 가장 뒤 블록이 자리를 정한다. 중조립 j = 짝 열 × 줄, PE장 g = 짝 열(Lot이 붙이는 순서와 같다).
+ * 정반 위면 블록마다 한 조각(진행률은 그 블록의 시작·끝), 대기·운반·적치는 같은 자리끼리 한 조각.
+ * 짝 대기는 다음 공정 앞 적치장에서 짝을 기다리는 것이다. PE장을 다 마친 블록은 탑재 전까지 PE장 적치장에.
+ * 엔진 결과 blocks[].daily를 옮기기만 한다
+ */
+function blockPieces(result: Result, stationIds: string[], day: number, frac: number,
+  formOf: (p: number, progress: number) => number): LotView[] {
+  if (!result.blocks?.length || day <= 0) return [];
+  const index = day - 1;
+  const byId = new Map(result.blocks.map((b) => [b.id, b]));
+  const chainIds = [...new Set(result.blocks.map((b) => b.station))].sort((a, b) => stationIds.indexOf(a) - stationIds.indexOf(b));
+  if (chainIds.length !== PIECE_COUNTS.length
+    || chainIds.some((st, k) => result.blocks!.filter((b) => b.station === st && b.ship === result.blocks![0].ship).length !== PIECE_COUNTS[k])) return [];
+  const chainP = chainIds.map((st) => stationIds.indexOf(st));
+  const out: LotView[] = [];
+  for (const ship of result.ships) {
+    const rec = ship.daily[index];
+    if (!rec?.station || !chainIds.includes(rec.station)) continue;
+    const base = { ship: ship.id, type: ship.type, slot: 0, unit: 0, late: ship.late_days > 0, paint: 0 };
+    const groups = new Map<string, LotView>();
+    const add = (key: string, u: number, b: BlockResult | null, view: Omit<LotView, Exclude<keyof typeof base, "unit"> | "id" | "mask" | "blockNames">) => {
+      const g = groups.get(key) ?? { ...base, ...view, id: `${ship.id}:${key}`, mask: [], blockNames: [] };
+      groups.set(key, g);
+      g.mask!.push(u);
+      const name = b ? blockLabel(b.station, b.no) : null;
+      if (name && !g.blockNames!.includes(name)) g.blockNames!.push(name);
+    };
+    for (let u = 0; u < 8; u++) {
+      const c = u % 4, r = Math.floor(u / 4), pair = Math.floor(c / 2);
+      const nos = [(pair * 2 + r) * 2 + (c % 2) + 1, pair * 2 + r + 1, pair + 1];
+      const chain = chainIds.map((st, k) => byId.get(blockId(ship.id, st, nos[k])));
+      let k = -1;
+      chain.forEach((b, j) => { const s = b?.daily[index]?.state; if (s && s !== "not_started" && s !== "done") k = j; });
+      if (k < 0) {
+        // 사슬이 모두 끝났으면 PE장을 마치고 탑재를 기다리는 대블록(PE장 적치장). 아직 시작 전이면 앞 공정(로트)에 있다
+        if (chain[0]?.daily[index]?.state === "not_started") continue;
+        const last = chainP.length - 1;
+        add(`o:${chainP[last]}`, u, chain[last] ?? null, { place: "outbound", station: chainP[last], unit: 0, form: formOf(chainP[last], 1), state: "transport_wait" });
+        continue;
+      }
+      const b = chain[k]!, p = chainP[k], d = b.daily[index];
+      const state = d.state as ShipState;
+      if (ON_BENCH.has(d.state) || (d.state === "station_wait" && d.unit !== null)) {
+        const into = day === b.start ? afterLead(frac) : frac;
+        const progress = d.state === "station_wait" || b.start === null || b.end === null ? 0
+          : clamp01((day - b.start + into) / (b.end - b.start + 1));
+        add(`b:${b.id}`, u, b, { place: d.unit === null ? "queue" : "bench", station: p, unit: (d.unit ?? 1) - 1, form: formOf(p, progress), progress, state });
+      } else if (d.state === "transport") {
+        let first = index, last = index;
+        while (first > 0 && b.daily[first - 1].state === "transport") first--;
+        while (last + 1 < b.daily.length && b.daily[last + 1].state === "transport") last++;
+        const travel = clamp01((index - first + (index === first ? afterLead(frac) : frac)) / (last - first + 1));
+        add(`c:${p}`, u, b, { place: "carried", station: p, unit: 0, form: formOf(p, 1), state, travel });
+      } else if (d.state === "transport_wait") {
+        add(`o:${p}`, u, b, { place: "outbound", station: p, unit: 0, form: formOf(p, 1), state });
+      } else if (d.state === "pair_wait") {
+        const q = chainP[k + 1] ?? p;
+        add(`q:${q}`, u, b, { place: "queue", station: q, unit: 0, form: formOf(p, 1), state });
+      } else {
+        add(`q:${p}`, u, b, { place: "queue", station: p, unit: 0, form: formOf(p, 0), state });
+      }
+    }
+    // 한 정반에서 블록을 이어 하는 날(한 블록을 끝내고 다음 블록): 조각은 블록마다지만 이름표는 하나
+    const benches = new Map<string, LotView>();
+    for (const g of groups.values()) {
+      if (g.place !== "bench") continue;
+      const first = benches.get(`${g.station}:${g.unit}`);
+      if (!first) { benches.set(`${g.station}:${g.unit}`, g); continue; }
+      first.blockNames!.push(...g.blockNames!.filter((n) => !first.blockNames!.includes(n)));
+      g.quiet = true;
+    }
+    for (const g of groups.values()) g.blockNames!.sort((a, b) => a.localeCompare(b, "ko", { numeric: true }));
+    out.push(...groups.values());
+  }
+  return out;
 }
 
 /** 운반한 블록이 가는 다음 공정: 간이공정(4.4)은 쓰지 않는 공정을 건너뛴다(소조립 → PE장). 그림의 운반 구간에 쓴다 */
