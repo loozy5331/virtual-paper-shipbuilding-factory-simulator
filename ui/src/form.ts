@@ -85,7 +85,8 @@ function foldSummaries(ctx: FormContext): Record<string, string> {
   const opts = openOptions(scenario);
   const staff = staffTrades(scenario);
   const pools = config.pools ?? {};
-  const act = activeStations(scenario);
+  const asm = new Set(blockStations(scenario).map((b) => b.id));   // 조립 공정은 PP-02에 있어 요약에서 뺀다(4.28.1)
+  const act = activeStations(scenario).filter((s) => !asm.has(s.id));
   const st = (id: string) => config.stations[id];
   const names = (f: (id: string) => boolean) => act.filter((s) => f(s.id)).map((s) => s.name);
   const listOr = (xs: string[], none = "없음") => (xs.length ? xs.join("·") : none);
@@ -306,8 +307,6 @@ function stationPlace(st: FormContext["scenario"]["stations"][number]): string {
 function commonPane(ctx: FormContext): HTMLElement {
   const { scenario, config } = ctx;
   const opts = openOptions(scenario);
-  // 쉬운 분기에서는 가린 옵션을 아예 그리지 않는다(D33).
-  const methods = Object.entries(scenario.rules.methods).filter(([id]) => opts.methods.includes(id));
 
   // 작업대기소는 하나, 사람마다 직종이 있다(4.0, D42). 사람은 자기 직종 공정에만 간다. 시운전도 직종이다(4.22, D69).
   // 시운전 인원을 고정한 분기(간이공정)는 고르지 않고 값만 적는다.
@@ -346,74 +345,9 @@ function commonPane(ctx: FormContext): HTMLElement {
     h("small", null, `대${counts.length > 1 ? "" : "(고정)"} · 자재 키트, 가공 → 소조립 팔레트 · 한 대에 하루 ${scenario.forklift.jobs_per_day}건`),
     toggle("정비", fk.maintenance, (on) => { fk.maintenance = on; ctx.onEdit(false); }));
 
-  // 공정마다 작업장 수 상한: 분기 상한과 공정 상한(탑재 도크는 크레인이 있어야 해 2곳) 중 작은 것
-  const unitCap = (pid: string) => Math.min(opts.max_units, scenario.expansion.max_units_by_station?.[pid] ?? opts.max_units);
-  const crews = (Object.entries(scenario.rules.crews) as [Crew, { name: string; summary: string; install_cost?: number }][])
-    .filter(([id]) => opts.crews.includes(id));
-  const hoist = scenario.rules.hoist;
-  const stationCards = activeStations(scenario).map((st) => {
-    const cfg = config.stations[st.id];
-    // 1.x 설정의 시니어는 그 공정의 숙련공으로 옮겨 적는다(엔진도 같이 읽는다).
-    if (config.skilled_station) {
-      config.stations[config.skilled_station].crew ??= "skilled";
-      config.skilled_station = null;
-    }
-    const trial = st.trade === "trial";   // 시운전팀(4.22): 인력·잔업을 고르지 않고 인원은 대기소에서 정한다
-    const crew = cfg.crew ?? "normal";
-    const robot = crew === "robot";
-    return h("div", { class: "station", style: { "--station": STATION_COLOR[st.id] } as Record<string, string> },
-      // 머리글: 공정 · 자리 · 기본 설비(4.12.1, 4M의 설비, 고장은 이 설비가 난다)
-      h("div", { class: "station-head" },
-        h("span", { class: "swatch" }),
-        h("b", null, st.name),
-        h("small", null, stationPlace(st))),
-      h("div", { class: "station-grid" },
-        h("span", { class: "field-label" }, "인력"),
-        trial
-          ? h("span", { class: "hint", title: scenario.rules.crews.trial?.summary }, "시운전팀 · 인원은 작업대기소에서 정한다")
-          : segmented(`crew-${st.id}`, crews.map(([id, c]) => ({
-            value: id, label: c.install_cost ? `${c.name} (+${num(c.install_cost * (cfg.units ?? 1))})` : c.name,
-          })), crew, (v) => { if (v === "normal") delete cfg.crew; else cfg.crew = v; ctx.onEdit(true); }),
-        h("span", { class: "field-label" }, "공법"),
-        segmented(`method-${st.id}`, methods.map(([id, m]) => ({ value: id, label: m.name })),
-          cfg.method, (v) => { cfg.method = v; ctx.onEdit(false); }),
-        h("span", { class: "field-label" }, "운영"),
-        h("div", { class: "toggles" },
-          trial ? null
-            : robot
-              ? h("span", { class: "hint", title: scenario.rules.crews.robot.summary }, "로봇은 잔업 없음")
-              : toggle("잔업", cfg.overtime, (on) => { cfg.overtime = on; ctx.onEdit(false); }),
-          // 설비가 없는 공정(시운전, 4.12)은 정비를 고르지 않는다
-          st.equipment === false
-            ? h("span", { class: "hint" }, "정비 없음")
-            : toggle("정비", cfg.maintenance, (on) => { cfg.maintenance = on; ctx.onEdit(false); }),
-          // 나눠 하기(3.0): 탑재·안벽의장·시운전은 배 한 척이 통째로 들어가서 나누지 않는다(공정의 split).
-          st.split === false || !opts.split
-            ? null
-            : toggle("나눠 하기", cfg.split ?? false, (on) => { if (on) cfg.split = true; else delete cfg.split; ctx.onEdit(false); }),
-          // 호이스트(4.9): 소조립·중조립 정반 위 천장 크레인. 수주 증가부터(작업장마다 도입비)
-          !st.hoist || !opts.hoist
-            ? null
-            : h("span", { title: hoist.summary },
-              toggle(`호이스트 (+${num(hoist.install_cost * (cfg.units ?? 1))})`, cfg.hoist ?? false,
-                (on) => { if (on) cfg.hoist = true; else delete cfg.hoist; ctx.onEdit(false); }))),
-        unitCap(st.id) > 1 ? h("span", { class: "field-label" }, "작업장") : null,
-        unitCap(st.id) <= 1 ? null : segmented(`units-${st.id}`,
-          Array.from({ length: unitCap(st.id) }, (_, k) => ({
-            value: k + 1, label: k === 0 ? "1개" : `${k + 1}개 (+${num(scenario.expansion.cost[st.id] * k)})`,
-          })),
-          cfg.units ?? 1, (v) => { if (v > 1) cfg.units = v; else delete cfg.units; ctx.onEdit(false); }),
-        // 공정 여유(4.15, D62): 기본 반기부터. 여유 하루마다 모든 배의 납기 +1일, 선가 −1%
-        opts.plan_buffer ? h("span", { class: "field-label", title: "선주에게 약속하는 납기에 이 공정의 여유를 넣는다. 배는 기다리지 않는다." }, "여유") : null,
-        !opts.plan_buffer ? null : segmented(`buffer-${st.id}`,
-          Array.from({ length: scenario.plan_buffer.max_days + 1 }, (_, k) => ({ value: k, label: k ? `${k}일 (−${num(k * scenario.plan_buffer.price_cut_per_day * 100, 0)}%)` : "없음" })),
-          cfg.buffer ?? 0, (v) => { if (v) cfg.buffer = v; else delete cfg.buffer; ctx.onEdit(false); }),
-      ),
-      h("div", { class: "station-preview" },
-        h("span", null, "최대 ", h("b", { "data-preview": `rate:${st.id}` }, "…"), "/일"),
-        h("span", null, "불량률 ", h("b", { "data-preview": `defect:${st.id}` }, "…"))),
-    );
-  });
+  // 블록 실습(4.28.1, 사용자): 조립 공정(소조립·중조립·PE장) 카드는 조립 공정 계획서(PP-02)로 옮겼다
+  const asm = new Set(blockStations(scenario).map((b) => b.id));
+  const stationCards = activeStations(scenario).filter((st) => !asm.has(st.id)).map((st) => stationCard(ctx, st));
 
   const orderings = Object.entries(scenario.ordering) as [Ordering, { name: string; summary: string }][];
   const ordering = h("div", { class: "field-row" },
@@ -447,7 +381,8 @@ function commonPane(ctx: FormContext): HTMLElement {
     sec(3, "자재", ["발주 방식", opts.material_grades.includes("cheap") ? "등급" : null, opts.safety_stock ? "안전 재고" : null].filter(Boolean).join(" · "), ordering, buffer, orderingHint,
       opts.material_grades.includes("cheap") || opts.safety_stock
         ? materialTable(ctx, opts.material_grades.includes("cheap"), !!opts.safety_stock) : null),
-    sec(4, "공정", `공정마다 인력 · 공법 · 설비 운영 · 작업장 수${opts.plan_buffer ? " · 여유" : ""}`, h("div", { class: "stations" }, stationCards)),
+    sec(4, "공정", `공정마다 인력 · 공법 · 설비 운영 · 작업장 수${opts.plan_buffer ? " · 여유" : ""}`, h("div", { class: "stations" }, stationCards),
+      asm.size ? h("p", { class: "hint field-hint" }, `조립 공정(${blockStations(scenario).map((b) => b.name).join("·")})은 조립 공정 계획서(PP-02, 위 탭)에서 블록 우선순위와 함께 정합니다.`) : null),
     sec(5, "연구", null, researchQueue(ctx)),
     h("p", { class: "hint fixed" },
       "고정비: 인건비 ", h("b", { "data-preview": "labor" }, "…"),
@@ -455,6 +390,106 @@ function commonPane(ctx: FormContext): HTMLElement {
       " · 운반 설비 ", h("b", { "data-preview": "transporter" }, "…"),
       " · 설비 투자비 ", h("b", { "data-preview": "investment" }, "…"),
       " · 연구비 ", h("b", { "data-preview": "research" }, "…")));
+}
+
+/** 공정 카드 하나(인력·공법·운영·작업장 수·여유, 미리보기의 최대 처리량·불량률 자리). 생산계획서 ②-4와 조립 공정 계획서가 같이 쓴다.
+ *  lead: 카드 칸 맨 앞에 넣을 [이름, 칸] 쌍(조립 공정 계획서의 우선순위 규칙). compact: 고를 것이 하나뿐인 인력·공법 줄은 그리지 않는다 */
+export function stationCard(ctx: StationCardContext, st: Scenario["stations"][number],
+  extra: { lead?: (HTMLElement | null)[]; compact?: boolean; note?: string } = {}): HTMLElement {
+  const { scenario, config } = ctx;
+  const opts = openOptions(scenario);
+  // 쉬운 분기에서는 가린 옵션을 아예 그리지 않는다(D33).
+  const methods = Object.entries(scenario.rules.methods).filter(([id]) => opts.methods.includes(id));
+  // 공정마다 작업장 수 상한: 분기 상한과 공정 상한(탑재 도크는 크레인이 있어야 해 2곳) 중 작은 것
+  const unitCap = (pid: string) => Math.min(opts.max_units, scenario.expansion.max_units_by_station?.[pid] ?? opts.max_units);
+  const crews = (Object.entries(scenario.rules.crews) as [Crew, { name: string; summary: string; install_cost?: number }][])
+    .filter(([id]) => opts.crews.includes(id));
+  const hoist = scenario.rules.hoist;
+  const cfg = config.stations[st.id];
+  // 1.x 설정의 시니어는 그 공정의 숙련공으로 옮겨 적는다(엔진도 같이 읽는다).
+  if (config.skilled_station) {
+    config.stations[config.skilled_station].crew ??= "skilled";
+    config.skilled_station = null;
+  }
+  const trial = st.trade === "trial";   // 시운전팀(4.22): 인력·잔업을 고르지 않고 인원은 대기소에서 정한다
+  const crew = cfg.crew ?? "normal";
+  const robot = crew === "robot";
+  const showCrew = !extra.compact || trial || crews.length > 1;
+  const showMethod = !extra.compact || methods.length > 1;
+  return h("div", { class: "station", style: { "--station": STATION_COLOR[st.id] } as Record<string, string> },
+    // 머리글: 공정 · 자리 · 기본 설비(4.12.1, 4M의 설비, 고장은 이 설비가 난다)
+    h("div", { class: "station-head" },
+      h("span", { class: "swatch" }),
+      h("b", null, st.name),
+      h("small", null, extra.note ?? stationPlace(st))),
+    h("div", { class: "station-grid" },
+      ...(extra.lead ?? []),
+      showCrew ? h("span", { class: "field-label" }, "인력") : null,
+      !showCrew ? null : trial
+        ? h("span", { class: "hint", title: scenario.rules.crews.trial?.summary }, "시운전팀 · 인원은 작업대기소에서 정한다")
+        : segmented(`crew-${st.id}`, crews.map(([id, c]) => ({
+          value: id, label: c.install_cost ? `${c.name} (+${num(c.install_cost * (cfg.units ?? 1))})` : c.name,
+        })), crew, (v) => { if (v === "normal") delete cfg.crew; else cfg.crew = v; ctx.onEdit(true); }),
+      showMethod ? h("span", { class: "field-label" }, "공법") : null,
+      !showMethod ? null : segmented(`method-${st.id}`, methods.map(([id, m]) => ({ value: id, label: m.name })),
+        cfg.method, (v) => { cfg.method = v; ctx.onEdit(false); }),
+      h("span", { class: "field-label" }, "운영"),
+      h("div", { class: "toggles" },
+        trial ? null
+          : robot
+            ? h("span", { class: "hint", title: scenario.rules.crews.robot.summary }, "로봇은 잔업 없음")
+            : toggle("잔업", cfg.overtime, (on) => { cfg.overtime = on; ctx.onEdit(false); }),
+        // 설비가 없는 공정(시운전, 4.12)은 정비를 고르지 않는다
+        st.equipment === false
+          ? h("span", { class: "hint" }, "정비 없음")
+          : toggle("정비", cfg.maintenance, (on) => { cfg.maintenance = on; ctx.onEdit(false); }),
+        // 나눠 하기(3.0): 탑재·안벽의장·시운전은 배 한 척이 통째로 들어가서 나누지 않는다(공정의 split).
+        st.split === false || !opts.split
+          ? null
+          : toggle("나눠 하기", cfg.split ?? false, (on) => { if (on) cfg.split = true; else delete cfg.split; ctx.onEdit(false); }),
+        // 호이스트(4.9): 소조립·중조립 정반 위 천장 크레인. 수주 증가부터(작업장마다 도입비)
+        !st.hoist || !opts.hoist
+          ? null
+          : h("span", { title: hoist.summary },
+            toggle(`호이스트 (+${num(hoist.install_cost * (cfg.units ?? 1))})`, cfg.hoist ?? false,
+              (on) => { if (on) cfg.hoist = true; else delete cfg.hoist; ctx.onEdit(false); }))),
+      unitCap(st.id) > 1 ? h("span", { class: "field-label" }, "작업장") : null,
+      unitCap(st.id) <= 1 ? null : segmented(`units-${st.id}`,
+        Array.from({ length: unitCap(st.id) }, (_, k) => ({
+          value: k + 1, label: k === 0 ? "1개" : `${k + 1}개 (+${num(scenario.expansion.cost[st.id] * k)})`,
+        })),
+        cfg.units ?? 1, (v) => { if (v > 1) cfg.units = v; else delete cfg.units; ctx.onEdit(false); }),
+      // 공정 여유(4.15, D62): 기본 반기부터. 여유 하루마다 모든 배의 납기 +1일, 선가 −1%
+      opts.plan_buffer ? h("span", { class: "field-label", title: "선주에게 약속하는 납기에 이 공정의 여유를 넣는다. 배는 기다리지 않는다." }, "여유") : null,
+      !opts.plan_buffer ? null : segmented(`buffer-${st.id}`,
+        Array.from({ length: scenario.plan_buffer.max_days + 1 }, (_, k) => ({ value: k, label: k ? `${k}일 (−${num(k * scenario.plan_buffer.price_cut_per_day * 100, 0)}%)` : "없음" })),
+        cfg.buffer ?? 0, (v) => { if (v) cfg.buffer = v; else delete cfg.buffer; ctx.onEdit(false); }),
+    ),
+    h("div", { class: "station-preview" },
+      h("span", null, "최대 ", h("b", { "data-preview": `rate:${st.id}` }, "…"), "/일"),
+      h("span", null, "불량률 ", h("b", { "data-preview": `defect:${st.id}` }, "…"))),
+  );
+}
+
+/** 미리보기의 공정별 최대 처리량·불량률을 카드 자리에 채운다(생산계획서·조립 공정 계획서) */
+export function fillStationPreview(root: ParentNode, preview: Preview): void {
+  for (const [id, st] of Object.entries(preview.stations)) {
+    const rate = root.querySelector<HTMLElement>(`[data-preview="rate:${id}"]`);
+    const defect = root.querySelector<HTMLElement>(`[data-preview="defect:${id}"]`);
+    if (rate) rate.textContent = num(st.rate, 3);
+    if (defect) {
+      defect.textContent = st.defect_rate_final === st.defect_rate
+        ? pct(st.defect_rate, 0)
+        : `${pct(st.defect_rate, 0)} → ${pct(st.defect_rate_final, 0)}`;
+    }
+  }
+}
+
+/** 공정 카드가 쓰는 것: 시나리오, 설정, 값이 바뀌었을 때(redraw면 그 서식을 다시 그림) */
+export interface StationCardContext {
+  scenario: Scenario;
+  config: Config;
+  onEdit(redraw: boolean): void;
 }
 
 /** 자재별 선택(4M의 Material)을 한 표에: 자재마다 한 줄에 등급과 안전 재고(4.14).
@@ -636,16 +671,7 @@ export function updatePreview(root: HTMLElement, preview: Preview | null, errors
   if (preview) {
     previews.set(root, preview);
     if (spec?.root === root) showSpec();
-    for (const [id, st] of Object.entries(preview.stations)) {
-      const rate = slot(`rate:${id}`);
-      const defect = slot(`defect:${id}`);
-      if (rate) rate.textContent = num(st.rate, 3);
-      if (defect) {
-        defect.textContent = st.defect_rate_final === st.defect_rate
-          ? pct(st.defect_rate, 0)
-          : `${pct(st.defect_rate, 0)} → ${pct(st.defect_rate_final, 0)}`;
-      }
-    }
+    fillStationPreview(root, preview);
     for (const key of ["labor", "maintenance", "transporter", "investment", "research"] as const) {
       const el = slot(key);
       if (el) el.textContent = money(preview.fixed_costs[key]);

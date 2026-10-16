@@ -1358,11 +1358,7 @@ details.block-plan > summary small { color: var(--ink-3); }
 .sheet-tab .warn { color: var(--bad); }
 .sheet-badge { display: inline-block; min-width: 1.3em; margin-left: 5px; padding: 0 4px; border-radius: 9px; background: var(--bad); color: #fff; font-size: 0.72rem; text-align: center; }
 /* 조립 공정 계획서(PP-02): 한 화면에 든다 */
-.assembly-form .asm-rule-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; align-items: center; }
-.assembly-form .asm-rule-grid .seg { justify-self: start; flex-wrap: wrap; }
-.assembly-form .asm-st { font-weight: 700; white-space: nowrap; }
-.assembly-form .asm-st .swatch, .block-table th .swatch { display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 2px; vertical-align: middle; }
-.assembly-form .asm-st small { color: var(--ink-3); font-weight: 500; }
+.block-table th .swatch { display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 2px; vertical-align: middle; }
 .asm-tabs, .asm-subtabs { margin: 4px 0; }
 .asm-subtabs .tab { font-size: 0.8rem; padding: 3px 10px; }
 /* 4.25 평가서 낱장: 탭으로 한 장씩(장끼리 스크롤로 잇지 않는다) */
@@ -1432,3 +1428,10 @@ details.block-plan > summary small { color: var(--ink-3); }
 .asm-zoom-body .block-gantt { max-height: calc(100vh - 150px); }
 .asm-mode { display: flex; align-items: center; gap: 10px; }
 .asm-mode .asm-zoom-btn { margin-left: auto; }
+/* 4.28.1 조립 공정 계획서 ② 조립 공정: 공정마다 한 줄 카드. 왼쪽 이름·미리보기, 오른쪽 위 우선순위, 아래 운영·작업장 */
+.asm-stations { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.asm-stations .station { display: grid; grid-template-columns: 120px minmax(0, 1fr); grid-template-rows: auto 1fr; column-gap: 14px; padding-top: 6px; padding-bottom: 6px; }
+.asm-stations .station-head { grid-column: 1; grid-row: 1; margin-bottom: 2px; }
+.asm-stations .station-preview { grid-column: 1; grid-row: 2; flex-direction: column; align-items: flex-start; gap: 0; margin-top: 0; padding-top: 2px; border-top: 0; }
+.asm-stations .station-grid { grid-column: 2; grid-row: 1 / span 2; grid-template-columns: auto auto auto minmax(0, 1fr); gap: 4px 10px; }
+.asm-stations .asm-rule { grid-column: 2 / -1; }
