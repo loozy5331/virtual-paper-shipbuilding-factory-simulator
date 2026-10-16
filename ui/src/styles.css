@@ -968,6 +968,7 @@ body { background: var(--desk); }
 .cc-feed .cc-sea-name { font-size: 10px; font-weight: 800; fill: #f3f1ea; text-anchor: middle; }
 .cc-feed .cc-sea-name.late { fill: #ff8a95; }
 .cc-feed .cc-chip text { font-size: 11px; font-weight: 800; fill: #1f2622; text-anchor: middle; }
+.cc-feed .cc-chip .cc-chip-blocks { font-size: 9px; font-weight: 600; fill: #4a5650; }
 .cc-feed .pick { cursor: pointer; }
 .cc-feed .pick:hover > g > rect:first-child, .cc-feed .pick:focus-visible > g > rect:first-child { stroke: #f3f1ea; stroke-width: 2; }
 .cc-feed .pick:focus { outline: none; }
@@ -1034,6 +1035,7 @@ body { background: var(--desk); }
 .track-card dt { color: var(--ink-3); font-weight: 700; white-space: nowrap; }
 .track-card dd { margin: 0; }
 .track-card dd.late { color: #c0262d; font-weight: 700; }
+.track-blocks { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
 .track-sub { margin-top: 8px; padding-top: 6px; border-top: 1px solid #e3e0d6; font-weight: 700; color: var(--ink-2); }
 .track-mats { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 2px; }
 .track-mats li { display: grid; grid-template-columns: 3em 1fr; gap: 6px; }

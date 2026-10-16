@@ -11,7 +11,7 @@
 
 import type { Scenario } from "./api";
 import { s } from "./dom";
-import { CRATE_COLORS, HAT, STATE_INFO, STATION_COLOR, STATION_TRADE, TRADE_HAT } from "./labels";
+import { CRATE_COLORS, HAT, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, STATION_TRADE, TRADE_HAT } from "./labels";
 import { nextStation, type Frame, type LotView } from "./scene/frame";
 import type { TrackPick } from "./track";
 import { quayWaiting, STOCK_COLOR_OF, STOCK_STATIONS, stockAssign, stockSpot, stockUsed } from "./scene/stock";
@@ -170,7 +170,7 @@ function mooring(x: number, z: number, kind: string): SVGElement {
 }
 
 /** 로트: 조립 단계(부재 → 소블록 12 → 중블록 6 → 대블록 3 → 배). 정지 화면이라 정수 단계로만. */
-function lot(x: number, z: number, form: number, scale = 1, kind = "VLCC"): SVGElement {
+function lot(x: number, z: number, form: number, scale = 1, kind = "VLCC", mask?: number[]): SVGElement {
   scale *= shipSize(kind);   // 작은 배(예인선·피더선, 4.6)는 블록과 배를 작게
   const stage = Math.min(4, Math.floor(form + 1e-6));
   const g = s("g", { class: "cc-lot" });
@@ -182,18 +182,21 @@ function lot(x: number, z: number, form: number, scale = 1, kind = "VLCC"): SVGE
   // 단계(D43): −2 종이 묶음, −1 평평한 판 8장, 0 굽힌 판, 1 블록 8개, 2 블록 4개, 3 블록 2개, 4 배.
   // 굽힌 뒤(0 이상)에는 선수·선미 열이 가운데 쪽으로 좁아져 선체 곡면이 보인다.
   const taper = (c: number, cols: number) => (c === 0 || c === cols - 1 ? 0.72 : 1);
+  // 블록 조각(4.25 블록 실습): 그 조각에 든 소블록 자리(r × 4 + c)만. 중블록은 짝 열 둘, 대블록은 짝 열의 두 줄을 품는다(3D Lot과 같다)
+  const has = (...us: number[]) => !mask || us.some((u) => mask.includes(u));
   if (stage <= -2) {
     b(0, 0, 1.4, 1.0, 0.08);
   } else if (stage <= 1) {
     const bent = stage >= 0, h = stage === 1 ? 0.25 : 0.05;
     for (let r = 0; r < 2; r++) for (let c = 0; c < 4; c++) {
+      if (!has(r * 4 + c)) continue;
       const d = 0.4 * (bent ? taper(c, 4) : 1);
       b(-0.66 + c * 0.44, (r - 0.5) * 0.46 + (bent ? (0.4 - d) / 2 * (r === 0 ? 1 : -1) : 0), 0.38, d, h);
     }
   } else if (stage === 2) {
-    for (let r = 0; r < 2; r++) for (let c = 0; c < 2; c++) b(-0.42 + c * 0.84, (r - 0.5) * 0.48, 0.8, 0.44, 0.35);
+    for (let r = 0; r < 2; r++) for (let c = 0; c < 2; c++) if (has(r * 4 + c * 2, r * 4 + c * 2 + 1)) b(-0.42 + c * 0.84, (r - 0.5) * 0.48, 0.8, 0.44, 0.35);
   } else if (stage === 3) {
-    for (let c = 0; c < 2; c++) b(-0.42 + c * 0.84, 0, 0.8, 0.9, 0.5);
+    for (let c = 0; c < 2; c++) if (has(c * 2, c * 2 + 1, 4 + c * 2, 5 + c * 2)) b(-0.42 + c * 0.84, 0, 0.8, 0.9, 0.5);
   } else {
     g.append(ship(x, z, kind, scale));
   }
@@ -203,12 +206,17 @@ function lot(x: number, z: number, form: number, scale = 1, kind = "VLCC"): SVGE
 /** 배 이름표(로트 위). 오늘 기준 지연이면 빨간 테두리, 손실 상태면 왼쪽에 그 색 띠. */
 function chip(x: number, z: number, h: number, l: LotView, late: boolean): SVGElement {
   const cx = px(x), cy = py(z, h);
-  const info = l.state === "work" ? null : STATE_INFO[l.state];
+  const state = l.state as string;
+  const info = state === "work" ? null : state === "pair_wait" ? PAIR_WAIT_STATE : STATE_INFO[state];
+  // 블록 조각(4.25)이면 배 이름 옆에 블록 이름(둘까지, 많으면 소×5)
+  const names = l.blockNames ?? [];
+  const blocks = !names.length ? "" : names.length <= 2 ? names.join("·") : `${names[0].replace(/\d+$/, "")}×${names.length}`;
+  const w = 30 + (blocks ? blocks.length * 6 + 4 : 0);
   const g = s("g", { class: "cc-chip" },
-    s("title", null, `${l.ship}${info ? ` · ${info.name}` : ""}`),
-    s("rect", { x: cx - 15, y: cy - 16, width: 30, height: 15, rx: 3, class: late ? "late" : "" }),
-    s("text", { x: cx + (info ? 2 : 0), y: cy - 4.5 }, l.ship));
-  if (info) g.append(s("rect", { x: cx - 15, y: cy - 16, width: 5, height: 15, rx: 2, fill: info.color }));
+    s("title", null, `${l.ship}${names.length ? ` ${names.join("·")}` : ""}${info ? ` · ${info.name}` : ""}`),
+    s("rect", { x: cx - w / 2, y: cy - 16, width: w, height: 15, rx: 3, class: late ? "late" : "" }),
+    s("text", { x: cx + (info ? 2 : 0), y: cy - 4.5 }, l.ship, blocks ? s("tspan", { class: "cc-chip-blocks", dx: 3 }, blocks) : ""));
+  if (info) g.append(s("rect", { x: cx - w / 2, y: cy - 16, width: 5, height: 15, rx: 2, fill: info.color }));
   return g;
 }
 
@@ -517,14 +525,19 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
       if (view.units.length > 1) g.append(tag(px(x - MAT_W / 2) - 4, py(z) + 4, `${unit.unit}호`, "cc-unit end"));
       add(z - d / 2, g);
       // 나눠 하는 배는 부분이 든 작업장마다 작게 그린다. 먼저 끝난 부분은 공용 적치장에서 짝을 기다린다(아래).
-      const here = frame.lots.find((l) => l.place === "bench" && l.station === p && l.ship === unit.ship);
+      const here = frame.lots.find((l) => l.place === "bench" && l.station === p && l.ship === unit.ship && !l.inBlocks);
+      // 블록 실습(4.25): 블록이 흩어진 배는 이 작업장에 든 블록 조각만(한 정반에서 이어 한 블록은 이름표 하나)
+      for (const pc of frame.pieces.filter((pc) => pc.place === "bench" && pc.station === p && pc.unit === k)) {
+        add(z + 0.02, block(pc, lot(x, z, pc.form, 1, pc.type, pc.mask), pc.quiet ? s("g") : chip(x, z - d / 2, 0, pc, lateNow(pc))));
+      }
+      const busy = here ?? frame.pieces.find((pc) => pc.place === "bench" && pc.station === p && pc.unit === k);
       if (here) {
         // 배 이름표는 정반 뒤 가장자리 바로 위(정반 안의 글과 겹치지 않게)
         add(z + 0.02, block(here, lot(x, z, here.form, here.parts && here.parts.length > 1 ? 0.75 : 1, here.type), chip(x, z - d / 2, 0, here, lateNow(here))));
         if (p === ST.quay) add(z + 0.03, mooring(x, z, here.type));
       }
       if (view.crew === "robot") {
-        if (here) { add(z + 0.1, robot(x - MAT_W / 2 + 0.35, z + 0.3)); add(z + 0.1, robot(x + MAT_W / 2 - 0.35, z + 0.3)); }
+        if (busy) { add(z + 0.1, robot(x - MAT_W / 2 + 0.35, z + 0.3)); add(z + 0.1, robot(x + MAT_W / 2 - 0.35, z + 0.3)); }
       } else {
         // 모자 색은 직종(숙련공은 원래대로 보라). 안벽의장 작업자는 배 옆 안벽 위
         const hat = view.senior ? HAT.senior : TRADE_HAT[STATION_TRADE[st.id]] ?? HAT.worker;
@@ -608,14 +621,15 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
       tag(px(at.x - STOCK_HALF) + 19, py(zTop + STOCK_D) - 8, STOCK_NAME[p], "cc-tag")));
   }
   const stock = stockAssign(frame);
-  for (const l of frame.lots) {
-    const keys = [`q:${l.ship}`, `o:${l.ship}`, ...(l.parts ?? []).map((pt) => `w:${l.ship}:${pt.unit}`)];
+  for (const l of [...frame.lots.filter((v) => !v.inBlocks), ...frame.pieces]) {
+    const id = l.id ?? l.ship;
+    const keys = [`q:${id}`, `o:${id}`, ...(l.parts ?? []).map((pt) => `w:${l.ship}:${pt.unit}`)];
     for (const key of keys) {
       const spot = stock.get(key);
       if (!spot) continue;
       const at = stockSpot(spot.station, spot.index);
-      const why = spot.reason === "pair" ? "짝 대기" : spot.reason === "outbound" ? "운반 대기" : null;
-      add(at.z + 0.01, block(l, lot(at.x, at.z, l.form, 0.55, l.type), chip(at.x, at.z - 0.2, 0.4, l, lateNow(l)),
+      const why = spot.reason === "pair" || (l.state as string) === "pair_wait" ? "짝 대기" : spot.reason === "outbound" ? "운반 대기" : null;
+      add(at.z + 0.01, block(l, lot(at.x, at.z, l.form, 0.55, l.type, l.mask), chip(at.x, at.z - 0.2, 0.4, l, lateNow(l)),
         why ? tag(px(at.x), py(at.z) + 13, why, "cc-tag mid pair") : s("g")));
     }
   }
@@ -649,13 +663,15 @@ export function renderCctv(frame: Frame, scenario: Scenario, opts: CctvOptions):
 
   // ----- 블록 트랜스포터(1~2대, 4.8): 나르는 날은 실은 블록과 함께 두 공정 사이 큰길, 쉬는 날은 차고 자기 칸에 큰길과 직각으로 -----
   frame.transporters.forEach((tr, k) => {
-    const carried = tr.state === "move" && tr.ship ? frame.lots.find((l) => l.ship === tr.ship && l.place === "carried") : undefined;
+    // 블록 실습이면 이 배의 운반 중인 블록 조각
+    const carried = tr.state === "move" && tr.ship
+      ? frame.pieces.find((l) => l.ship === tr.ship && l.place === "carried") ?? frame.lots.find((l) => l.ship === tr.ship && l.place === "carried" && !l.inBlocks) : undefined;
     const x = carried ? (STATION_X[carried.station] + (STATION_X[nextStation(frame, carried.station)] ?? STATION_X[carried.station] + 4)) / 2 + k * 1.2 : depotSpot(k).x;
     const z = carried ? LANE_Z : DEPOT.z;
     const body = tr.state === "breakdown_stop" ? (STATE_INFO.breakdown_stop?.color ?? "#8e2e42") : "#5f6b73";
     add(z, carried ? box(x, z, 2.0, 0.8, 0.3, body, "#3f474d") : box(x, z, 0.8, 1.7, 0.3, body, "#3f474d"));
     if (carried) {
-      add(z + 0.02, block(carried, lot(x, z, carried.form, 0.7, carried.type), chip(x, z - 0.3, 0.9, carried, lateNow(carried))));
+      add(z + 0.02, block(carried, lot(x, z, carried.form, 0.7, carried.type, carried.mask), chip(x, z - 0.3, 0.9, carried, lateNow(carried))));
     }
     const name = frame.transporters.length > 1 ? `트랜스포터 ${k + 1}호` : "트랜스포터";
     const text = tr.state === "breakdown_stop" ? `${name} 고장` : carried ? name : `${name} · 차고`;

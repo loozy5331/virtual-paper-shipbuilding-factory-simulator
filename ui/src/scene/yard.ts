@@ -1184,7 +1184,7 @@ export class Yard {
     const docks = f.stations[ST.dock]?.units.length ?? 1;
     if (docks !== this.layoutDocks) this.placeStations(docks);
     // 로트. 기다리는 블록의 적치장 자리를 먼저 정한다.
-    this.stock = stockAssign(f, true);
+    this.stock = stockAssign(f);
     let hook: { x: number; y: number; z: number } | null = null;
     let hook2: { x: number; y: number; z: number } | null = null;   // 2호 도크(왼손)
     // 진수: 재생 중 하루 안의 비율로 단계를 나눈다(멈춰 있으면 frac = 1이라 다 끝난 모습).
