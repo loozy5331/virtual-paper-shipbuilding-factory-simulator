@@ -3,6 +3,7 @@
 // 신입이 쉬운 분기부터 하나씩 맡으며 경험을 쌓는 흐름이다. 누르면 그 클립보드를 집어 들고 생산계획서가 열린다(main.ts).
 // 4.22.1(사용자): 클립보드는 가로 한 줄. 가운데 한 장을 "‹ ›" 버튼·드래그·←/→로 넘긴다. 처음은 입문(맨 왼쪽).
 // 가운데가 아닌 클립보드를 누르면 먼저 가운데로 옮기고, 가운데 것을 누르면 연다.
+// 4.25(D71): 사다리 밖 실습(track "drill", 블록 조립)은 맨 끝에 놓고 난이도 점 대신 "실습" 표를 단다.
 
 import type { ClassBest, ScenarioSummary } from "./api";
 import { h, mount, num } from "./dom";
@@ -27,7 +28,7 @@ const DRAG_PX = 6;    // 이만큼 움직이면 클릭이 아니라 드래그
 let deskIndex = 0;
 
 export function renderDesk(root: HTMLElement, ctx: DeskContext): void {
-  const maxLevel = Math.max(...ctx.scenarios.map((sc) => sc.level));
+  const maxLevel = Math.max(...ctx.scenarios.filter((sc) => sc.track !== "drill").map((sc) => sc.level));
   const n = ctx.scenarios.length;
   deskIndex = Math.min(deskIndex, n - 1);
   const boards: HTMLElement[] = [];
@@ -104,9 +105,10 @@ export function renderDesk(root: HTMLElement, ctx: DeskContext): void {
   track.append(...ctx.scenarios.map((sc, i) => {
     const best = ctx.best[sc.id];
     const mix = Object.entries(sc.ship_mix).map(([name, k]) => `${name} ${k}`).join(" · ");
+    const drill = sc.track === "drill";
     const board: HTMLElement = h("button", {
-      class: "clipboard desk-board", type: "button",
-      "aria-label": `${sc.period} 생산계획, ${sc.name}, 난이도 ${sc.level}`,
+      class: `clipboard desk-board${drill ? " drill" : ""}`, type: "button",
+      "aria-label": drill ? `실습, ${sc.name}` : `${sc.period} 생산계획, ${sc.name}, 난이도 ${sc.level}`,
       onclick: () => (i === deskIndex ? ctx.onPick(sc.id, board) : go(i)),
     },
     h("div", { class: "desk-sheet" },
@@ -117,9 +119,11 @@ export function renderDesk(root: HTMLElement, ctx: DeskContext): void {
         h("div", null, h("dt", null, "목표"), h("dd", null, `매출 ${num(sc.kpi.revenue)} · 이익 ${num(sc.kpi.profit)}`)),
         h("div", null, h("dt", null, "기간"), h("dd", null, `작업일 ${sc.days}일`))),
       h("div", { class: "desk-foot" },
-        h("span", { class: "desk-level", title: `난이도 ${sc.level} / ${maxLevel}` },
-          Array.from({ length: maxLevel }, (_, k) => h("i", { class: k < sc.level ? "on" : "" })),
-          h("small", null, LEVEL_NAME[sc.level] ?? `${sc.level}단계`)),
+        drill
+          ? h("span", { class: "desk-drill", title: "난이도 사다리 밖의 실습입니다. 한 가지 개념을 따로 연습합니다." }, "실습")
+          : h("span", { class: "desk-level", title: `난이도 ${sc.level} / ${maxLevel}` },
+            Array.from({ length: maxLevel }, (_, k) => h("i", { class: k < sc.level ? "on" : "" })),
+            h("small", null, LEVEL_NAME[sc.level] ?? `${sc.level}단계`)),
         best
           ? h("span", {
             class: "desk-stamp",
@@ -143,7 +147,8 @@ export function renderDesk(root: HTMLElement, ctx: DeskContext): void {
     h("div", { class: "desk-intro" },
       h("small", { class: "desk-brand" }, "종이배 조선소 · 생산관리 시뮬레이터"),
       h("h2", null, "어느 반기의 생산계획을 맡을까요?"),
-      h("p", null, "입문 반기부터 차례로 맡으면 좋습니다. 오른쪽으로 넘길수록 수주가 많고 판단할 것이 늘어납니다.")),
+      h("p", null, "입문 반기부터 차례로 맡으면 좋습니다. 오른쪽으로 넘길수록 수주가 많고 판단할 것이 늘어납니다.",
+        ctx.scenarios.some((sc) => sc.track === "drill") ? " 맨 끝은 한 가지 개념만 따로 연습하는 실습입니다." : "")),
     h("div", { class: "desk-carousel" }, prev, viewport, next),
     dots);
   go(deskIndex);

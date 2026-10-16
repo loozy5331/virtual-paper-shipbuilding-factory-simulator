@@ -4,7 +4,7 @@
 // 막대 앞 위에 착수 예정일을 숫자로 적는다. 끄는 동안에도 그 숫자가 따라 바뀐다.
 // 끄는 동안에는 줄만 옮겨 보이고, 놓을 때 onMove로 알린다. 새 막대는 다음 미리보기에서 다시 그린다.
 
-import { activeStations, type Plan, type Preview, type Scenario } from "./api";
+import { activeStations, type Plan, type PlanRisk, type Preview, type Scenario } from "./api";
 import { s } from "./dom";
 import { STATE_INFO, STATION_COLOR } from "./labels";
 
@@ -183,4 +183,12 @@ export function conflictText(scenario: Scenario, plan: Plan): string {
   const items = plan.conflicts.map((c) =>
     `${name[c.station]} ${c.ships.join("·")} ${c.start === c.end ? `${c.start}일` : `${c.start}~${c.end}일`}`);
   return `겹침 ${items.length}곳: ${items.join(", ")}`;
+}
+
+/** 계획상 위험(4.25, D71): 배가 작업장을 혼자 써도 공정 납기를 넘기는 배·공정. 겹침과 달리 일정 자체가 무리라는 뜻 */
+export function riskText(scenario: Scenario, risks: PlanRisk[]): string {
+  if (!risks.length) return "계획상 위험 없음: 혼자 쓴다고 보면 모든 공정이 공정 납기 안에 끝납니다.";
+  const name = Object.fromEntries(scenario.stations.map((st) => [st.id, st.name]));
+  return `계획상 위험 ${risks.length}곳(혼자 써도 공정 납기를 넘김): ` +
+    risks.map((r) => `${r.ship} ${name[r.station]} ${r.plan_end}일 > ${r.due}일`).join(", ");
 }

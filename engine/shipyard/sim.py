@@ -93,14 +93,14 @@ def list_scenarios() -> list[dict[str, Any]]:
     out = []
     for sid in scenario_ids():
         sc = _read(DATA_DIR / "scenarios" / f"{sid}.json")
-        if sc.get("track") == "drill":
-            continue   # 실습 카드는 첫 화면이 실습 묶음을 그릴 때(4.25 생산계획서 PR) 연다. 엔진·API로는 돌릴 수 있다
         mix: dict[str, int] = {}
         for o in sc["orders"]:
             name = rules["ship_types"][o["type"]]["name"]
             mix[name] = mix.get(name, 0) + 1
         out.append({"id": sid, "name": sc["name"], "summary": sc["summary"], "period": sc["period"],
                     "level": sc.get("level", 0), "ships": len(sc["orders"]), "ship_mix": mix,
+                    # 실습(4.25)은 사다리 밖: 첫 화면은 맨 끝에 "실습" 카드로 그린다
+                    **({"track": sc["track"]} if sc.get("track") else {}),
                     "kpi": sc["kpi"], "days": sc["days"]})
     return out
 
@@ -803,9 +803,9 @@ def station_dues(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, 
                 due[p] = fixed
             elif not succ:
                 due[p] = order["due_day"]
-            else:
-                due[p] = min(due[q] - ideal_days(config, scenario, q, order["type"]) - move_days_between(scenario, p, q)
-                             for q in succ)
+            else:   # 1일보다 앞서면 1일(그 공정은 계획상 위험으로 보인다)
+                due[p] = max(1, min(due[q] - ideal_days(config, scenario, q, order["type"]) - move_days_between(scenario, p, q)
+                                    for q in succ))
         out[order["id"]] = {stations[p]["id"]: due[p] for p in active}
     return out
 

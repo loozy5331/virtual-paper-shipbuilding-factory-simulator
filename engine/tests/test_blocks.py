@@ -136,6 +136,13 @@ class Dues(unittest.TestCase):
                                                   "block_assembly": 16, "grand_assembly": 20, "erection": 30})
         self.assertEqual(dues["blocks"]["S3-GA1"], 20)
 
+    def test_back_calc_floor_is_day_one(self):
+        # 소조립을 3일로 당기면 가공 3 − 2 − 1 = 0, 절단은 더 앞선다 → 둘 다 1일. 계획 간트 끝(가공 2일)이 넘쳐 계획상 위험
+        cfg = {**self.managed(), "due": {"stations": {"S3": {"sub_assembly": 3}}}}
+        pv = preview(cfg)
+        self.assertEqual((pv["dues"]["stations"]["S3"]["cutting"], pv["dues"]["stations"]["S3"]["processing"]), (1, 1))
+        self.assertIn(("S3", "processing"), [(r["ship"], r["station"]) for r in pv["plan_risks"]])
+
     def test_block_override(self):
         cfg = {**self.managed(), "due": {"blocks": {"S3-SA1": 5}}}
         dues = preview(cfg)["dues"]["blocks"]
@@ -249,9 +256,11 @@ class Recommend(unittest.TestCase):
 
 
 class DrillScenario(unittest.TestCase):
-    def test_hidden_from_ladder_but_loadable(self):
-        # 사다리(D67) 밖 실습: 첫 화면 목록에는 아직 없고(실습 카드는 생산계획서 PR에서), 이름으로는 불러 돌릴 수 있다
-        self.assertNotIn("block", [s["id"] for s in list_scenarios()])
+    def test_listed_last_as_drill(self):
+        # 사다리(D67) 밖 실습: 첫 화면 목록의 맨 끝, track "drill"(난이도 점 대신 "실습" 카드)
+        listed = list_scenarios()
+        self.assertEqual((listed[-1]["id"], listed[-1].get("track")), ("block", "drill"))
+        self.assertTrue(all("track" not in s for s in listed[:-1]))
         self.assertTrue(load_scenario("block")["block_mode"])
 
     def test_other_scenarios_have_no_blocks(self):

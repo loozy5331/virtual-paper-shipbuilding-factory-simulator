@@ -219,6 +219,7 @@
 - (② 완료) 엔진: `block_counts`·`block_work`(이어 하기)·블록 운반(`2-1b`)·결과 `blocks`, 테스트 `engine/tests/test_blocks.py`(예시 9, 블록 불량, 작업장 2곳, 나눠 하기 금지, 실습 판). 시나리오 스위치 이름은 `block_mode`(`blocks`는 rules.json 블록 수와 겹침). 블록 공정은 조립 직종 공정만
 - (③ 완료) 공정·블록 납기: `station_dues`·`block_dues`·`ideal_days`, 설정 `due`, 결과 `station_dues`·`block_due`, 미리보기 `dues`·`plan_risks`(계획상 위험의 데이터, 화면은 ⑤)
 - (④ 완료) 규칙 `dispatch`·서두름 `rush`·`block_key`(운반은 `parent_of` 기준)·추천 `_recommend`. 초안 실습에서는 edd·slack·spt가 같은 답을 낸다(배마다 블록 납기·작업량이 같아서). ⑧ 조율 때 셋이 갈리는 판으로 맞춘다. `balance.py block`에 규칙 선택지를 넣는 것도 ⑧
+- (⑤ 완료) 화면: `desk.ts` 실습 카드, `form.ts` 블록 공정 규칙(`DISPATCH_INFO`)·배별 탭 `blockPlan`·계획상 위험(`riskText`). 추천 화면은 ⑤'(평가서 선배의 팁)
 - PR 순서: ① 규칙 문서 "블록 조립" 장 + 시나리오 설계 → ② 엔진 블록 조립(결과 `blocks[]`) → ③ 공정별·블록별 납기 → ④ 우선순위 규칙과 추천 → ⑤ 생산계획서(규칙 선택·블록 순서·블록 납기 표·계획상 위험) → ⑤' 평가서 선배의 팁 추천과 "추천대로 다시 계획" → ⑥ 왼쪽 간트 공정 탭(+ `frame.ts`가 실제 블록을 따름) → ⑦ 오른쪽 조립 공정 탭 → ⑧ `balance.py block`, 등급 조율, CHANGELOG, `v4.25.0`
 
 ### 4.x 이후 (각각 MINOR, 순서는 그때 정함)
