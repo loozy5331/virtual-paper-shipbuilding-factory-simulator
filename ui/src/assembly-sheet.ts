@@ -204,12 +204,16 @@ export function updateAssemblySheet(root: HTMLElement, preview: Preview | null, 
       const order = scenario.orders.find((o) => o.id === sid)!;
       const body = () => [
         h("div", { class: "block-panel-head" },
-          h("small", null, "막대를 좌우로 끌거나 Alt+←/→: 그 블록의 착수일(옅은 띠 안에서)", n ? ` · 블록 납기를 넘기는 블록 ${n}개` : ""),
+          h("small", null, "막대를 좌우로 끌거나 Alt+←/→(1시간씩, Shift를 함께 누르면 하루씩): 그 블록의 착수일과 착수 시각(옅은 띠 안에서)", n ? ` · 블록 납기를 넘기는 블록 ${n}개` : ""),
           mineStarts.length ? h("button", {
             type: "button", class: "btn small",
             onclick: () => {
-              for (const bid of mineStarts) delete config.block_start![bid];
+              for (const bid of mineStarts) {
+                delete config.block_start![bid];
+                if (config.block_start_hour) delete config.block_start_hour[bid];
+              }
               if (!Object.keys(config.block_start!).length) delete config.block_start;
+              if (config.block_start_hour && !Object.keys(config.block_start_hour).length) delete config.block_start_hour;
               ctx.onEdit(false);
             },
           }, `이 배 착수일 지우기(${mineStarts.length})`) : null,
@@ -224,12 +228,18 @@ export function updateAssemblySheet(root: HTMLElement, preview: Preview | null, 
           windows: preview.plan.ships[sid] ?? {},
           dues: preview.dues?.stations?.[sid] ?? {},
           starts: config.block_start ?? {},
-          onMoveStart: (bid, day) => {
+          startHours: config.block_start_hour ?? {},
+          onMoveStart: (bid, day, hour) => {
             (config.block_start ??= {})[bid] = day;
+            if (hour) (config.block_start_hour ??= {})[bid] = hour;
+            else if (config.block_start_hour) {
+              delete config.block_start_hour[bid];
+              if (!Object.keys(config.block_start_hour).length) delete config.block_start_hour;
+            }
             ctx.onEdit(false);
           },
         }),
-        h("p", { class: "hint" }, "공정마다 위는 작업장 줄(회색은 다른 배의 블록), 아래는 이 배의 블록 줄입니다. 막대는 고장 없이 했을 때의 계획, 막대 앞 얇은 띠는 작업장이 다른 블록을 하느라 기다리는 날, 세로 눈금은 블록 납기입니다. 옅은 띠는 막대를 옮길 수 있는 범위로, 진한 쪽은 생산계획서 계획 간트의 그 공정 기간, 더 옅은 쪽은 그 뒤 공정 납기까지입니다. 착수일을 정한 블록은 그날보다 먼저 들이지 않고, 그동안 작업장은 다른 블록을 받습니다. 작업장이 차 있으면 막대가 정한 날보다 뒤에 놓입니다."),
+        h("p", { class: "hint" }, "공정마다 위는 작업장 줄(회색은 다른 배의 블록), 아래는 이 배의 블록 줄입니다. 막대는 고장 없이 2명이 하루 8시간 했을 때의 계획으로, 길이가 시간입니다(하루 칸 = 8시간, 7h는 근무 시작부터 7시간). 막대 앞 얇은 띠는 작업장이 다른 블록을 하느라 기다리는 시간, 세로 눈금은 블록 납기입니다. 옅은 띠는 막대를 옮길 수 있는 범위로, 진한 쪽은 생산계획서 계획 간트의 그 공정 기간, 더 옅은 쪽은 그 뒤 공정 납기까지입니다. 착수일을 정한 블록은 그 시각보다 먼저 들이지 않고, 그동안 작업장은 다른 블록을 받습니다. 작업장이 차 있으면 막대가 정한 시각보다 뒤에 놓입니다."),
       ];
       if (zoomed && root.isConnected) {
         // 크게 보기(4.27.1, 사용자): 관제실 모니터처럼 화면 가득. 클립보드에 transform이 있어 body에 띄운다
@@ -257,7 +267,7 @@ export function updateAssemblySheet(root: HTMLElement, preview: Preview | null, 
 
 /** 이 장에서 고칠 오류: 블록 납기("S1-SA1: …"), 공정 납기, 블록 순서, 우선순위 규칙 */
 export function isAssemblyError(e: string): boolean {
-  return /^S\d+-[A-Z]{2}\d+:/.test(e) || /공정 납기|블록 순서|블록 납기|우선순위 규칙|납기\(due\)/.test(e);
+  return /^S\d+-[A-Z]{2}\d+:/.test(e) || /공정 납기|블록 순서|블록 납기|블록 착수|우선순위 규칙|납기\(due\)/.test(e);
 }
 
 /** 인덱스 탭의 표시: 계획상 위험 수(공정 + 블록) */

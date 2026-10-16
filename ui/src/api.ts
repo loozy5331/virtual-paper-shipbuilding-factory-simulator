@@ -49,6 +49,8 @@ export interface Config {
   block_order?: Record<string, string[]>;
   /** 4.26: 블록 착수일(블록 이름 → 그날보다 먼저 들이지 않는 날). 조립 공정 계획서에서 막대를 좌우로 끌어 정한다 */
   block_start?: Record<string, number>;
+  /** 4.29(D76): 블록 착수 시각(블록 이름 → 근무 시작부터 몇 시간 뒤, 0~7). 착수일을 정한 블록에만. 0이면 적지 않는다 */
+  block_start_hour?: Record<string, number>;
   /** 대기소 전체 인원. 4.0부터는 pools의 합이다(옛 설정은 조립 인원으로 읽는다) */
   pool: number;
   /** 4.0(D42): 직종별 대기소 인원. 사람은 자기 직종 공정에만 간다. 4.22(D69)부터 시운전도 직종 */
@@ -358,7 +360,13 @@ export interface PlanRisk { ship: string; station: string; plan_end: number; due
 
 /** 4.25 블록 계획 일정(엔진 block_plan): 고장·대기 없이 들일 순서대로 놓은 블록 막대 */
 /** ready(4.26): 들어갈 수 있게 된 날(앞 블록 끝 다음 날·공정 시작일·착수일). start보다 이르면 그동안 작업장이 차 있었다 */
-export interface BlockPlanItem { station: string; ship: string; no: number; ready: number; start: number; end: number; unit: number; due: number; risk: boolean }
+export interface BlockPlanItem {
+  station: string; ship: string; no: number; ready: number; start: number; end: number; unit: number; due: number; risk: boolean;
+  /** 4.29: 시작·끝 시각(그날 근무 시작부터 지난 시간), 하루 근무시간(계획은 8), 표준 공수(MH) */
+  start_h: number; end_h: number; day_hours: number; std_mh: number;
+  /** 4.29: 들어갈 수 있게 된 시각(착수 시각을 정한 블록은 그 시각, 아니면 0) */
+  ready_h: number;
+}
 export interface BlockPlan { blocks: Record<string, BlockPlanItem>; order: Record<string, string[]>; risks: string[] }
 
 export interface ShipSpec {
@@ -592,6 +600,8 @@ export interface Result {
   blocks?: BlockResult[];
   /** 4.25(D71, 블록 조립 실습만): 블록 납기 요약 */
   block_due?: { blocks: number; on_time: number; rate: number | null; late_days: number };
+  /** 4.29(D76, 블록 조립 실습만): 공수 실적(블록 공정마다와 합계). 옛 회차 결과에는 없다 */
+  manhours?: { stations: Record<string, ManhourRow>; total: ManhourRow };
   /** 4.25: 평가서 선배의 팁의 우선순위 추천. 블록 순서를 비우고 규칙만 바꿔 더 돌린 네 결과와 지금 계획 */
   recommend?: Recommend;
 }
@@ -681,4 +691,19 @@ export interface BlockResult {
   id: string; ship: string; station: string; no: number; unit: number | null; start: number | null; end: number | null;
   done_day: number | null; defect: boolean; due: number; late_days: number; on_time: boolean;
   daily: { state: string; unit: number | null }[];
+  /** 4.29(D76): 시작·끝 시각(그날 근무 시작부터 지난 시간)과 그 작업장의 하루 근무시간(정규 8, 잔업 10). 옛 회차에는 없다 */
+  start_h?: number | null; end_h?: number | null; day_hours?: number;
+  /** 4.29: 표준 공수, 들인 공수(작업 + 재작업, 사람 × 시간), 그 가운데 재작업 공수 */
+  std_mh?: number; mh?: number; rework_mh?: number;
+}
+
+/** 4.29(D76): 공수 실적 한 줄. planned = 블록 표준 공수 합, standard = 실적 표준 공수, input = work + rework + idle */
+export interface ManhourRow {
+  planned: number; standard: number; input: number; work: number; rework: number; idle: number; efficiency: number | null;
+}
+
+/** 시각 표시(4.29): "7일 6h"(6h = 그날 근무 시작부터 6시간). 소수는 한 자리까지 */
+export function dayHour(day: number, hour: number): string {
+  const h = Math.round(hour * 10) / 10;
+  return h ? `${day}일 ${h}h` : `${day}일`;
 }

@@ -419,3 +419,91 @@ class DrillScenario(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def times(result, ship, station):
+    """블록마다 (시작일, 시작 시각, 끝일, 끝 시각)."""
+    return [(b["start"], b["start_h"], b["end"], b["end_h"]) for b in result["blocks"]
+            if b["ship"] == ship and b["station"] == station]
+
+
+class Example10(unittest.TestCase):
+    """10장 예시 10, 공수와 시각(4.29, D76): 예시 9의 판(소조립 작업장 1곳, 조립 2명 = 시간당 2 MH).
+    X 피더 블록 0.75 × 8 = 6 MH(3시간), Y 예인선 블록 4 MH(2시간)."""
+
+    def test_hours_and_manhours(self):
+        # 선박 순서: X-SA1 1일 0~3시간, X-SA2 3~6시간, X-SA3 1일 6시간 → 2일 1시간. X는 3일 끝, Y는 4·5일
+        cfg, sc = mini([("X", "FEEDER", 1, 40), ("Y", "TUG", 2, 40)])
+        r = simulate(cfg, sc, baseline=False)
+        self.assertEqual(times(r, "X", "sub_assembly")[:3], [(1, 0, 1, 3), (1, 3, 1, 6), (1, 6, 2, 1)])
+        self.assertEqual(times(r, "X", "sub_assembly")[-1], (3, 5, 3, 8))
+        self.assertEqual(times(r, "Y", "sub_assembly")[0], (4, 0, 4, 2))
+        x1 = r["blocks"][0]
+        self.assertEqual((x1["std_mh"], x1["mh"], x1["rework_mh"], x1["day_hours"]), (6, 6, 0, 8))
+        sa = r["manhours"]["stations"]["sub_assembly"]
+        self.assertEqual(sa, {"planned": 80, "standard": 80, "input": 80, "work": 80, "rework": 0, "idle": 0, "efficiency": 1})
+        # 계획 일정도 같은 시계
+        bp = preview(cfg, sc)["block_plan"]["blocks"]
+        self.assertEqual([(bp[f"X-SA{k}"]["start_h"], bp[f"X-SA{k}"]["end_h"]) for k in (1, 2, 3)], [(0, 3), (3, 6), (6, 1)])
+        self.assertEqual(bp["X-SA1"]["std_mh"], 6)
+
+    def test_start_hour_idles_station(self):
+        # X 혼자, X-SA1은 1일 2시간, 나머지 X 블록은 2일로: 1일은 0~2시간 쉬고 X-SA1 2~5시간, 다시 5~8시간 쉰다.
+        # 2일부터 X-SA2…8을 이어 하고 X-SA8은 4일 2~5시간. 투입 64 MH = 작업 48 + 대기 16(1일 10 + 4일 6), 공수 효율 0.75
+        cfg, sc = mini([("X", "FEEDER", 1, 40)])
+        cfg["block_start"] = {"X-SA1": 1, **{f"X-SA{k}": 2 for k in range(2, 9)}}
+        cfg["block_start_hour"] = {"X-SA1": 2}
+        r = simulate(cfg, sc, baseline=False)
+        t = times(r, "X", "sub_assembly")
+        self.assertEqual((t[0], t[1], t[-1]), ((1, 2, 1, 5), (2, 0, 2, 3), (4, 2, 4, 5)))
+        sa = r["manhours"]["stations"]["sub_assembly"]
+        self.assertEqual((sa["input"], sa["work"], sa["idle"], sa["efficiency"]), (64, 48, 16, 0.75))
+        bp = preview(cfg, sc)["block_plan"]["blocks"]
+        self.assertEqual((bp["X-SA1"]["start_h"], bp["X-SA1"]["end_h"], bp["X-SA8"]["end"], bp["X-SA8"]["end_h"]), (2, 5, 4, 5))
+        self.assertEqual((bp["X-SA1"]["ready"], bp["X-SA1"]["ready_h"]), (1, 2))   # 대기 띠는 착수 시각부터
+
+    def test_start_hour_does_not_hold_station(self):
+        # Y-SA1을 1일 2시간으로 정하고 X와 함께: 0시간에 들어올 수 있는 X-SA1이 먼저 3시간까지,
+        # Y-SA1은 3~5시간(작업장을 비워 두지 않고 하던 블록을 밀어내지 않는다), 그다음 X-SA2 5~8시간
+        cfg, sc = mini([("X", "FEEDER", 1, 40), ("Y", "TUG", 2, 40)])
+        cfg["block_start"] = {"Y-SA1": 1}
+        cfg["block_start_hour"] = {"Y-SA1": 2}
+        r = simulate(cfg, sc, baseline=False)
+        self.assertEqual(times(r, "Y", "sub_assembly")[0], (1, 3, 1, 5))
+        self.assertEqual(times(r, "X", "sub_assembly")[:2], [(1, 0, 1, 3), (1, 5, 1, 8)])
+        bp = preview(cfg, sc)["block_plan"]["blocks"]
+        self.assertEqual((bp["Y-SA1"]["start_h"], bp["X-SA2"]["start_h"]), (3, 5))
+
+    def test_overtime_day_is_ten_hours(self):
+        # 잔업: 처리량 2.5 = 시간당 2 MH로 10시간. X-SA4는 1일 9시간에 시작해 2일 2시간에 끝난다(1시간 2 MH + 2시간 4 MH)
+        cfg, sc = mini([("X", "FEEDER", 1, 40)])
+        cfg["stations"]["sub_assembly"]["overtime"] = True
+        r = simulate(cfg, sc, baseline=False)
+        x4 = next(b for b in r["blocks"] if b["id"] == "X-SA4")
+        self.assertEqual((x4["start"], x4["start_h"], x4["end"], x4["end_h"], x4["day_hours"]), (1, 9, 2, 2, 10))
+        self.assertEqual(sc["rules"]["overtime"]["speed"],
+                         (sc["rules"]["hours"]["day"] + sc["rules"]["hours"]["overtime"]) / sc["rules"]["hours"]["day"])
+
+    def test_rework_counts_as_rework_manhours(self):
+        # 불량 블록은 재작업 절반(3 MH)을 더 한다: 그 블록 mh 9 = 작업 6 + 재작업 3. 실적 표준 공수는 그대로 6
+        cfg, sc = mini([("X", "FEEDER", 1, 40)])
+        sc["random"]["block_quality"]["X"]["sub_assembly"][0] = 0.0
+        r = simulate(cfg, sc, baseline=False)
+        x1 = r["blocks"][0]
+        self.assertEqual((x1["mh"], x1["rework_mh"]), (9, 3))
+        sa = r["manhours"]["stations"]["sub_assembly"]
+        self.assertEqual((sa["standard"], sa["rework"]), (48, 3))
+
+    def test_validation(self):
+        cfg, sc = mini([("X", "FEEDER", 1, 40)])
+        cfg["block_start"] = {"X-SA1": 2}
+        for bad in [{"X-SA2": 3}, {"X-SA1": 8}, {"X-SA1": -1}, {"X-SA1": 1.5}, ["X-SA1"]]:
+            with self.subTest(bad=bad), self.assertRaises(ConfigError):
+                simulate({**cfg, "block_start_hour": bad}, sc, baseline=False)
+
+    def test_same_as_before_without_start_hour(self):
+        # 착수 시각을 정하지 않으면 시각은 기록뿐: 실습 B안 결과에 공수가 붙을 뿐 등급은 그대로(94.3)
+        r = simulate(load_presets("block")[1]["config"])
+        self.assertEqual(r["grade"]["score"], 94.3)
+        self.assertEqual(r["manhours"]["total"]["planned"], 520)
+        self.assertNotIn("manhours", simulate(load_presets("simple")[1]["config"], baseline=False))

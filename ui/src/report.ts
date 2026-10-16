@@ -2,7 +2,7 @@
 // 뒷장 메모(4.23): 부록 7관리 지표와 선배의 팁.
 // 모든 숫자는 엔진 결과에 있는 값이다. 막대 길이와 차트 좌표를 정하는 비율만 화면에서 구한다.
 
-import type { DispatchMetrics, DispatchRule, Finding, Grade, Management, MgmtPoint, Result, Scenario, ShipResult, SimEvent } from "./api";
+import type { DispatchMetrics, DispatchRule, Finding, Grade, Management, ManhourRow, MgmtPoint, Result, Scenario, ShipResult, SimEvent } from "./api";
 import { h, money, num, pct, s, signed } from "./dom";
 import { openOptions } from "./form";
 import { AUTHOR } from "./paper";
@@ -491,14 +491,30 @@ export function renderAssemblyReport(result: Result, scenario: Scenario, onApply
     const bs = result.blocks!.filter((b) => b.station === st.id);
     return { st, on: bs.filter((b) => b.on_time).length, n: bs.length, late: bs.reduce((a, b) => a + b.late_days, 0) };
   });
+  // 공수(4.29, D76): 표준 공수 ÷ 투입 공수(사람 × 근무시간). 투입은 작업 + 재작업 + 대기. 옛 회차에는 없다
+  const mh = result.manhours;
+  const mhNum = (v: number) => (Math.round(v * 10) / 10).toLocaleString("ko-KR");
+  const mhCells = (r: ManhourRow | undefined) => (r ? [
+    h("td", { title: `계획 표준 공수 ${mhNum(r.planned)} MH 가운데 해낸 만큼` }, mhNum(r.standard)),
+    h("td", { title: `작업 ${mhNum(r.work)} + 재작업 ${mhNum(r.rework)} + 대기 ${mhNum(r.idle)}` }, mhNum(r.input)),
+    h("td", { class: r.rework ? "late" : "" }, mhNum(r.rework)),
+    h("td", null, mhNum(r.idle)),
+    h("td", null, h("b", null, r.efficiency === null ? "—" : pct(r.efficiency, 0))),
+  ] : []);
   const summary = h("div", { class: "asm-summary" },
     h("div", { class: "qcd-card" }, h("small", null, "블록 납기 준수"), h("b", null, `${bd.on_time} / ${bd.blocks}`),
-      h("span", null, `준수율 ${bd.rate === null ? "—" : pct(bd.rate, 0)} · 늦은 날 합 ${bd.late_days}일`)),
+      h("span", null, `준수율 ${bd.rate === null ? "—" : pct(bd.rate, 0)} · 늦은 날 합 ${bd.late_days}일`),
+      mh ? h("span", null, `공수 효율 ${mh.total.efficiency === null ? "—" : pct(mh.total.efficiency, 0)}`) : null),
     h("table", { class: "tip-table asm-station-table" },
-      h("thead", null, h("tr", null, h("th", null, "블록 공정"), h("th", null, "지킨 블록"), h("th", null, "늦은 날 합"))),
+      h("thead", null,
+        h("tr", null, h("th", { rowspan: mh ? 2 : 1 }, "블록 공정"), h("th", { rowspan: mh ? 2 : 1 }, "지킨 블록"), h("th", { rowspan: mh ? 2 : 1 }, "늦은 날 합"),
+          mh ? h("th", { colspan: 5, class: "mh-head" }, "공수 (MH = 사람 × 시간)") : null),
+        mh ? h("tr", null, ["표준", "투입", "재작업", "대기", "효율"].map((t) => h("th", { class: "mh-sub" }, t))) : null),
       h("tbody", null, perStation.map((r) => h("tr", null,
         h("th", null, h("i", { class: "swatch", style: { background: STATION_COLOR[r.st.id] } }), r.st.name),
-        h("td", null, `${r.on} / ${r.n}`), h("td", null, `${r.late}일`))))));
+        h("td", null, `${r.on} / ${r.n}`), h("td", null, `${r.late}일`), ...mhCells(mh?.stations[r.st.id])))),
+      mh ? h("tfoot", null, h("tr", null, h("th", null, "합계"), h("td", null, `${bd.on_time} / ${bd.blocks}`), h("td", null, `${bd.late_days}일`),
+        ...mhCells(mh.total))) : null));
   // 배별 공정 납기: 마친 날 / 공정 납기, 넘겼으면 붉게. 조립 공정(블록 공정)은 진하게, 절단·가공·탑재는 옅게 앞뒤 맥락으로
   // (4.28.3 사용자 "가": 앞 공정에서 이미 늦었는지(원인), 끝내 인도가 늦었는지(결과)를 같은 줄에서 읽는다)
   const ctx = (id: string) => (blockSt.has(id) ? "" : "ctx");
@@ -514,7 +530,8 @@ export function renderAssemblyReport(result: Result, scenario: Scenario, onApply
           d.end === null ? "못 마침" : `${d.end}일`, h("small", null, d.late_days ? ` +${d.late_days}` : ""));
       })))));
   return h("div", { class: "asm-report" },
-    h("section", { class: "report-sec" }, h("h3", null, "블록 납기"), summary),
+    h("section", { class: "report-sec" }, h("h3", null, mh ? "블록 납기와 공수" : "블록 납기"), summary,
+      mh ? h("p", { class: "hint" }, "공수 효율 = 표준 공수 ÷ 투입 공수. 투입은 작업장에 보낸 사람 × 근무시간(정규 8, 잔업 10)이고, 그 가운데 재작업과 대기(블록을 끝냈는데 들어올 블록이 없어 쉰 시간)가 효율을 깎습니다.") : null),
     h("section", { class: "report-sec" }, h("h3", null, "공정 납기 (마친 날, 붉은 칸은 납기를 넘김)"), dueTable,
       h("p", { class: "hint" }, "진한 칸이 조립 공정입니다. 옅은 칸은 앞뒤 맥락으로, 절단·가공에서 이미 늦었으면 원인이 조립 앞에 있고, 탑재가 늦었으면 인도가 늦었습니다.")),
     h("section", { class: "report-sec" }, recommendCard(result, onApplyRule)));

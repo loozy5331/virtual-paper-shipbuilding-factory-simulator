@@ -617,6 +617,11 @@
       "accident_threshold": 0.5,
       "accident_stop_days": 3
     },
+    "hours": {
+      "_comment": "근무시간(4.29, D76): 조립 블록의 공수(MH)와 하루 안의 시각. 작업량 1 = day MH(한 사람의 하루). 잔업이면 overtime 시간을 더한다(잔업 처리량 overtime.speed = (day + overtime) ÷ day)",
+      "day": 8,
+      "overtime": 2
+    },
     "no_maintenance_defect_add": 0.15,
     "hoist": {
       "name": "호이스트",
