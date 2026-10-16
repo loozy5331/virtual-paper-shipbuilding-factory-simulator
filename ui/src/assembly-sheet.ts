@@ -8,7 +8,7 @@
 // 화면은 계산하지 않는다: 블록 일정·납기·위험은 미리보기(block_plan, dues, plan_risks)를 그린다.
 
 import { activeStations, blockId, blockLabel, blockStations, type Config, type DispatchRule, type Preview, type Scenario } from "./api";
-import { renderBlockGantt } from "./block-plan-gantt";
+import { blockGanttLegend, renderBlockGantt } from "./block-plan-gantt";
 import { h, mount } from "./dom";
 import { fillStationPreview, stationCard } from "./form";
 import { DISPATCH_INFO, STATION_COLOR } from "./labels";
@@ -239,7 +239,8 @@ export function updateAssemblySheet(root: HTMLElement, preview: Preview | null, 
             ctx.onEdit(false);
           },
         }),
-        h("p", { class: "hint" }, "공정마다 위는 작업장 줄(회색은 다른 배의 블록), 아래는 이 배의 블록 줄입니다. 막대는 고장 없이 2명이 하루 8시간 했을 때의 계획으로, 길이가 시간입니다(하루 칸 = 8시간, 7h는 근무 시작부터 7시간). 막대 앞 얇은 띠는 작업장이 다른 블록을 하느라 기다리는 시간, 세로 눈금은 블록 납기입니다. 옅은 띠는 막대를 옮길 수 있는 범위로, 진한 쪽은 생산계획서 계획 간트의 그 공정 기간, 더 옅은 쪽은 그 뒤 공정 납기까지입니다. 착수일을 정한 블록은 그 시각보다 먼저 들이지 않고, 그동안 작업장은 다른 블록을 받습니다. 작업장이 차 있으면 막대가 정한 시각보다 뒤에 놓입니다."),
+        blockGanttLegend(bst),
+        h("p", { class: "hint" }, "공정마다 위는 작업장 줄, 아래는 이 배의 블록 줄입니다. 막대는 고장 없이 2명이 하루 8시간 했을 때의 계획으로 길이가 시간입니다(하루 칸 = 8시간, 7h는 근무 시작부터 7시간). 옅은 띠 중 진한 쪽은 생산계획서 계획 간트의 그 공정 기간, 더 옅은 쪽은 그 뒤 공정 납기까지입니다. 착수를 정한 블록은 그 시각보다 먼저 들이지 않고, 작업장이 차 있으면 정한 시각보다 뒤에 놓입니다."),
       ];
       if (zoomed && root.isConnected) {
         // 크게 보기(4.27.1, 사용자): 관제실 모니터처럼 화면 가득. 클립보드에 transform이 있어 body에 띄운다

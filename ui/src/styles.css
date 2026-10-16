@@ -1448,3 +1448,10 @@ details.block-plan > summary small { color: var(--ink-3); }
 .asm-station-table .mh-sub { font-size: 11px; font-weight: 600; }
 .asm-station-table td { text-align: right; font-variant-numeric: tabular-nums; }
 .asm-station-table tfoot th, .asm-station-table tfoot td { border-top: 1px solid var(--line); font-weight: 700; }
+/* 4.29.1 조립 공정 계획서 블록 일정 범례 */
+.block-legend { margin-top: 4px; font-size: 0.72rem; gap: 4px 9px; }
+.block-legend span { gap: 4px; }
+.block-legend i { width: 12px; height: 8px; border-radius: 2px; }
+.legend i.window-mark { background: var(--ink-3); opacity: 0.25; }
+.legend i.pinned-mark { background: transparent; outline: 1px solid var(--ink); outline-offset: -1px; }
+.legend i.risk-mark { background: transparent; outline: 1.5px solid var(--bad); outline-offset: -1.5px; }
