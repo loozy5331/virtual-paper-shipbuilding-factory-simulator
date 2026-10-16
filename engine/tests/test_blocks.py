@@ -174,6 +174,80 @@ class Dues(unittest.TestCase):
         self.assertEqual(simulate(self.managed(), baseline=False)["block_due"]["rate"], 1.0)
 
 
+class Dispatch(unittest.TestCase):
+    """우선순위 규칙 4종과 서두름(규칙 문서 3장 "우선순위 규칙과 추천"). 예시 9의 판으로 본다."""
+
+    def run_sub(self, rule, ship_dues=(40, 40), rush=None, priorities=(1, 2)):
+        cfg, sc = mini([("X", "FEEDER", priorities[0], ship_dues[0]), ("Y", "TUG", priorities[1], ship_dues[1])])
+        cfg["stations"]["sub_assembly"]["dispatch"] = rule
+        cfg["due"] = {"stations": {"X": {"sub_assembly": 6}, "Y": {"sub_assembly": 3}}}
+        if rush:
+            cfg["rush"] = rush
+        r = simulate(cfg, sc, baseline=False)
+        return done_days(r, "X", "sub_assembly"), done_days(r, "Y", "sub_assembly")
+
+    def test_edd_takes_earlier_block_due(self):
+        # X가 1순위여도 납기 빠른 순이면 블록 납기 3일인 Y부터: 예시 9의 오른쪽 열
+        self.assertEqual(self.run_sub("edd"), ([3, 3, 4, 4, 4, 5, 5, 5], [1, 1, 1, 1, 2, 2, 2, 2]))
+
+    def test_spt_takes_smaller_blocks(self):
+        # 작업 짧은 순: 예인선 블록(0.5)이 피더 블록(0.75)보다 먼저
+        self.assertEqual(self.run_sub("spt")[1], [1, 1, 1, 1, 2, 2, 2, 2])
+
+    def test_slack_uses_ship_due(self):
+        # 여유 = 인도 납기 − 오늘 − 남은 공정 이상 소요일. Y 인도 납기가 20일이면 Y부터, 60일이면 X부터
+        self.assertEqual(self.run_sub("slack", ship_dues=(40, 20))[1], [1, 1, 1, 1, 2, 2, 2, 2])
+        self.assertEqual(self.run_sub("slack", ship_dues=(40, 60))[0], [1, 1, 2, 2, 2, 3, 3, 3])
+
+    def test_ship_rule_is_default(self):
+        self.assertEqual(self.run_sub("ship"), ([1, 1, 2, 2, 2, 3, 3, 3], [4, 4, 4, 4, 5, 5, 5, 5]))
+
+    def test_rush_goes_first(self):
+        # Y가 1순위(선박 순서)여도 서두름에 고른 X-SA8이 맨 먼저: 1일에 X-SA8 0.75, Y1·Y2, Y3 0.25
+        x, y = self.run_sub("ship", rush=["X-SA8"], priorities=(2, 1))
+        self.assertEqual(x[7], 1)
+        self.assertEqual(y[:3], [1, 1, 2])
+
+    def test_dispatch_validation(self):
+        cfg, sc = mini([("X", "FEEDER", 1, 40)])
+        for change in ({"stations": {"sub_assembly": {"dispatch": "fifo"}}}, {"stations": {"erection": {"dispatch": "edd"}}},
+                       {"rush": ["X-SA9"]}, {"rush": ["X-SA1", "X-SA1"]}):
+            bad = {**cfg, "stations": {k: dict(v) for k, v in cfg["stations"].items()}}
+            for sid, st in change.get("stations", {}).items():
+                bad["stations"][sid].update(st)
+            if "rush" in change:
+                bad["rush"] = change["rush"]
+            with self.subTest(change=change), self.assertRaises(ConfigError):
+                simulate(bad, sc, baseline=False)
+        simple = load_presets("simple")[1]["config"]
+        for bad in ({**simple, "rush": []},
+                    {**simple, "stations": {**simple["stations"], "sub_assembly": {**simple["stations"]["sub_assembly"], "dispatch": "edd"}}}):
+            with self.assertRaises(ConfigError):
+                simulate(bad, baseline=False)
+
+
+class Recommend(unittest.TestCase):
+    """평가서 추천: 블록 공정 규칙만 바꿔 4번 더 돌리고 인도 납기 → 블록 납기 → 이익 → 직행률 순으로 고른다."""
+
+    def test_unmanaged_gets_better_rule(self):
+        # 무관리(선박 순서): 납기 빠른 순이 블록 납기 준수율을 올린다(같으면 표의 앞 규칙)
+        r = simulate(load_presets("block")[0]["config"], baseline=False)
+        rc = r["recommend"]
+        self.assertEqual([row["rule"] for row in rc["rules"]], ["ship", "edd", "slack", "spt"])
+        self.assertEqual(rc["best"], "edd")
+        self.assertFalse(rc["current_is_best"])
+        best = next(row for row in rc["rules"] if row["rule"] == "edd")
+        self.assertGreater(best["block_rate"], rc["current"]["block_rate"])
+        self.assertEqual(rc["current"]["rules"], {"sub_assembly": "ship", "block_assembly": "ship", "grand_assembly": "ship"})
+
+    def test_managed_is_already_best(self):
+        rc = simulate(load_presets("block")[1]["config"], baseline=False)["recommend"]
+        self.assertTrue(rc["current_is_best"])
+
+    def test_only_in_block_drill(self):
+        self.assertNotIn("recommend", simulate(load_presets("simple")[1]["config"], baseline=False))
+
+
 class DrillScenario(unittest.TestCase):
     def test_hidden_from_ladder_but_loadable(self):
         # 사다리(D67) 밖 실습: 첫 화면 목록에는 아직 없고(실습 카드는 생산계획서 PR에서), 이름으로는 불러 돌릴 수 있다
