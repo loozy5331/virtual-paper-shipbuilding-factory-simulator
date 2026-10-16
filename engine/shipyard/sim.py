@@ -313,6 +313,32 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
     if not _is_int(buffer) or not 0 <= buffer <= buffer_max:
         errors.append(f"역산 발주 여유일은 0~{buffer_max}일이어야 합니다")
 
+    # 공정·블록 납기(4.25, D71): 블록 조립 실습에서만. 적은 것만 기본값(역산)을 바꾼다
+    due = config.get("due")
+    if due is not None:
+        active_ids = [s["id"] for s in scenario["stations"] if not is_skipped(s)]
+        valid_blocks = set(block_ids(scenario))
+        ok_day = lambda d: _is_int(d) and 1 <= d <= days
+        if not block_counts(scenario):
+            errors.append("공정·블록 납기는 블록 조립 실습에서만 정할 수 있습니다")
+        elif not isinstance(due, dict) or set(due) - {"stations", "blocks"}:
+            errors.append("납기(due)는 stations(배 → 공정 → 날)와 blocks(블록 → 날)만 적을 수 있습니다")
+        else:
+            for sid, per in (due.get("stations") or {}).items():
+                if sid not in order_ids or not isinstance(per, dict):
+                    errors.append(f"공정 납기: {sid}는 수주에 없는 배입니다")
+                    continue
+                for pid, d in per.items():
+                    if pid not in active_ids:
+                        errors.append(f"{sid}: 공정 납기의 {pid}는 이 분기에서 쓰지 않는 공정입니다")
+                    elif not ok_day(d):
+                        errors.append(f"{sid}: {pid} 공정 납기는 1~{days} 사이의 정수여야 합니다")
+            for bid, d in (due.get("blocks") or {}).items():
+                if bid not in valid_blocks:
+                    errors.append(f"블록 납기: {bid}는 없는 블록입니다")
+                elif not ok_day(d):
+                    errors.append(f"{bid}: 블록 납기는 1~{days} 사이의 정수여야 합니다")
+
     skilled = config.get("skilled_station")
     if skilled is not None and skilled not in station_ids:
         errors.append("시니어는 공정 하나에 두거나 미배치(null)여야 합니다")
@@ -673,7 +699,20 @@ def preview(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> d
             "ships": ship_specs(config, scenario),
             # 공정 여유(4.15): 선주와 맺을 납기와 선가
             "contract": {o["id"]: {"due_day": o["due_day"], "price": o["price"], "buffer_days": o["buffer_days"]}
-                         for o in contract_orders(config, scenario)}}
+                         for o in contract_orders(config, scenario)},
+            **_due_preview(config, scenario)}
+
+
+def _due_preview(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
+    """블록 조립 실습(4.25)의 미리보기: 공정·블록 납기와 계획상 위험(계획 간트 끝이 공정 납기를 넘기는 배·공정).
+    계획상 위험은 실행 결과가 아니라 배가 혼자 쓴다고 본 계획 일정이다."""
+    if not block_counts(scenario):
+        return {}
+    dues = station_dues(config, scenario)
+    plan = plan_schedule(config, scenario)["ships"]
+    risks = [{"ship": sid, "station": pid, "plan_end": span["end"], "due": dues[sid][pid], "days": span["end"] - dues[sid][pid]}
+             for sid, spans in plan.items() for pid, span in spans.items() if span["end"] > dues[sid][pid]]
+    return {"dues": {"stations": dues, "blocks": block_dues(config, scenario, dues)}, "plan_risks": risks}
 
 
 def move_days_between(scenario: dict[str, Any], a: int, b: int) -> int:
@@ -709,6 +748,65 @@ def block_counts(scenario: dict[str, Any]) -> dict[str, int]:
         return {}
     return {s["id"]: scenario["blocks"][s["id"]] for s in scenario["stations"]
             if not is_skipped(s) and s.get("trade") == "assembly" and scenario["blocks"].get(s["id"], 1) > 1}
+
+
+def block_id(ship_id: str, station_id: str, no: int) -> str:
+    """블록 이름(4.25): 배 + 공정 약자 + 번호. 예: S1-SA3(S1 소조립 3번 블록)."""
+    return f"{ship_id}-{BLOCK_CODES.get(station_id, station_id[:2].upper())}{no}"
+
+
+def block_ids(scenario: dict[str, Any]) -> list[str]:
+    """블록 조립 실습의 모든 블록 이름(배 → 공정 → 번호 순). 끈 시나리오는 빈 목록."""
+    return [block_id(o["id"], sid, k) for o in scenario["orders"] for sid, n in block_counts(scenario).items()
+            for k in range(1, n + 1)]
+
+
+def ideal_days(config: dict[str, Any], scenario: dict[str, Any], p: int, ship_type: str) -> int:
+    """공정 납기 역산에 쓰는 이상 소요일(4.25): 작업량 ÷ (2명 × 공법 속도) ÷ min(작업장 수, 블록 수), 올림."""
+    st = scenario["stations"][p]
+    rules = scenario["rules"]
+    cfg = config["stations"][st["id"]]
+    rate = rules["max_workers_per_station"] * rules["methods"][cfg["method"]]["speed"]
+    spread = min(cfg.get("units", 1), block_counts(scenario).get(st["id"], 1))
+    return math.ceil(station_work(config, scenario, st["id"], ship_type) / rate / spread - EPS)
+
+
+def station_dues(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, dict[str, int]]:
+    """배마다 공정 납기(4.25, D71). 마지막 공정 = 계약 납기, 앞 공정 = 뒤 공정 납기 − 뒤 공정 이상 소요일 − 이동일
+    (뒤 공정이 둘 이상이면 가장 이른 값). 설정 due.stations에 적은 값은 그대로 쓰고, 그 앞 공정은 그 값에서 역산한다."""
+    stations = scenario["stations"]
+    after = station_after(scenario)
+    active = [p for p, st in enumerate(stations) if not is_skipped(st)]
+    overrides = (config.get("due") or {}).get("stations") or {}
+    out: dict[str, dict[str, int]] = {}
+    for order in contract_orders(config, scenario):
+        due: dict[int, int] = {}
+        for p in reversed(active):   # 공정 목록은 앞 공정이 늘 먼저다
+            fixed = (overrides.get(order["id"]) or {}).get(stations[p]["id"])
+            succ = [q for q in active if p in after[q]]
+            if fixed is not None:
+                due[p] = fixed
+            elif not succ:
+                due[p] = order["due_day"]
+            else:
+                due[p] = min(due[q] - ideal_days(config, scenario, q, order["type"]) - move_days_between(scenario, p, q)
+                             for q in succ)
+        out[order["id"]] = {stations[p]["id"]: due[p] for p in active}
+    return out
+
+
+def block_dues(config: dict[str, Any], scenario: dict[str, Any],
+               dues: dict[str, dict[str, int]] | None = None) -> dict[str, int]:
+    """블록 납기(4.25): 기본은 그 배의 공정 납기, 설정 due.blocks에 적은 블록은 그 값."""
+    dues = dues if dues is not None else station_dues(config, scenario)
+    overrides = (config.get("due") or {}).get("blocks") or {}
+    out = {}
+    for o in scenario["orders"]:
+        for sid, n in block_counts(scenario).items():
+            for k in range(1, n + 1):
+                bid = block_id(o["id"], sid, k)
+                out[bid] = overrides.get(bid, dues[o["id"]][sid])
+    return out
 
 
 def is_skipped(station: dict[str, Any]) -> bool:
@@ -903,6 +1001,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     every_busy = [rules["hoist"]["breakdown_every_busy_days"] if has_hoist(config, s["id"]) else bd["every_busy_days"] for s in stations]
     equipped = [has_equipment(s) for s in stations]
 
+    stations_ids = [s["id"] for s in stations]
+
     def work_of(ship: int, p: int) -> float:
         return station_work(config, scenario, stations[p]["id"], orders[ship]["type"])
 
@@ -1027,8 +1127,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     all_blocks: list[dict[str, Any]] = []
     block_tr_jobs: dict[int, list[str]] = {}                        # 오늘 트랜스포터가 실은 블록(대별)
 
-    def block_code(p: int) -> str:
-        return BLOCK_CODES.get(stations[p]["id"], stations[p]["id"][:2].upper())
+    sdues = station_dues(config, scenario) if block_mode else {}
+    bdues = block_dues(config, scenario, sdues) if block_mode else {}
 
     def create_blocks(i: int, day: int) -> None:
         """배가 첫 블록 공정에 들어갈 수 있게 된 날, 모든 블록 공정의 블록을 만든다. 첫 블록 공정 블록은 바로 wait."""
@@ -1037,7 +1137,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             amount = work_of(i, p) / n_blk[p]
             ship_blocks[i][p] = []
             for k in range(1, n_blk[p] + 1):
-                b = {"id": f"{orders[i]['id']}-{block_code(p)}{k}", "ship": i, "p": p, "no": k,
+                bid = block_id(orders[i]["id"], stations[p]["id"], k)
+                b = {"id": bid, "ship": i, "p": p, "no": k, "due": bdues[bid],
                      "state": "wait" if p in block_first else "pending", "avail": day if p in block_first else None,
                      "amount": amount, "unit": None, "start": None, "end": None, "done_day": None,
                      "verdict": None, "today": None, "daily": [{"state": NOT_STARTED, "unit": None}] * (day - 1)}
@@ -1739,9 +1840,19 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     } for k in range(n_fk)]
 
     # 블록(4.25): 블록마다 작업장, 시작·끝·완료일, 하루 상태(배의 daily와 같은 길이)
+    # 납기(4.25): 끝내지 못한 블록·공정은 기간 끝일로 늦은 날을 센다
     blocks_out = [{"id": b["id"], "ship": orders[b["ship"]]["id"], "station": stations[b["p"]]["id"], "no": b["no"],
                    "unit": None if b["unit"] is None else b["unit"] + 1, "start": b["start"], "end": b["end"],
-                   "done_day": b["done_day"], "defect": bool(b["verdict"]), "daily": b["daily"]} for b in all_blocks]
+                   "done_day": b["done_day"], "defect": bool(b["verdict"]),
+                   "due": b["due"], "late_days": max(0, (b["done_day"] or days) - b["due"]),
+                   "on_time": b["done_day"] is not None and b["done_day"] <= b["due"], "daily": b["daily"]}
+                  for b in all_blocks]
+    if block_mode:
+        for i, sh in enumerate(ships_out):
+            sh["station_dues"] = {}
+            for pid, d in sdues[sh["id"]].items():
+                end = spans[i][pid]["end"] if stations_ids.index(pid) in done[i] and pid in spans[i] else None
+                sh["station_dues"][pid] = {"due": d, "end": end, "late_days": max(0, (end or days) - d)}
 
     total_insp, total_pass = sum(inspections), sum(passes)
     on_time = sum(1 for s in ships_out if s["on_time"])
@@ -1774,7 +1885,10 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         "stations": stations_out,
         "transporters": transporters_out,
         "forklifts": forklifts_out,
-        **({"blocks": blocks_out} if block_mode else {}),
+        **({"blocks": blocks_out,
+            "block_due": {"blocks": len(blocks_out), "on_time": sum(b["on_time"] for b in blocks_out),
+                          "rate": sum(b["on_time"] for b in blocks_out) / len(blocks_out) if blocks_out else None,
+                          "late_days": sum(b["late_days"] for b in blocks_out)}} if block_mode else {}),
         "research": schedule,
         "safety_stock": safety,
         "inventory_daily": inventory_daily,
@@ -1890,7 +2004,8 @@ def _management(result: dict[str, Any], config: dict[str, Any], scenario: dict[s
         "plan": {"on_plan": on_plan, "ships": len(ships), "slip_days": sum(slips.values()),
                  "conflict_days": conflict_days, "point": plan_point},
         "schedule": {"flow_efficiency": flowing / lead if lead else None, "lead_days": lead,
-                     "wait_days": waits, "point": schedule_point},
+                     "wait_days": waits, "point": schedule_point,
+                     **({"block_due": result["block_due"]} if "block_due" in result else {})},
         "material": {"wait_days": material_wait,
                      "supply_delays": sum(1 for ev in result["events"] if ev["type"] == "supply_delay"),
                      "avg_inventory": round(sum(inv) / len(inv), 2) if inv else 0.0,
