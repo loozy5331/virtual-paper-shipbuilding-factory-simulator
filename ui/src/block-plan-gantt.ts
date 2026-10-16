@@ -60,7 +60,7 @@ export function blockGanttLegend(stations: { id: string; name: string }[]): HTML
   return h("div", { class: "legend block-legend" },
     stations.map((st) => item(h("i", { style: { background: STATION_COLOR[st.id] } }), st.name)),
     item(h("i", { style: { background: OTHER } }), "다른 배 블록"),
-    item(h("i", { style: { background: WAIT.color } }), "작업장 대기"),
+    item(h("i", { class: "wait-mark", style: { background: WAIT.color } }), "작업장 대기"),
     h("span", { class: "sep" }),
     item(h("i", { class: "window-mark" }), "옮길 수 있는 범위"),
     item(h("i", { class: "due-mark" }), "블록 납기"),
@@ -175,8 +175,8 @@ export function renderBlockGantt(ctx: BlockGanttContext): SVGElement {
       );
       // 들어갈 수 있었는데 작업장이 차서 기다린 시간(다른 블록을 하는 중): 막대 앞 얇은 띠
       if (waitedH > 0) {
-        // 대기 막대는 작업 막대와 같은 굵기(4.29.1 사용자: 다른 간트처럼). 색으로 가른다
-        row.append(s("rect", { x: at(b.ready, b.ready_h ?? 0), y: ry + (ROW_H - BAR_H) / 2, width: Math.max(1, x0 - at(b.ready, b.ready_h ?? 0)), height: BAR_H, rx: 2, fill: WAIT.color, class: "block-wait" },
+        // 대기는 얇은 띠(4.29.2 사용자: 블록 막대와 같은 굵기는 어색해 되돌림)
+        row.append(s("rect", { x: at(b.ready, b.ready_h ?? 0), y: ry + ROW_H / 2 - 1.5, width: Math.max(1, x0 - at(b.ready, b.ready_h ?? 0)), height: 3, fill: WAIT.color, class: "block-wait" },
           s("title", null, `${ship} ${blockLabel(st.id, b.no)} ${WAIT.name} ${num(waitedH)}시간(${dayHour(b.ready, b.ready_h ?? 0)} ~ ${dayHour(b.start, b.start_h)}): 작업장에서 다른 블록을 하는 중`)));
       }
       row.append(bar, s("line", { x1: x(b.due + 1), x2: x(b.due + 1), y1: ry + 1, y2: ry + ROW_H - 1, class: "due block-due" }));

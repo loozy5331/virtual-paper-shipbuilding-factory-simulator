@@ -1455,3 +1455,4 @@ details.block-plan > summary small { color: var(--ink-3); }
 .legend i.window-mark { background: var(--ink-3); opacity: 0.25; }
 .legend i.pinned-mark { background: transparent; outline: 1px solid var(--ink); outline-offset: -1px; }
 .legend i.risk-mark { background: transparent; outline: 1.5px solid var(--bad); outline-offset: -1.5px; }
+.block-legend i.wait-mark { height: 3px; border-radius: 1px; }
