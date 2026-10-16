@@ -6,7 +6,7 @@
 // 막대를 누르면 onPick으로 그 배·공정·기간을 넘긴다(현장 들어가는 길, D7).
 // 재생 중에는 today까지만 그린다. 엔진이 준 segments와 daily를 자르고 묶기만 하고 새로 계산하지 않는다.
 
-import { activeStations, type ForkliftJob, type Plan, type Result, type Scenario, type Segment } from "./api";
+import { activeStations, blockLabel, type ForkliftJob, type Plan, type Result, type Scenario, type Segment } from "./api";
 import { s } from "./dom";
 import { PAIR_WAIT_EDGE, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, STATION_TEXT } from "./labels";
 
@@ -670,6 +670,130 @@ export function renderShipGantt(result: Result, scenario: Scenario, shipId: stri
 
   if (today >= 1) {
     const cx = x(Math.min(today, days) + 1);
+    svg.append(s("g", { class: "cursor" },
+      s("line", { x1: cx, x2: cx, y1: TOP - 4, y2: height - 4 }),
+      s("rect", { x: cx - 21, y: 1, width: 42, height: 18, rx: 9 }),
+      s("text", { x: cx, y: 14.5 }, `${today}일`)));
+  }
+  return svg;
+}
+
+// ---------------------------------------------------------------------------
+// 공정 탭(4.25, D71): 전체 > 선박 > 공정. 한 척 × 한 블록 공정(소조립·중조립·PE장)을 펼친다.
+// 위: 작업장마다 한 줄. 이 배의 블록이 그 작업장에서 일한 날을 블록 이름 막대로, 다른 배가 쓴 날은 옅은 회색.
+// 아래: 이 배의 블록마다 한 줄. 일한 날은 진한 막대(재작업 빗금), 기다린 날은 얇은 색 띠(작업장·자재·운반 대기, 운반, 짝 대기),
+//       블록 납기는 눈금, 공정 납기는 세로선. 엔진이 준 blocks[].daily와 작업장 daily를 자르고 묶기만 한다(today까지).
+// ---------------------------------------------------------------------------
+
+const B_ROW = 15;      // 블록 줄
+const U_ROW = 26;      // 작업장 줄
+const B_BAR = 9;
+const WAIT_STATES = ["station_wait", "material_wait", "labor_wait", "transport_wait", "transport", "pair_wait", "accident_stop", "breakdown_stop"];
+
+export function renderStationGantt(result: Result, scenario: Scenario, shipId: string, stationId: string, today: number,
+  size?: { width: number; height: number }): SVGElement {
+  useSize(size);
+  const days = result.days;
+  const ship = result.ships.find((sh) => sh.id === shipId)!;
+  const st = scenario.stations.find((x) => x.id === stationId)!;
+  const units = result.stations.find((rs) => rs.id === stationId)!.units;
+  const blocks = (result.blocks ?? []).filter((b) => b.ship === shipId && b.station === stationId);
+  const color = STATION_COLOR[stationId];
+  // 이 공정 기간만 확대한다(블록이 처음 보인 날 앞뒤로 여유)
+  const alive = (b: typeof blocks[number]) => b.daily.map((r, i) => (r.state !== "not_started" && r.state !== "done" ? i + 1 : 0)).filter(Boolean);
+  const daysSeen = blocks.flatMap(alive);
+  const due = ship.station_dues?.[stationId]?.due;
+  const first = Math.max(1, (daysSeen.length ? Math.min(...daysSeen) : 1) - 2);
+  const last = Math.min(days, Math.max(daysSeen.length ? Math.max(...daysSeen) : days, ...blocks.map((b) => b.due), due ?? 0) + 2);
+  const span = last - first + 1;
+  const dayW = (W - LEFT - RIGHT) / span;
+  const x = (day: number) => LEFT + (day - first) * dayW;
+  const width = (a: number, b: number) => (b - a + 1) * dayW;
+  const clip = (d: number) => Math.min(d, today);
+  const uTop = TOP;
+  const bTop = uTop + units.length * U_ROW + SECTION_GAP;
+  const height = bTop + blocks.length * B_ROW + 12;
+
+  const svg = s("svg", { class: "gantt station-gantt", viewBox: `0 0 ${W} ${height}`, role: "img",
+    "aria-label": `${shipId} ${st.name}: 작업장별 블록과 블록별 진행, ${today}일째` });
+  svg.append(s("defs", null,
+    s("pattern", { id: "hatch", width: 6, height: 6, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" },
+      s("rect", { width: 2.4, height: 6, fill: "#ffffff", opacity: 0.6 }))));
+  const axis = s("g", { class: "axis" });
+  for (let d = first; d <= last; d++) {
+    if (span <= 40 || d % 5 === 0) {
+      axis.append(s("line", { x1: x(d), x2: x(d), y1: TOP - 6, y2: height - 4, class: d % 5 === 0 ? "grid major" : "grid" }),
+        s("text", { x: x(d) + dayW / 2, y: TOP - 14, class: "tick" }, d));
+    }
+  }
+  svg.append(axis);
+
+  // 작업장 줄
+  units.forEach((u, k) => {
+    const y = uTop + k * U_ROW;
+    const g = s("g", { class: "ship-row" });
+    g.append(s("rect", { x: 0, y, width: W, height: U_ROW - 2, class: k % 2 ? "band odd" : "band" }),
+      s("text", { x: 12, y: y + 16, class: "eq-id" }, `${u.unit}호 작업장`),
+      s("rect", { x: LEFT, y: y + 4, width: span * dayW, height: U_ROW - 10, class: "lane" }));
+    for (let d = first; d <= Math.min(last, today); d++) {
+      const rec = u.daily[d - 1];
+      if (!rec || !rec.ship) continue;
+      const working = rec.state === "work" || rec.state === "rework";
+      if (rec.ship !== shipId) {
+        if (working) g.append(barEl(x(d), y + 6, dayW, U_ROW - 14, "#d8dcd6", `${d}일 ${rec.ship}가 사용`));
+        continue;
+      }
+      const ids = (rec.blocks ?? []).filter((id) => blocks.some((b) => b.id === id));
+      if (!working) {
+        const info = STATE_INFO[rec.state];
+        if (info) g.append(barEl(x(d), y + U_ROW - 8, dayW, 3, info.color, `${d}일 ${info.name}`));
+        continue;
+      }
+      const label = ids.map((id) => { const b = blocks.find((x) => x.id === id)!; return blockLabel(stationId, b.no); }).join("·");
+      g.append(barEl(x(d), y + 6, dayW, U_ROW - 14, color, `${d}일 ${shipId} ${label}${rec.state === "rework" ? " (재작업)" : ""}`,
+        { label: dayW > 18 ? label : undefined, textColor: STATION_TEXT[stationId], hatch: rec.state === "rework" }));
+    }
+    svg.append(g);
+  });
+
+  // 블록 줄
+  svg.append(s("text", { x: 12, y: bTop - 6, class: "ship-sub" }, `${shipId}의 ${st.name} 블록 ${blocks.length}개`));
+  blocks.forEach((b, k) => {
+    const y = bTop + k * B_ROW;
+    const g = s("g", { class: "ship-row" });
+    g.append(s("text", { x: 24, y: y + B_ROW - 4, class: "ship-sub" }, `${blockLabel(stationId, b.no)}${b.unit ? ` · ${b.unit}호` : ""}`));
+    const segs = runs(b.daily, (day) => {
+      const r = b.daily[day - 1];
+      return day < first || day > last || !r || r.state === "not_started" || r.state === "done" ? null : r.state;
+    }, today);
+    for (const seg of segs) {
+      const x0 = x(seg.start);
+      const w = width(seg.start, clip(seg.end));
+      const spanText = `${seg.start}~${seg.end}일`;
+      if (seg.key === "work" || seg.key === "rework") {
+        g.append(barEl(x0, y + (B_ROW - B_BAR) / 2, w, B_BAR, color, `${b.id} ${seg.key === "rework" ? "재작업" : "작업"} ${spanText}`,
+          { hatch: seg.key === "rework" }));
+      } else if (WAIT_STATES.includes(seg.key)) {
+        const info = seg.key === "pair_wait" ? PAIR_WAIT_STATE : STATE_INFO[seg.key];
+        if (info) g.append(barEl(x0, y + B_ROW / 2 - 1.5, w, 3, info.color, `${b.id} ${info.name} ${spanText}`));
+      }
+    }
+    if (b.due >= first && b.due <= last) {
+      g.append(s("line", { x1: x(b.due + 1), x2: x(b.due + 1), y1: y + 1, y2: y + B_ROW - 1, class: "due block-due" },
+        s("title", null, `${b.id} 블록 납기 ${b.due}일`)));
+    }
+    if (b.done_day !== null && b.done_day <= today && b.done_day > b.due) {
+      g.append(s("text", { x: Math.min(x(b.done_day + 1) + 3, W - RIGHT), y: y + B_ROW - 4, class: "plan-late" }, `+${b.done_day - b.due}`));
+    }
+    svg.append(g);
+  });
+
+  if (due !== undefined && due >= first && due <= last) {
+    svg.append(s("line", { x1: x(due + 1), x2: x(due + 1), y1: TOP - 4, y2: height - 4, class: "due" }),
+      s("text", { x: x(due + 1), y: TOP - 2, class: "due-label" }, `공정 납기 ${due}일`));
+  }
+  if (today >= first && today <= last) {
+    const cx = x(today + 1);
     svg.append(s("g", { class: "cursor" },
       s("line", { x1: cx, x2: cx, y1: TOP - 4, y2: height - 4 }),
       s("rect", { x: cx - 21, y: 1, width: 42, height: 18, rx: 9 }),

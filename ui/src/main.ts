@@ -13,7 +13,7 @@ import { h, mount, num, pct, s as svgEl } from "./dom";
 import { shipProfile } from "./profile";
 import { renderDesk } from "./desk";
 import { planLabel, renderForm, renderPlanBar, renderPlanNotes, renderPlanTabs, updatePreview, type FormContext } from "./form";
-import { renderGantt, renderShipGantt, type GanttPick } from "./gantt";
+import { renderGantt, renderShipGantt, renderStationGantt, type GanttPick } from "./gantt";
 import { docHead, REVIEWER } from "./paper";
 import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, PAIR_WAIT_EDGE, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, TRANSPORT_STATE } from "./labels";
 import { eventText, renderAssemblyReport, renderMemo, renderReport } from "./report";
@@ -76,6 +76,8 @@ interface State {
   current: number | null;        // 보고 있는 회차의 인덱스
   /** 간트에서 보는 배. null이면 전체. */
   ganttShip: string | null;
+  /** 4.25 공정 탭: 배 탭에서 고른 블록 공정(전체 > 선박 > 공정). null이면 그 배의 공정 전체 */
+  ganttStation?: string | null;
   day: number;
   playing: boolean;
   speed: number;
@@ -494,7 +496,7 @@ async function switchScenario(id: string): Promise<void> {
   previewSeq++;
   Object.assign(state, {
     data, config: structuredClone(first.config), presetId: first.id, edited: false, preview: null, errors: [],
-    current: last ?? null, ganttShip: null, cctv: null, board: "none",
+    current: last ?? null, ganttShip: null, ganttStation: null, cctv: null, board: "none",
     day: last !== undefined && state.runs[last].finished ? data.scenario.days : 0,
   });
   drawForm();
@@ -671,7 +673,7 @@ async function run(signer: Signer | null = null): Promise<void> {
   state.runs.push({ n: state.runs.length + 1, scenario: state.data.scenario.id, label: runLabel(), config, result, finished: false, signer, preview });
   state.current = state.runs.length - 1;
   reportSheet = "report";   // 새 회차의 평가서는 첫 장부터
-  Object.assign(state, { day: 0, ganttShip: null, cctv: null, board: "none", playing: false });
+  Object.assign(state, { day: 0, ganttShip: null, ganttStation: null, cctv: null, board: "none", playing: false });
 
   const source = els.plan.querySelector<HTMLElement>(".board-left");
   // 생산계획서 클립보드를 띄워 두고(복제), 관제실을 보이지 않게 그려 책상 위 자리를 잰다.
@@ -774,7 +776,9 @@ function drawGanttChart(): void {
   const screen = els.ganttScreen.getBoundingClientRect();
   const size = { width: chart.clientWidth, height: screen.bottom - chart.getBoundingClientRect().top - els.ganttScreen.scrollTop - 8 };
   const plan = r.preview?.plan;
-  mount(chart, ship ? renderShipGantt(result, scenario, ship.id, state.day, pickBar, size, plan) : renderGantt(result, scenario, state.day, pickBar, size, plan));
+  mount(chart, ship && state.ganttStation && result.blocks
+    ? renderStationGantt(result, scenario, ship.id, state.ganttStation, state.day, size)
+    : ship ? renderShipGantt(result, scenario, ship.id, state.day, pickBar, size, plan) : renderGantt(result, scenario, state.day, pickBar, size, plan));
 }
 
 /** 날짜가 바뀔 때마다 모니터(간트, 작업 현황, 사건 기록)와 재생 막대를 갱신한다. jump면 3D 소인이 걷지 않고 바로 옮긴다. */
@@ -1093,7 +1097,7 @@ function drawPlates(): void {
         onclick: () => {
           pause();
           state.current = i;
-          Object.assign(state, { day: run.finished ? run.result.days : 0, ganttShip: null, cctv: null, board: run.finished ? "down" : "none" });
+          Object.assign(state, { day: run.finished ? run.result.days : 0, ganttShip: null, ganttStation: null, cctv: null, board: run.finished ? "down" : "none" });
           drawRoom();
         },
       }, `${run.n}`, run.finished ? gradeChip(run.result.grade.grade, "chip-grade") : null))) : null);
@@ -1143,11 +1147,20 @@ function drawGanttScreen(): void {
   const shipTab = (id: string | null, label: string) =>
     h("button", {
       type: "button", class: `screen-tab${state.ganttShip === id ? " active" : ""}`,
-      onclick: () => { state.ganttShip = id; drawGanttScreen(); tick(true); },
+      onclick: () => { state.ganttShip = id; state.ganttStation = null; drawGanttScreen(); tick(true); },
+    }, label);
+  // 4.25 공정 탭(블록 조립 실습): 배를 고르면 [공정 전체 | 소조립 | 중조립 | PE장]
+  const blockSt = state.ganttShip && r.result.blocks ? blockStations(scenario) : [];
+  const stationTab = (id: string | null, label: string) =>
+    h("button", {
+      type: "button", class: `screen-tab small${(state.ganttStation ?? null) === id ? " active" : ""}`,
+      onclick: () => { state.ganttStation = id; drawGanttScreen(); tick(true); },
     }, label);
   const sameColor = LOSS_STATES.filter((l) => l.state !== "rework");
   mount(els.ganttScreen,
     h("div", { class: "screen-tabs" }, shipTab(null, "전체"), r.result.ships.map((sh) => shipTab(sh.id, sh.id))),
+    blockSt.length ? h("div", { class: "screen-tabs sub" }, stationTab(null, `${state.ganttShip} 공정 전체`),
+      blockSt.map((b) => stationTab(b.id, b.name))) : null,
     h("div", { class: "gantt-chart" }));
   mount(els.ganttLegend,
     // 공정 색은 전체 탭에만. 배 탭은 줄마다 공정 이름이 있다(4.12.7).

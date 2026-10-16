@@ -434,6 +434,8 @@ export interface StationDay {
   state: string;
   ship: string | null;
   workers: number;
+  /** 4.25(블록 조립 실습): 그날 이 작업장에서 일한 블록(이어 하기로 여럿일 수 있다) */
+  blocks?: string[];
 }
 
 export interface StationResult {

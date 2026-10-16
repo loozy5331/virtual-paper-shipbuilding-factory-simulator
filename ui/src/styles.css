@@ -1378,3 +1378,7 @@ details.block-plan > summary small { color: var(--ink-3); }
 .block-gantt .block-group { font-size: 9px; font-weight: 800; fill: var(--ink-2); }
 .block-gantt .block-group-line { stroke: var(--line); }
 .asm-view { margin: 2px 0 4px; }
+/* 4.25 관제실 간트 공정 탭(전체 > 선박 > 공정) */
+.screen-tabs.sub { margin-top: -2px; }
+.screen-tab.small { font-size: 0.78rem; padding: 2px 9px; }
+.station-gantt .block-due { stroke-width: 1.5; stroke-dasharray: 2 1.5; }
