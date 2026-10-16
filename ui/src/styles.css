@@ -1439,3 +1439,12 @@ details.block-plan > summary small { color: var(--ink-3); }
 .asm-stations .station-preview { grid-column: 1; grid-row: 2; flex-direction: column; align-items: flex-start; gap: 0; margin-top: 0; padding-top: 2px; border-top: 0; }
 .asm-stations .station-grid { grid-column: 2; grid-row: 1 / span 2; grid-template-columns: auto auto auto minmax(0, 1fr); gap: 4px 10px; }
 .asm-stations .asm-rule { grid-column: 2 / -1; }
+/* 4.29 공수와 시각: 반나절(4시간) 눈금, 작업장 줄의 블록 사이 가는 틈(이어 하기로 붙은 블록을 나눠 읽게) */
+.block-gantt .grid.hour { stroke: var(--line-soft); stroke-dasharray: 1 2; }
+.block-gantt .unit-bar { stroke: var(--panel); stroke-width: 0.6; }
+.station-gantt .unit-piece { stroke: var(--panel); stroke-width: 0.8; }
+/* 4.29 조립 공정 실적서: 블록 공정 표의 공수 열 */
+.asm-station-table .mh-head { text-align: center; border-bottom: 1px solid var(--line); }
+.asm-station-table .mh-sub { font-size: 11px; font-weight: 600; }
+.asm-station-table td { text-align: right; font-variant-numeric: tabular-nums; }
+.asm-station-table tfoot th, .asm-station-table tfoot td { border-top: 1px solid var(--line); font-weight: 700; }

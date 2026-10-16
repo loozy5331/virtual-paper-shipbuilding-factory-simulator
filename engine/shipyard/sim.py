@@ -377,6 +377,19 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
                 elif not (_is_int(d) and 1 <= d <= days):
                     errors.append(f"{bid}: 블록 착수일은 1~{days} 사이의 정수여야 합니다")
 
+    # 블록 착수 시각(4.29): 블록 이름 → 근무 시작부터 몇 시간 뒤(0~7). 착수일을 정한 블록에만
+    bhour = config.get("block_start_hour")
+    if bhour is not None:
+        last_h = scenario["rules"]["hours"]["day"] - 1
+        if not isinstance(bhour, dict):
+            errors.append("블록 착수 시각(block_start_hour)은 블록 이름 → 시간이어야 합니다")
+        else:
+            for bid, h in bhour.items():
+                if bid not in (bstart if isinstance(bstart, dict) else {}):
+                    errors.append(f"블록 착수 시각: {bid}는 착수일을 정한 블록이 아닙니다")
+                elif not (_is_int(h) and 0 <= h <= last_h):
+                    errors.append(f"{bid}: 블록 착수 시각은 0~{last_h} 사이의 정수여야 합니다")
+
     skilled = config.get("skilled_station")
     if skilled is not None and skilled not in station_ids:
         errors.append("시니어는 공정 하나에 두거나 미배치(null)여야 합니다")
@@ -824,9 +837,21 @@ def remaining_ideal(config: dict[str, Any], scenario: dict[str, Any], p: int, sh
     return sum(ideal_days(config, scenario, q, ship_type) for q in {p} | later if not is_skipped(scenario["stations"][q]))
 
 
+def day_hours(station_cfg: dict[str, Any], rules: dict[str, Any]) -> int:
+    """작업장의 하루 근무시간(4.29, D76): 정규 8시간, 잔업이면 2시간 더. 처리량을 이 시간에 고르게 쓴다."""
+    hours = rules["hours"]
+    return hours["day"] + (hours["overtime"] if is_overtime(station_cfg) else 0)
+
+
+def block_pin(config: dict[str, Any], bid: str) -> tuple[int, int] | None:
+    """블록 착수일과 착수 시각(4.26, 4.29): (날, 근무 시작부터 몇 시간 뒤). 착수일을 정하지 않은 블록은 None."""
+    day = (config.get("block_start") or {}).get(bid)
+    return None if day is None else (day, (config.get("block_start_hour") or {}).get(bid, 0))
+
+
 def block_sort_key(rule: str, order_pos: int | None, due: int, amount: float, slack: int, priority: int, no: int,
-                   pin: int | None = None) -> tuple[Any, ...]:
-    """블록을 들일 순서(4.25, 작을수록 먼저): 착수일을 정한 블록(4.26, 착수일 이른 순) → 블록 순서 목록의 자리(없으면 목록 뒤)
+                   pin: tuple[int, int] | None = None) -> tuple[Any, ...]:
+    """블록을 들일 순서(4.25, 작을수록 먼저): 착수일을 정한 블록(4.26, (착수일, 착수 시각) 이른 순) → 블록 순서 목록의 자리(없으면 목록 뒤)
     → 규칙 → 배 우선순위 → 블록 번호. 착수일 전의 블록은 아예 후보가 아니다. 실행(_run)과 블록 계획 일정(block_plan)이 같이 쓴다."""
     main: tuple[Any, ...] = {"edd": (due,), "slack": (slack,), "spt": (amount,)}.get(rule, ())
     return ((0, pin) if pin is not None else (1, 0), order_pos if order_pos is not None else 1 << 30) + main + (priority, no)
@@ -838,6 +863,8 @@ def block_plan(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, An
     블록 공정마다 작업장 수만큼, 하루 처리량 2명 × 공법 속도로 이어 하기를 하며 들일 순서(block_sort_key)대로 놓는다.
     첫 블록 공정의 블록은 배의 계획 간트에서 그 공정을 시작하는 날, 다음 공정 블록은 앞 블록이 모두 끝난 다음 날부터
     들어갈 수 있다(블록은 하루에 다 실린다). 착수일(block_start)을 정한 블록은 그날부터다(4.26).
+    하루 안에서는 정규 근무시간 동안 처리량을 고르게 쓰는 시계로 시각(start_h·end_h)을 적고, 착수 시각(block_start_hour)을 정한
+    블록은 그 시각부터 들인다(4.29). std_mh는 블록의 표준 공수.
     고장·사고·인력 대기·운반 대기는 넣지 않는 계획이다.
     돌려주는 것: blocks(블록 → 공정·배·들어갈 수 있는 날(ready, 4.26)·시작·끝·작업장·납기·위험), order(공정 → 정한 목록 + 나머지는 시작 순),
     risks(끝 > 블록 납기)."""
@@ -851,7 +878,7 @@ def block_plan(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, An
     plan = plan_schedule(config, scenario)["ships"]
     dues = block_dues(config, scenario)
     order_rank = {bid: k for lst in (config.get("block_order") or {}).values() for k, bid in enumerate(lst)}
-    start_at = config.get("block_start") or {}
+    hours = rules["hours"]["day"]   # 계획은 2명 × 정규 8시간(잔업·인력 부족은 넣지 않는다)
     orders = contract_orders(config, scenario)
     out: dict[str, dict[str, Any]] = {}
     order_by_station: dict[str, list[str]] = {}
@@ -859,6 +886,7 @@ def block_plan(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, An
         p = ids.index(sid)
         cfg = config["stations"][sid]
         rate = rules["max_workers_per_station"] * rules["methods"][cfg["method"]]["speed"]
+        per_h = rate / hours
         prev = next((ids[q] for q in after[p] if ids[q] in bst), None)
         rule = cfg.get("dispatch", "ship")
         todo = []
@@ -868,36 +896,51 @@ def block_plan(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, An
                 bid = block_id(o["id"], sid, k)
                 avail = (plan[o["id"]][sid]["start"] if prev is None
                          else max(out[block_id(o["id"], prev, c)]["end"] for c in range((k - 1) * r + 1, k * r + 1)) + 1)
-                avail = max(avail, start_at.get(bid, 1))
+                pin = block_pin(config, bid)
+                # 착수 시각(4.29)은 착수일이 들어갈 수 있는 날을 정할 때만 본다(앞 블록이 더 늦게 닿으면 그날 처음부터)
+                at = avail if pin is None or pin[0] < avail else pin[0]
+                at_h = pin[1] if pin is not None and pin[0] == at else 0
                 amount = station_work(config, scenario, sid, o["type"]) / n
-                todo.append({"id": bid, "ship": o["id"], "no": k, "avail": avail, "left": amount, "amount": amount})
+                todo.append({"id": bid, "ship": o["id"], "no": k, "avail": at, "at_h": at_h, "left": amount, "amount": amount,
+                             "pin": pin})
         rem = {o["id"]: remaining_ideal(config, scenario, p, o["type"]) for o in orders}
         due_of = {o["id"]: o["due_day"] for o in orders}
         prio = {o["id"]: config["ships"][o["id"]]["priority"] for o in orders}
         units: list[dict[str, Any] | None] = [None] * cfg.get("units", 1)
         started: list[str] = []
         day = min(b["avail"] for b in todo)
+
+        def key(b: dict[str, Any], day: int) -> tuple[Any, ...]:
+            return block_sort_key(rule, order_rank.get(b["id"]), dues[b["id"]], b["amount"],
+                                  due_of[b["ship"]] - day - rem[b["ship"]], prio[b["ship"]], b["no"], b["pin"])
         while todo or any(units):
             for u in range(len(units)):
-                cap = rate
+                cap, clock = rate, 0.0   # 오늘 남은 처리량과 근무 시작부터 지난 시간(4.29)
                 while cap > EPS:
                     if units[u] is None:
-                        ready = [b for b in todo if b["avail"] <= day]
-                        if not ready:
+                        now = [b for b in todo if b["avail"] < day or (b["avail"] == day and b["at_h"] <= clock + EPS)]
+                        later = [b for b in todo if b["avail"] == day and b["at_h"] > clock + EPS]
+                        if now:
+                            b = min(now, key=lambda b: key(b, day))
+                        elif later:   # 착수 시각을 기다리는 블록뿐이면 작업장은 그 시각까지 쉰다
+                            b = min(later, key=lambda b: (b["at_h"], key(b, day)))
+                            cap -= (b["at_h"] - clock) * per_h
+                            clock = float(b["at_h"])
+                        else:
                             break
-                        b = min(ready, key=lambda b: block_sort_key(rule, order_rank.get(b["id"]), dues[b["id"]], b["amount"],
-                                                                    due_of[b["ship"]] - day - rem[b["ship"]], prio[b["ship"]], b["no"],
-                                                                    start_at.get(b["id"])))
                         todo.remove(b)
                         units[u] = b
-                        b["start"] = day
+                        b["start"], b["start_h"] = day, clock
                         started.append(b["id"])
                     b = units[u]
                     use = min(cap, b["left"])
                     b["left"] -= use
                     cap -= use
+                    clock += use / per_h
                     if b["left"] <= EPS:
                         out[b["id"]] = {"station": sid, "ship": b["ship"], "no": b["no"], "ready": b["avail"], "start": b["start"], "end": day,
+                                        "ready_h": b["at_h"], "start_h": round(b["start_h"], 4), "end_h": round(clock, 4), "day_hours": hours,
+                                        "std_mh": round(b["amount"] * hours, 4),
                                         "unit": u + 1, "due": dues[b["id"]], "risk": day > dues[b["id"]]}
                         units[u] = None
             day += 1
@@ -1043,6 +1086,24 @@ def simulate(config: dict[str, Any], scenario: dict[str, Any] | None = None, bas
     if block_counts(scenario):
         result["recommend"] = _recommend(config, scenario, result)
     return result
+
+
+def _manhour_summary(mh: dict[int, dict[str, float]], stations: list[dict[str, Any]],
+                     blocks: list[dict[str, Any]]) -> dict[str, Any]:
+    """공수 실적(4.29, D76): 블록 공정마다와 합계. planned = 블록 표준 공수 합, standard = 처음 한 작업량의 표준 공수(실적),
+    input = work + rework + idle(사람 × 시간), efficiency = standard ÷ input."""
+    def row(v: dict[str, float], planned: float) -> dict[str, Any]:
+        return {"planned": round(planned, 2), "standard": round(v["earned"], 2), "input": round(v["input"], 2),
+                "work": round(v["work"], 2), "rework": round(v["rework"], 2), "idle": round(v["idle"], 2),
+                "efficiency": round(v["earned"] / v["input"], 4) if v["input"] > EPS else None}
+    out = {}
+    total = {k: 0.0 for k in ("input", "work", "rework", "idle", "earned")}
+    for p in sorted(mh):
+        sid = stations[p]["id"]
+        out[sid] = row(mh[p], sum(b["std_mh"] for b in blocks if b["station"] == sid))
+        for k in total:
+            total[k] += mh[p][k]
+    return {"stations": out, "total": row(total, sum(b["std_mh"] for b in blocks))}
 
 
 def _dispatch_metrics(result: dict[str, Any]) -> dict[str, Any]:
@@ -1297,7 +1358,11 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     # 우선순위 규칙과 서두름(4.25). 여유(slack) = 인도 납기 − 오늘 − 이 공정과 뒤 공정의 이상 소요일 합
     dispatch = {p: config["stations"][stations[p]["id"]].get("dispatch", "ship") for p in block_set}
     order_rank = {bid: k for ids in (config.get("block_order") or {}).values() for k, bid in enumerate(ids)}
-    start_at = config.get("block_start") or {}   # 블록 착수일(4.26): 그날보다 먼저 들이지 않는다
+    pins = {bid: pin for bid in (config.get("block_start") or {}) if (pin := block_pin(config, bid))}   # 착수일·시각(4.26, 4.29)
+    hours_of = [day_hours(c, rules) for c in st_cfg]   # 작업장의 하루 근무시간(4.29): 정규 8, 잔업 10
+    mh_hours = rules["hours"]["day"]                   # 작업량 1 = 8 MH
+    # 공수 실적(4.29): 블록 공정마다 투입 = 작업 + 재작업 + 대기(사람 × 시간), 실적 표준 공수 = 처음 한 작업량 × 8
+    mh = {p: {"input": 0.0, "work": 0.0, "rework": 0.0, "idle": 0.0, "earned": 0.0} for p in block_set}
     rem_ideal = {(i, p): remaining_ideal(config, scenario, p, orders[i]["type"]) for i in range(n_ships) for p in block_set}
     sdues = station_dues(config, scenario) if block_mode else {}
     bdues = block_dues(config, scenario, sdues) if block_mode else {}
@@ -1313,6 +1378,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                 b = {"id": bid, "ship": i, "p": p, "no": k, "due": bdues[bid],
                      "state": "wait" if p in block_first else "pending", "avail": day if p in block_first else None,
                      "amount": amount, "unit": None, "start": None, "end": None, "done_day": None,
+                     "start_h": None, "end_h": None, "mh": 0.0, "rework_mh": 0.0,
                      "verdict": None, "today": None, "daily": [{"state": NOT_STARTED, "unit": None}] * (day - 1)}
                 ship_blocks[i][p].append(b)
                 all_blocks.append(b)
@@ -1321,28 +1387,40 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         """블록 우선순위(4.25): 블록 순서(목록에 있으면 그 자리) → 그 공정의 규칙 → 배 우선순위 → 블록 번호."""
         i, p = b["ship"], b["p"]
         return block_sort_key(dispatch[p], order_rank.get(b["id"]), b["due"], b["amount"],
-                              orders[i]["due_day"] - day - rem_ideal[(i, p)], priority[i], b["no"], start_at.get(b["id"]))
+                              orders[i]["due_day"] - day - rem_ideal[(i, p)], priority[i], b["no"], pins.get(b["id"]))
 
     def parent_of(b: dict[str, Any]) -> dict[str, Any]:
         """b가 닿아서 만들 다음 블록 공정의 블록."""
         nxt = block_next[b["p"]]
         return ship_blocks[b["ship"]][nxt][(b["no"] - 1) // (n_blk[b["p"]] // n_blk[nxt])]
 
-    def pick_block(p: int, day: int) -> dict[str, Any] | None:
-        """공정 p에 지금 들일 블록. 그 배의 자재 키트가 아직이면 자재 대기로 적고 다음 블록을 본다."""
+    def pick_block(p: int, day: int, clock: float = 0.0) -> tuple[dict[str, Any] | None, float]:
+        """공정 p에 오늘 근무 clock시간째에 들일 블록과 들이는 시각. 그 배의 자재 키트가 아직이면 자재 대기로 적고 다음 블록을 본다.
+        지금 들어올 블록이 없고 오늘 뒤 시각에 착수 시각을 정한 블록만 있으면(4.29) 그 블록을 그 시각에 들인다."""
         waiting = [b for i in by_priority if i in ship_blocks for b in ship_blocks[i][p]
-                   if b["state"] == "wait" and b["avail"] <= day and start_at.get(b["id"], 1) <= day]
+                   if b["state"] == "wait" and b["avail"] <= day and pins.get(b["id"], (1, 0))[0] <= day]
+        later = []
         for b in sorted(waiting, key=lambda b: block_key(b, day)):
+            pin = pins.get(b["id"])
+            if pin is not None and pin[0] == day and pin[1] > clock + EPS:
+                later.append(b)
+                continue
             if (b["ship"], p) in kit_since and (b["ship"], p) not in kit_ready:
                 b["today"] = (MATERIAL_WAIT, None)
                 continue
-            return b
-        return None
+            return b, clock
+        for b in sorted(later, key=lambda b: pins[b["id"]][1]):   # 같은 시각이면 들일 순서대로(안정 정렬)
+            if (b["ship"], p) in kit_since and (b["ship"], p) not in kit_ready:
+                b["today"] = (MATERIAL_WAIT, None)
+                continue
+            return b, float(pins[b["id"]][1])
+        return None, clock
 
-    def enter_block(b: dict[str, Any], p: int, u: int, day: int) -> None:
+    def enter_block(b: dict[str, Any], p: int, u: int, day: int, hour: float = 0.0) -> None:
         i, pid = b["ship"], stations[p]["id"]
-        b.update(state="in", unit=u, start=day, today=None)
-        current[p][u] = {"ship": i, "block": b, "remaining": b["amount"], "amount": b["amount"], "rework": False}
+        b.update(state="in", unit=u, start=day, start_h=hour, today=None)
+        current[p][u] = {"ship": i, "block": b, "remaining": b["amount"], "amount": b["amount"], "rework": False,
+                         **({"not_before": (day, hour)} if hour > EPS else {})}
         if pid not in spans[i]:
             # 배의 그 공정 첫 블록: 투입 기록, 뒤 공정 키트 요청은 배 한 척에 한 번(로트와 같다)
             spans[i][pid] = {"start": day, "end": day}
@@ -1383,20 +1461,42 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             if last:
                 advance(i, p, day)
 
-    def block_work(p: int, u: int, cap: float, day: int) -> tuple[str, int]:
-        """작업장 u의 오늘 처리량 cap으로 블록을 차례로 한다(이어 하기). 오늘 상태(작업·재작업)와 마지막 배를 돌려준다."""
+    def block_work(p: int, u: int, cap: float, day: int, workers: int) -> tuple[str, int]:
+        """작업장 u의 오늘 처리량 cap으로 블록을 차례로 한다(이어 하기). 오늘 상태(작업·재작업)와 마지막 배를 돌려준다.
+        하루 근무시간 동안 처리량을 고르게 쓰는 시계로 블록의 시작·끝 시각과 공수(사람 × 시간)를 적는다(4.29)."""
         nonlocal defects
         pid = stations[p]["id"]
         cur = current[p][u]
         new_work, last_ship = False, cur["ship"]
+        hours = hours_of[p]
+        per_h = cap / hours
+        clock = 0.0
+        mh[p]["input"] += workers * hours
         while cur is not None and cap > EPS:
             b, i = cur["block"], cur["ship"]
             last_ship = i
+            wait_until = cur.pop("not_before", None)
+            if wait_until is not None and wait_until[0] == day and wait_until[1] > clock + EPS:
+                # 착수 시각을 기다린다(4.29): 그동안 작업장은 쉬고 사람은 대기 공수
+                mh[p]["idle"] += (wait_until[1] - clock) * workers
+                cap -= (wait_until[1] - clock) * per_h
+                clock = wait_until[1]
+                if cap <= EPS:
+                    break
             use = min(cap, cur["remaining"])
             cur["remaining"] -= use
             cap -= use
+            spent = use / per_h
+            clock += spent
+            b["mh"] += spent * workers
+            if cur["rework"]:
+                b["rework_mh"] += spent * workers
+                mh[p]["rework"] += spent * workers
+            else:
+                mh[p]["work"] += spent * workers
+                mh[p]["earned"] += use * mh_hours
             new_work = new_work or not cur["rework"]
-            b.update(today=(REWORK if cur["rework"] else WORK, u), end=day)
+            b.update(today=(REWORK if cur["rework"] else WORK, u), end=day, end_h=clock)
             spans[i][pid]["end"] = day
             if cur["remaining"] > EPS:
                 break
@@ -1420,10 +1520,11 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                 passes[p] += 1
             current[p][u] = None
             block_done(b, p, day, u)
-            nb = pick_block(p, day) if cap > EPS else None
+            nb, at = pick_block(p, day, clock) if cap > EPS else (None, clock)
             if nb is not None:
-                enter_block(nb, p, u, day)
+                enter_block(nb, p, u, day, at)
             cur = current[p][u]
+        mh[p]["idle"] += max(0.0, hours - clock) * workers   # 오늘 남은 시간: 들어올 블록이 없어 쉰 시간
         return (WORK if new_work else REWORK), last_ship
 
     def block_today(b: dict[str, Any], day: int) -> tuple[str, int | None] | None:
@@ -1669,9 +1770,9 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
 
                 if p in block_set:
                     if cur is None:
-                        b = pick_block(p, day)
+                        b, at = pick_block(p, day)
                         if b is not None:
-                            enter_block(b, p, u, day)
+                            enter_block(b, p, u, day, at)
                         elif any(x["today"] and x["today"][0] == MATERIAL_WAIT for x in all_blocks if x["p"] == p):
                             material_wait[p] += 1
                             station_today[p][u] = {"state": MATERIAL_WAIT, "ship": None, "workers": 0}
@@ -1770,7 +1871,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             if p in block_set:
                 # 블록 공정(4.25): 오늘 처리량으로 블록을 차례로 끝내고 다음 블록에 이어 쓴다(검사·운반 준비까지)
                 first_block = cur["block"]["id"]
-                state, i = block_work(p, u, rate_today, day)
+                state, i = block_work(p, u, rate_today, day, assigned[p][u])
             else:
                 cur["remaining"] -= rate_today
                 state = REWORK if cur["rework"] else WORK
@@ -2023,6 +2124,9 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     # 납기(4.25): 끝내지 못한 블록·공정은 기간 끝일로 늦은 날을 센다
     blocks_out = [{"id": b["id"], "ship": orders[b["ship"]]["id"], "station": stations[b["p"]]["id"], "no": b["no"],
                    "unit": None if b["unit"] is None else b["unit"] + 1, "start": b["start"], "end": b["end"],
+                   "start_h": None if b["start_h"] is None else round(b["start_h"], 4),
+                   "end_h": None if b["end_h"] is None else round(b["end_h"], 4), "day_hours": hours_of[b["p"]],
+                   "std_mh": round(b["amount"] * mh_hours, 4), "mh": round(b["mh"], 4), "rework_mh": round(b["rework_mh"], 4),
                    "done_day": b["done_day"], "defect": bool(b["verdict"]),
                    "due": b["due"], "late_days": max(0, (b["done_day"] or days) - b["due"]),
                    "on_time": b["done_day"] is not None and b["done_day"] <= b["due"], "daily": b["daily"]}
@@ -2068,7 +2172,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         **({"blocks": blocks_out,
             "block_due": {"blocks": len(blocks_out), "on_time": sum(b["on_time"] for b in blocks_out),
                           "rate": sum(b["on_time"] for b in blocks_out) / len(blocks_out) if blocks_out else None,
-                          "late_days": sum(b["late_days"] for b in blocks_out)}} if block_mode else {}),
+                          "late_days": sum(b["late_days"] for b in blocks_out)},
+            "manhours": _manhour_summary(mh, stations, blocks_out)} if block_mode else {}),
         "research": schedule,
         "safety_stock": safety,
         "inventory_daily": inventory_daily,
