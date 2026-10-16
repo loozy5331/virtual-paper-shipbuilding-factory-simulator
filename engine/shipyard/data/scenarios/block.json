@@ -1,0 +1,417 @@
+{
+  "id": "block",
+  "name": "블록 조립 실습",
+  "summary": "수주 3척(피더 컨테이너선 2, 예인선 1). 조립 세 공정(소조립 → 중조립 → PE장)을 블록 단위로 계산한다. 번호는 늦지만 납기가 가장 빠른 배가 있어, 블록 우선순위로 납기를 맞추는 법을 익힌다.",
+  "track": "drill",
+  "block_mode": true,
+  "period": "실습",
+  "days": 50,
+  "orders": [
+    {
+      "id": "S1",
+      "type": "FEEDER",
+      "order_day": 1,
+      "due_day": 40,
+      "price": 4000
+    },
+    {
+      "id": "S2",
+      "type": "FEEDER",
+      "order_day": 1,
+      "due_day": 46,
+      "price": 4000
+    },
+    {
+      "id": "S3",
+      "type": "TUG",
+      "order_day": 1,
+      "due_day": 30,
+      "price": 3000
+    }
+  ],
+  "initial_stock": {
+    "paper": 0,
+    "paint": 0,
+    "flag": 0,
+    "insulation": 0
+  },
+  "kpi": {
+    "revenue": 11000,
+    "profit": 4500,
+    "on_time_rate": 1.0,
+    "first_pass_yield": 0.9
+  },
+  "skip": [
+    "painting",
+    "pre_outfitting",
+    "quay_outfitting",
+    "sea_trial"
+  ],
+  "station_material": {
+    "grand_assembly": "paint",
+    "erection": "flag"
+  },
+  "unlocks": "블록 실습입니다. 공정은 절단·가공·소조립·중조립·PE장·탑재만 쓰고, 탑재를 끝낸 날 인도합니다. 조립 세 공정은 블록 단위로 계산합니다. 공법·인력 종류·호이스트·나눠 하기는 잠겨 있습니다.",
+  "tips": [
+    "납기가 가장 빠른 배가 수주 번호로는 마지막이야. ① 수주 목록의 우선순위부터 봐.",
+    "블록은 앞 공정이 다 끝나기 전에 다음 공정으로 넘어가. 소조립 작업장을 늘리면 중조립이 일찍 시작돼.",
+    "트랜스포터가 한 대면 블록이 몰리는 날 운반 대기가 생겨. 평가서 리드타임 분해에서 운반 대기를 봐."
+  ],
+  "options": {
+    "crews": [
+      "normal"
+    ],
+    "methods": [
+      "standard"
+    ],
+    "material_grades": [
+      "standard"
+    ],
+    "max_units": 2,
+    "hoist": false,
+    "split": false,
+    "forklift_counts": [
+      2
+    ],
+    "transporter_counts": [
+      1,
+      2
+    ]
+  },
+  "grade": {
+    "weights": {
+      "revenue": 30,
+      "profit": 40,
+      "delivery": 20,
+      "quality": 10
+    },
+    "profit_cap": 1.3,
+    "bands": {
+      "S": 100,
+      "A": 85,
+      "B": 70,
+      "C": 50
+    },
+    "baseline_preset": "all_in"
+  },
+  "random": {
+    "quality": {
+      "S1": {
+        "cutting": 0.42,
+        "processing": 0.17,
+        "sub_assembly": 0.06,
+        "block_assembly": 0.74,
+        "painting": 0.73,
+        "pre_outfitting": 0.55,
+        "grand_assembly": 0.6,
+        "erection": 0.74,
+        "quay_outfitting": 0.23,
+        "sea_trial": 0.67
+      },
+      "S2": {
+        "cutting": 0.42,
+        "processing": 0.54,
+        "sub_assembly": 0.05,
+        "block_assembly": 0.2,
+        "painting": 0.52,
+        "pre_outfitting": 0.72,
+        "grand_assembly": 0.1,
+        "erection": 0.81,
+        "quay_outfitting": 0.05,
+        "sea_trial": 0.06
+      },
+      "S3": {
+        "cutting": 0.66,
+        "processing": 0.49,
+        "sub_assembly": 0.76,
+        "block_assembly": 0.33,
+        "painting": 0.19,
+        "pre_outfitting": 0.38,
+        "grand_assembly": 0.4,
+        "erection": 0.49,
+        "quay_outfitting": 0.81,
+        "sea_trial": 0.2
+      }
+    },
+    "block_quality": {
+      "S1": {
+        "sub_assembly": [
+          0.54,
+          0.78,
+          0.06,
+          0.22,
+          0.84,
+          0.68,
+          0.31,
+          0.39
+        ],
+        "block_assembly": [
+          0.79,
+          0.63,
+          0.37,
+          0.76
+        ],
+        "grand_assembly": [
+          0.07,
+          0.82
+        ]
+      },
+      "S2": {
+        "sub_assembly": [
+          0.17,
+          0.21,
+          0.82,
+          0.63,
+          0.69,
+          0.84,
+          0.23,
+          0.02
+        ],
+        "block_assembly": [
+          0.35,
+          0.25,
+          0.79,
+          0.91
+        ],
+        "grand_assembly": [
+          0.49,
+          0.12
+        ]
+      },
+      "S3": {
+        "sub_assembly": [
+          0.41,
+          0.33,
+          0.73,
+          0.18,
+          0.01,
+          0.12,
+          0.69,
+          0.88
+        ],
+        "block_assembly": [
+          0.9,
+          0.54,
+          0.12,
+          0.22
+        ],
+        "grand_assembly": [
+          0.57,
+          0.66
+        ]
+      }
+    }
+  },
+  "presets": [
+    {
+      "id": "unmanaged",
+      "name": "무관리",
+      "summary": "수주 번호 순서대로 모두 1일에 착수하고, 자재는 늦게 발주한다. 블록 공정은 선박 순서로만 한다. 정비·잔업 없이 7명(가공 2, 조립 3, 탑재 2).",
+      "config": {
+        "scenario": "block",
+        "ordering": "late",
+        "ships": {
+          "S1": {
+            "priority": 1,
+            "start_day": 1
+          },
+          "S2": {
+            "priority": 2,
+            "start_day": 1
+          },
+          "S3": {
+            "priority": 3,
+            "start_day": 1
+          }
+        },
+        "pools": {
+          "processing": 2,
+          "assembly": 3,
+          "erection": 2
+        },
+        "transporters": {
+          "maintenance": false,
+          "count": 1
+        },
+        "forklifts": {
+          "count": 2,
+          "maintenance": false
+        },
+        "research": [],
+        "stations": {
+          "cutting": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": false
+          },
+          "processing": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": false
+          },
+          "sub_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": false
+          },
+          "block_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": false
+          },
+          "grand_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": false
+          },
+          "erection": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": false
+          }
+        }
+      }
+    },
+    {
+      "id": "managed",
+      "name": "관리",
+      "summary": "납기가 빠른 예인선(S3)을 우선순위 1로 두고, 자재는 역산 발주한다. 조립 4명에 정비를 한다.",
+      "config": {
+        "scenario": "block",
+        "ordering": "jit",
+        "ships": {
+          "S1": {
+            "priority": 2,
+            "start_day": 1
+          },
+          "S2": {
+            "priority": 3,
+            "start_day": 4
+          },
+          "S3": {
+            "priority": 1,
+            "start_day": 1
+          }
+        },
+        "pools": {
+          "processing": 2,
+          "assembly": 4,
+          "erection": 2
+        },
+        "transporters": {
+          "maintenance": true,
+          "count": 1
+        },
+        "forklifts": {
+          "count": 2,
+          "maintenance": true
+        },
+        "research": [],
+        "stations": {
+          "cutting": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          },
+          "processing": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          },
+          "sub_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          },
+          "block_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          },
+          "grand_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          },
+          "erection": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          }
+        }
+      }
+    },
+    {
+      "id": "all_in",
+      "name": "전부 최대 투입",
+      "summary": "모두 1일에 착수하고 자재는 일괄 발주, 블록 공정 작업장 2곳씩, 인원 최대, 잔업과 정비를 모두 한다.",
+      "config": {
+        "scenario": "block",
+        "ordering": "bulk",
+        "ships": {
+          "S1": {
+            "priority": 1,
+            "start_day": 1
+          },
+          "S2": {
+            "priority": 2,
+            "start_day": 1
+          },
+          "S3": {
+            "priority": 3,
+            "start_day": 1
+          }
+        },
+        "pools": {
+          "processing": 6,
+          "assembly": 12,
+          "erection": 6
+        },
+        "transporters": {
+          "maintenance": true,
+          "count": 2
+        },
+        "forklifts": {
+          "count": 2,
+          "maintenance": true
+        },
+        "research": [],
+        "stations": {
+          "cutting": {
+            "method": "standard",
+            "overtime": true,
+            "maintenance": true
+          },
+          "processing": {
+            "method": "standard",
+            "overtime": true,
+            "maintenance": true
+          },
+          "sub_assembly": {
+            "method": "standard",
+            "overtime": true,
+            "maintenance": true,
+            "units": 2
+          },
+          "block_assembly": {
+            "method": "standard",
+            "overtime": true,
+            "maintenance": true,
+            "units": 2
+          },
+          "grand_assembly": {
+            "method": "standard",
+            "overtime": true,
+            "maintenance": true,
+            "units": 2
+          },
+          "erection": {
+            "method": "standard",
+            "overtime": true,
+            "maintenance": true
+          }
+        }
+      }
+    }
+  ]
+}
