@@ -1406,3 +1406,11 @@ details.block-plan > summary small { color: var(--ink-3); }
 @keyframes asm-carry { from { transform: translateX(var(--dx)); } to { transform: none; } }
 @media (prefers-reduced-motion: reduce) { .asm-view .asm-walk, .asm-view .asm-carry { animation: none; } }
 .asm-view .asm-small.mid { text-anchor: middle; }
+/* 4.26 블록 일정: 막대를 좌우로 끄는 범위(생산계획서 계획 간트의 그 공정 기간), 착수일을 정한 막대 */
+.block-gantt .block-window { opacity: 0.16; pointer-events: none; }
+.block-gantt .block-row { cursor: default; }
+.block-gantt .block-drag { cursor: ew-resize; }
+.block-gantt .block-row.dragging .block-drag { cursor: grabbing; }
+.block-gantt .block-row.pinned .block-bar { stroke: var(--ink); stroke-width: 1; }
+.asm-tabs .tab small { font-weight: 400; color: var(--ink-3); }
+.block-gantt .block-row.risk .block-bar { stroke: var(--bad); stroke-width: 1.5; }

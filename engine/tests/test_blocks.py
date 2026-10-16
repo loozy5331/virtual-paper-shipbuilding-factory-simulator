@@ -293,6 +293,47 @@ class BlockPlan(unittest.TestCase):
         self.assertEqual(preview(managed)["block_plan"]["order"]["sub_assembly"][0], "S2-SA1")
 
 
+class BlockStart(unittest.TestCase):
+    """블록 착수일(4.26, block_start): 정한 블록은 그날보다 먼저 들이지 않는다(규칙 문서 3장 "우선순위 규칙과 추천")."""
+
+    def test_block_waits_until_start_day(self):
+        # 예시 9의 판(선박 순서)에서 X-SA1만 4일로: 1~3일은 작업장 대기, 그동안 X의 나머지와 Y-SA1·2가 먼저 한다.
+        # 4일: Y-SA2 나머지 0.25 → X-SA1 0.75 → Y-SA3·4 0.5씩. 계획 일정(block_plan)도 같은 답
+        cfg, sc = mini([("X", "FEEDER", 1, 40), ("Y", "TUG", 2, 40)])
+        cfg["block_start"] = {"X-SA1": 4}
+        r = simulate(cfg, sc, baseline=False)
+        self.assertEqual(done_days(r, "X", "sub_assembly"), [4, 1, 1, 2, 2, 2, 3, 3])
+        self.assertEqual(done_days(r, "Y", "sub_assembly"), [3, 4, 4, 4, 5, 5, 5, 5])
+        x1 = next(b for b in r["blocks"] if b["id"] == "X-SA1")
+        self.assertEqual([d["state"] for d in x1["daily"][:4]], ["station_wait"] * 3 + ["work"])
+        bp = preview(cfg, sc)["block_plan"]["blocks"]
+        self.assertEqual((bp["X-SA1"]["start"], bp["X-SA1"]["end"]), (4, 4))
+        self.assertEqual((bp["Y-SA1"]["start"], bp["Y-SA1"]["end"]), (3, 3))
+
+    def test_pinned_block_goes_before_listed_order(self):
+        # B안은 블록 순서 목록이 S2 블록을 앞에 둔다. S1-BA4를 6일로 정하면 6일에 S2 블록보다 먼저 들어간다(막대가 놓은 자리에 머문다)
+        cfg = copy.deepcopy(load_presets("block")[1]["config"])
+        self.assertEqual(preview(cfg)["block_plan"]["blocks"]["S1-BA4"]["start"], 13)
+        cfg["block_start"] = {"S1-BA4": 6}
+        self.assertEqual(preview(cfg)["block_plan"]["blocks"]["S1-BA4"]["start"], 6)
+
+    def test_validation(self):
+        cfg, sc = mini([("X", "FEEDER", 1, 40)])
+        for bad in [{"X-SA9": 3}, {"X-SA1": 0}, {"X-SA1": 99}, ["X-SA1"]]:
+            with self.subTest(bad=bad), self.assertRaises(ConfigError):
+                simulate({**cfg, "block_start": bad}, sc, baseline=False)
+        with self.assertRaises(ConfigError):   # 블록 조립 실습이 아닌 분기
+            preview({**load_presets("simple")[1]["config"], "block_start": {}})
+
+    def test_recommend_keeps_start_days(self):
+        # 추천은 블록 순서만 비우고 착수일은 그대로 둔다: 착수일을 늦추면 네 규칙의 비교도 따라 바뀐다
+        cfg = copy.deepcopy(load_presets("block")[1]["config"])
+        base = simulate(cfg, baseline=False)["recommend"]["rules"]
+        cfg["block_start"] = {f"S2-SA{k}": 9 for k in range(1, 9)}
+        later = simulate(cfg, baseline=False)["recommend"]["rules"]
+        self.assertNotEqual([r["profit"] for r in base], [r["profit"] for r in later])
+
+
 class Recommend(unittest.TestCase):
     """평가서 추천: 블록 공정 규칙만 바꿔 4번 더 돌리고 인도 납기 → 블록 납기 → 이익 → 직행률 순으로 고른다."""
 

@@ -1,8 +1,9 @@
 // 조립 공정 계획서(4.25, D71): 블록 조립 실습의 생산계획서 클립보드에 끼운 두 번째 낱장(PP-02).
 // 사용자(2026-10-16): 조립 공정 상세화로 생산계획서가 복잡해져서, 조립 공정에 대한 것은 이 낱장에 모은다.
 // 본 서식(생산계획서 PP-01)은 다른 반기와 같다. 낱장은 클립보드 위 인덱스 탭으로 넘기고, 이 장은 스크롤 없이 한 화면에 든다.
-//   ① 블록 공정 우선순위 규칙(소조립·중조립·PE장)  ② 배별 블록 일정과 납기: 계획상 위험 한 줄 + 배 탭 [S1 | S2 | S3]
-//   (사용자: 블록 공정도 선박별로. 배 탭 하나에 그 배의 블록 일정과 공정·블록 납기 표가 함께 있다)
+//   ① 배별 블록 일정과 납기: 계획상 위험 한 줄 + 배 탭(납기 빠른 순)  ② 블록 공정 우선순위 규칙(소조립·중조립·PE장)
+//   (사용자: 블록 공정도 선박별로. 배 탭 하나에 그 배의 블록 일정과 공정·블록 납기 표가 함께 있다.
+//    4.26 사용자: 일정을 먼저, 규칙을 뒤로. 배 탭은 납기가 빠른 배부터, 블록 막대는 좌우로 끌어 착수일을 정한다)
 // 화면은 계산하지 않는다: 블록 일정·납기·위험은 미리보기(block_plan, dues, plan_risks)를 그린다.
 
 import { activeStations, blockId, blockLabel, blockStations, type Config, type DispatchRule, type Preview, type Scenario } from "./api";
@@ -43,11 +44,13 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
   const { scenario, config } = ctx;
   const bst = blockStations(scenario);
   if (!bst.length) { mount(root, null); return; }
-  ship = scenario.orders.some((o) => o.id === ship) ? ship : scenario.orders[0].id;
+  // 배 탭은 납기가 빠른 배부터(4.26 사용자), 같으면 수주 번호 순. 처음 여는 탭도 납기가 가장 빠른 배
+  const byDue = [...scenario.orders].sort((a, b) => a.due_day - b.due_day || a.id.localeCompare(b.id));
+  ship = byDue.some((o) => o.id === ship) ? ship : byDue[0].id;
 
-  // ① 우선순위 규칙: 블록 공정마다 한 줄. 규칙은 블록 순서를 정하지 않은 블록의 순서이고, 평가서 추천이 비교하는 것이다
+  // ② 우선순위 규칙: 블록 공정마다 한 줄. 규칙은 블록 순서를 정하지 않은 블록의 순서이고, 평가서 추천이 비교하는 것이다
   const rules = h("section", { class: "panel asm-rules" },
-    h("div", { class: "panel-head" }, h("span", { class: "step" }, "1"), h("h2", null, "블록 공정 우선순위 규칙")),
+    h("div", { class: "panel-head" }, h("span", { class: "step" }, "2"), h("h2", null, "블록 공정 우선순위 규칙")),
     h("div", { class: "asm-rule-grid" }, bst.map((b) => {
       const cfg = config.stations[b.id];
       const rule = cfg.dispatch ?? "ship";
@@ -57,16 +60,16 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
           rule, (v) => { if (v === "ship") delete cfg.dispatch; else cfg.dispatch = v; ctx.onEdit(true); }),
       ];
     })),
-    h("p", { class: "hint" }, "규칙은 다른 배 블록과의 앞뒤를 정합니다. 아래 배 탭에서 끌어 정한 같은 배 블록끼리의 순서는 규칙보다 먼저입니다."));
+    h("p", { class: "hint" }, "규칙은 작업장이 비었을 때 기다리는 블록 가운데 무엇을 먼저 들일지 정합니다. 위 배 탭에서 정한 착수일 전에는 그 블록을 들이지 않습니다."));
 
-  // ② 배별 블록 일정과 납기: 계획상 위험 한 줄(혼자 써도 공정 납기를 넘기는 공정, 작업장 겹침과는 원인이 다르다), 배 탭 한 줄
+  // ① 배별 블록 일정과 납기: 계획상 위험 한 줄(혼자 써도 공정 납기를 넘기는 공정, 작업장 겹침과는 원인이 다르다), 배 탭 한 줄
   const tabs = h("div", { class: "tabs asm-tabs", role: "tablist" },
-    scenario.orders.map((o) => h("button", {
+    byDue.map((o) => h("button", {
       type: "button", class: `tab${ship === o.id ? " active" : ""}`, role: "tab", "data-asm-ship": o.id,
       onclick: () => { ship = o.id; ctx.onEdit(true); },
-    }, `${o.id} ${scenario.ship_types[o.type].name}`)));
-  const second = h("section", { class: "panel asm-main" },
-    h("div", { class: "panel-head" }, h("span", { class: "step" }, "2"), h("h2", null, "배별 블록 일정과 납기")),
+    }, `${o.id} ${scenario.ship_types[o.type].name}`, h("small", null, ` 납기 ${o.due_day}일`))));
+  const schedule = h("section", { class: "panel asm-main" },
+    h("div", { class: "panel-head" }, h("span", { class: "step" }, "1"), h("h2", null, "배별 블록 일정과 납기")),
     h("p", { class: "hint plan-risk", "data-asm": "risks" }, "…"), tabs,
     h("div", { class: "asm-view" }, seg("asm-view", [{ value: "schedule", label: "블록 일정" }, { value: "dues", label: "공정·블록 납기" }] as { value: typeof view; label: string }[],
       view, (v) => { view = v; ctx.onEdit(true); })),
@@ -76,7 +79,7 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
     title: "조립 공정 계획서", period: scenario.period, code: "PP-02", approved: false,
     fields: [["대상", `조립 세 공정(${bst.map((b) => b.name).join(" → ")})의 블록`], ["딸린 문서", "생산계획서 PP-01"]],
   });
-  mount(root, head, rules, second, h("div", { class: "errors", "data-asm": "errors" }));
+  mount(root, head, schedule, rules, h("div", { class: "errors", "data-asm": "errors" }));
   if (lastPreview) updateAssemblySheet(root, lastPreview, []);
 }
 
@@ -164,25 +167,32 @@ export function updateAssemblySheet(root: HTMLElement, preview: Preview | null, 
       const sid = ship;
       const bst = blockStations(scenario);
       const n = Object.values(bp.blocks).filter((b) => b.ship === sid && b.risk).length;
+      const mineStarts = Object.keys(config.block_start ?? {}).filter((bid) => bp.blocks[bid]?.ship === sid);
       mount(host,
         h("div", { class: "block-panel-head" },
-          h("small", null, "줄을 위아래로 끌거나 Alt+↑/↓: 같은 공정 안에서 이 배 블록의 순서", n ? ` · 블록 납기를 넘기는 블록 ${n}개` : ""),
+          h("small", null, "막대를 좌우로 끌거나 Alt+←/→: 그 블록의 착수일(옅은 띠 안에서)", n ? ` · 블록 납기를 넘기는 블록 ${n}개` : ""),
+          mineStarts.length ? h("button", {
+            type: "button", class: "btn small",
+            onclick: () => {
+              for (const bid of mineStarts) delete config.block_start![bid];
+              if (!Object.keys(config.block_start!).length) delete config.block_start;
+              ctx.onEdit(false);
+            },
+          }, `이 배 착수일 지우기(${mineStarts.length})`) : null,
           config.block_order ? h("button", {
             type: "button", class: "btn small",
             onclick: () => { delete config.block_order; ctx.onEdit(false); },
           }, "정한 순서 지우기(규칙대로)") : null),
         renderBlockGantt({
           scenario, plan: bp, ship: sid, stations: bst,
-          // 그 공정의 전체 순서에서 이 배 블록이 있던 자리끼리만 새 순서로 바꿔 넣는다(다른 배 블록은 제자리)
-          onReorder: (station, mine) => {
-            const full = [...(bp.order[station] ?? [])];
-            let k = 0;
-            for (let x = 0; x < full.length; x++) if (bp.blocks[full[x]].ship === sid) full[x] = mine[k++];
-            (config.block_order ??= {})[station] = full;
+          windows: preview.plan.ships[sid] ?? {},
+          starts: config.block_start ?? {},
+          onMoveStart: (bid, day) => {
+            (config.block_start ??= {})[bid] = day;
             ctx.onEdit(false);
           },
         }),
-        h("p", { class: "hint" }, "막대는 고장·대기 없이 이 순서로 했을 때의 계획, 세로 눈금은 블록 납기입니다. 위 줄일수록 먼저 들이지만, 아직 앞 공정에서 닿지 않은 블록은 기다리지 않고 다음 블록부터 합니다."));
+        h("p", { class: "hint" }, "막대는 고장·대기 없이 했을 때의 계획, 세로 눈금은 블록 납기, 옅은 띠는 생산계획서 계획 간트의 그 공정 기간입니다. 착수일을 정한 블록은 그날보다 먼저 들이지 않고, 그동안 작업장은 다른 블록을 받습니다. 작업장이 차 있으면 막대가 정한 날보다 뒤에 놓입니다."));
     }
   }
   const mine = errors.filter(isAssemblyError);
