@@ -1146,7 +1146,7 @@ body { background: var(--desk); }
 .plan-board, .room.board-down .plan-board { z-index: 21; top: 20px; cursor: auto; }
 .room.board-down .plan-board .report-sheet { overflow-y: auto; }
 .plan-board .form.plan-readonly { position: static; max-height: none; overflow: visible; box-shadow: none; }
-.plan-board .form.plan-readonly [data-plan] { pointer-events: none; }
+.plan-board .form.plan-readonly [data-plan], .plan-board .form.plan-readonly .block-drag { pointer-events: none; }
 
 /* ----- 현장: 작업모를 쓰고 나간 생산관리자의 눈(3D 화면 전체) ----- */
 .field-screen { position: relative; height: 100vh; min-height: 560px; background: #26302b; display: flex; flex-direction: column; color: #f3f1ea; }
