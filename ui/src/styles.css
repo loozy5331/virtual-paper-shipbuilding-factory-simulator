@@ -1375,3 +1375,6 @@ details.block-plan > summary small { color: var(--ink-3); }
 .asm-due-table td.late { color: var(--bad); font-weight: 700; }
 .asm-due-table td small { font-size: 0.72rem; }
 .asm-report .tip-recommend { border-top: 0; padding-top: 0; }
+.block-gantt .block-group { font-size: 9px; font-weight: 800; fill: var(--ink-2); }
+.block-gantt .block-group-line { stroke: var(--line); }
+.asm-view { margin: 2px 0 4px; }

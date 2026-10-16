@@ -19,7 +19,7 @@ import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, PAIR_WAIT
 import { eventText, renderAssemblyReport, renderMemo, renderReport } from "./report";
 import { renderCctv } from "./cctv";
 import { renderShipBoard } from "./shipboard";
-import { assemblyBadge, focusAssemblyStation, isAssemblyError, renderAssemblySheet, updateAssemblySheet } from "./assembly-sheet";
+import { assemblyBadge, focusAssemblyShip, isAssemblyError, renderAssemblySheet, updateAssemblySheet } from "./assembly-sheet";
 import { renderTrackCard, type TrackPick } from "./track";
 import { buildFrame, TRIAL_DEPART, type Frame } from "./scene/frame";
 import type { FieldView, Yard } from "./scene/yard";
@@ -190,7 +190,7 @@ function drawForm(): void {
     onPreset: loadPreset,
     onDesk: showDesk,
     onRun: run,
-    onOpenAssembly: (station) => { focusAssemblyStation(station); planSheet = "assembly"; drawForm(); },
+    onOpenAssembly: (_station, ship) => { focusAssemblyShip(ship); planSheet = "assembly"; drawForm(); },
   };
   renderForm(els.form, ctx);
   if (!state.data.scenario.block_mode) planSheet = "plan";

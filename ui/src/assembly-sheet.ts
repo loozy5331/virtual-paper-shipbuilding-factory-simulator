@@ -1,8 +1,8 @@
 // 조립 공정 계획서(4.25, D71): 블록 조립 실습의 생산계획서 클립보드에 끼운 두 번째 낱장(PP-02).
 // 사용자(2026-10-16): 조립 공정 상세화로 생산계획서가 복잡해져서, 조립 공정에 대한 것은 이 낱장에 모은다.
-// 본 서식(생산계획서 PP-01)은 다른 반기와 같다. 낱장은 클립보드 위 인덱스 탭으로 넘기고, 이 장은 스크롤 없이 한 화면에 든다
-// (블록 일정과 납기 표는 이 장 안의 작은 탭으로 나눈다).
-//   ① 블록 공정 우선순위 규칙(소조립·중조립·PE장)  ② 블록 일정과 납기: 계획상 위험 한 줄 + [소조립 | 중조립 | PE장 | 공정·블록 납기] 탭
+// 본 서식(생산계획서 PP-01)은 다른 반기와 같다. 낱장은 클립보드 위 인덱스 탭으로 넘기고, 이 장은 스크롤 없이 한 화면에 든다.
+//   ① 블록 공정 우선순위 규칙(소조립·중조립·PE장)  ② 배별 블록 일정과 납기: 계획상 위험 한 줄 + 배 탭 [S1 | S2 | S3]
+//   (사용자: 블록 공정도 선박별로. 배 탭 하나에 그 배의 블록 일정과 공정·블록 납기 표가 함께 있다)
 // 화면은 계산하지 않는다: 블록 일정·납기·위험은 미리보기(block_plan, dues, plan_risks)를 그린다.
 
 import { activeStations, blockId, blockLabel, blockStations, type Config, type DispatchRule, type Preview, type Scenario } from "./api";
@@ -19,17 +19,16 @@ export interface AssemblyContext {
   onEdit(redraw: boolean): void;
 }
 
-/** 이 장 안의 탭: 블록 일정(공정 하나) 또는 공정·블록 납기(배 하나) */
-let view: "schedule" | "dues" = "schedule";
-let station: string | null = null;
+/** 이 장 안의 배 탭과, 배 탭 안에서 보이는 것(블록 일정 또는 공정·블록 납기 표: 한 번에 하나라 스크롤이 생기지 않는다) */
 let ship: string | null = null;
+let view: "schedule" | "dues" = "schedule";
 let current: AssemblyContext | null = null;
 let lastPreview: Preview | null = null;
 
-/** 생산계획서 계획 간트에서 블록 공정 막대를 눌렀을 때: 그 공정의 블록 일정을 연다 */
-export function focusAssemblyStation(id: string): void {
+/** 생산계획서 계획 간트에서 블록 공정 막대를 눌렀을 때: 그 배의 탭을 연다 */
+export function focusAssemblyShip(id: string): void {
+  ship = id;
   view = "schedule";
-  station = id;
 }
 
 function seg<T extends string>(name: string, options: { value: T; label: string }[], value: T, onPick: (v: T) => void): HTMLElement {
@@ -44,7 +43,6 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
   const { scenario, config } = ctx;
   const bst = blockStations(scenario);
   if (!bst.length) { mount(root, null); return; }
-  station = bst.some((b) => b.id === station) ? station : bst[0].id;
   ship = scenario.orders.some((o) => o.id === ship) ? ship : scenario.orders[0].id;
 
   // ① 우선순위 규칙: 블록 공정마다 한 줄. 규칙은 블록 순서를 정하지 않은 블록의 순서이고, 평가서 추천이 비교하는 것이다
@@ -59,24 +57,20 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
           rule, (v) => { if (v === "ship") delete cfg.dispatch; else cfg.dispatch = v; ctx.onEdit(true); }),
       ];
     })),
-    h("p", { class: "hint" }, DISPATCH_INFO[config.stations[station!].dispatch ?? "ship"].note,
-      " · 블록 일정에서 순서를 끌어 정한 블록은 규칙보다 먼저 합니다."));
+    h("p", { class: "hint" }, "규칙은 다른 배 블록과의 앞뒤를 정합니다. 아래 배 탭에서 끌어 정한 같은 배 블록끼리의 순서는 규칙보다 먼저입니다."));
 
-  // ② 블록 일정과 납기: 계획상 위험 한 줄(혼자 써도 공정 납기를 넘기는 공정, 작업장 겹침과는 원인이 다르다),
-  //    탭 한 줄 [소조립 | 중조립 | PE장 | 공정·블록 납기]
+  // ② 배별 블록 일정과 납기: 계획상 위험 한 줄(혼자 써도 공정 납기를 넘기는 공정, 작업장 겹침과는 원인이 다르다), 배 탭 한 줄
   const tabs = h("div", { class: "tabs asm-tabs", role: "tablist" },
-    bst.map((b) => h("button", {
-      type: "button", class: `tab${view === "schedule" && station === b.id ? " active" : ""}`, role: "tab",
-      onclick: () => { view = "schedule"; station = b.id; ctx.onEdit(true); },
-    }, `${b.name} 블록 일정`)),
-    h("button", {
-      type: "button", class: `tab${view === "dues" ? " active" : ""}`, role: "tab",
-      onclick: () => { view = "dues"; ctx.onEdit(true); },
-    }, "공정·블록 납기"));
-  const body = view === "schedule" ? h("div", { class: "asm-schedule", "data-asm": "gantt" }) : dueTable(ctx);
+    scenario.orders.map((o) => h("button", {
+      type: "button", class: `tab${ship === o.id ? " active" : ""}`, role: "tab", "data-asm-ship": o.id,
+      onclick: () => { ship = o.id; ctx.onEdit(true); },
+    }, `${o.id} ${scenario.ship_types[o.type].name}`)));
   const second = h("section", { class: "panel asm-main" },
-    h("div", { class: "panel-head" }, h("span", { class: "step" }, "2"), h("h2", null, "블록 일정과 납기")),
-    h("p", { class: "hint plan-risk", "data-asm": "risks" }, "…"), tabs, body);
+    h("div", { class: "panel-head" }, h("span", { class: "step" }, "2"), h("h2", null, "배별 블록 일정과 납기")),
+    h("p", { class: "hint plan-risk", "data-asm": "risks" }, "…"), tabs,
+    h("div", { class: "asm-view" }, seg("asm-view", [{ value: "schedule", label: "블록 일정" }, { value: "dues", label: "공정·블록 납기" }] as { value: typeof view; label: string }[],
+      view, (v) => { view = v; ctx.onEdit(true); })),
+    view === "schedule" ? h("div", { class: "asm-schedule", "data-asm": "gantt" }) : dueTable(ctx));
 
   const head = docHead({
     title: "조립 공정 계획서", period: scenario.period, code: "PP-02", approved: false,
@@ -122,10 +116,6 @@ function dueTable(ctx: AssemblyContext): HTMLElement {
       },
     });
   return h("div", { class: "asm-dues" },
-    h("div", { class: "tabs asm-subtabs" }, scenario.orders.map((o) => h("button", {
-      type: "button", class: `tab${ship === o.id ? " active" : ""}`,
-      onclick: () => { ship = o.id; ctx.onEdit(true); },
-    }, `${o.id} ${scenario.ship_types[o.type].name}`))),
     h("table", { class: "plan block-table" },
       h("thead", null, h("tr", null, h("th", null, "공정"), h("th", null, "공정 납기"), h("th", null, "블록 납기"))),
       h("tbody", null, activeStations(scenario).map((st) => {
@@ -169,25 +159,28 @@ export function updateAssemblySheet(root: HTMLElement, preview: Preview | null, 
       el.closest("tr")?.classList.toggle("at-risk", !!r);
     });
     const host = root.querySelector<HTMLElement>("[data-asm='gantt']");
-    if (host && preview.block_plan && station) {
-      const st = blockStations(scenario).find((b) => b.id === station)!;
-      const custom = !!config.block_order?.[st.id];
-      const n = (preview.block_plan.order[st.id] ?? []).filter((id) => preview.block_plan!.blocks[id].risk).length;
+    if (host && preview.block_plan && ship) {
+      const bp = preview.block_plan;
+      const sid = ship;
+      const bst = blockStations(scenario);
+      const n = Object.values(bp.blocks).filter((b) => b.ship === sid && b.risk).length;
       mount(host,
         h("div", { class: "block-panel-head" },
-          h("small", null, custom ? "정한 순서대로 들입니다" : `규칙(${DISPATCH_INFO[config.stations[st.id].dispatch ?? "ship"].name}) 순서입니다`,
-            " · 줄을 위아래로 끌거나 Alt+↑/↓", n ? ` · 블록 납기를 넘기는 블록 ${n}개` : ""),
-          custom ? h("button", {
+          h("small", null, "줄을 위아래로 끌거나 Alt+↑/↓: 같은 공정 안에서 이 배 블록의 순서", n ? ` · 블록 납기를 넘기는 블록 ${n}개` : ""),
+          config.block_order ? h("button", {
             type: "button", class: "btn small",
-            onclick: () => {
-              delete config.block_order![st.id];
-              if (!Object.keys(config.block_order!).length) delete config.block_order;
-              ctx.onEdit(false);
-            },
-          }, "규칙 순서로 되돌리기") : null),
+            onclick: () => { delete config.block_order; ctx.onEdit(false); },
+          }, "정한 순서 지우기(규칙대로)") : null),
         renderBlockGantt({
-          scenario, plan: preview.block_plan, station: st.id,
-          onReorder: (order) => { (config.block_order ??= {})[st.id] = order; ctx.onEdit(false); },
+          scenario, plan: bp, ship: sid, stations: bst,
+          // 그 공정의 전체 순서에서 이 배 블록이 있던 자리끼리만 새 순서로 바꿔 넣는다(다른 배 블록은 제자리)
+          onReorder: (station, mine) => {
+            const full = [...(bp.order[station] ?? [])];
+            let k = 0;
+            for (let x = 0; x < full.length; x++) if (bp.blocks[full[x]].ship === sid) full[x] = mine[k++];
+            (config.block_order ??= {})[station] = full;
+            ctx.onEdit(false);
+          },
         }),
         h("p", { class: "hint" }, "막대는 고장·대기 없이 이 순서로 했을 때의 계획, 세로 눈금은 블록 납기입니다. 위 줄일수록 먼저 들이지만, 아직 앞 공정에서 닿지 않은 블록은 기다리지 않고 다음 블록부터 합니다."));
     }

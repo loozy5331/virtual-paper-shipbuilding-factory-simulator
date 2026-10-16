@@ -26,7 +26,7 @@ export interface FormContext {
   onDesk(): void;
   onRun(): void;
   /** 4.25: 계획 간트에서 블록 공정 막대를 눌렀다 → 조립 공정 계획서(PP-02)의 그 공정 블록 일정으로 */
-  onOpenAssembly?(station: string): void;
+  onOpenAssembly?(station: string, ship: string): void;
 }
 
 // 다시 그려도 보던 탭을 유지한다.
@@ -253,7 +253,7 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
       h("span", null, h("i", { class: "due-mark" }), "납기")),
     h("p", { class: "hint", "data-preview": "conflicts" }),
     h("p", { class: "hint" }, "막대는 배 한 척이 작업장을 혼자 쓸 때의 일정입니다. 겹치는 날은 뒤 순위 배가 기다립니다.",
-      scenario.block_mode ? " 소조립·중조립·PE장 막대를 누르면 조립 공정 계획서(위 탭)의 그 공정 블록 일정으로 갑니다." : ""),
+      scenario.block_mode ? " 소조립·중조립·PE장 막대를 누르면 조립 공정 계획서(위 탭)의 그 배 블록 일정으로 갑니다." : ""),
   );
 
   // ② 탭
@@ -707,7 +707,7 @@ function drawPlan(root: HTMLElement, preview: Preview): void {
   mount(host, renderPlanGantt({
     scenario, plan: preview.plan, startDays, contract: preview.contract,
     pickable,
-    onPickStation: (station) => ctx.onOpenAssembly?.(station),
+    onPickStation: (station, ship) => ctx.onOpenAssembly?.(station, ship),
     onMove: (sid, day) => {
       config.ships[sid].start_day = day;
       const label = root.querySelector<HTMLElement>(`[data-preview="start:${sid}"]`);
