@@ -8,7 +8,7 @@
 // 공정을 들여다보는 길: 전경의 정반, 간트 막대, 평가서의 "작업 현황에서 보기" → 오른쪽 모니터의 공정 확대(재생 중에도 오늘을 본다).
 // 사람의 얼굴과 이름은 작업모를 쓰고 현장(3D)에 직접 나가야 보인다(D24). 화면에는 "CCTV"라는 말을 쓰지 않는다(감시처럼 느껴져서).
 
-import { activeStations, api, ApiError, type ClassBest, type Config, type Finding, type Preview, type Result, type ScenarioPayload } from "./api";
+import { activeStations, api, ApiError, blockStations, type ClassBest, type Config, type DispatchRule, type Finding, type Preview, type Result, type ScenarioPayload } from "./api";
 import { h, mount, num, pct, s as svgEl } from "./dom";
 import { shipProfile } from "./profile";
 import { renderDesk } from "./desk";
@@ -466,6 +466,22 @@ async function switchScenario(id: string): Promise<void> {
   });
   drawForm();
   schedulePreview();
+}
+
+/** 평가서 선배의 팁의 "추천대로 다시 계획"(4.25, D71): 실행한 계획에서 블록 공정의 규칙만 추천 규칙으로 바꾸고
+ *  블록 순서를 비운 생산계획서로 간다. 나머지(인원, 착수일, 납기 등)는 그대로다. */
+async function applyRecommendedRule(runConfig: Config, rule: DispatchRule): Promise<void> {
+  const config = structuredClone(runConfig);
+  for (const b of blockStations(state.data.scenario)) {
+    if (rule === "ship") delete config.stations[b.id].dispatch;
+    else config.stations[b.id].dispatch = rule;
+  }
+  delete config.block_order;
+  state.config = config;
+  state.edited = true;
+  drawForm();   // 양식은 고친 설정으로 다시 그린다(openPlan은 화면만 옮긴다)
+  schedulePreview();
+  await backToPlan();
 }
 
 /** 평가서나 펼친 생산계획서의 "계획 고치기": 생산계획서 화면으로 계획을 고치러 간다. */
@@ -1253,7 +1269,7 @@ function drawReportBoard(): void {
       }),
       // 현장 안전 경고는 평가서의 S 안전 칸에(4.14)
       renderReport(r.result, state.data.scenario, state.data.max_rate, openFinding, r.safetyWarnings)),
-    renderMemo(r.result, state.data.scenario, r.safetyWarnings)));
+    renderMemo(r.result, state.data.scenario, r.safetyWarnings, (rule) => void applyRecommendedRule(r.config, rule))));
 }
 
 // ---------------------------------------------------------------------------

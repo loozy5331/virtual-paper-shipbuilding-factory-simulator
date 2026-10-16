@@ -2,11 +2,11 @@
 // 뒷장 메모(4.23): 부록 7관리 지표와 선배의 팁.
 // 모든 숫자는 엔진 결과에 있는 값이다. 막대 길이와 차트 좌표를 정하는 비율만 화면에서 구한다.
 
-import type { Finding, Grade, Management, MgmtPoint, Result, Scenario, ShipResult, SimEvent } from "./api";
+import type { DispatchMetrics, DispatchRule, Finding, Grade, Management, MgmtPoint, Result, Scenario, ShipResult, SimEvent } from "./api";
 import { h, money, num, pct, s, signed } from "./dom";
 import { openOptions } from "./form";
 import { AUTHOR } from "./paper";
-import { COST_ITEMS, EVENT_NAME, GRADE_COLOR, GRADE_NOTE, GRADE_TEXT, LEAD_TIME_STATES, STATE_INFO, STATION_COLOR } from "./labels";
+import { COST_ITEMS, DISPATCH_INFO, EVENT_NAME, GRADE_COLOR, GRADE_NOTE, GRADE_TEXT, LEAD_TIME_STATES, STATE_INFO, STATION_COLOR } from "./labels";
 
 export function eventText(ev: SimEvent, scenario: Scenario): string {
   const station = (id: string) => scenario.stations.find((st) => st.id === id)?.name ?? id;
@@ -413,7 +413,47 @@ const FOCUS_TIP: Record<string, string> = {
   quality: "직행률이 90%에 못 미쳐. 위 부록의 품질 포인트를 봐.",
 };
 
-function tipsCard(grade: Grade, scenario: Scenario): HTMLElement {
+/** 블록 우선순위 추천(4.25, D71): 블록 순서를 비우고 규칙만 바꿔 더 돌린 네 결과와 지금 계획. 실행 뒤에만 보인다.
+ *  순위는 엔진이 정했다(인도 납기 → 블록 납기 → 이익 → 직행률). 화면은 숫자를 옮겨 적기만 한다. */
+function recommendCard(result: Result, onApplyRule?: (rule: DispatchRule) => void): HTMLElement | null {
+  const rc = result.recommend;
+  if (!rc) return null;
+  const best = rc.rules.find((r) => r.rule === rc.best)!;
+  const ships = result.qcd.delivery.ships;
+  const rate = (v: number | null) => (v === null ? "—" : pct(v, 0));
+  const row = (label: string, m: DispatchMetrics, cls: string) =>
+    h("tr", { class: cls }, h("th", null, label), h("td", null, `${m.on_time}/${ships}척`), h("td", null, rate(m.block_rate)),
+      h("td", null, money(m.profit)), h("td", null, rate(m.first_pass_yield)));
+  const diff = (name: string, a: number, b: number, unit: string, digits = 0) =>
+    (a === b ? null : `${name} ${a > b ? "+" : "−"}${num(Math.abs(a - b), digits)}${unit}`);
+  const gains = [
+    diff("인도 납기", best.on_time, rc.current.on_time, "척"),
+    best.block_rate !== null && rc.current.block_rate !== null
+      ? diff("블록 납기", Math.round(best.block_rate * 100), Math.round(rc.current.block_rate * 100), "%p") : null,
+    diff("이익", best.profit, rc.current.profit, "", 1),
+  ].filter(Boolean);
+  return h("div", { class: "tip-recommend" },
+    h("h4", null, "블록 우선순위"),
+    rc.current_is_best
+      ? h("p", null, h("b", null, "지금 계획이 네 규칙보다 못하지 않아."), " 블록 순서를 잘 정했어.")
+      : h("p", null, "블록 공정을 ", h("b", null, DISPATCH_INFO[rc.best].name), "으로 하면 ",
+        gains.length ? `${gains.join(", ")}.` : "같은 결과에 순위가 앞서.",
+        " 납기(D)를 먼저 보고, 같으면 이익(C)·직행률(Q)로 골랐어."),
+    best.on_time < ships
+      ? h("p", null, "규칙만 바꿔서는 납기를 못 맞추는 배가 있어. 블록 공정 앞(절단·가공)은 배 우선순위대로 하니까 ① 수주 목록의 우선순위부터 봐.")
+      : null,
+    h("table", { class: "tip-table" },
+      h("thead", null, h("tr", null, h("th", null, "규칙"), h("th", null, "인도 납기"), h("th", null, "블록 납기"), h("th", null, "이익"), h("th", null, "직행률"))),
+      h("tbody", null,
+        rc.rules.map((r) => row(DISPATCH_INFO[r.rule].name, r, r.rule === rc.best ? "tip-best" : "")),
+        row(rc.current.block_order ? "지금 계획(정한 순서)" : "지금 계획", rc.current, "tip-now"))),
+    !rc.current_is_best && onApplyRule
+      ? h("button", { type: "button", class: "btn small", onclick: () => onApplyRule(rc.best) },
+        `추천대로 다시 계획(${DISPATCH_INFO[rc.best].name})`)
+      : null);
+}
+
+function tipsCard(grade: Grade, scenario: Scenario, extra: HTMLElement | null = null): HTMLElement {
   const toS = grade.to_s;
   const lead = !toS ? null
     : toS.need > 0 ? h("p", { class: "tip-lead" }, h("b", null, `S까지 ${toS.need.toFixed(1)}점.`), " ", toS.focus ? FOCUS_TIP[toS.focus] ?? "" : "")
@@ -423,12 +463,14 @@ function tipsCard(grade: Grade, scenario: Scenario): HTMLElement {
   return h("section", { class: "tips" },
     h("h3", { class: "tips-title" }, "선배의 팁"),
     lead,
+    extra,
     scenario.tips?.length ? h("ul", { class: "tips-list" }, scenario.tips.map((t) => h("li", null, t))) : null,
     h("p", { class: "tips-sign" }, `— ${AUTHOR} 선배`));
 }
 
 /** 평가서 뒤에 같은 클립보드에 끼운 메모 한 장: 부록 7관리 지표와 선배의 팁(4.23). 등급과 무관한 "더 나은 결과"를 위한 종이다. */
-export function renderMemo(result: Result, scenario: Scenario, safetyWarnings?: number): HTMLElement {
+export function renderMemo(result: Result, scenario: Scenario, safetyWarnings?: number,
+  onApplyRule?: (rule: DispatchRule) => void): HTMLElement {
   return h("div", { class: "memo-sheet" },
     // 부록(4.15): 옛 회차 결과에는 management가 없어 칸을 그리지 않는다
     result.management
@@ -436,5 +478,5 @@ export function renderMemo(result: Result, scenario: Scenario, safetyWarnings?: 
         `개선 포인트 ${MGMT_ROWS.filter(({ key }) => result.management![key].point).length}개 / 6요소`,
         mgmtCard(result.management, scenario, safetyWarnings))
       : null,
-    tipsCard(result.grade, scenario));
+    tipsCard(result.grade, scenario, recommendCard(result, onApplyRule)));
 }

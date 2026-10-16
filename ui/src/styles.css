@@ -1336,3 +1336,13 @@ details.block-plan > summary small { color: var(--ink-3); }
 .block-gantt .tick { font-size: 9px; }
 .block-gantt .plan-late { font-size: 10px; font-weight: 800; fill: var(--bad); }
 .block-gantt .block-due { stroke: var(--ink); stroke-dasharray: 2 1.5; }
+/* 4.25 선배의 팁: 블록 우선순위 추천 */
+.tip-recommend { margin: 8px 0; padding-top: 6px; border-top: 1px dashed var(--line); }
+.tip-recommend h4 { margin: 0 0 4px; font-size: 0.9rem; }
+.tip-recommend p { margin: 4px 0; }
+.tip-table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.tip-table th, .tip-table td { padding: 2px 4px; border-bottom: 1px solid var(--line-soft); text-align: right; }
+.tip-table th:first-child, .tip-table td:first-child { text-align: left; }
+.tip-table tbody th { font-weight: 500; text-align: left; }
+.tip-table tr.tip-best th, .tip-table tr.tip-best td { font-weight: 800; }
+.tip-table tr.tip-now th, .tip-table tr.tip-now td { color: var(--ink-2); font-style: italic; }
