@@ -224,6 +224,7 @@
 - (⑤' 완료) `report.ts` `recommendCard`(선배의 팁 안), `main.ts` `applyRecommendedRule`(실행한 설정 → 규칙 바꾸고 `block_order` 비움 → 양식 다시 그림 → 생산계획서)
 - (낱장, D72) 생산계획서 탭 [생산계획서 | 조립 공정 계획서], 평가서 탭 [평가서 | 조립 공정 실적서 | 뒷장 메모]. ⑥ 공정 간트로 가는 길도 조립 공정 실적서에 붙일 수 있다
 - (⑥ 완료) `gantt.ts` `renderStationGantt`, `main.ts` `state.ganttStation`과 배 탭 아래 공정 탭 줄(`.screen-tabs.sub`). 엔진 결과 `blocks[].daily`·작업장 `daily.blocks`를 그리기만 한다
+- (⑦ 완료) `assembly-view.ts` `renderAssemblyView`(대기소·작업장 칸·대기 줄·운반 줄·탑재), `main.ts` `rightView` "assembly". 하루 안 움직임은 CSS 애니메이션(`asm-walk`·`asm-carry`, 재생 중에만). 지게차·호이스트 모형은 그리지 않고 운반 칩으로 대신했다
 - PR 순서: ① 규칙 문서 "블록 조립" 장 + 시나리오 설계 → ② 엔진 블록 조립(결과 `blocks[]`) → ③ 공정별·블록별 납기 → ④ 우선순위 규칙과 추천 → ⑤ 생산계획서(규칙 선택·블록 순서·블록 납기 표·계획상 위험) → ⑤' 평가서 선배의 팁 추천과 "추천대로 다시 계획" → ⑥ 왼쪽 간트 공정 탭(+ `frame.ts`가 실제 블록을 따름) → ⑦ 오른쪽 조립 공정 탭 → ⑧ `balance.py block`, 등급 조율, CHANGELOG, `v4.25.0`
 
 ### 4.x 이후 (각각 MINOR, 순서는 그때 정함)

@@ -472,7 +472,7 @@ export interface TransporterResult {
   role: "block";
   moves: number;
   breakdowns: number;
-  daily: { state: "move" | "idle" | "breakdown_stop"; ships: string[] }[];
+  daily: { state: "move" | "idle" | "breakdown_stop"; ships: string[]; /** 4.25: 그날 실은 블록(블록 조립 실습) */ blocks?: string[] }[];
 }
 
 /** 지게차 일감(4.3): 자재 키트(물류창고 → 그 자재를 쓰는 작업장) 또는 부재 팔레트(가공 → 소조립) */

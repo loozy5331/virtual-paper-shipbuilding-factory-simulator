@@ -19,6 +19,7 @@ import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, PAIR_WAIT
 import { eventText, renderAssemblyReport, renderMemo, renderReport } from "./report";
 import { renderCctv } from "./cctv";
 import { renderShipBoard } from "./shipboard";
+import { renderAssemblyView } from "./assembly-view";
 import { assemblyBadge, focusAssemblyShip, isAssemblyError, renderAssemblySheet, updateAssemblySheet } from "./assembly-sheet";
 import { renderTrackCard, type TrackPick } from "./track";
 import { buildFrame, TRIAL_DEPART, type Frame } from "./scene/frame";
@@ -85,7 +86,7 @@ interface State {
   /** 오른쪽 모니터 위쪽 작업 현황에서 보는 구획. null이면 전경(4.15.1, 처음은 전경 4.15.5). (이름은 옛 CCTV에서 왔다) */
   cctv: SectorId | null;
   /** 오른쪽 모니터 위쪽 탭(4.18, D65): 작업 현황(2D 전경) 또는 선박별 진행 */
-  rightView: "map" | "ships";
+  rightView: "map" | "ships" | "assembly";
   /** 크게 보고 있는 모니터 */
   zoomed: "left" | "right" | null;
   /** 현장에서 가까이 보는 구획. null이면 전경. */
@@ -816,6 +817,9 @@ function tick(jump: boolean): void {
     }));
     board.scrollTop = keepTop;
   }
+  // 조립 공정 탭(4.25, 블록 실습): 이 탭만 하루 안에서 움직인다(재생 중이고 건너뛰지 않았을 때)
+  const asm = els.rightTop.querySelector<HTMLElement>(".asm-host");
+  if (asm) mount(asm, renderAssemblyView(result, scenario, state.day, { animate: state.playing && !jump, msPerDay: msPerDay() }));
   if (feed) {
     mount(feed, renderCctv(buildFrame(result, scenario, r.config, state.day, 1), scenario, {
       focus: state.cctv, onSector: openSector, track: state.track, onPick: openTrack, manager: yard?.managerSpot(),
@@ -1188,8 +1192,14 @@ function shownSectors(): typeof SECTORS {
 function drawRightTop(): void {
   if (state.cctv !== null && !shownSectors().some((sec) => sec.id === state.cctv)) state.cctv = null;
   drawRightTabs();
+  if (state.rightView === "assembly" && !currentRun()?.result.blocks) state.rightView = "map";
   if (state.rightView === "ships") {
     mount(els.rightTop, h("div", { class: "sb-host" }), els.trackRoom);
+    return;
+  }
+  if (state.rightView === "assembly") {
+    mount(els.rightTop, h("div", { class: "asm-host" }),
+      h("p", { class: "asm-note" }, "작업자는 기호로만 보입니다. 재생 중에는 하루 안에서 작업자가 정반으로 걷고 블록이 다음 공장으로 실려 갑니다."));
     return;
   }
   mount(els.rightTop,
@@ -1219,7 +1229,9 @@ function drawRightTabs(): void {
       onclick: () => setRightView(view),
     }, label);
   mount(title, h("span", { class: "right-tabs", role: "group", "aria-label": "오른쪽 모니터 화면" },
-    tab("map", "작업 현황"), tab("ships", "선박별")));
+    tab("map", "작업 현황"), tab("ships", "선박별"),
+    // 4.25: 블록 조립 실습만
+    currentRun()?.result.blocks ? tab("assembly", "조립 공정") : null));
 }
 
 function setRightView(view: State["rightView"]): void {
