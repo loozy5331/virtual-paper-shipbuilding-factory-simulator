@@ -24,6 +24,17 @@ export interface TrackActions {
 
 const owner = (ship: string | null) => (ship ? `${ship} 몫` : "공용");
 
+/**
+ * 블록 실습(4.25): 블록이 흩어진 날은 블록 조각마다 한 줄("소조립 1호 작업장 · 소8 작업 중").
+ * 자리 글은 로트와 같은 whereNow로 쓰고 앞에 블록 이름을 붙인다
+ */
+function whereBlocks(ship: string, frame: Frame, scenario: Scenario): string[] {
+  // 한 정반에서 이어 한 블록은 첫 조각이 이름을 모아 둔다(quiet는 건너뜀)
+  return frame.pieces.filter((pc) => pc.ship === ship && !pc.quiet)
+    .map((pc) => `${(pc.blockNames ?? []).join("·")} ${(pc.state as string) === "pair_wait"
+      ? `${scenario.stations[pc.station]?.name ?? ""} 앞 공용 적치장에서 짝 대기` : whereNow(pc, frame, scenario)}`);
+}
+
 /** 블록이 지금 있는 곳. 오늘까지의 기록만 쓴다. */
 function whereNow(l: LotView, frame: Frame, scenario: Scenario): string {
   const st = scenario.stations[l.station];
@@ -60,11 +71,17 @@ function shipCard(ship: string, result: Result, scenario: Scenario, frame: Frame
   const day = frame.day;
 
   // 지나온 길: 오늘까지 시작한 공정. 끝난 공정은 기간, 하는 중이면 "n일째"(언제 끝날지는 적지 않는다).
+  // 블록이 흩어진 날의 블록 공정은 그 공정 블록을 모두 끝냈으면 끝난 공정이다(4.25)
   const done = l.place === "sea" || l.place === "carried" || l.place === "outbound";
+  const blocksDone = (stId: string) => {
+    const list = (result.blocks ?? []).filter((b) => b.ship === ship && b.station === stId);
+    return list.length ? list.every((b) => b.done_day !== null && b.done_day <= day) : null;
+  };
   const path = scenario.stations.flatMap((st, p) => {
     const span = s.spans[st.id];
     if (!span || span.start > day) return [];
-    const finished = p < l.station || (p === l.station && done) || l.place === "sea";
+    const byBlocks = l.inBlocks ? blocksDone(st.id) : null;
+    const finished = byBlocks ?? (p < l.station || (p === l.station && done) || l.place === "sea");
     return [finished ? `${st.name} ${span.start}~${span.end}일` : `${st.name} ${span.start}일~ (${day - span.start + 1}일째)`];
   });
 
@@ -96,7 +113,9 @@ function shipCard(ship: string, result: Result, scenario: Scenario, frame: Frame
       h("b", null, `${ship} · ${s.type_name}`), h("span", { class: "track-kind" }, "블록 위치"),
       h("button", { class: "track-x", type: "button", title: "닫기 (Esc)", onclick: actions.close }, "✕")),
     h("dl", null,
-      h("dt", null, "지금"), h("dd", null, whereNow(l, frame, scenario)),
+      h("dt", null, "지금"), l.inBlocks
+        ? h("dd", null, h("ul", { class: "track-blocks" }, whereBlocks(ship, frame, scenario).map((t) => h("li", null, t))))
+        : h("dd", null, whereNow(l, frame, scenario)),
       h("dt", null, "지나온 길"), h("dd", null, path.length ? path.join(" → ") : "아직 없음"),
       h("dt", null, "납기"), h("dd", { class: late ? "late" : "" }, `${s.due_day}일${l.place === "sea" ? ` · ${s.delivered_day}일 인도` : ""}${late ? " · 지연" : ""}`)),
     h("div", { class: "track-sub" }, "자재 페깅 (이 배 몫으로 발주한 자재)"),

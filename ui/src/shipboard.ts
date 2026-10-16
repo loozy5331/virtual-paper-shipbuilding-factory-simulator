@@ -4,7 +4,7 @@
 
 import type { Result, Scenario, ShipSpec, SimEvent } from "./api";
 import { h } from "./dom";
-import { STATE_INFO, STATION_COLOR, STATION_TEXT } from "./labels";
+import { PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, STATION_TEXT } from "./labels";
 import type { Frame, LotView } from "./scene/frame";
 
 type StationStep = "done" | "doing" | "wait" | "todo";
@@ -48,27 +48,49 @@ export function renderShipBoard(result: Result, scenario: Scenario, frame: Frame
   const rows = result.ships.map((s) => {
     const l = frame.lots.find((x) => x.ship === s.id)!;
     const spec = opts.specs?.[s.id];
-    const steps = stations.map(({ q }) => stationStep(l, q));
+    // 블록 실습(4.25): 블록이 흩어진 날의 블록 공정은 블록으로 읽는다. 블록을 하나라도 시작했으면 진행 중,
+    // 진행률 = (끝낸 블록 + 정반 위 블록의 진행률) ÷ 블록 수, 아직 시작 전인데 블록이 앞에 와 있으면 대기
+    const blockCell = (stId: string, q: number): { step: StationStep; k: number; state: string | null; text: string } | null => {
+      const list = (result.blocks ?? []).filter((b) => b.ship === s.id && b.station === stId);
+      if (!l.inBlocks || !list.length) return null;
+      const pcs = frame.pieces.filter((pc) => pc.ship === s.id && pc.station === q);
+      const done = list.filter((b) => b.done_day !== null && b.done_day <= day).length;
+      const text = `블록 ${done}/${list.length}`;
+      if (done === list.length) return { step: "done", k: 1, state: null, text };
+      if (list.some((b) => b.start !== null && b.start <= day)) {
+        const k = list.reduce((sum, b) => sum + (b.done_day !== null && b.done_day <= day ? 1
+          : pcs.find((pc) => pc.id === `${s.id}:b:${b.id}`)?.progress ?? 0), 0) / list.length;
+        const bench = pcs.filter((pc) => pc.place === "bench");
+        const state = bench.some((pc) => pc.state === "work" || pc.state === "rework") ? null : bench[0]?.state ?? pcs[0]?.state ?? null;
+        return { step: "doing", k, state, text };
+      }
+      const wait = pcs.find((pc) => pc.place === "queue");
+      return wait ? { step: "wait", k: 0, state: wait.state, text } : { step: "todo", k: 0, state: null, text };
+    };
+    const blockCells = stations.map(({ st, q }) => blockCell(st.id, q));
+    const steps = stations.map(({ q }, i) => blockCells[i]?.step ?? stationStep(l, q));
+    const stateName = (state: string) => (state === "pair_wait" ? PAIR_WAIT_STATE : STATE_INFO[state])?.name;
 
     const cells = stations.map(({ st }, i) => {
       const step = steps[i];
+      const bc = blockCells[i];
       const color = STATION_COLOR[st.id];
       if (step === "done") {
-        return h("td", { class: "sb-cell done", title: `${st.name} 끝남` },
+        return h("td", { class: "sb-cell done", title: `${st.name} 끝남${bc ? ` · ${bc.text}` : ""}` },
           h("span", { class: "sb-fill", style: { background: color, color: STATION_TEXT[st.id] ?? "#fff" } }, "✓"));
       }
       if (step === "doing") {
-        const k = l.progress ?? 0;
+        const k = bc ? bc.k : l.progress ?? 0;
         const work = spec?.stations.find((x) => x.station === st.id)?.work;
         const left = work !== undefined ? Math.max(0, Math.round(work * (1 - k) * 10) / 10) : null;
-        const loss = l.state !== "work" ? STATE_INFO[l.state]?.name : null;
-        const title = `${st.name} 진행 중${loss ? ` · ${loss}` : ""}${left !== null ? ` · 남은 작업량 약 ${left} 인·일 (전체 ${work})` : ""}`;
+        const loss = bc ? (bc.state ? stateName(bc.state) ?? null : null) : l.state !== "work" ? STATE_INFO[l.state]?.name : null;
+        const title = `${st.name} 진행 중${bc ? ` · ${bc.text}` : ""}${loss ? ` · ${loss}` : ""}${left !== null ? ` · 남은 작업량 약 ${left} 인·일 (전체 ${work})` : ""}`;
         return h("td", { class: `sb-cell doing${loss ? " loss" : ""}`, title },
           h("span", { class: "sb-bar" }, h("i", { style: { width: `${Math.round(k * 100)}%`, background: color } })),
           h("span", { class: "sb-left" }, loss ?? (left !== null ? String(left) : `${Math.round(k * 100)}%`)));
       }
       if (step === "wait") {
-        const name = STATE_INFO[l.state]?.name ?? "대기";
+        const name = (bc?.state ? stateName(bc.state) : STATE_INFO[l.state]?.name) ?? "대기";
         return h("td", { class: "sb-cell wait", title: `${st.name} 앞에서 ${name}` }, h("span", null, name));
       }
       return h("td", { class: "sb-cell todo", title: `${st.name} 아직` });
@@ -83,7 +105,8 @@ export function renderShipBoard(result: Result, scenario: Scenario, frame: Frame
       const delayed = events.find((ev): ev is Extract<SimEvent, { type: "supply_delay" }> =>
         ev.type === "supply_delay" && ev.ship === s.id && ev.material === m.id);
       const orderDay = s.order_days[m.id];
-      const step: MaterialStep = issued ? (q >= 0 && stationStep(l, q) === "done" ? "used" : "using")
+      const at = stations.findIndex((x) => x.q === q);
+      const step: MaterialStep = issued ? (q >= 0 && (at >= 0 ? steps[at] : stationStep(l, q)) === "done" ? "used" : "using")
         : arrived ? "arrived"
         : orderDay !== undefined && orderDay <= day ? "ordered" : "before";
       const late = step === "ordered" && !!delayed;
