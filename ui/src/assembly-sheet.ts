@@ -1,7 +1,8 @@
 // 조립 공정 계획서(4.25, D71): 블록 조립 실습의 생산계획서 클립보드에 끼운 두 번째 낱장(PP-02).
 // 사용자(2026-10-16): 조립 공정 상세화로 생산계획서가 복잡해져서, 조립 공정에 대한 것은 이 낱장에 모은다.
 // 본 서식(생산계획서 PP-01)은 다른 반기와 같다. 낱장은 클립보드 위 인덱스 탭으로 넘기고, 이 장은 스크롤 없이 한 화면에 든다.
-//   ① 배별 블록 일정과 납기: 계획상 위험 한 줄 + 배 탭(납기 빠른 순)  ② 블록 공정 우선순위 규칙(소조립·중조립·PE장)
+//   ① 배별 블록 일정과 납기: 계획상 위험 한 줄 + 배 탭(납기 빠른 순)  ② 조립 공정(소조립·중조립·PE장): 공정 카드마다 블록 우선순위 규칙과
+//   운영·작업장 수(4.28.1 사용자: 생산계획서의 조립 공정 카드를 이리로 옮김)
 //   (사용자: 블록 공정도 선박별로. 배 탭 하나에 그 배의 블록 일정과 공정·블록 납기 표가 함께 있다.
 //    4.26 사용자: 일정을 먼저, 규칙을 뒤로. 배 탭은 납기가 빠른 배부터, 블록 막대는 좌우로 끌어 착수일을 정한다)
 // 화면은 계산하지 않는다: 블록 일정·납기·위험은 미리보기(block_plan, dues, plan_risks)를 그린다.
@@ -9,6 +10,7 @@
 import { activeStations, blockId, blockLabel, blockStations, type Config, type DispatchRule, type Preview, type Scenario } from "./api";
 import { renderBlockGantt } from "./block-plan-gantt";
 import { h, mount } from "./dom";
+import { fillStationPreview, stationCard } from "./form";
 import { DISPATCH_INFO, STATION_COLOR } from "./labels";
 import { docHead } from "./paper";
 import { riskText } from "./plan-gantt";
@@ -71,19 +73,24 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
   const ships = scenario.orders;   // 실습은 수주 번호가 납기 빠른 순(S1 벌크선 → S2 → S3, 4.27.3)
   ship = ships.some((o) => o.id === ship) ? ship : ships[0].id;
 
-  // ② 우선순위 규칙: 블록 공정마다 한 줄. 규칙은 블록 순서를 정하지 않은 블록의 순서이고, 평가서 추천이 비교하는 것이다
+  // ② 조립 공정(4.28.1, 사용자): 생산계획서의 조립 공정 카드(운영·작업장 수)를 이리로 옮기고, 카드 맨 위에 블록 우선순위 규칙.
+  // 규칙은 작업장이 비었을 때 기다리는 블록 가운데 무엇을 먼저 들일지이고, 평가서 추천이 비교하는 것이다.
+  // 고를 것이 하나뿐인 인력·공법 줄은 그리지 않는다(실습은 잠겨 있다)
   const rules = h("section", { class: "panel asm-rules" },
-    h("div", { class: "panel-head" }, h("span", { class: "step" }, "2"), h("h2", null, "블록 공정 우선순위 규칙")),
-    h("div", { class: "asm-rule-grid" }, bst.map((b) => {
+    h("div", { class: "panel-head" }, h("span", { class: "step" }, "2"), h("h2", null, "조립 공정")),
+    h("div", { class: "stations asm-stations" }, bst.map((b) => {
       const cfg = config.stations[b.id];
-      const rule = cfg.dispatch ?? "ship";
-      return [
-        h("span", { class: "asm-st" }, h("i", { class: "swatch", style: { background: STATION_COLOR[b.id] } }), b.name, h("small", null, ` 블록 ${b.count}`)),
-        seg(`dispatch-${b.id}`, (Object.keys(DISPATCH_INFO) as DispatchRule[]).map((id) => ({ value: id, label: DISPATCH_INFO[id].name })),
-          rule, (v) => { if (v === "ship") delete cfg.dispatch; else cfg.dispatch = v; ctx.onEdit(true); }),
-      ];
+      const st = scenario.stations.find((x) => x.id === b.id)!;
+      return stationCard(ctx, st, {
+        compact: true, note: `블록 ${b.count}개`,
+        lead: [
+          h("span", { class: "field-label" }, "우선순위"),
+          h("div", { class: "asm-rule" }, seg(`dispatch-${b.id}`, (Object.keys(DISPATCH_INFO) as DispatchRule[]).map((id) => ({ value: id, label: DISPATCH_INFO[id].name })),
+            cfg.dispatch ?? "ship", (v) => { if (v === "ship") delete cfg.dispatch; else cfg.dispatch = v; ctx.onEdit(true); })),
+        ],
+      });
     })),
-    h("p", { class: "hint" }, "규칙은 작업장이 비었을 때 기다리는 블록 가운데 무엇을 먼저 들일지 정합니다. 위 배 탭에서 정한 착수일 전에는 그 블록을 들이지 않습니다."));
+    h("p", { class: "hint" }, "우선순위 규칙은 작업장이 비었을 때 기다리는 블록 가운데 무엇을 먼저 들일지 정합니다. 위 배 탭에서 정한 착수일 전에는 그 블록을 들이지 않습니다. 작업장을 2개로 늘리면 블록이 두 작업장으로 퍼집니다."));
 
   // ① 배별 블록 일정과 납기: 계획상 위험 한 줄(혼자 써도 공정 납기를 넘기는 공정, 작업장 겹침과는 원인이 다르다), 배 탭 한 줄
   const tabs = h("div", { class: "tabs asm-tabs", role: "tablist" },
@@ -171,6 +178,7 @@ export function updateAssemblySheet(root: HTMLElement, preview: Preview | null, 
   const { scenario, config } = ctx;
   if (preview) {
     lastPreview = preview;
+    fillStationPreview(root, preview);
     const planRisks = preview.plan_risks ?? [];
     const blockRisks = preview.block_plan?.risks ?? [];
     const box = root.querySelector<HTMLElement>("[data-asm='risks']");
