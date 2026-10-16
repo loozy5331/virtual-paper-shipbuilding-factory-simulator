@@ -44,6 +44,10 @@ PAIR_WAIT = "pair_wait"
 MAX_PARTS = 3
 # 트랜스포터 이름(4.3, D46): 블록 한 대. 4.2까지는 T1 자재·T2 블록 두 대였다(자재는 이제 공용 지게차 F1~F3).
 TRANSPORTER_IDS = ["TR", "TR2"]   # 블록 트랜스포터(4.8: 1~2대)
+# 블록 이름의 공정 약자(4.25): S1-SA3 = S1 소조립 3번 블록. 화면은 소·중·PE로 쓴다
+BLOCK_CODES = {"sub_assembly": "SA", "block_assembly": "BA", "grand_assembly": "GA"}
+# 블록 공정에 있는 배의 하루 상태(4.25): 블록들의 오늘 상태 가운데 이 순서로 앞선 것 하나(같으면 뒤 공정)
+BLOCK_SHIP_RANK = [WORK, REWORK, LABOR_WAIT, ACCIDENT_STOP, BREAKDOWN_STOP, MATERIAL_WAIT, STATION_WAIT, TRANSPORT, TRANSPORT_WAIT]
 
 COST_KEYS = ["labor", "overtime", "maintenance", "material", "holding", "wip", "rework",
              "accident", "breakdown", "transporter", "investment", "research", "late_penalty"]
@@ -75,9 +79,10 @@ def _read(path: Path) -> Any:
 
 
 def scenario_ids() -> list[str]:
-    """고를 수 있는 시나리오. 난이도(level) 순: 옛 분기가 쉽고 나중 분기가 어렵다."""
-    level = {p.stem: _read(p).get("level", 0) for p in (DATA_DIR / "scenarios").glob("*.json")}
-    return sorted(level, key=lambda sid: (level[sid], sid))
+    """고를 수 있는 시나리오. 난이도(level) 순: 옛 분기가 쉽고 나중 분기가 어렵다.
+    실습(track "drill", 4.25 블록 조립)은 사다리(D67) 밖이라 맨 뒤에 둔다."""
+    meta = {p.stem: _read(p) for p in (DATA_DIR / "scenarios").glob("*.json")}
+    return sorted(meta, key=lambda sid: (meta[sid].get("track") == "drill", meta[sid].get("level", 0), sid))
 
 
 def list_scenarios() -> list[dict[str, Any]]:
@@ -86,6 +91,8 @@ def list_scenarios() -> list[dict[str, Any]]:
     out = []
     for sid in scenario_ids():
         sc = _read(DATA_DIR / "scenarios" / f"{sid}.json")
+        if sc.get("track") == "drill":
+            continue   # 실습 카드는 첫 화면이 실습 묶음을 그릴 때(4.25 생산계획서 PR) 연다. 엔진·API로는 돌릴 수 있다
         mix: dict[str, int] = {}
         for o in sc["orders"]:
             name = rules["ship_types"][o["type"]]["name"]
@@ -244,6 +251,8 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
             errors.append(f"{pid}: 인력은 {', '.join(rules['crews'])} 중 하나여야 합니다")
         if not isinstance(st.get("split", False), bool):
             errors.append(f"{pid}: 나눠 하기(split)는 true 또는 false여야 합니다")
+        elif st.get("split") and pid in block_counts(scenario):
+            errors.append(f"{pid}: 블록 공정에서는 나눠 하기를 쓸 수 없습니다(블록이 빈 작업장으로 퍼진다)")
         # 호이스트(4.9): 블록을 뒤집는 조립 정반(소조립·중조립)에만 단다
         if not isinstance(st.get("hoist", False), bool):
             errors.append(f"{pid}: 호이스트(hoist)는 true 또는 false여야 합니다")
@@ -693,6 +702,15 @@ def station_after(scenario: dict[str, Any]) -> list[list[int]]:
     return [[] if p in skipped else sorted(set(through(p))) for p in range(len(scenario["stations"]))]
 
 
+def block_counts(scenario: dict[str, Any]) -> dict[str, int]:
+    """블록 조립(4.25)을 켠 시나리오의 블록 공정과 블록 수(소조립 8·중조립 4·PE장 2). 끈 시나리오는 빈 dict.
+    블록 공정은 조립 직종 공정이다. 절단·가공·도장의 blocks 값은 그림(조각 수)에만 쓴다."""
+    if not scenario.get("block_mode"):
+        return {}
+    return {s["id"]: scenario["blocks"][s["id"]] for s in scenario["stations"]
+            if not is_skipped(s) and s.get("trade") == "assembly" and scenario["blocks"].get(s["id"], 1) > 1}
+
+
 def is_skipped(station: dict[str, Any]) -> bool:
     return bool(station.get("skipped"))
 
@@ -719,6 +737,9 @@ def plan_schedule(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str,
     pools = config["pools"]
     units_of = dict(zip((s["id"] for s in scenario["stations"]), station_units(config, scenario)))
     parts_of = {s["id"]: split_parts(config, scenario, p, units_of[s["id"]]) for p, s in enumerate(scenario["stations"])}
+    # 블록 조립(4.25): 블록이 빈 작업장으로 퍼지므로 블록 공정은 min(작업장 수, 블록 수)곳을 함께 쓴다고 본다
+    for sid, n in block_counts(scenario).items():
+        parts_of[sid] = min(units_of[sid], n)
     ships: dict[str, dict[str, dict[str, int]]] = {}
     buffers = plan_buffers(config, scenario)
     for order in scenario["orders"]:
@@ -973,6 +994,176 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             if not after[q] and q not in skipped_p:
                 request_kit(i, q, config["ships"][o["id"]]["start_day"] - 1)
 
+    def advance(i: int, p: int, day: int) -> None:
+        """배가 공정 p를 모두 마쳤다(finish 뒤). 다음 공정으로 보내거나, 마지막 공정이면 인도한다."""
+        nxt = candidates(i)
+        if not nxt:
+            delivered[i] = day
+            events.append({"day": day, "type": "delivery", "ship": orders[i]["id"],
+                           "late_days": max(0, day - orders[i]["due_day"])})
+        elif stations[nxt[0]].get("arrive") == "forklift":
+            # 가공 → 소조립(4.3): 부재 팔레트를 공용 지게차가 실은 날 들어간다(다음 날부터 지게차를 기다린다)
+            transit[i] = {"from": p, "to": nxt[0], "since": day, "by": "forklift"}
+        elif move_days_between(scenario, p, nxt[0]) == 1:
+            # 같은 자리(도장 ↔ 선행의장), 크레인(PE장 → 탑재), 예인(탑재 → 안벽의장 → 시운전): 다음 날
+            ready[i] = day + 1
+        else:
+            transit[i] = {"from": p, "to": nxt[0], "since": day, "left": float(tr["lot_weight"]), "moving": False}
+
+    # ----- 블록 조립(4.25, D71): 시나리오가 block_mode를 켠 실습에서만 -----
+    # 소조립·중조립·PE장은 배 한 척의 로트 대신 블록(rules.json blocks: 8·4·2)으로 계산한다.
+    # 블록 하나의 작업량 = 공정 작업량 ÷ 블록 수. 작업장 하나에 블록 하나씩 차례로 하고, 블록을 끝내고 남은
+    # 하루 처리량은 같은 날 그 작업장의 다음 블록에 이어 쓴다(이어 하기). 다음 공정 블록 k는 앞 공정 블록
+    # (k−1)·r+1 … k·r(r = 앞 블록 수 ÷ 이 블록 수)이 모두 닿은 날 들어갈 수 있다. 먼저 닿은 블록은 짝 대기.
+    # 블록 상태: pending(앞 블록 기다림) → wait(들어갈 수 있음) → in(작업장 안) → await_tr(운반 대기)·moving(다음 날 도착)
+    #            → pair(닿아서 짝 대기) → merged(다음 공정 블록이 됨). 마지막 블록 공정에서 끝나면 finished.
+    block_mode = bool(scenario.get("block_mode"))
+    n_blk = [block_counts(scenario).get(s["id"], 1) for s in stations]
+    block_set = {p for p in range(n_st) if n_blk[p] > 1}
+    block_prev = {p: next((q for q in after[p] if q in block_set), None) for p in block_set}
+    block_next = {q: p for p, q in block_prev.items() if q is not None}
+    block_first = sorted(p for p in block_set if block_prev[p] is None)
+    ship_blocks: dict[int, dict[int, list[dict[str, Any]]]] = {}   # 배 → 공정 → 블록(번호 순)
+    all_blocks: list[dict[str, Any]] = []
+    block_tr_jobs: dict[int, list[str]] = {}                        # 오늘 트랜스포터가 실은 블록(대별)
+
+    def block_code(p: int) -> str:
+        return BLOCK_CODES.get(stations[p]["id"], stations[p]["id"][:2].upper())
+
+    def create_blocks(i: int, day: int) -> None:
+        """배가 첫 블록 공정에 들어갈 수 있게 된 날, 모든 블록 공정의 블록을 만든다. 첫 블록 공정 블록은 바로 wait."""
+        ship_blocks[i] = {}
+        for p in sorted(block_set):
+            amount = work_of(i, p) / n_blk[p]
+            ship_blocks[i][p] = []
+            for k in range(1, n_blk[p] + 1):
+                b = {"id": f"{orders[i]['id']}-{block_code(p)}{k}", "ship": i, "p": p, "no": k,
+                     "state": "wait" if p in block_first else "pending", "avail": day if p in block_first else None,
+                     "amount": amount, "unit": None, "start": None, "end": None, "done_day": None,
+                     "verdict": None, "today": None, "daily": [{"state": NOT_STARTED, "unit": None}] * (day - 1)}
+                ship_blocks[i][p].append(b)
+                all_blocks.append(b)
+
+    def block_key(b: dict[str, Any]) -> tuple[Any, ...]:
+        """블록 우선순위(4.25 선박 순서 규칙): 배 우선순위 → 블록 번호."""
+        return (priority[b["ship"]], b["no"])
+
+    def pick_block(p: int, day: int) -> dict[str, Any] | None:
+        """공정 p에 지금 들일 블록. 그 배의 자재 키트가 아직이면 자재 대기로 적고 다음 블록을 본다."""
+        waiting = [b for i in by_priority if i in ship_blocks for b in ship_blocks[i][p]
+                   if b["state"] == "wait" and b["avail"] <= day]
+        for b in sorted(waiting, key=block_key):
+            if (b["ship"], p) in kit_since and (b["ship"], p) not in kit_ready:
+                b["today"] = (MATERIAL_WAIT, None)
+                continue
+            return b
+        return None
+
+    def enter_block(b: dict[str, Any], p: int, u: int, day: int) -> None:
+        i, pid = b["ship"], stations[p]["id"]
+        b.update(state="in", unit=u, start=day, today=None)
+        current[p][u] = {"ship": i, "block": b, "remaining": b["amount"], "amount": b["amount"], "rework": False}
+        if pid not in spans[i]:
+            # 배의 그 공정 첫 블록: 투입 기록, 뒤 공정 키트 요청은 배 한 척에 한 번(로트와 같다)
+            spans[i][pid] = {"start": day, "end": day}
+            events.append({"day": day, "type": "enter", "ship": orders[i]["id"], "station": pid, "unit": u + 1, "block": b["id"]})
+            for q in range(n_st):
+                if p in after[q]:
+                    request_kit(i, q, day)
+            if not after[p]:   # 블록 공정이 첫 공정이면(테스트 판) 첫 블록이 들어간 날이 착수
+                started[i] = day
+
+    def block_arrive(b: dict[str, Any], day: int) -> None:
+        """블록이 다음 블록 공정 앞에 닿았다. 짝이 모두 닿았으면 다음 공정 블록이 들어갈 수 있다."""
+        nxt = block_next[b["p"]]
+        r = n_blk[b["p"]] // n_blk[nxt]
+        parent = ship_blocks[b["ship"]][nxt][(b["no"] - 1) // r]
+        b["state"] = "pair"
+        siblings = ship_blocks[b["ship"]][b["p"]][(parent["no"] - 1) * r: parent["no"] * r]
+        if all(s["state"] == "pair" for s in siblings):
+            for s in siblings:
+                s["state"] = "merged"
+                if s["today"] is None:   # 오늘 닿은 블록은 오늘 운반(또는 짝 대기)으로 적는다
+                    s["today"] = (PAIR_WAIT, None)
+            parent.update(state="wait", avail=day)
+
+    def block_done(b: dict[str, Any], p: int, day: int, u: int) -> None:
+        """블록 하나가 검사를 통과했다. 그 배의 이 공정 블록이 모두 끝났으면 배가 이 공정을 마친 것이다."""
+        i = b["ship"]
+        b.update(done_day=day)
+        last = p not in block_next
+        if last:
+            b["state"] = "finished"
+        elif move_days_between(scenario, p, block_next[p]) == 1:
+            b.update(state="moving", arrive=day + 1)
+        else:
+            b["state"] = "await_tr"
+        if all(x["done_day"] is not None for x in ship_blocks[i][p]):
+            events.append({"day": day, "type": "complete", "ship": orders[i]["id"], "station": stations[p]["id"], "unit": u + 1})
+            finish(i, p)
+            if last:
+                advance(i, p, day)
+
+    def block_work(p: int, u: int, cap: float, day: int) -> tuple[str, int]:
+        """작업장 u의 오늘 처리량 cap으로 블록을 차례로 한다(이어 하기). 오늘 상태(작업·재작업)와 마지막 배를 돌려준다."""
+        nonlocal defects
+        pid = stations[p]["id"]
+        cur = current[p][u]
+        new_work, last_ship = False, cur["ship"]
+        while cur is not None and cap > EPS:
+            b, i = cur["block"], cur["ship"]
+            last_ship = i
+            use = min(cap, cur["remaining"])
+            cur["remaining"] -= use
+            cap -= use
+            new_work = new_work or not cur["rework"]
+            b.update(today=(REWORK if cur["rework"] else WORK, u), end=day)
+            spans[i][pid]["end"] = day
+            if cur["remaining"] > EPS:
+                break
+            work_done[p] += cur["amount"]
+            if not cur["rework"]:
+                # 검사는 블록마다(난수 random.block_quality). 재작업비는 블록 하나에 재작업비 ÷ 블록 수
+                inspections[p] += 1
+                rate = station_defect_rate(st_cfg[p], crews[p], scenario, done_research, inspections[p] - 1, grades[p],
+                                           has_equipment(stations[p]))
+                b["verdict"] = rnd["block_quality"][orders[i]["id"]][pid][b["no"] - 1] < rate
+                if b["verdict"]:
+                    cost["rework"] += costs["rework_per_defect"] / n_blk[p]
+                    defects += 1
+                    events.append({"day": day, "type": "defect", "ship": orders[i]["id"], "station": pid, "unit": u + 1,
+                                   "block": b["id"]})
+                    ratio = (scenario["research"]["auto_inspect"]["rework_ratio"]
+                             if "auto_inspect" in done_research else rules["rework_ratio"])
+                    cur["remaining"] = cur["amount"] = b["amount"] * ratio
+                    cur["rework"] = True
+                    continue
+                passes[p] += 1
+            current[p][u] = None
+            block_done(b, p, day, u)
+            nb = pick_block(p, day) if cap > EPS else None
+            if nb is not None:
+                enter_block(nb, p, u, day)
+            cur = current[p][u]
+        return (WORK if new_work else REWORK), last_ship
+
+    def block_today(b: dict[str, Any], day: int) -> tuple[str, int | None] | None:
+        """블록의 오늘 상태. 아직 없거나 다음 공정 블록이 된 블록은 None(배 상태에 넣지 않는다)."""
+        if b["today"] is not None:
+            return b["today"]
+        state = b["state"]
+        if state == "wait":
+            return (STATION_WAIT, None)
+        if state == "await_tr":
+            return (TRANSPORT_WAIT, None)
+        if state == "moving":
+            return (TRANSPORT, None)
+        if state == "pair":
+            return (PAIR_WAIT, None)
+        if state == "in":
+            return (STATION_WAIT, b["unit"])
+        return None
+
     ship_daily: list[list[dict[str, Any]]] = [[] for _ in range(n_ships)]
     station_daily: list[list[list[dict[str, Any]]]] = [[[] for _ in range(n)] for n in n_units]
     transporter_daily: list[list[dict[str, Any]]] = [[] for _ in range(n_tr)]
@@ -1115,6 +1306,30 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                 continue
             ship_state[i] = (TRANSPORT if i in took_by else TRANSPORT_WAIT, lot["from"], None)
 
+        # 2-1b. 블록 운반(4.25): 블록을 끝낸 다음 날부터 블록 하나씩 싣는다(무게 = 로트 무게 ÷ 앞 공정 블록 수).
+        #       우선순위 순으로, 오늘 남은 용량에 통째로 들어가는 트랜스포터(번호 순)에 싣고 다 나른 날 닿는다.
+        #       같은 자리·크레인으로 넘어가는 블록(moving)은 끝난 다음 날 닿는다.
+        if block_mode:
+            block_tr_jobs = {k: [] for k in free}
+            for b in all_blocks:
+                if b["state"] == "moving" and b["arrive"] <= day:
+                    block_arrive(b, day)
+            for b in sorted((b for b in all_blocks if b["state"] == "await_tr" and b["done_day"] < day), key=block_key):
+                weight = tr["lot_weight"] / n_blk[b["p"]]
+                k = next((k for k in free if room[k] >= weight - EPS), None)
+                if k is None:
+                    continue
+                room[k] -= weight
+                sid = orders[b["ship"]]["id"]
+                if sid not in carried[k]:
+                    carried[k].append(sid)
+                block_tr_jobs[k].append(b["id"])
+                route = {"ship": sid, "from": stations[b["p"]]["id"], "to": stations[block_next[b["p"]]]["id"], "block": b["id"]}
+                events.append({"day": day, "type": "transport_start", **route})
+                events.append({"day": day, "type": "transport_end", **route})
+                b["today"] = (TRANSPORT, None)
+                block_arrive(b, day)
+
         # 2-2. 오늘 운행한 트랜스포터는 운행 횟수를 세고, 정해진 간격마다 고장 판정을 한다.
         for k in range(n_tr):
             if k not in carried:
@@ -1123,7 +1338,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             if not carried[k]:
                 transporter_daily[k].append({"state": "idle", "ships": []})
                 continue
-            transporter_daily[k].append({"state": "move", "ships": carried[k]})
+            transporter_daily[k].append({"state": "move", "ships": carried[k],
+                                         **({"blocks": block_tr_jobs[k]} if block_tr_jobs.get(k) else {})})
             tr_moves[k] += 1
             if tr_moves[k] % tr["every_moves"] == 0:
                 threshold = 0 if "predictive" in done_research else (
@@ -1143,6 +1359,13 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             waiting = [i for i in by_priority
                        if delivered[i] is None and i not in transit and p in candidates(i) and ready[i] <= day
                        and i not in inside and i not in groups]
+            if p in block_set:
+                # 블록 공정(4.25): 배가 첫 블록 공정에 들어갈 수 있게 된 날 블록을 만들고, 작업장에는 블록을 들인다
+                if p in block_first:
+                    for i in waiting:
+                        if i not in ship_blocks:
+                            create_blocks(i, day)
+                waiting = []
             entered: set[int] = set()
             stopped_causes = []
 
@@ -1158,7 +1381,19 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                         breakdown_stopped[p] += 1
                     if cur:
                         put(cur["ship"], (cause, p, u))
+                        if "block" in cur:
+                            cur["block"]["today"] = (cause, u)
                     station_today[p][u] = {"state": cause, "ship": orders[cur["ship"]]["id"] if cur else None, "workers": 0}
+                    continue
+
+                if p in block_set:
+                    if cur is None:
+                        b = pick_block(p, day)
+                        if b is not None:
+                            enter_block(b, p, u, day)
+                        elif any(x["today"] and x["today"][0] == MATERIAL_WAIT for x in all_blocks if x["p"] == p):
+                            material_wait[p] += 1
+                            station_today[p][u] = {"state": MATERIAL_WAIT, "ship": None, "workers": 0}
                     continue
 
                 # 3-2. 비어 있으면 로트를 들인다. 자재를 쓰는 공정은 그 배의 키트가 작업장에 닿아 있어야 한다(4.0).
@@ -1245,18 +1480,29 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             if assigned[p][u] == 0 and crews[p] != "robot":
                 labor_wait[p] += 1
                 put(i, (LABOR_WAIT, p, u))
+                if "block" in cur:
+                    cur["block"]["today"] = (LABOR_WAIT, u)
                 station_today[p][u] = {"state": LABOR_WAIT, "ship": orders[i]["id"], "workers": 0}
                 continue
 
-            cur["remaining"] -= station_rate(st_cfg[p], rules, assigned[p][u], factor)
+            rate_today = station_rate(st_cfg[p], rules, assigned[p][u], factor)
+            if p in block_set:
+                # 블록 공정(4.25): 오늘 처리량으로 블록을 차례로 끝내고 다음 블록에 이어 쓴다(검사·운반 준비까지)
+                first_block = cur["block"]["id"]
+                state, i = block_work(p, u, rate_today, day)
+            else:
+                cur["remaining"] -= rate_today
+                state = REWORK if cur["rework"] else WORK
+                spans[i][pid]["end"] = day
             if crews[p] == "skilled":
                 cost["labor"] += assigned[p][u] * skilled_extra
             busy[p] += 1
             unit_busy[p][u] += 1
-            state = REWORK if cur["rework"] else WORK
             put(i, (state, p, u))
             station_today[p][u] = {"state": state, "ship": orders[i]["id"], "workers": assigned[p][u]}
-            spans[i][pid]["end"] = day
+            if p in block_set:
+                station_today[p][u]["blocks"] = [b["id"] for b in all_blocks if b["p"] == p and b["today"]
+                                                 and b["today"][0] in (WORK, REWORK) and b["today"][1] == u] or [first_block]
 
             # 5-1. 잔업일을 세고, 정해진 간격마다 사고 판정을 한다.
             if is_overtime(st_cfg[p]):
@@ -1286,6 +1532,9 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                     station_breakdowns[p] += 1
                     unit_breakdowns[p][u] += 1
                     events.append({"day": day, "type": "breakdown", "station": pid, "unit": u + 1, "ship": orders[i]["id"]})
+
+            if p in block_set:
+                continue   # 블록의 검사·완료는 block_work에서 했다
 
             # 5-3. 다 끝났으면 검사하고, 불량이면 재작업량을 넣는다. 합격하면 다음 날부터 운반을 기다린다.
             #      나눠 한 배는 부분마다 끝나지만, 검사 판정은 배 한 척에 한 번이다(같은 난수, 같은 불량률).
@@ -1321,23 +1570,30 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                 closed_today[i] = groups.pop(i)
                 events.append({"day": day, "type": "complete", "ship": orders[i]["id"], "station": pid, "unit": u + 1})
                 finish(i, p)
-                nxt = candidates(i)
-                if not nxt:
-                    delivered[i] = day
-                    events.append({"day": day, "type": "delivery", "ship": orders[i]["id"],
-                                   "late_days": max(0, day - orders[i]["due_day"])})
-                elif stations[nxt[0]].get("arrive") == "forklift":
-                    # 가공 → 소조립(4.3): 부재 팔레트를 공용 지게차가 실은 날 들어간다(다음 날부터 지게차를 기다린다)
-                    transit[i] = {"from": p, "to": nxt[0], "since": day, "by": "forklift"}
-                elif move_days_between(scenario, p, nxt[0]) == 1:
-                    # 같은 자리(도장 ↔ 선행의장), 크레인(PE장 → 탑재), 예인(탑재 → 안벽의장 → 시운전): 다음 날
-                    ready[i] = day + 1
-                else:
-                    transit[i] = {"from": p, "to": nxt[0], "since": day, "left": float(tr["lot_weight"]), "moving": False}
+                advance(i, p, day)
 
         for r in schedule:
             if r["end"] == day:
                 events.append({"day": day, "type": "research_done", "research": r["id"]})
+
+        # 5-4. 블록 공정에 있는 배의 오늘 상태(4.25): 블록 하나라도 일하면 작업, 아니면 블록들 가운데 앞선 상태.
+        #      블록마다 오늘 상태도 기록한다(만들기 전은 착수 전, 다음 공정 블록이 된 뒤·마친 뒤는 완료).
+        if block_mode:
+            best: dict[int, tuple[int, str, int, int | None]] = {}
+            for b in all_blocks:
+                today = block_today(b, day)
+                b["daily"].append({"state": today[0], "unit": None if today[1] is None else today[1] + 1} if today
+                                  else {"state": NOT_STARTED if b["state"] == "pending" else DONE, "unit": None})
+                b["today"] = None
+                if today is None:
+                    continue
+                state = STATION_WAIT if today[0] == PAIR_WAIT else today[0]
+                rank = BLOCK_SHIP_RANK.index(state)
+                if b["ship"] not in best or (rank, -b["p"]) < best[b["ship"]][:2]:
+                    best[b["ship"]] = (rank, -b["p"], b["p"], today[1])
+            for i, (rank, _, p, u) in best.items():
+                if delivered[i] is None:
+                    ship_state[i] = (BLOCK_SHIP_RANK[rank], p, u)
 
         # 6. 기록: 배마다 오늘의 상태 하나, 작업장마다 하나.
         for i in range(n_ships):
@@ -1482,6 +1738,11 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         "daily": forklift_daily[k],
     } for k in range(n_fk)]
 
+    # 블록(4.25): 블록마다 작업장, 시작·끝·완료일, 하루 상태(배의 daily와 같은 길이)
+    blocks_out = [{"id": b["id"], "ship": orders[b["ship"]]["id"], "station": stations[b["p"]]["id"], "no": b["no"],
+                   "unit": None if b["unit"] is None else b["unit"] + 1, "start": b["start"], "end": b["end"],
+                   "done_day": b["done_day"], "defect": bool(b["verdict"]), "daily": b["daily"]} for b in all_blocks]
+
     total_insp, total_pass = sum(inspections), sum(passes)
     on_time = sum(1 for s in ships_out if s["on_time"])
     n_delivered = sum(1 for d in delivered if d is not None)
@@ -1513,6 +1774,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         "stations": stations_out,
         "transporters": transporters_out,
         "forklifts": forklifts_out,
+        **({"blocks": blocks_out} if block_mode else {}),
         "research": schedule,
         "safety_stock": safety,
         "inventory_daily": inventory_daily,
