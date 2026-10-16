@@ -5,7 +5,7 @@
 
 import unittest
 
-from shipyard import ConfigError, list_scenarios, load_presets, load_scenario, simulate
+from shipyard import ConfigError, list_scenarios, load_presets, load_scenario, preview, simulate
 
 ASSEMBLY = ("sub_assembly", "block_assembly", "grand_assembly", "erection")
 
@@ -111,6 +111,67 @@ class BlockRules(unittest.TestCase):
         cfg["stations"]["sub_assembly"]["split"] = True
         with self.assertRaises(ConfigError):
             simulate(cfg, sc, baseline=False)
+
+
+class Dues(unittest.TestCase):
+    """공정 납기와 블록 납기(규칙 문서 3장 "공정 납기와 블록 납기")."""
+
+    def managed(self):
+        return load_presets("block")[1]["config"]
+
+    def test_default_back_calc(self):
+        # 실습 S3(예인선, 납기 30일): 탑재 30 → PE장 26 → 중조립 22 → 소조립 17 → 가공 14 → 절단 12
+        dues = preview(self.managed())["dues"]
+        self.assertEqual(dues["stations"]["S3"], {"cutting": 12, "processing": 14, "sub_assembly": 17,
+                                                  "block_assembly": 22, "grand_assembly": 26, "erection": 30})
+        self.assertEqual(dues["blocks"]["S3-SA1"], 17)
+        self.assertEqual(dues["blocks"]["S3-GA2"], 26)
+        self.assertEqual(len(dues["blocks"]), 3 * 14)
+
+    def test_station_override_moves_upstream(self):
+        # PE장 납기를 20일로 당기면 앞 공정은 그 값에서 다시 역산한다: 중조립 16, 소조립 11, 가공 8, 절단 6. 탑재는 그대로
+        cfg = {**self.managed(), "due": {"stations": {"S3": {"grand_assembly": 20}}}}
+        dues = preview(cfg)["dues"]
+        self.assertEqual(dues["stations"]["S3"], {"cutting": 6, "processing": 8, "sub_assembly": 11,
+                                                  "block_assembly": 16, "grand_assembly": 20, "erection": 30})
+        self.assertEqual(dues["blocks"]["S3-GA1"], 20)
+
+    def test_block_override(self):
+        cfg = {**self.managed(), "due": {"blocks": {"S3-SA1": 5}}}
+        dues = preview(cfg)["dues"]["blocks"]
+        self.assertEqual((dues["S3-SA1"], dues["S3-SA2"]), (5, 17))
+
+    def test_due_validation(self):
+        bad = [{"blocks": {"S9-SA1": 5}}, {"blocks": {"S3-SA1": 0}}, {"stations": {"S3": {"painting": 5}}},
+               {"stations": {"S3": {"sub_assembly": 99}}}, {"ships": {}}]
+        for due in bad:
+            with self.subTest(due=due), self.assertRaises(ConfigError):
+                preview({**self.managed(), "due": due})
+        with self.assertRaises(ConfigError):   # 블록 조립 실습이 아닌 분기
+            preview({**load_presets("simple")[1]["config"], "due": {"blocks": {}}})
+
+    def test_block_lateness_example9(self):
+        # 예시 9의 선박 순서: Y 소조립 블록은 4·4·4·4·5·5·5·5일에 끝나 공정 납기 3일을 모두 넘긴다(늦은 날 1×4 + 2×4 = 12)
+        cfg, sc = mini([("X", "FEEDER", 1, 40), ("Y", "TUG", 2, 40)])
+        cfg["due"] = {"stations": {"X": {"sub_assembly": 6}, "Y": {"sub_assembly": 3}}}
+        r = simulate(cfg, sc, baseline=False)
+        ys = [b for b in r["blocks"] if b["ship"] == "Y" and b["station"] == "sub_assembly"]
+        self.assertEqual([b["late_days"] for b in ys], [1, 1, 1, 1, 2, 2, 2, 2])
+        self.assertFalse(any(b["on_time"] for b in ys))
+        y = next(s for s in r["ships"] if s["id"] == "Y")
+        self.assertEqual(y["station_dues"]["sub_assembly"], {"due": 3, "end": 5, "late_days": 2})
+        x = next(s for s in r["ships"] if s["id"] == "X")
+        self.assertEqual(x["station_dues"]["sub_assembly"], {"due": 6, "end": 3, "late_days": 0})
+
+    def test_summary_and_management(self):
+        # 무관리 프리셋: S3 소조립이 납기 17일보다 10일 늦게 끝난다. 블록 납기 요약은 7관리 일정에도 실린다(등급 점수 밖)
+        r = simulate(load_presets("block")[0]["config"], baseline=False)
+        s3 = next(s for s in r["ships"] if s["id"] == "S3")
+        self.assertEqual(s3["station_dues"]["sub_assembly"]["late_days"], 10)
+        self.assertEqual(r["block_due"]["blocks"], 42)
+        self.assertLess(r["block_due"]["on_time"], 42)
+        self.assertEqual(r["management"]["schedule"]["block_due"], r["block_due"])
+        self.assertEqual(simulate(self.managed(), baseline=False)["block_due"]["rate"], 1.0)
 
 
 class DrillScenario(unittest.TestCase):
