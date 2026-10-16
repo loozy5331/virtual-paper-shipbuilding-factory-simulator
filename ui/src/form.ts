@@ -709,6 +709,12 @@ function drawPlan(root: HTMLElement, preview: Preview): void {
     pickable,
     onPickStation: (station, ship) => ctx.onOpenAssembly?.(station, ship),
     onMove: (sid, day) => {
+      // 4.26 사용자: 배를 옮기면 조립 공정 계획서에서 정한 그 배의 블록 착수일도 같은 날 수만큼 따라 옮긴다
+      // (정하지 않은 블록은 미리보기가 새 공정 기간에서 다시 놓는다)
+      const delta = day - config.ships[sid].start_day;
+      for (const bid of Object.keys(config.block_start ?? {})) {
+        if (bid.startsWith(`${sid}-`)) config.block_start![bid] = Math.min(scenario.days, Math.max(1, config.block_start![bid] + delta));
+      }
       config.ships[sid].start_day = day;
       const label = root.querySelector<HTMLElement>(`[data-preview="start:${sid}"]`);
       if (label) label.textContent = `${day}일`;
