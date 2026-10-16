@@ -1373,6 +1373,10 @@ details.block-plan > summary small { color: var(--ink-3); }
 .asm-report .tip-table th .swatch { display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 2px; vertical-align: middle; }
 .asm-due-table td.late { color: var(--bad); font-weight: 700; }
 .asm-due-table td small { font-size: 0.72rem; }
+/* 4.28.3: 조립 공정이 아닌 칸(절단·가공·탑재)은 앞뒤 맥락으로 옅게. 넘긴 칸도 붉지만 옅게 */
+.asm-due-table .ctx { color: var(--ink-3); font-weight: 400; }
+.asm-due-table td.ctx.late { color: var(--bad); font-weight: 400; opacity: 0.7; }
+.asm-due-table thead th:not(.ctx) { color: var(--ink); }
 .asm-report .tip-recommend { border-top: 0; padding-top: 0; }
 .block-gantt .block-group { font-size: 9px; font-weight: 800; fill: var(--ink-2); }
 .block-gantt .block-group-line { stroke: var(--line); }

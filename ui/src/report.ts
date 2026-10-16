@@ -499,20 +499,24 @@ export function renderAssemblyReport(result: Result, scenario: Scenario, onApply
       h("tbody", null, perStation.map((r) => h("tr", null,
         h("th", null, h("i", { class: "swatch", style: { background: STATION_COLOR[r.st.id] } }), r.st.name),
         h("td", null, `${r.on} / ${r.n}`), h("td", null, `${r.late}일`))))));
-  // 배별 공정 납기: 마친 날 / 공정 납기, 넘겼으면 붉게
+  // 배별 공정 납기: 마친 날 / 공정 납기, 넘겼으면 붉게. 조립 공정(블록 공정)은 진하게, 절단·가공·탑재는 옅게 앞뒤 맥락으로
+  // (4.28.3 사용자 "가": 앞 공정에서 이미 늦었는지(원인), 끝내 인도가 늦었는지(결과)를 같은 줄에서 읽는다)
+  const ctx = (id: string) => (blockSt.has(id) ? "" : "ctx");
   const dueTable = h("table", { class: "tip-table asm-due-table" },
-    h("thead", null, h("tr", null, h("th", null, "배"), stations.map((st) => h("th", null, st.name)))),
+    h("thead", null, h("tr", null, h("th", null, "배"), stations.map((st) => h("th", { class: ctx(st.id) },
+      blockSt.has(st.id) ? h("i", { class: "swatch", style: { background: STATION_COLOR[st.id] } }) : null, st.name)))),
     h("tbody", null, result.ships.map((sh) => h("tr", null,
       h("th", null, sh.id),
       stations.map((st) => {
         const d = sh.station_dues?.[st.id];
-        if (!d) return h("td", null, "—");
-        return h("td", { class: d.late_days ? "late" : "", title: `공정 납기 ${d.due}일` },
+        if (!d) return h("td", { class: ctx(st.id) }, "—");
+        return h("td", { class: [ctx(st.id), d.late_days ? "late" : ""].filter(Boolean).join(" "), title: `공정 납기 ${d.due}일` },
           d.end === null ? "못 마침" : `${d.end}일`, h("small", null, d.late_days ? ` +${d.late_days}` : ""));
       })))));
   return h("div", { class: "asm-report" },
     h("section", { class: "report-sec" }, h("h3", null, "블록 납기"), summary),
-    h("section", { class: "report-sec" }, h("h3", null, "공정 납기 (마친 날, 붉은 칸은 납기를 넘김)"), dueTable),
+    h("section", { class: "report-sec" }, h("h3", null, "공정 납기 (마친 날, 붉은 칸은 납기를 넘김)"), dueTable,
+      h("p", { class: "hint" }, "진한 칸이 조립 공정입니다. 옅은 칸은 앞뒤 맥락으로, 절단·가공에서 이미 늦었으면 원인이 조립 앞에 있고, 탑재가 늦었으면 인도가 늦었습니다.")),
     h("section", { class: "report-sec" }, recommendCard(result, onApplyRule)));
 }
 
