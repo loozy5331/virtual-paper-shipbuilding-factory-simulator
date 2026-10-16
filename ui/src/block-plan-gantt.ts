@@ -11,7 +11,7 @@
 // 화면은 계산하지 않는다: 착수일을 바꾸면 미리보기가 새 막대를 준다(작업장이 차 있으면 정한 날보다 늦게 놓일 수 있다).
 
 import { blockLabel, dayHour, type BlockPlan, type BlockPlanItem, type Scenario, type Span } from "./api";
-import { s } from "./dom";
+import { h, s } from "./dom";
 import { STATE_INFO, STATION_COLOR, STATION_TEXT } from "./labels";
 
 const W = 640;   // 조립 공정 계획서 폭에서 거의 1:1로 그려진다(글자·줄이 커지지 않게)
@@ -53,6 +53,20 @@ function hoursOf(b: BlockPlanItem): number {
 const num = (v: number) => String(Math.round(v * 10) / 10);
 
 let focusedBlock: string | null = null;
+
+/** 블록 일정 범례(4.29.1 사용자): 공정 색 = 이 배의 블록, 회색 = 다른 배, 진한 회색 = 작업장 대기, 띠·눈금·테두리 */
+export function blockGanttLegend(stations: { id: string; name: string }[]): HTMLElement {
+  const item = (mark: HTMLElement, text: string) => h("span", null, mark, text);
+  return h("div", { class: "legend block-legend" },
+    stations.map((st) => item(h("i", { style: { background: STATION_COLOR[st.id] } }), st.name)),
+    item(h("i", { style: { background: OTHER } }), "다른 배 블록"),
+    item(h("i", { style: { background: WAIT.color } }), "작업장 대기"),
+    h("span", { class: "sep" }),
+    item(h("i", { class: "window-mark" }), "옮길 수 있는 범위"),
+    item(h("i", { class: "due-mark" }), "블록 납기"),
+    item(h("i", { class: "pinned-mark" }), "착수를 정한 블록"),
+    item(h("i", { class: "risk-mark" }), "계획상 위험"));
+}
 
 export function renderBlockGantt(ctx: BlockGanttContext): SVGElement {
   const { plan, ship } = ctx;
@@ -161,7 +175,8 @@ export function renderBlockGantt(ctx: BlockGanttContext): SVGElement {
       );
       // 들어갈 수 있었는데 작업장이 차서 기다린 시간(다른 블록을 하는 중): 막대 앞 얇은 띠
       if (waitedH > 0) {
-        row.append(s("rect", { x: at(b.ready, b.ready_h ?? 0), y: ry + ROW_H / 2 - 1.5, width: Math.max(1, x0 - at(b.ready, b.ready_h ?? 0)), height: 3, fill: WAIT.color },
+        // 대기 막대는 작업 막대와 같은 굵기(4.29.1 사용자: 다른 간트처럼). 색으로 가른다
+        row.append(s("rect", { x: at(b.ready, b.ready_h ?? 0), y: ry + (ROW_H - BAR_H) / 2, width: Math.max(1, x0 - at(b.ready, b.ready_h ?? 0)), height: BAR_H, rx: 2, fill: WAIT.color, class: "block-wait" },
           s("title", null, `${ship} ${blockLabel(st.id, b.no)} ${WAIT.name} ${num(waitedH)}시간(${dayHour(b.ready, b.ready_h ?? 0)} ~ ${dayHour(b.start, b.start_h)}): 작업장에서 다른 블록을 하는 중`)));
       }
       row.append(bar, s("line", { x1: x(b.due + 1), x2: x(b.due + 1), y1: ry + 1, y2: ry + ROW_H - 1, class: "due block-due" }));
