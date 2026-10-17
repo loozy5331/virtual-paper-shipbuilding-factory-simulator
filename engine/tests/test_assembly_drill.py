@@ -165,6 +165,10 @@ class AssemblyScenario(unittest.TestCase):
     def test_full_yard_after_assembly(self):
         sc = load_scenario("assembly")
         self.assertEqual(sc["skip"], ["painting", "pre_outfitting"])
+        # 4.42.1(D90): 중조립 자재 키트는 이름만 의장품 키트(숫자 규칙은 물감 그대로), 다른 시나리오는 물감
+        paint = next(m for m in sc["materials"] if m["id"] == "paint")
+        self.assertEqual((paint["name"], paint["price"], paint["lead_days"]), ("의장품 키트", 40, 5))
+        self.assertEqual(next(m for m in load_scenario("basic")["materials"] if m["id"] == "paint")["name"], "물감")
         self.assertEqual((sc["decision_stations"], sc["options"]["max_units"]), (list(ASM), 2))
         r = simulate(load_presets("assembly")[1]["config"], baseline=False)
         self.assertTrue(all("sea_trial" in s["spans"] for s in r["ships"]))
