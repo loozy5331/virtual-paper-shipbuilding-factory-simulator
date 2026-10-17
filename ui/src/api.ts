@@ -31,6 +31,8 @@ export type Crew = "normal" | "skilled" | "robot" | "trial";
 export interface ShipConfig {
   priority: number;
   start_day: number;
+  /** 4.36(D84): 프로젝트 버퍼(일). 버퍼 시나리오는 착수일을 엔진이 버퍼에서 거꾸로 잡는다 */
+  buffer?: number;
   /** 1.0 설정에서만 쓴다. 1.1부터는 ordering을 고르면 엔진이 정한다. */
   order_days?: Record<string, number | null>;
 }
@@ -213,6 +215,8 @@ export interface Scenario {
   decision_stations?: string[];
   contingency?: Record<string, number>;
   contingency_max?: number;
+  /** 4.36(D84): 프로젝트 버퍼. 버퍼 0~max_days일, 일찍 끝난 배의 하루 보관비 = 선가 × storage_rate_per_day */
+  project_buffer?: { max_days: number; default_days: number; storage_rate_per_day: number };
   /** 4.32: 블록 조치 규칙(잔업은 rules.overtime) */
   emergency?: { extra_shift: { speed: number; pay_rate: number; accident_weight: number }; outsource: { rate_per_day: number; transport_days: number; price_rate: number } };
   /** 4.23: 평가서 뒷장 "선배의 팁"에 적는 이 반기의 고정 팁 */
@@ -379,6 +383,18 @@ export interface Preview {
   plan_risks?: PlanRisk[];
   /** 4.25: 블록 계획 일정(계획 간트에서 펼친 공정의 블록 막대) */
   block_plan?: BlockPlan;
+  /** 4.36(D84): 버퍼 계획(변수 없는 실행). 배마다 착수·계획 완료·버퍼·목표 완료(납기 − 버퍼)·납기·남는 날·계획대로면 보관비 */
+  buffer_plan?: BufferPlan;
+}
+
+export interface BufferPlanShip {
+  start: number; finish: number; due: number; buffer: number; target: number; slack: number; feasible: boolean;
+  price: number; storage: number;
+}
+export interface BufferPlan {
+  ships: Record<string, BufferPlanShip>;
+  /** 버퍼 0일일 때보다 더 드는 재고·재공비(계획 기준), 계획대로면 보관비 합 */
+  extra_inventory: number; storage: number; max_days: number; storage_rate_per_day: number;
 }
 
 export interface PlanRisk { ship: string; station: string; plan_end: number; due: number; days: number }
@@ -456,6 +472,9 @@ export interface ShipResult {
   arrival_days: Record<string, number>;
   started_day: number | null;
   delivered_day: number | null;
+  /** 4.36: 마친 날(버퍼 시나리오는 인도가 납기일로 미뤄질 수 있다)과 고른 버퍼 */
+  completed_day?: number | null;
+  buffer?: number;
   late_days: number;
   on_time: boolean;
   lead_time: number;
@@ -661,9 +680,13 @@ export interface SituationRow {
   action?: ActionKind | null;
   /** 조치별 견적: 비상 예산에서 낼 값과 그 블록에 걸리는 날(외주는 운반 포함, 돌아오는 날) */
   quotes?: Record<ActionKind | "none", { cost: number; days: number | null; back_day?: number }>;
+  /** 4.36(D84): 지금 순서대로면 블록 납기(계획에서 끝나는 날)를 넘길 날 = 그 배 버퍼를 먹을 날 */
+  over?: number;
 }
 export interface Situation {
   day: number; capacity_mh: number; need_mh: number;
+  /** 4.36(D84): 배마다 납기·버퍼와 버퍼를 먹을 날(그 배 블록 가운데 가장 크게 늦는 블록) */
+  ships?: Record<string, { due: number; buffer: number; over: number }>;
   stations: Record<string, {
     manual: boolean; units: number; waiting: SituationRow[]; inside: SituationRow[]; rule_orders: Record<string, string[]>;
     /** 고른 정책(없으면 계획대로), 지금 규칙, 비상 예산과 남은 예산 */
@@ -677,6 +700,8 @@ export interface ForecastRow {
   /** 그날 기다리던 블록이 다 끝나는 날, 그 공정들의 투입 공수 */
   done_day: number | null; mh: number;
   late: Record<string, number>; on_time: number; ships: number; block_on_time: number; blocks: number;
+  /** 4.36: 배가 마친 날(납기 − 마친 날 = 남는 버퍼) */
+  completed?: Record<string, number | null>;
   /** 그날 쓴 비상 예산(공정별), 예산을 넘어 받지 않은 조치 */
   spent: Record<string, number>; refused: Record<string, string>; profit: number;
 }

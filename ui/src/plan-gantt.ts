@@ -4,7 +4,7 @@
 // 막대 앞 위에 착수 예정일을 숫자로 적는다. 끄는 동안에도 그 숫자가 따라 바뀐다.
 // 끄는 동안에는 줄만 옮겨 보이고, 놓을 때 onMove로 알린다. 새 막대는 다음 미리보기에서 다시 그린다.
 
-import { activeStations, type Plan, type PlanRisk, type Preview, type Scenario } from "./api";
+import { activeStations, type BufferPlan, type Plan, type PlanRisk, type Preview, type Scenario } from "./api";
 import { s } from "./dom";
 import { STATE_INFO, STATION_COLOR } from "./labels";
 
@@ -203,8 +203,78 @@ export function conflictText(scenario: Scenario, plan: Plan): string {
 
 /** 계획상 위험(4.25, D71): 배가 작업장을 혼자 써도 공정 납기를 넘기는 배·공정. 겹침과 달리 일정 자체가 무리라는 뜻 */
 export function riskText(scenario: Scenario, risks: PlanRisk[]): string {
+  // 프로젝트 버퍼(4.36): 계획이 변수 없는 실행이라 공정·블록 납기는 계획대로면 늘 지킨다. 위험은 버퍼 부족뿐
+  if (scenario.project_buffer) {
+    return risks.length
+      ? `계획상 위험: 버퍼 부족 ${risks.map((r) => `${r.ship} ${r.days}일(계획 완료 ${r.plan_end}일 > 목표 ${r.due}일)`).join(", ")}`
+      : "계획상 위험 없음: 블록 납기는 계획(변수 없이 돌린 실행)에서 끝나는 날이라 계획대로면 모두 지키고, 배마다 버퍼가 남습니다.";
+  }
   if (!risks.length) return "계획상 위험 없음: 혼자 쓴다고 보면 모든 공정이 공정 납기 안에 끝납니다.";
   const name = Object.fromEntries(scenario.stations.map((st) => [st.id, st.name]));
   return `계획상 위험 ${risks.length}곳(혼자 써도 공정 납기를 넘김): ` +
     risks.map((r) => `${r.ship} ${name[r.station]} ${r.plan_end}일 > ${r.due}일`).join(", ");
+}
+
+/** 버퍼 간트(4.36, D84, 사용자 "공정 단위가 아닌 선박별 착수일, 납기일 정도", "버퍼를 얼마나 둘 것인가, 비용은 얼마나"):
+ *  배마다 막대 하나 = 계획 작업(착수 ~ 계획 완료, 변수 없이 돌린 실행), 그 뒤 버퍼(목표 완료 ~ 납기, 빗금), 납기 표시.
+ *  계획 완료가 목표보다 일찍이면 그 사이는 덤 여유(옅게), 늦으면 버퍼 부족(붉게). 오른쪽에 계획대로면 내는 보관비.
+ *  끌지 않는다: 버퍼는 수주 목록에서 고르고, 착수일은 엔진이 버퍼에서 거꾸로 잡는다. */
+export function renderBufferGantt(scenario: Scenario, plan: BufferPlan): SVGElement {
+  const days = scenario.days;
+  const right = 52;   // 보관비 글자 자리
+  const dayW = (W - LEFT - right) / days;
+  const x = (day: number) => LEFT + (day - 1) * dayW;
+  const orders = scenario.orders;
+  const rowH = 30;
+  const height = TOP + orders.length * rowH + 4;
+  const svg = s("svg", { class: "gantt plan-gantt buffer-gantt", viewBox: `0 0 ${W} ${height}`, role: "img",
+    "aria-label": "버퍼 간트: 배마다 착수부터 계획 완료, 버퍼, 납기" });
+  svg.append(s("defs", null,
+    s("pattern", { id: "buffer-hatch", width: 5, height: 5, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" },
+      s("rect", { width: 5, height: 5, class: "buffer-hatch-bg" }), s("rect", { width: 1.6, height: 5, class: "buffer-hatch-line" }))));
+  const axis = s("g", { class: "axis" });
+  for (let d = 1; d <= days; d++) {
+    if (d === 1 || d % 10 === 0) {
+      axis.append(
+        s("line", { x1: x(d), x2: x(d), y1: TOP - 4, y2: height - 2, class: d % 10 === 0 ? "grid major" : "grid" }),
+        s("text", { x: x(d) + dayW / 2, y: TOP - 9, class: "tick" }, d));
+    }
+  }
+  svg.append(axis);
+  orders.forEach((order, i) => {
+    const sh = plan.ships[order.id];
+    if (!sh) return;
+    const y = TOP + i * rowH;
+    const barY = y + rowH - BAR_H - 3;
+    const span = (a: number, b: number) => Math.max(1, (b - a + 1) * dayW - 1);
+    svg.append(s("text", { x: 4, y: barY + BAR_H - 3, class: "ship-id small" }, order.id));
+    const g = s("g", { class: "buffer-row" });
+    g.append(s("rect", { x: x(sh.start) + 0.5, y: barY, width: span(sh.start, Math.min(sh.finish, days)), height: BAR_H, rx: 2, class: "buffer-work" },
+      s("title", null, `${order.id} 계획 작업 ${sh.start}~${sh.finish}일(변수 없이 돌린 계획)`)));
+    // 계획 완료 ~ 목표 완료: 덤 여유(목표보다 일찍 끝남) 또는 버퍼 부족
+    if (sh.finish < sh.target) {
+      g.append(s("rect", { x: x(sh.finish + 1) + 0.5, y: barY + 3, width: span(sh.finish + 1, sh.target), height: BAR_H - 6, rx: 2, class: "buffer-extra" },
+        s("title", null, `덤 여유 ${sh.target - sh.finish}일: 작업장이 비어 착수를 더 늦출 수 없어 목표보다 일찍 끝난다`)));
+    }
+    if (sh.buffer > 0) {
+      const from = Math.max(sh.target, sh.finish) + 1;
+      if (from <= sh.due) {
+        g.append(s("rect", { x: x(from) + 0.5, y: barY, width: span(from, sh.due), height: BAR_H, rx: 2, fill: "url(#buffer-hatch)", class: "buffer-zone" },
+          s("title", null, `${order.id} 버퍼 ${sh.buffer}일(${sh.target + 1}~${sh.due}일)`)));
+      }
+    }
+    if (sh.finish > sh.target) {
+      g.append(s("rect", { x: x(sh.target + 1) + 0.5, y: barY, width: span(sh.target + 1, Math.min(sh.finish, days)), height: BAR_H, rx: 2, class: "buffer-short" },
+        s("title", null, `버퍼 부족 ${sh.finish - sh.target}일: 착수를 더 당길 수 없다(1일이거나 앞 배가 작업장을 쓴다)`)));
+    }
+    // 납기
+    const dx = x(sh.due) + dayW;
+    g.append(s("line", { x1: dx, x2: dx, y1: barY - 3, y2: barY + BAR_H + 2, class: "due-line" }),
+      s("text", { x: x(sh.start), y: barY - 3, class: "plan-start" }, `착수 ${sh.start}일`),
+      s("text", { x: dx - 2, y: barY - 3, class: "buffer-due" }, `납기 ${sh.due}일`),
+      s("text", { x: W - 2, y: barY + BAR_H - 4, class: `buffer-cost${sh.feasible ? "" : " short"}` },
+        sh.feasible ? `보관비 ${Math.round(sh.storage)}` : `부족 ${sh.finish - sh.target}일`));
+    svg.append(g);
+  });
+  return svg;
 }

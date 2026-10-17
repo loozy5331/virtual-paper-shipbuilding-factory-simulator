@@ -169,47 +169,52 @@ class AssemblyScenario(unittest.TestCase):
         self.assertTrue(all("sea_trial" in s["spans"] for s in r["ships"]))
 
     def test_crunch_days(self):
-        # 4.34(D82): B안은 소조립만 직접 대응. 중조립도 직접 대응이면 4.32처럼 네 번 묻는다
+        # 4.36(D84): 묻는 날 = 작업장 앞 블록이 블록 납기(계획에서 끝나는 날)를 넘길 것으로 보이는 새 배가 생긴 날
         _, r = play(load_presets("assembly")[1]["config"], policy("edd"))
-        self.assertEqual([d["day"] for d in r["decisions"]], [9, 12])
+        self.assertEqual([d["day"] for d in r["decisions"]], [15, 21])
         _, r = play(both_manual(), policy("edd"))
-        self.assertEqual([d["day"] for d in r["decisions"]], [8, 9, 12, 14])
+        self.assertEqual([d["day"] for d in r["decisions"]], [15, 16, 21])
+        sit = r["decisions"][0]["situation"]
+        self.assertTrue(any(w["over"] > 0 for st in sit["stations"].values() for w in st["waiting"]))
+        self.assertEqual(set(sit["ships"]), {"S1", "S2", "S3"})
 
 
 class AssemblyGrade(unittest.TestCase):
-    """등급 조율(D70, 4.32): B안(납기 빠른 순, 묻는 동안 기본 대응)은 85.1점이지만 S2가 하루 늦어 납기 상한으로 B(4.33, D81).
-    몰리는 날 선박 순서 + 자동화 연구 + 가공·탑재 1명이면 S."""
+    """등급 조율(D70, 4.36): B안(버퍼 S1 3·S2 2·S3 4일, 묻는 동안 기본 대응)은 85.5점이지만 S2가 하루 늦어 납기 상한으로 B(D81).
+    중조립도 직접 대응하고 버퍼를 먹을 블록에 잔업이면 A, 자동화 연구 + 가공·탑재 1명이면 S."""
 
     def test_presets(self):
         presets = {p["id"]: p["config"] for p in load_presets("assembly")}
-        cases = {"unmanaged": (46.2, "F", 1), "managed": (85.1, "B", 2), "all_in": (53.3, "C", 2)}
+        cases = {"unmanaged": (39.6, "F", 0), "managed": (85.5, "B", 2), "all_in": (46.6, "F", 1)}
         for pid, want in cases.items():
             r = simulate(presets[pid])
             self.assertEqual((r["grade"]["score"], r["grade"]["grade"], r["qcd"]["delivery"]["on_time"]), want, pid)
         cap = simulate(presets["managed"])["grade"]["cap"]
         self.assertEqual(cap, {"grade": "B", "from": "A", "late": ["S2"]})
-        self.assertEqual(simulate(presets["managed"])["pending"]["day"], 9)
+        self.assertEqual(simulate(presets["managed"])["pending"]["day"], 15)
         self.assertEqual({sid for sid, st in presets["managed"]["stations"].items() if st.get("dispatch_mode") == "manual"}, {"sub_assembly"})
         self.assertEqual(presets["managed"]["pools"]["assembly"], 5)   # 하루 40 MH(슬라이드의 당일 가용 작업시간)
 
     def test_actions_rescue_or_hurt(self):
         # 소조립만 직접 대응(B안)이면 병목(중조립)을 못 건드려 어떤 정책도 S2가 하루 늦다(4.34, D82)
-        for rule in ("ship", "edd", "slack"):
-            self.assertEqual(play(load_presets("assembly")[1]["config"], policy(rule))[1]["qcd"]["delivery"]["on_time"], 2, rule)
-        # 중조립도 직접 대응: 선박 순서 정책 → 3척, S1 블록 잔업 → 3척(예산 110), S1 블록 외주 → 운반 때문에 S1이 4일 늦다
+        late = lambda r: {s["id"]: s["late_days"] for s in r["ships"] if s["late_days"]}
+        for rule in ("ship", "edd", "slack", "spt"):
+            self.assertEqual(late(play(load_presets("assembly")[1]["config"], policy(rule))[1]), {"S2": 1}, rule)
+        # 중조립도 직접 대응(4.36): 버퍼를 먹을 블록(over > 0)에 잔업 → 3척(예산 60), 외주 → 3척이지만 비싸다(155),
+        # 특근 → 예산이 모자라 S2 하루, 선박 순서로 바꾸면 S3가 이틀 늦다
         cfg = both_manual()
-        late = lambda r: {s["id"]: s["late_days"] for s in r["ships"]}
-        self.assertEqual(play(cfg, policy("ship"))[1]["qcd"]["delivery"]["on_time"], 3)
-        _, ot = play(cfg, policy("edd", lambda w: "overtime" if w["ship"] == "S1" else None))
-        self.assertEqual((ot["qcd"]["delivery"]["on_time"], ot["costs"]["emergency"]), (3, 110))
-        self.assertEqual(late(play(cfg, policy("edd", lambda w: "outsource" if w["ship"] == "S1" else None))[1])["S1"], 4)
-        self.assertEqual(late(play(cfg, policy("spt"))[1])["S1"], 14)
+        over = lambda kind: (lambda w: kind if w.get("over") else None)
+        c, ot = play(cfg, policy("edd", over("overtime")))
+        self.assertEqual((late(ot), ot["costs"]["emergency"], simulate(c)["grade"]["grade"]), ({}, 60, "A"))
+        self.assertEqual((late(play(cfg, policy("edd", over("outsource")))[1]), play(cfg, policy("edd", over("outsource")))[1]["costs"]["emergency"]), ({}, 155))
+        self.assertEqual(late(play(cfg, policy("edd", over("extra")))[1]), {"S2": 1})
+        self.assertEqual(late(play(cfg, policy("ship"))[1]), {"S3": 2})
 
     def test_tips_reach_s(self):
         tips = both_manual()
         tips["pools"].update({"processing": 1, "erection": 1})
         tips["research"] = ["automation"]
-        cfg, _ = play(tips, policy("ship"))
+        cfg, _ = play(tips, policy("edd"))
         r = simulate(cfg)
         self.assertEqual((r["grade"]["grade"], r["qcd"]["delivery"]["on_time"]), ("S", 3))
 
@@ -223,7 +228,7 @@ class AssemblyGrade(unittest.TestCase):
         self.assertEqual(ev["all"]["blocks"], 42)
 
     def test_rules_recommend(self):
-        self.assertEqual(simulate(load_presets("assembly")[1]["config"])["recommend"]["best"], "ship")
+        self.assertEqual(simulate(load_presets("assembly")[1]["config"])["recommend"]["best"], "spt")
 
 
 
@@ -272,10 +277,18 @@ class QueueCap(unittest.TestCase):
         return cfg
 
     def test_card_shows_staged_only(self):
-        st = simulate(self.b_plan(4), baseline=False)["pending"]["stations"]["sub_assembly"]
-        self.assertEqual((st["queue_cap"], len(st["waiting"]), len(st["yard"])), (4, 4, 7))
-        free = simulate(self.b_plan(None), baseline=False)["pending"]["stations"]["sub_assembly"]
-        self.assertEqual((free["queue_cap"], len(free["waiting"]), free["yard"]), (None, 11, []))
+        # 중조립도 직접 대응한 판에서 21일 카드: 소조립 적치 2개면 작업장 앞 2개 + 적치장 2개, 한도 없으면 4개가 다 앞에
+        def last(cap):
+            cfg = both_manual()
+            if cap is None:
+                del cfg["stations"]["sub_assembly"]["queue_cap"]
+            else:
+                cfg["stations"]["sub_assembly"]["queue_cap"] = cap
+            return play(cfg, policy("edd"))[1]["decisions"][-1]["situation"]["stations"]["sub_assembly"]
+        st = last(2)
+        self.assertEqual((st["queue_cap"], len(st["waiting"]), len(st["yard"])), (2, 2, 2))
+        st = last(None)
+        self.assertEqual((st["queue_cap"], len(st["waiting"]), st["yard"]), (None, 4, []))
 
     def test_never_more_than_cap_in_front(self):
         r = simulate(self.b_plan(3), baseline=False)
@@ -302,6 +315,54 @@ class QueueCap(unittest.TestCase):
             simulate(cfg, baseline=False)
         simple = copy.deepcopy(load_presets("simple")[1]["config"])
         simple["stations"]["sub_assembly"]["queue_cap"] = 2
+        with self.assertRaises(ConfigError):
+            simulate(simple, baseline=False)
+
+
+
+class ProjectBuffer(unittest.TestCase):
+    """프로젝트 버퍼(4.36, D84): 계획 = 변수 없는 실행. 착수일은 버퍼에서 거꾸로, 블록 납기는 계획에서 끝나는 날, 납기일 인도와 보관비."""
+
+    def b(self, bufs=None):
+        cfg = copy.deepcopy(load_presets("assembly")[1]["config"])
+        for sid, n in (bufs or {}).items():
+            cfg["ships"][sid]["buffer"] = n
+        return cfg
+
+    def test_plan_meets_target(self):
+        from shipyard import preview
+        bp = preview(self.b())["buffer_plan"]["ships"]
+        self.assertEqual({sid: (v["start"], v["finish"], v["target"]) for sid, v in bp.items()},
+                         {"S1": (1, 27, 27), "S2": (18, 34, 34), "S3": (9, 32, 34)})
+        self.assertTrue(all(v["feasible"] for v in bp.values()))
+
+    def test_plan_is_the_run_without_events(self):
+        # 계획대로면(변수 없음) 계획 완료에 끝나고 늦는 블록이 없다
+        from shipyard import preview
+        from shipyard.sim import ideal_scenario
+        cfg = self.b()
+        bp = preview(cfg)["buffer_plan"]["ships"]
+        r = simulate(cfg, ideal_scenario(load_scenario("assembly")), baseline=False)
+        self.assertEqual({s["id"]: s["completed_day"] for s in r["ships"]}, {sid: v["finish"] for sid, v in bp.items()})
+        self.assertEqual(r["block_due"]["on_time"], r["block_due"]["blocks"])
+
+    def test_delivery_on_due_day_and_storage(self):
+        r = simulate(self.b(), baseline=False)
+        s3 = next(s for s in r["ships"] if s["id"] == "S3")
+        self.assertEqual((s3["completed_day"], s3["delivered_day"], s3["buffer"]), (35, 38, 4))
+        self.assertEqual(r["costs"]["storage"], 3 * 4000 * 0.01)
+
+    def test_infeasible_buffer_is_a_plan_risk(self):
+        from shipyard import preview
+        pv = preview(self.b({"S1": 6}))
+        self.assertEqual([(x["ship"], x["station"]) for x in pv["plan_risks"]], [("S1", "buffer")])
+        self.assertEqual(pv["buffer_plan"]["ships"]["S1"]["start"], 1)
+
+    def test_validation(self):
+        with self.assertRaises(ConfigError):
+            simulate(self.b({"S1": 9}), baseline=False)
+        simple = copy.deepcopy(load_presets("simple")[1]["config"])
+        next(iter(simple["ships"].values()))["buffer"] = 1
         with self.assertRaises(ConfigError):
             simulate(simple, baseline=False)
 

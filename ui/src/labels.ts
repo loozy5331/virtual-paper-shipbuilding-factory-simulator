@@ -101,6 +101,7 @@ export const COST_ITEMS: { key: string; name: string; note: string }[] = [
   { key: "research", name: "연구비", note: "대기열에 넣은 연구 비용" },
   { key: "late_penalty", name: "지연 배상", note: "계약금의 3%/일" },
   { key: "emergency", name: "비상 조치", note: "액션 카드의 잔업·특근·외주(공정별 비상 예산에서, 조립 현장 배정)" },
+  { key: "storage", name: "보관비", note: "버퍼로 일찍 끝난 배가 납기일까지 안벽에서 기다린 날 × 하루 선가의 1%(프로젝트 버퍼, 조립 현장 배정)" },
 ];
 
 /** 자재 상자 뚜껑 색(종이, 물감, 깃발, 보냉재 4.14). 관제실 2D와 현장 3D가 함께 쓴다 */

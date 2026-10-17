@@ -313,7 +313,7 @@ export function renderReport(result: Result, scenario: Scenario, maxRate: number
   const maxCost = Math.max(1, ...COST_ITEMS.map((c) => result.costs[c.key] ?? 0));
   const costCard = card("원가 내역",
     // 비상 조치(4.32)는 조립 현장 배정에서만 줄을 보인다
-    h("div", { class: "cost-list" }, COST_ITEMS.filter((item) => item.key !== "emergency" || scenario.decision_stations).map((item) => {
+    h("div", { class: "cost-list" }, COST_ITEMS.filter((item) => (item.key !== "emergency" || scenario.decision_stations) && (item.key !== "storage" || scenario.project_buffer)).map((item) => {
       const value = result.costs[item.key] ?? 0;
       return h("div", { class: "cost-row", title: item.note },
         h("span", { class: "cost-name" }, item.name),
@@ -529,7 +529,8 @@ export function renderAssemblyReport(result: Result, scenario: Scenario, onApply
   const ctx = (id: string) => (blockSt.has(id) ? "" : "ctx");
   const dueTable = h("table", { class: "tip-table asm-due-table" },
     h("thead", null, h("tr", null, h("th", null, "배"), stations.map((st) => h("th", { class: ctx(st.id) },
-      blockSt.has(st.id) ? h("i", { class: "swatch", style: { background: STATION_COLOR[st.id] } }) : null, st.name)))),
+      blockSt.has(st.id) ? h("i", { class: "swatch", style: { background: STATION_COLOR[st.id] } }) : null, st.name)),
+      scenario.project_buffer ? h("th", null, "버퍼") : null)),
     h("tbody", null, result.ships.map((sh) => h("tr", null,
       h("th", null, sh.id),
       stations.map((st) => {
@@ -537,16 +538,28 @@ export function renderAssemblyReport(result: Result, scenario: Scenario, onApply
         if (!d) return h("td", { class: ctx(st.id) }, "—");
         return h("td", { class: [ctx(st.id), d.late_days ? "late" : ""].filter(Boolean).join(" "), title: `공정 납기 ${d.due}일` },
           d.end === null ? "못 마침" : `${d.end}일`, h("small", null, d.late_days ? ` +${d.late_days}` : ""));
-      })))));
+      }),
+      // 프로젝트 버퍼(4.36): 고른 버퍼와 남은 버퍼(납기 − 마친 날). 공정 칸의 +일은 계획보다 늦은 날이라 버퍼를 먹은 만큼이다
+      scenario.project_buffer ? bufferTd(sh) : null))));
   // 순서(4.35.1 사용자): 블록 납기와 공수 → 공정 납기 → 블록 평가 → 규칙 추천 → 결정 돌아보기(낱장에서 이 장 아래로)
   return h("div", { class: "asm-report" },
     h("section", { class: "report-sec" }, h("h3", null, mh ? "블록 납기와 공수" : "블록 납기"), summary,
       mh ? h("p", { class: "hint" }, "공수 효율 = 표준 공수 ÷ 투입 공수. 투입은 작업장에 보낸 사람 × 근무시간(정규 8, 잔업 10)이고, 그 가운데 재작업과 대기(블록을 끝냈는데 들어올 블록이 없어 쉰 시간)가 효율을 깎습니다.") : null),
     h("section", { class: "report-sec" }, h("h3", null, "공정 납기 (마친 날, 붉은 칸은 납기를 넘김)"), dueTable,
-      h("p", { class: "hint" }, "진한 칸이 조립 공정입니다. 옅은 칸은 앞뒤 맥락으로, 절단·가공에서 이미 늦었으면 원인이 조립 앞에 있고, 탑재가 늦었으면 인도가 늦었습니다.")),
+      h("p", { class: "hint" }, scenario.project_buffer
+        ? "공정 납기는 계획(변수 없이 돌린 실행)에서 끝나는 날이라, +일은 계획보다 늦은 날입니다. 늦은 날은 배 끝의 버퍼에서 메워지고, 버퍼를 넘기면 인도가 늦습니다. 진한 칸이 조립 공정입니다."
+        : "진한 칸이 조립 공정입니다. 옅은 칸은 앞뒤 맥락으로, 절단·가공에서 이미 늦었으면 원인이 조립 앞에 있고, 탑재가 늦었으면 인도가 늦었습니다.")),
     result.block_eval ? h("section", { class: "report-sec" }, h("h3", null, "블록 평가"), blockEval(result, scenario)) : null,
     h("section", { class: "report-sec" }, recommendCard(result, onApplyRule)),
     review ? h("section", { class: "report-sec asm-review" }, h("h3", null, `결정 돌아보기 (몰리는 날 ${result.review!.length}번)`), review) : null);
+}
+
+function bufferTd(sh: Result["ships"][number]): HTMLElement {
+  const done = sh.completed_day ?? sh.delivered_day;
+  if (done === null || done === undefined) return h("td", { class: "late" }, "못 마침");
+  const left = sh.due_day - done;
+  return h("td", { class: left < 0 ? "late" : "", title: `고른 버퍼 ${sh.buffer ?? 0}일, ${done}일에 마침` },
+    left < 0 ? `${-left}일 지연` : `${left}일 남음`, h("small", null, ` /${sh.buffer ?? 0}일`));
 }
 
 /** 블록 평가(4.32, 사용자 3.2): 전체 / 조립 공정별 / 작업장별 / 선박별. 단계는 위 탭으로 넘긴다(엔진 block_eval을 표로) */

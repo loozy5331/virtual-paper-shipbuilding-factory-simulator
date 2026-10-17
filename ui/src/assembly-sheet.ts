@@ -253,11 +253,17 @@ export function updateAssemblySheet(root: HTMLElement, preview: Preview | null, 
       const mineStarts = Object.keys(config.block_start ?? {}).filter((bid) => bp.blocks[bid]?.ship === sid);
       const order = scenario.orders.find((o) => o.id === sid);
       const label = order ? `${sid} ${scenario.ship_types[order.type].name}` : "공통(모든 배)";
+      const bsh = preview.buffer_plan?.ships[sid];
+      const bufferLine = bsh ? h("p", { class: "asm-buffer-line" },
+        h("b", null, sid), ` 착수 ${bsh.start}일 → 계획 완료 ${bsh.finish}일 → `,
+        h("span", { class: "asm-buffer-chip" }, `버퍼 ${bsh.buffer}일`), ` → 납기 ${bsh.due}일`,
+        bsh.feasible ? "" : h("span", { class: "late" }, ` (버퍼 부족 ${bsh.finish - bsh.target}일)`)) : null;
       const body = () => sid === ALL ? [
         // 공통 탭(4.32): 모든 배의 블록을 공정·작업장 줄에(읽기만, 끌기는 배 탭에서)
         renderAllBlockGantt(scenario, bp, bst),
         h("p", { class: "hint" }, "모든 배의 블록 계획입니다(막대 이름 = 배). 착수일·착수 시각은 배 탭에서 막대를 끌어 정합니다. 계획이라 고장·입고 지연·몰리는 날의 결정은 넣지 않았습니다."),
       ] : [
+        bufferLine,
         h("div", { class: "block-panel-head" },
           h("small", null, "막대를 좌우로 끌거나 Alt+←/→(1시간씩, Shift를 함께 누르면 하루씩): 그 블록의 착수일과 착수 시각(옅은 띠 안에서)", n ? ` · 블록 납기를 넘기는 블록 ${n}개` : ""),
           mineStarts.length ? h("button", {
@@ -295,7 +301,10 @@ export function updateAssemblySheet(root: HTMLElement, preview: Preview | null, 
           },
         }),
         blockGanttLegend(bst),
-        h("p", { class: "hint" }, "공정마다 위는 작업장 줄, 아래는 이 배의 블록 줄입니다. 막대는 고장 없이 2명이 하루 8시간 했을 때의 계획으로 길이가 시간입니다(하루 칸 = 8시간, 7h는 근무 시작부터 7시간). 옅은 띠 중 진한 쪽은 생산계획서 계획 간트의 그 공정 기간, 더 옅은 쪽은 그 뒤 공정 납기까지입니다. 착수를 정한 블록은 그 시각보다 먼저 들이지 않고, 작업장이 차 있으면 정한 시각보다 뒤에 놓입니다."),
+        scenario.project_buffer
+          // 4.36(D84): 계획 = 변수 없이 돌린 실행, 블록 납기 = 계획에서 끝나는 날. 버퍼는 배 끝에만
+          ? h("p", { class: "hint" }, "공정마다 위는 작업장 줄, 아래는 이 배의 블록 줄입니다. 막대는 계획(불량·고장·사고·입고 지연 없이 돌린 실행)이고 길이가 시간입니다(하루 칸 = 8시간). 블록 납기는 그 막대가 끝나는 날이라 블록에는 여유가 없고, 여유는 배 끝의 버퍼에만 있습니다. 생산 중 블록이 늦어지면 그만큼 이 배의 버퍼를 먹고, 그럴 것 같은 날 관제실이 액션 카드로 묻습니다. 착수를 정한 블록은 그 시각보다 먼저 들이지 않습니다.")
+          : h("p", { class: "hint" }, "공정마다 위는 작업장 줄, 아래는 이 배의 블록 줄입니다. 막대는 고장 없이 2명이 하루 8시간 했을 때의 계획으로 길이가 시간입니다(하루 칸 = 8시간, 7h는 근무 시작부터 7시간). 옅은 띠 중 진한 쪽은 생산계획서 계획 간트의 그 공정 기간, 더 옅은 쪽은 그 뒤 공정 납기까지입니다. 착수를 정한 블록은 그 시각보다 먼저 들이지 않고, 작업장이 차 있으면 정한 시각보다 뒤에 놓입니다."),
       ];
       if (zoomed && root.isConnected) {
         // 크게 보기(4.27.1, 사용자): 관제실 모니터처럼 화면 가득. 클립보드에 transform이 있어 body에 띄운다

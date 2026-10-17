@@ -1621,3 +1621,28 @@ details.block-plan > summary small { color: var(--ink-3); }
 /* 4.35 액션 카드: 작업 중 블록 줄(조치 없음) */
 .dc-card .wl-table tr.dc-inside { background: #f3f6f4; }
 .dc-card .wl-table tr.dc-inside .wl-order { font-size: 0.72rem; color: var(--accent); font-weight: 700; }
+/* 4.36(D84) 생산계획서: 수주 목록은 늘 펼침, 프로젝트 버퍼 간트(배별 막대 하나) */
+.orders-block { margin: 2px 0 10px; }
+.orders-block > .fold-title { display: block; margin: 4px 0 6px; }
+.buffer-gantt .buffer-work { fill: #3f6152; }
+.buffer-gantt .buffer-hatch-bg { fill: #dcebe1; }
+.buffer-gantt .buffer-hatch-line { fill: #5d9a74; }
+.buffer-gantt .buffer-zone { stroke: #5d9a74; stroke-width: 0.8; }
+.buffer-gantt .buffer-extra { fill: none; stroke: #8fae9a; stroke-width: 0.8; stroke-dasharray: 2 1.5; }
+.buffer-gantt .buffer-short { fill: var(--bad); opacity: 0.75; }
+.buffer-gantt .due-line { stroke: var(--ink); stroke-width: 1.4; stroke-dasharray: 3 2; }
+.buffer-gantt .buffer-due { font-size: 7px; fill: var(--ink-2); text-anchor: end; }
+.buffer-gantt .buffer-cost { font-size: 7.5px; fill: var(--ink-2); text-anchor: end; }
+.buffer-gantt .buffer-cost.short { fill: var(--bad); font-weight: 700; }
+.legend i.buffer-work-mark { background: #3f6152; }
+.legend i.buffer-zone-mark { background: repeating-linear-gradient(45deg, #5d9a74 0 1.5px, #dcebe1 1.5px 5px); outline: 1px solid #5d9a74; }
+.legend i.buffer-extra-mark { background: transparent; outline: 1px dashed #8fae9a; }
+.legend i.buffer-short-mark { background: var(--bad); opacity: 0.75; }
+.buffer-cost-line { margin: 6px 0 2px; font-size: 0.86rem; }
+.buffer-cost-line .late { color: var(--bad); }
+.asm-buffer-line { margin: 2px 0 4px; font-size: 0.84rem; color: var(--ink-2); }
+.asm-buffer-chip { display: inline-block; padding: 0 6px; border-radius: 3px; background: repeating-linear-gradient(45deg, #cfe3d6 0 2px, #e9f3ec 2px 5px); border: 1px solid #5d9a74; color: #2f5a42; font-weight: 700; }
+.asm-buffer-line .late { color: var(--bad); font-weight: 700; }
+/* 4.36 액션 카드: 버퍼 */
+.dc-sub.dc-threat { font-weight: 600; }
+.dc-ship.warn { border-color: #b7791f; color: #8a5a10; background: #fdf4e3; }

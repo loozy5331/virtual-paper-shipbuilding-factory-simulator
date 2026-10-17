@@ -8,7 +8,7 @@ import { activeStations, planStations, blockStations, completeConfig, staffTrade
 import { h, mount, money, num, pct, s } from "./dom";
 import { STATION_COLOR } from "./labels";
 import { docHead } from "./paper";
-import { conflictText, renderPlanGantt } from "./plan-gantt";
+import { conflictText, renderBufferGantt, renderPlanGantt } from "./plan-gantt";
 import { renderShipSpec } from "./spec";
 
 export interface FormContext {
@@ -218,15 +218,17 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
   completeConfig(config, scenario);   // 3.x 프리셋·회차에 없는 공정과 직종 인원을 기본값으로(4.0)
   const orderIds = scenario.orders.map((o) => o.id);
   const openSpec = (sid: string) => () => showSpec({ ship: sid, root, ctx });
+  const pb = scenario.project_buffer;   // 4.36(D84): 프로젝트 버퍼 시나리오
 
   // ① 수주와 계획: 4척 요약 줄과 계획 간트. 우선순위는 겹치면 맞바꾸고, 착수 예정일은 간트에서 끌어 정한다.
   const summary = h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("span", { class: "step" }, "1"), h("h2", null, "수주와 계획")),
-    fold("orders", [h("b", { class: "fold-title" }, "수주 목록과 우선순위")], "fold-orders",
+    // 4.36(사용자): 수주 목록은 접지 않고 늘 펼쳐 둔다
+    h("div", { class: "orders-block" }, h("b", { class: "fold-title" }, "수주 목록과 우선순위"),
     h("table", { class: "plan" },
       h("thead", null, h("tr", null,
         h("th", null, "배"), h("th", null, "선종"), h("th", { class: "r" }, "납기"), h("th", { class: "r" }, "계약금"),
-        h("th", null, "우선순위"), h("th", null, "착수 예정일"))),
+        h("th", null, "우선순위"), pb ? h("th", null, "버퍼") : null, h("th", null, pb ? "착수(계획)" : "착수 예정일"))),
       h("tbody", null, scenario.orders.map((order) => {
         const ship = config.ships[order.id];
         return h("tr", null,
@@ -246,10 +248,30 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
               ctx.onEdit(true);
             },
           }, orderIds.map((_, k) => h("option", { value: k + 1, selected: ship.priority === k + 1 }, `${k + 1}순위`)))),
-          h("td", null, h("b", { "data-preview": `start:${order.id}` }, `${ship.start_day}일`)));
+          // 프로젝트 버퍼(4.36, D84): 버퍼를 고르면 엔진이 착수일을 거꾸로 잡는다(미리보기가 채운다)
+          pb ? h("td", null, h("select", {
+            class: "priority", "aria-label": `${order.id} 버퍼`,
+            onchange: (e: Event) => { ship.buffer = Number((e.target as HTMLSelectElement).value); ctx.onEdit(false); },
+          }, Array.from({ length: pb.max_days + 1 }, (_, k) => h("option", { value: k, selected: (ship.buffer ?? pb.default_days) === k }, `${k}일`)))) : null,
+          h("td", null, h("b", { "data-preview": `start:${order.id}` }, pb ? "…" : `${ship.start_day}일`)));
       }))),
     h("p", { class: "hint" }, "작업장, 사람, 운반 모두 우선순위 순으로 받습니다. 배를 누르면 선박 사양서(외형, BOM, 인력, 공법, 인도 기준)가 펼쳐집니다.")),
-    // 계획 간트는 늘 보인다(접지 않는다)
+    // 계획 간트는 늘 보인다(접지 않는다). 프로젝트 버퍼(4.36)는 배별 막대 하나
+    ...(pb ? [
+      h("div", { class: "plan-head" }, h("b", null, "계획 간트"),
+        h("small", null, "배마다 착수 ~ 계획 완료, 그 뒤 버퍼와 납기. 버퍼는 위 수주 목록에서 고릅니다.")),
+      h("div", { class: "plan-host", "data-plan": "" }),
+      h("div", { class: "legend plan-legend" },
+        h("span", null, h("i", { class: "buffer-work-mark" }), "계획 작업"),
+        h("span", null, h("i", { class: "buffer-zone-mark" }), "버퍼"),
+        h("span", null, h("i", { class: "buffer-extra-mark" }), "덤 여유"),
+        h("span", null, h("i", { class: "buffer-short-mark" }), "버퍼 부족"),
+        h("span", null, h("i", { class: "due-mark" }), "납기")),
+      h("p", { class: "buffer-cost-line", "data-preview": "buffer-cost" }, "…"),
+      h("p", { class: "hint" }, "계획 작업은 불량·고장·사고·입고 지연 없이 돌린 결과라, 계획대로면 모든 블록이 제때 끝나고 납기를 지킵니다. ",
+        "버퍼를 늘리면 착수가 당겨져 변수에 강해지지만, 일찍 끝난 배는 납기일까지 안벽에서 기다리며 보관비(하루 선가의 ",
+        `${Math.round(pb.storage_rate_per_day * 1000) / 10}%)를 내고 자재도 일찍 들어와 재고비가 늡니다. 생산 중 블록이 계획보다 늦어 버퍼를 먹을 것 같으면 관제실이 액션 카드로 묻습니다.`),
+    ] : [
     h("div", { class: "plan-head" },
       h("b", null, "계획 간트"),
       h("small", null, "배 줄을 좌우로 끌거나, 줄을 누르고 ←/→로 착수 예정일을 옮깁니다.")),
@@ -262,6 +284,7 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
     h("p", { class: "hint", "data-preview": "conflicts" }),
     h("p", { class: "hint" }, "막대는 배 한 척이 작업장을 혼자 쓸 때의 일정입니다. 겹치는 날은 뒤 순위 배가 기다립니다.",
       scenario.block_mode ? " 소조립·중조립·PE장 막대를 누르면 조립 공정 계획서(위 탭)의 그 배 블록 일정으로 갑니다." : ""),
+    ]),
   );
 
   // ② 탭
@@ -739,6 +762,22 @@ function drawPlan(root: HTMLElement, preview: Preview): void {
   if (!host || !current) return;
   const ctx = current;
   const { scenario, config } = ctx;
+  if (preview.buffer_plan) {
+    // 프로젝트 버퍼(4.36): 배별 막대, 착수일(엔진이 버퍼에서 잡은 날), 버퍼 비용 한 줄
+    const bp = preview.buffer_plan;
+    mount(host, renderBufferGantt(scenario, bp));
+    for (const [sid, sh] of Object.entries(bp.ships)) {
+      const label = root.querySelector<HTMLElement>(`[data-preview="start:${sid}"]`);
+      if (label) label.textContent = `${sh.start}일`;
+    }
+    const cost = root.querySelector<HTMLElement>(`[data-preview="buffer-cost"]`);
+    const short = Object.entries(bp.ships).filter(([, sh]) => !sh.feasible);
+    if (cost) mount(cost, h("b", null, "버퍼 비용(계획대로면) "),
+      `보관비 ${num(bp.storage, 0)} + 재고·재공비 ${bp.extra_inventory >= 0 ? "+" : ""}${num(bp.extra_inventory, 0)}(버퍼 0일보다) = `,
+      h("b", null, num(bp.storage + bp.extra_inventory, 0)),
+      short.length ? h("span", { class: "late" }, ` · 버퍼 부족 ${short.map(([sid, sh]) => `${sid} ${sh.finish - sh.target}일`).join(", ")}(착수를 더 당길 수 없음)`) : null);
+    return;
+  }
   const startDays = Object.fromEntries(Object.entries(config.ships).map(([sid, ship]) => [sid, ship.start_day]));
   const pickable = blockStations(scenario).map((b) => b.id);
   mount(host, renderPlanGantt({

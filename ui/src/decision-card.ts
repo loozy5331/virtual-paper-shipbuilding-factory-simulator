@@ -106,11 +106,15 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
   const inYard = asked.reduce((n, [, st]) => n + (st.yard?.length ?? 0), 0);
   mount(root, h("div", { class: "dc-backdrop" }), h("section", { class: "dc-card", role: "dialog", "aria-label": `${sit.day}일 아침 액션 카드` },
     h("header", { class: "dc-head" },
-      h("div", null, h("small", null, "액션 카드"), h("h2", null, `${sit.day}일 아침 · 조립장에 블록이 몰렸습니다`),
+      h("div", null, h("small", null, "액션 카드"),
+        // 4.36(D84): 버퍼 시나리오는 "블록이 계획보다 늦어 버퍼를 먹을 것 같은 날" 묻는다
+        h("h2", null, sit.ships ? `${sit.day}일 아침 · 블록이 늦어 버퍼를 먹을 것 같습니다` : `${sit.day}일 아침 · 조립장에 블록이 몰렸습니다`),
+        sit.ships ? h("p", { class: "dc-sub dc-threat" }, Object.entries(sit.ships).map(([sid, sh], i) => h("span", { class: sh.over ? "wl-hot" : "" },
+          `${i ? " · " : ""}${sid} 버퍼 ${sh.buffer}일`, sh.over ? `(지금 순서대로면 ${sh.over}일 먹음)` : ""))) : null,
         h("p", { class: "dc-sub" }, `배정 대기 ${count}건${inYard ? `(적치장 ${inYard}건 더)` : ""} · 오늘 가용 ${fmt(sit.capacity_mh)}H · 필요 ${fmt(sit.need_mh)}H`,
           short > 0 ? h("b", { class: "wl-hot" }, ` (${fmt(short)}H 부족)`) : null)),
       h("button", { type: "button", class: "btn small", title: "모니터를 보며 생각하기(재생은 멈춘 채)", onclick: () => { collapsed = true; redraw(); } }, "접기")),
-    outcomePanel(scenario, asked.map(([sid]) => sid), name, f, fresh, (sid) => ({ left: sit.stations[sid].budget_left, total: sit.stations[sid].budget, spend: spentOn(sid) })),
+    outcomePanel(scenario, sit, asked.map(([sid]) => sid), name, f, fresh, (sid) => ({ left: sit.stations[sid].budget_left, total: sit.stations[sid].budget, spend: spentOn(sid) })),
     h("div", { class: "dc-stations" }, asked.map(([sid, st]) => {
       const pol = d.policy[sid];
       const rowOf = Object.fromEntries(st.waiting.map((w) => [w.id, w]));
@@ -137,12 +141,14 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
               }, h("b", null, label, sub ? h("small", null, ` ${sub}`) : null),
               polRows ? optionOutcome(polRows[id as DispatchRule | "keep"], f!.keep) : h("small", { class: "dc-out dim" }, "…"))))),
         h("table", { class: "plan wl-table" },
-          h("thead", null, h("tr", null, h("th", null, "순서"), h("th", null, "작업"), h("th", null, "남은 기간"),
+          h("thead", null, h("tr", null, h("th", null, "순서"), h("th", null, "작업"), h("th", null, st.waiting.some((w) => w.over !== undefined) ? "버퍼 소진" : "남은 기간"),
             h("th", null, "필요 작업시간"), h("th", null, "자재"), h("th", null, "후행 공정"), h("th", null, "조치 ", h("small", null, "(숫자 = 비상 예산에서 낼 값)")))),
           h("tbody", null, st.inside.map((r) => h("tr", { class: "dc-inside" },
             h("td", { class: "wl-order" }, "작업 중"),
             h("th", null, r.id, h("small", null, ` ${blockLabel(sid, r.no)}`)),
-            h("td", { class: r.left_days <= 1 ? "wl-hot" : "" }, r.left_days < 0 ? `${-r.left_days}일 지남` : `${r.left_days}일`),
+            r.over !== undefined
+              ? h("td", { class: r.over ? "wl-hot" : "" }, r.over ? `${r.ship} ${r.over}일` : "계획 안", h("small", null, ` 블록 납기 ${r.due}일`))
+              : h("td", { class: r.left_days <= 1 ? "wl-hot" : "" }, r.left_days < 0 ? `${-r.left_days}일 지남` : `${r.left_days}일`),
             h("td", null, `${fmt(r.mh)}시간 남음`),
             kitCell(r),
             h("td", null, mateText(r)),
@@ -153,7 +159,9 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
             return h("tr", { class: urgent ? "urgent" : "" },
               h("td", { class: "wl-order" }, `${k + 1}`),
               h("th", null, r.id, h("small", null, ` ${blockLabel(sid, r.no)}`)),
-              h("td", { class: urgent ? "wl-hot" : "" }, r.left_days < 0 ? `${-r.left_days}일 지남` : `${r.left_days}일`),
+              r.over !== undefined
+                ? h("td", { class: r.over ? "wl-hot" : "" }, r.over ? `${r.ship} ${r.over}일` : "계획 안", h("small", null, ` 블록 납기 ${r.due}일`))
+                : h("td", { class: urgent ? "wl-hot" : "" }, r.left_days < 0 ? `${-r.left_days}일 지남` : `${r.left_days}일`),
               h("td", null, `${fmt(r.mh)}시간`, r.quotes ? h("small", null, ` 직접 ${r.quotes.none.days}일`) : null),
               kitCell(r),
               h("td", null, mateText(r)),
@@ -169,7 +177,7 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
 }
 
 /** 결과 미리보기: 내 선택(그날 이렇게 하고 그 뒤는 기본 대응)과 지금대로(아무것도 바꾸지 않음)를 세 칸으로 */
-function outcomePanel(scenario: Scenario, stations: string[], name: Record<string, string>, f: Forecast | null, fresh: boolean,
+function outcomePanel(scenario: Scenario, sit: Situation, stations: string[], name: Record<string, string>, f: Forecast | null, fresh: boolean,
   budget: (sid: string) => { left: number; total: number; spend: number }): HTMLElement {
   const m = f?.mine, k = f?.keep;
   const dayDelta = m && k && m.done_day !== null && k.done_day !== null ? m.done_day - k.done_day : 0;
@@ -184,7 +192,7 @@ function outcomePanel(scenario: Scenario, stations: string[], name: Record<strin
         k ? h("span", { class: `dc-delta${dayDelta < 0 ? " good" : dayDelta > 0 ? " bad" : ""}` },
           dayDelta ? `지금대로 ${k.done_day}일보다 ${Math.abs(dayDelta)}일 ${dayDelta < 0 ? "빠름" : "늦음"}` : "지금대로와 같음") : null,
         m ? h("small", { class: "dc-note" }, `투입 ${fmt(m.mh)}H${mhDelta ? ` (${mhDelta > 0 ? "+" : ""}${fmt(mhDelta)}H)` : ""}`) : null),
-      h("div", { class: "dc-out-cell" },
+      sit.ships ? bufferCell(scenario, sit, m, k) : h("div", { class: "dc-out-cell" },
         h("small", null, "납기 · 배별 인도"),
         h("div", { class: "dc-ships" }, scenario.orders.map((o) => {
           const late = m?.late[o.id];
@@ -208,6 +216,27 @@ function outcomePanel(scenario: Scenario, stations: string[], name: Record<strin
             h("b", null, b.spend ? `−${fmt(b.spend)}` : "0"), h("small", null, ` 남음 ${fmt(after)} / ${fmt(b.total)}`));
         }),
         m && Object.keys(m.refused).length ? h("small", { class: "dc-note wl-hot" }, `예산을 넘어 받지 않는 조치 ${Object.keys(m.refused).length}건`) : null)));
+}
+
+/** 버퍼 칸(4.36, D84): 배마다 이 선택이면 마친 날과 남는 버퍼(납기 − 마친 날, 고른 버퍼보다 많으면 덤). 넘치면 지연 */
+function bufferCell(scenario: Scenario, sit: Situation, m: ForecastRow | undefined, k: ForecastRow | undefined): HTMLElement {
+  const left = (r: ForecastRow | undefined, sid: string) => {
+    const c = r?.completed?.[sid];
+    return c === undefined || c === null ? null : sit.ships![sid].due - c;
+  };
+  const text = (v: number | null) => v === null ? "…" : v < 0 ? `${-v}일 지연` : `버퍼 ${v}일 남음`;
+  return h("div", { class: "dc-out-cell" },
+    h("small", null, "납기 · 배별 남는 버퍼(납기 − 마친 날)"),
+    h("div", { class: "dc-ships" }, scenario.orders.map((o) => {
+      const now = left(m, o.id), was = left(k, o.id);
+      const buf = sit.ships![o.id].buffer;
+      const cls = now === null ? "" : now < 0 ? " late" : now < buf ? " warn" : " ok";
+      return h("span", { class: `dc-ship${cls}`, title: `고른 버퍼 ${buf}일` },
+        h("b", null, o.id), ` ${text(now)}`, h("small", null, ` /${buf}일`),
+        now !== null && was !== null && now !== was ? h("small", null, ` (지금대로 ${text(was)})`) : null);
+    })),
+    m ? h("small", { class: "dc-note" }, `블록 납기 ${m.block_on_time}/${m.blocks}`,
+      k && k.block_on_time !== m.block_on_time ? ` (지금대로 ${k.block_on_time})` : "") : null);
 }
 
 /** 정책 단추 아래 한 줄: 그 정책이면 몰린 블록이 끝나는 날과 늦는 배 */
