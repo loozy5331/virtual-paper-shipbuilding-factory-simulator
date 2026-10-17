@@ -1646,3 +1646,63 @@ details.block-plan > summary small { color: var(--ink-3); }
 /* 4.36 액션 카드: 버퍼 */
 .dc-sub.dc-threat { font-weight: 600; }
 .dc-ship.warn { border-color: #b7791f; color: #8a5a10; background: #fdf4e3; }
+/* 4.36.1 조립 공정 실적서: 숫자 타일 + 그림(가로 막대·칸) */
+.asm-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin: 4px 0 6px; }
+.asm-tile { display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); }
+.asm-tile small { color: var(--ink-3); font-size: 0.74rem; }
+.asm-tile b { font-size: 1.35rem; color: var(--ink); }
+.asm-tile span { color: var(--ink-2); font-size: 0.76rem; }
+.asm-tile.bad { border-color: #e2b7aa; }
+.asm-tile.bad span { color: var(--bad); font-weight: 600; }
+.asm-sec > h3 { display: flex; align-items: baseline; gap: 6px; margin: 0 0 4px; font-size: 0.98rem; }
+.asm-sec > h3 small { font-weight: 400; color: var(--ink-3); font-size: 0.76rem; }
+.asm-chart { width: 100%; height: auto; display: block; }
+.asm-chart .asm-chart-label { font-size: 12px; font-weight: 600; fill: var(--ink); }
+.asm-chart .asm-chart-value { font-size: 11px; fill: var(--ink-2); text-anchor: end; font-variant-numeric: tabular-nums; }
+.asm-chart .asm-chart-value.bad { fill: var(--bad); font-weight: 700; }
+.asm-chart .asm-bar-num { font-size: 9.5px; fill: #fff; text-anchor: middle; font-weight: 700; pointer-events: none; }
+.asm-chart .asm-buf-track { stroke: #8fb79c; stroke-width: 0.8; }
+.asm-legend { margin: 2px 0 0; font-size: 0.76rem; }
+.asm-legend i { width: 12px; height: 10px; border-radius: 2px; }
+.asm-chart-wrap .hint, .asm-grid-wrap .hint { margin: 2px 0 0; }
+.asm-grid { width: 100%; border-collapse: separate; border-spacing: 2px; font-size: 0.8rem; table-layout: fixed; }
+.asm-grid th { font-weight: 500; color: var(--ink-3); font-size: 0.74rem; text-align: center; white-space: nowrap; overflow: hidden; }
+.asm-grid th.blk { color: var(--ink); font-weight: 700; }
+.asm-grid tbody th { text-align: left; color: var(--ink); font-weight: 700; width: 34px; }
+.asm-grid td { height: 24px; text-align: center; border-radius: 3px; background: #f1efe8; font-variant-numeric: tabular-nums; font-weight: 700; }
+.asm-grid td.d1, .legend i.asm-shade-d1 { background: #f6dcd3; color: #7a2a12; }
+.asm-grid td.d2, .legend i.asm-shade-d2 { background: #eeae99; color: #6a210b; }
+.asm-grid td.d3, .legend i.asm-shade-d3 { background: #df6f4c; color: #fff; }
+.asm-grid td.d4, .legend i.asm-shade-d4 { background: #b5330b; color: #fff; }
+.legend i.asm-shade-0 { background: #f1efe8; }
+.asm-grid .swatch { display: inline-block; width: 8px; height: 8px; margin-right: 3px; border-radius: 2px; }
+.asm-line { margin: 0 0 4px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 0.86rem; }
+.asm-more > summary { cursor: pointer; color: var(--ink-3); font-size: 0.8rem; }
+.asm-more .tip-recommend h4 { display: none; }
+details.review-day { border-top: 1px dashed var(--line); padding: 5px 0; }
+details.review-day > summary { cursor: pointer; font-size: 0.86rem; list-style-position: outside; }
+details.review-day > summary .review-mine { color: var(--ink-2); }
+details.review-day > summary .review-verdict { color: var(--ink-2); }
+details.review-day.is-best > summary .review-verdict { color: var(--good); font-weight: 600; }
+details.review-day[open] > .review-table { margin-top: 6px; }
+.asm-chart .asm-bar-num.dark { fill: var(--ink); }
+/* 4.36.1 조립 공장 안(위에서 내려다본 바닥): 정반 격자, 블록 판과 보강재, 작업자 안전모, 용접기·케이블, 불꽃, 천장 크레인 거더 */
+.asm-view .asm-bay { fill: #3a4640; stroke: #c9a227; stroke-opacity: 0.55; stroke-width: 0.8; stroke-dasharray: 4 3; }
+.asm-platen rect { fill: #66716a; }
+.asm-platen line { stroke: #525c56; stroke-width: 0.6; }
+.asm-view .asm-blk rect { stroke: rgba(0, 0, 0, 0.35); stroke-width: 0.6; }
+.asm-view .asm-blk rect.rework { stroke: #fff; stroke-width: 1; stroke-dasharray: 2 1.5; }
+.asm-view .asm-blk .rib { stroke: rgba(255, 255, 255, 0.35); stroke-width: 0.8; }
+.asm-view .asm-blk text { font-size: 8px; font-weight: 700; text-anchor: middle; paint-order: stroke; }
+.asm-welder rect { fill: #c9a227; stroke: #2a2f2c; stroke-width: 0.6; }
+.asm-welder path { fill: none; stroke: #2a2f2c; stroke-width: 1; }
+.asm-welder.broken rect { fill: #8e2e42; }
+.asm-view .asm-cable { fill: none; stroke: #1f2421; stroke-width: 1; opacity: 0.8; }
+.asm-spark circle { fill: #fff3c4; }
+.asm-spark path { stroke: #ffd36b; stroke-width: 0.8; }
+.asm-spark.live { animation: asm-spark 0.34s steps(2, end) infinite; }
+@keyframes asm-spark { 50% { opacity: 0.25; } }
+.asm-crane .rail { stroke: #8b958f; stroke-width: 1.2; }
+.asm-crane .girder { stroke: #c9d3cc; stroke-width: 2; opacity: 0.45; }
+.asm-crane .trolley { fill: #e7ece8; stroke: #2a2f2c; stroke-width: 0.5; }
+@media (prefers-reduced-motion: reduce) { .asm-spark.live { animation: none; } }

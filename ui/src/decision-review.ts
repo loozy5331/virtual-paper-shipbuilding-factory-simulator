@@ -22,7 +22,7 @@ export function renderDecisionReview(result: Result): HTMLElement | null {
       `몰리는 날 ${review.length}번 가운데 ${wins}번은 내 지시가 가장 좋았습니다. `,
       `내 결과는 인도 ${mine.on_time}척 · 이익 ${num(mine.profit, 0)}, 처음부터 묻지 않고 기본 대응만 했다면 인도 ${allAuto.on_time}척 · 이익 ${num(allAuto.profit, 0)}입니다(첫 결정의 기본 대응 줄).`),
     review.map((rv) => day(rv, result)),
-    h("p", { class: "hint" }, "다른 줄은 그날 앞의 내 결정은 그대로 두고, 그날만 그 정책으로(조치 없이), 그 뒤는 기본 대응으로 끝까지 다시 돌린 결과입니다. \"내 정책, 조치 없이\"는 그날 건 조치(잔업·특근·외주·지체보상금 감수)가 값을 했는지 봅니다. 가장 좋은 줄은 인도 → 블록 납기 → 이익 → 직행률 순으로 고릅니다."));
+    h("p", { class: "hint" }, "날을 누르면 그날 다른 선택이었다면의 비교 표가 펼쳐집니다. 다른 줄은 그날 앞의 내 결정은 그대로 두고, 그날만 그 정책으로(조치 없이), 그 뒤는 기본 대응으로 끝까지 다시 돌린 결과입니다. \"내 정책, 조치 없이\"는 그날 건 조치(잔업·특근·외주·지체보상금 감수)가 값을 했는지 봅니다. 가장 좋은 줄은 인도 → 블록 납기 → 이익 → 직행률 순으로 고릅니다."));
 }
 
 function day(rv: DecisionReview, result: Result): HTMLElement {
@@ -35,9 +35,10 @@ function day(rv: DecisionReview, result: Result): HTMLElement {
     ? "이날은 내 지시가 가장 좋았습니다."
     : `${label(rv.best).replace("이었다면", "")}${rv.best === "auto" || rv.best === "no_actions" ? "였다면" : "이었다면"} 인도 ${best.on_time}척(지금 ${mine.on_time}척), 블록 납기 ${pct(best.block_rate)}(지금 ${pct(mine.block_rate)}), 이익 ${num(best.profit, 0)}(지금 ${num(mine.profit, 0)}).`;
   const ships = result.ships.map((s) => s.id);
-  return h("section", { class: `review-day${rv.mine_is_best ? " is-best" : ""}` },
-    h("h3", null, `${rv.day}일 아침`, h("small", null, ` 내 지시: ${mineOrder}`)),
-    h("p", { class: "review-verdict" }, verdict),
+  // 4.36.1(사용자 "불필요한 내용은 줄이고"): 날마다 한 줄(그날, 내 지시, 판정)만 보이고 비교 표는 접는다
+  return h("details", { class: `review-day${rv.mine_is_best ? " is-best" : ""}` },
+    h("summary", null, h("b", null, `${rv.day}일 아침`), h("span", { class: "review-mine" }, ` 내 지시: ${mineOrder}`),
+      h("span", { class: "review-verdict" }, ` — ${verdict}`)),
     h("table", { class: "plan review-table" },
       h("thead", null, h("tr", null, h("th", null, "그날 순서"), h("th", null, "인도 준수"),
         ships.map((id) => h("th", null, `${id} 지연`)), h("th", null, "블록 납기"), h("th", null, "비상 예산"), h("th", null, "이익"))),

@@ -2,8 +2,8 @@
 // 뒷장 메모(4.23): 부록 7관리 지표와 선배의 팁.
 // 모든 숫자는 엔진 결과에 있는 값이다. 막대 길이와 차트 좌표를 정하는 비율만 화면에서 구한다.
 
-import type { BlockEvalRow, DispatchMetrics, DispatchRule, Finding, Grade, Management, ManhourRow, MgmtPoint, Result, Scenario, ShipResult, SimEvent } from "./api";
-import { h, money, mount, num, pct, s, signed } from "./dom";
+import type { DispatchMetrics, DispatchRule, Finding, Grade, Management, MgmtPoint, Result, Scenario, ShipResult, SimEvent } from "./api";
+import { h, money, num, pct, s, signed } from "./dom";
 import { openOptions } from "./form";
 import { AUTHOR } from "./paper";
 import { COST_ITEMS, DISPATCH_INFO, EVENT_NAME, GRADE_COLOR, GRADE_NOTE, GRADE_TEXT, LEAD_TIME_STATES, STATE_INFO, STATION_COLOR } from "./labels";
@@ -421,7 +421,7 @@ const FOCUS_TIP: Record<string, string> = {
 
 /** 블록 우선순위 추천(4.25, D71): 블록 순서를 비우고 규칙만 바꿔 더 돌린 네 결과와 지금 계획. 실행 뒤에만 보인다.
  *  순위는 엔진이 정했다(인도 납기 → 블록 납기 → 이익 → 직행률). 화면은 숫자를 옮겨 적기만 한다. */
-function recommendCard(result: Result, onApplyRule?: (rule: DispatchRule) => void): HTMLElement | null {
+export function recommendCard(result: Result, onApplyRule?: (rule: DispatchRule) => void): HTMLElement | null {
   const rc = result.recommend;
   if (!rc) return null;
   const best = rc.rules.find((r) => r.rule === rc.best)!;
@@ -487,131 +487,3 @@ export function renderMemo(result: Result, scenario: Scenario, safetyWarnings?: 
     tipsCard(result.grade, scenario));
 }
 
-/** 조립 공정 실적서(4.25, D71): 블록 조립 실습의 평가서 클립보드에 끼운 낱장. 조립 공정에 대한 결과를 모은다.
- *  블록 납기와 공수, 배별 공정 납기, 블록 평가, 블록 우선순위 추천, 결정 돌아보기(조립 현장 배정). 등급 점수와는 무관하다. */
-export function renderAssemblyReport(result: Result, scenario: Scenario, onApplyRule?: (rule: DispatchRule) => void,
-  review?: HTMLElement | null): HTMLElement | null {
-  const bd = result.block_due;
-  if (!bd || !result.blocks) return null;
-  const stations = activeStationsOf(scenario);
-  const blockSt = new Set(result.blocks.map((b) => b.station));
-  // 공정별 블록 납기 준수(블록 공정만)
-  const perStation = stations.filter((st) => blockSt.has(st.id)).map((st) => {
-    const bs = result.blocks!.filter((b) => b.station === st.id);
-    return { st, on: bs.filter((b) => b.on_time).length, n: bs.length, late: bs.reduce((a, b) => a + b.late_days, 0) };
-  });
-  // 공수(4.29, D76): 표준 공수 ÷ 투입 공수(사람 × 근무시간). 투입은 작업 + 재작업 + 대기. 옛 회차에는 없다
-  const mh = result.manhours;
-  const mhNum = (v: number) => (Math.round(v * 10) / 10).toLocaleString("ko-KR");
-  const mhCells = (r: ManhourRow | undefined) => (r ? [
-    h("td", { title: `계획 표준 공수 ${mhNum(r.planned)} MH 가운데 해낸 만큼` }, mhNum(r.standard)),
-    h("td", { title: `작업 ${mhNum(r.work)} + 재작업 ${mhNum(r.rework)} + 대기 ${mhNum(r.idle)}` }, mhNum(r.input)),
-    h("td", { class: r.rework ? "late" : "" }, mhNum(r.rework)),
-    h("td", null, mhNum(r.idle)),
-    h("td", null, h("b", null, r.efficiency === null ? "—" : pct(r.efficiency, 0))),
-  ] : []);
-  const summary = h("div", { class: "asm-summary" },
-    h("div", { class: "qcd-card" }, h("small", null, "블록 납기 준수"), h("b", null, `${bd.on_time} / ${bd.blocks}`),
-      h("span", null, `준수율 ${bd.rate === null ? "—" : pct(bd.rate, 0)} · 늦은 날 합 ${bd.late_days}일`),
-      mh ? h("span", null, `공수 효율 ${mh.total.efficiency === null ? "—" : pct(mh.total.efficiency, 0)}`) : null),
-    h("table", { class: "tip-table asm-station-table" },
-      h("thead", null,
-        h("tr", null, h("th", { rowspan: mh ? 2 : 1 }, "블록 공정"), h("th", { rowspan: mh ? 2 : 1 }, "지킨 블록"), h("th", { rowspan: mh ? 2 : 1 }, "늦은 날 합"),
-          mh ? h("th", { colspan: 5, class: "mh-head" }, "공수 (MH = 사람 × 시간)") : null),
-        mh ? h("tr", null, ["표준", "투입", "재작업", "대기", "효율"].map((t) => h("th", { class: "mh-sub" }, t))) : null),
-      h("tbody", null, perStation.map((r) => h("tr", null,
-        h("th", null, h("i", { class: "swatch", style: { background: STATION_COLOR[r.st.id] } }), r.st.name),
-        h("td", null, `${r.on} / ${r.n}`), h("td", null, `${r.late}일`), ...mhCells(mh?.stations[r.st.id])))),
-      mh ? h("tfoot", null, h("tr", null, h("th", null, "합계"), h("td", null, `${bd.on_time} / ${bd.blocks}`), h("td", null, `${bd.late_days}일`),
-        ...mhCells(mh.total))) : null));
-  // 배별 공정 납기: 마친 날 / 공정 납기, 넘겼으면 붉게. 조립 공정(블록 공정)은 진하게, 절단·가공·탑재는 옅게 앞뒤 맥락으로
-  // (4.28.3 사용자 "가": 앞 공정에서 이미 늦었는지(원인), 끝내 인도가 늦었는지(결과)를 같은 줄에서 읽는다)
-  const ctx = (id: string) => (blockSt.has(id) ? "" : "ctx");
-  const dueTable = h("table", { class: "tip-table asm-due-table" },
-    h("thead", null, h("tr", null, h("th", null, "배"), stations.map((st) => h("th", { class: ctx(st.id) },
-      blockSt.has(st.id) ? h("i", { class: "swatch", style: { background: STATION_COLOR[st.id] } }) : null, st.name)),
-      scenario.project_buffer ? h("th", null, "버퍼") : null)),
-    h("tbody", null, result.ships.map((sh) => h("tr", null,
-      h("th", null, sh.id),
-      stations.map((st) => {
-        const d = sh.station_dues?.[st.id];
-        if (!d) return h("td", { class: ctx(st.id) }, "—");
-        return h("td", { class: [ctx(st.id), d.late_days ? "late" : ""].filter(Boolean).join(" "), title: `공정 납기 ${d.due}일` },
-          d.end === null ? "못 마침" : `${d.end}일`, h("small", null, d.late_days ? ` +${d.late_days}` : ""));
-      }),
-      // 프로젝트 버퍼(4.36): 고른 버퍼와 남은 버퍼(납기 − 마친 날). 공정 칸의 +일은 계획보다 늦은 날이라 버퍼를 먹은 만큼이다
-      scenario.project_buffer ? bufferTd(sh) : null))));
-  // 순서(4.35.1 사용자): 블록 납기와 공수 → 공정 납기 → 블록 평가 → 규칙 추천 → 결정 돌아보기(낱장에서 이 장 아래로)
-  return h("div", { class: "asm-report" },
-    h("section", { class: "report-sec" }, h("h3", null, mh ? "블록 납기와 공수" : "블록 납기"), summary,
-      mh ? h("p", { class: "hint" }, "공수 효율 = 표준 공수 ÷ 투입 공수. 투입은 작업장에 보낸 사람 × 근무시간(정규 8, 잔업 10)이고, 그 가운데 재작업과 대기(블록을 끝냈는데 들어올 블록이 없어 쉰 시간)가 효율을 깎습니다.") : null),
-    h("section", { class: "report-sec" }, h("h3", null, "공정 납기 (마친 날, 붉은 칸은 납기를 넘김)"), dueTable,
-      h("p", { class: "hint" }, scenario.project_buffer
-        ? "공정 납기는 계획(변수 없이 돌린 실행)에서 끝나는 날이라, +일은 계획보다 늦은 날입니다. 늦은 날은 배 끝의 버퍼에서 메워지고, 버퍼를 넘기면 인도가 늦습니다. 진한 칸이 조립 공정입니다."
-        : "진한 칸이 조립 공정입니다. 옅은 칸은 앞뒤 맥락으로, 절단·가공에서 이미 늦었으면 원인이 조립 앞에 있고, 탑재가 늦었으면 인도가 늦었습니다.")),
-    result.block_eval ? h("section", { class: "report-sec" }, h("h3", null, "블록 평가"), blockEval(result, scenario)) : null,
-    h("section", { class: "report-sec" }, recommendCard(result, onApplyRule)),
-    review ? h("section", { class: "report-sec asm-review" }, h("h3", null, `결정 돌아보기 (몰리는 날 ${result.review!.length}번)`), review) : null);
-}
-
-function bufferTd(sh: Result["ships"][number]): HTMLElement {
-  const done = sh.completed_day ?? sh.delivered_day;
-  if (done === null || done === undefined) return h("td", { class: "late" }, "못 마침");
-  const left = sh.due_day - done;
-  return h("td", { class: left < 0 ? "late" : "", title: `고른 버퍼 ${sh.buffer ?? 0}일, ${done}일에 마침` },
-    left < 0 ? `${-left}일 지연` : `${left}일 남음`, h("small", null, ` /${sh.buffer ?? 0}일`));
-}
-
-/** 블록 평가(4.32, 사용자 3.2): 전체 / 조립 공정별 / 작업장별 / 선박별. 단계는 위 탭으로 넘긴다(엔진 block_eval을 표로) */
-let evalLevel: "all" | "stations" | "units" | "ships" = "stations";
-const WAIT_NAME: Record<string, string> = { material_wait: "자재", station_wait: "작업장", pair_wait: "짝", labor_wait: "인력" };
-const ACTION_SHORT: Record<string, string> = { overtime: "잔업", extra: "특근", outsource: "외주", defer: "감수" };
-
-function blockEval(result: Result, scenario: Scenario): HTMLElement {
-  const ev = result.block_eval!;
-  const name = Object.fromEntries(scenario.stations.map((st) => [st.id, st.name]));
-  const holder = h("div", { class: "block-eval" });
-  const label = (key: string) => {
-    if (evalLevel === "stations") return [h("i", { class: "swatch", style: { background: STATION_COLOR[key] } }), name[key]];
-    if (evalLevel === "units") {
-      const [sid, u] = key.split(":");
-      return [h("i", { class: "swatch", style: { background: STATION_COLOR[sid] } }), u === "out" ? `${name[sid]} 외주` : `${name[sid]} 작업장${u}`];
-    }
-    if (evalLevel === "ships") {
-      const sh = result.ships.find((s) => s.id === key);
-      return [`${key} ${sh?.type_name ?? ""}`];
-    }
-    return ["조립 전체"];
-  };
-  const draw = () => {
-    const rows: [string, BlockEvalRow][] = evalLevel === "all" ? [["all", ev.all]] : Object.entries(ev[evalLevel]);
-    const tab = (id: typeof evalLevel, text: string) => h("button", {
-      type: "button", class: `tab${evalLevel === id ? " active" : ""}`, onclick: () => { evalLevel = id; draw(); },
-    }, text);
-    mount(holder,
-      h("div", { class: "tabs eval-tabs", role: "tablist" }, tab("all", "전체"), tab("stations", "조립 공정별"), tab("units", "작업장별"), tab("ships", "선박별")),
-      h("table", { class: "tip-table eval-table" },
-        h("thead", null,
-          h("tr", null, h("th", { rowspan: 2 }, "구분"), h("th", { rowspan: 2 }, "블록"), h("th", { rowspan: 2 }, "납기 준수"),
-            h("th", { rowspan: 2 }, "지연"), h("th", { colspan: 3 }, "공수 MH"), h("th", { colspan: 4 }, "대기(블록·일)"),
-            h("th", { rowspan: 2 }, "조치"), h("th", { rowspan: 2 }, "비상 예산")),
-          h("tr", null, ["표준", "작업", "재작업"].map((t) => h("th", { class: "mh-sub" }, t)),
-            Object.values(WAIT_NAME).map((t) => h("th", { class: "mh-sub" }, t)))),
-        h("tbody", null, rows.map(([key, r]) => h("tr", null,
-          h("th", null, ...label(key)),
-          h("td", null, String(r.blocks)),
-          h("td", { class: r.on_time < r.blocks ? "late" : "" }, `${r.on_time} / ${r.blocks}`, h("small", null, ` ${pct(r.on_time / Math.max(1, r.blocks), 0)}`)),
-          h("td", { class: r.late_days ? "late" : "" }, r.late_blocks ? `${r.late_blocks}블록 · ${r.late_days}일` : "-"),
-          h("td", null, num(r.std_mh, 0)), h("td", null, num(r.mh, 0)), h("td", { class: r.rework_mh ? "late" : "" }, num(r.rework_mh, 0)),
-          Object.keys(WAIT_NAME).map((w) => h("td", null, r.waits[w] ? String(r.waits[w]) : "-")),
-          h("td", null, Object.entries(r.actions).map(([k, n]) => `${ACTION_SHORT[k]} ${n}`).join(" · ") || "-"),
-          h("td", null, r.emergency ? num(r.emergency, 0) : "-"))))),
-      h("p", { class: "hint" }, "대기는 블록이 그 상태로 보낸 날의 합(블록·일)입니다. 작업장 대기가 많으면 일감이 몰린 곳, 짝 대기가 많으면 짝 블록 순서가 어긋난 곳, 자재 대기는 입고·운반을 봅니다. 공수 작업은 재작업을 포함합니다."));
-  };
-  draw();
-  return holder;
-}
-
-function activeStationsOf(scenario: Scenario) {
-  return scenario.stations.filter((st) => !scenario.skip?.includes(st.id));
-}
