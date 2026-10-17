@@ -312,7 +312,7 @@ export function renderReport(result: Result, scenario: Scenario, maxRate: number
     h("p", { class: "hint" }, "인건비는 일하지 않아도 나가는 고정비입니다. 쉰 인일이 많으면 인원을 줄여도 됩니다."));
   const maxCost = Math.max(1, ...COST_ITEMS.map((c) => result.costs[c.key] ?? 0));
   const costCard = card("원가 내역",
-    // 비상 조치(4.32)는 조립 현장 배정에서만 줄을 보인다
+    // 비상 조치(4.32)는 조립 공정 실습(작업 배정)에서만 줄을 보인다
     h("div", { class: "cost-list" }, COST_ITEMS.filter((item) => (item.key !== "emergency" || scenario.decision_stations) && (item.key !== "storage" || scenario.project_buffer)).map((item) => {
       const value = result.costs[item.key] ?? 0;
       return h("div", { class: "cost-row", title: item.note },

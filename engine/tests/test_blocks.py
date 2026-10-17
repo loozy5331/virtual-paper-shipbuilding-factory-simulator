@@ -388,13 +388,15 @@ class DrillScenario(unittest.TestCase):
         # 사다리(D67) 밖 실습: 첫 화면 목록의 맨 끝, track "drill"(난이도 점 대신 "실습" 카드)
         # 4.30(D77): 조립 현장 배정(assembly)이 블록 조립 실습 다음. 첫 화면은 실습을 사다리 아래 줄에 따로 놓는다
         # 4.32.1(사용자): 조립 공정 실습은 하나만. 블록 조립 실습은 목록에서 숨기고 불러오기는 그대로
-        # 4.43(D91): 작업 배정(dispatch)이 조립 현장 배정 다음
+        # 4.43(D91): 작업 배정(dispatch)이 조립 현장 배정 다음. 4.46(D94, 사용자): 조립 현장 배정을 지워 작업 배정 하나
         listed = list_scenarios()
-        self.assertEqual([(s["id"], s.get("track")) for s in listed[-2:]], [("assembly", "drill"), ("dispatch", "drill")])
+        self.assertEqual([(s["id"], s.get("track")) for s in listed[-1:]], [("dispatch", "drill")])
         self.assertNotIn("block", [s["id"] for s in listed])
-        self.assertTrue(all("track" not in s for s in listed[:-2]))
+        self.assertNotIn("assembly", [s["id"] for s in listed])
+        self.assertTrue(all("track" not in s for s in listed[:-1]))
         self.assertTrue(load_scenario("block")["block_mode"])
-        self.assertTrue(load_scenario("assembly")["block_mode"])
+        with self.assertRaises(ConfigError):
+            load_scenario("assembly")
 
     def test_other_scenarios_have_no_blocks(self):
         r = simulate(load_presets("simple")[1]["config"], baseline=False)
