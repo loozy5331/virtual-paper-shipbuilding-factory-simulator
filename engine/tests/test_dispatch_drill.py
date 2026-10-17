@@ -141,12 +141,63 @@ class Why(unittest.TestCase):
         self.assertEqual(sum(it["days"] for it in w["items"]), w["days"])   # 합 = 계획보다 늦은 날
 
 
+class RootCause(unittest.TestCase):
+    """4.48(D96, 사용자 "블록 지연에 대응하는 데서 끝나지 않고 근본 원인을 찾아 해결(여유 3일)"): 소조립 키트도 발주 방식을 따른다.
+    키트의 날(kits)은 필요한 날 = 역산·여유 0일의 입고일. 여유 3일이면 사흘 지연을 흡수해 10일의 몰림이 없다."""
+
+    def go(self, buffer=0, **decision):
+        cfg = preset("managed")
+        cfg["jit_buffer"] = buffer
+        if decision:
+            cfg["decisions"] = [{"day": SCENE, **decision}]
+            cfg["decisions_end"] = True
+        return simulate(cfg)
+
+    def test_kits_follow_ordering(self):
+        from shipyard.sim import kit_arrivals
+        sc = load_scenario("dispatch")
+        a = next(o for o in sc["orders"] if o["id"] == "A")
+        cfg = preset("managed")
+        self.assertEqual(kit_arrivals({**cfg, "ordering": "jit"}, sc, a), {"paint": 7})
+        self.assertEqual(kit_arrivals({**cfg, "ordering": "jit", "jit_buffer": 3}, sc, a), {"paint": 4})
+        self.assertEqual(kit_arrivals({**cfg, "ordering": "bulk"}, sc, a), {"paint": 6})    # 1일 발주 + 리드타임 5일
+        self.assertEqual(kit_arrivals({**cfg, "ordering": "late"}, sc, a), {"paint": 12})   # 필요한 날 발주 + 5일
+
+    def test_buffer_removes_scene(self):
+        self.assertEqual(self.go()["pending"]["day"], SCENE)                 # 1회차: 10일에 몰린다
+        r = self.go(3)
+        self.assertIsNone(r.get("pending"))                                   # 여유 3일: 물을 날이 없다
+        self.assertEqual(late(r), {})
+        waits = lambda res: sum(1 for s in res["ships"] for d in s["daily"] if d["state"] == "material_wait" and d.get("station") == "sub_assembly")
+        # 소조립 앞 자재 대기 16일 → 2일(계획이 키트가 일찍 온다고 보고 B·C 착수를 당겨 하루씩 남는다, 버퍼 안)
+        self.assertEqual((waits(self.go()), waits(r)), (16, 2))
+
+    def test_root_beats_symptom(self):
+        # 근본 해결(여유 3일)이 증상 대응(10일에 납기 빠른 순)보다 점수가 높고, 여유일은 3일이 가장 좋다
+        root, symptom = self.go(3), self.go(policy={"sub_assembly": "edd"})
+        self.assertGreater(root["grade"]["score"], symptom["grade"]["score"])
+        scores = [self.go(b)["grade"]["score"] for b in range(4)]
+        self.assertEqual(max(range(4), key=lambda b: scores[b]), 3)
+        # 여유는 공짜가 아니다: 키트가 한꺼번에 들어와 작업장 앞에서 기다리는 동안 재고비
+        self.assertGreater(root["costs"]["holding"], self.go()["costs"]["holding"])
+
+
 class Grade(unittest.TestCase):
     """등급 조율(D70의 예외, 조립 현장 배정처럼): B안은 조치 요청을 넘기면 D가 늦어 B, 납기 빠른 순이면 A, 가공·의장 3명씩이면 S."""
 
     def test_presets(self):
         grades = {p["id"]: simulate(p["config"])["grade"]["grade"] for p in load_presets("dispatch")}
-        self.assertEqual(grades, {"unmanaged": "C", "managed": "B", "all_in": "B"})
+        # 4.48(D96): A안(늦은 발주)은 키트도 늦게 발주되어(필요한 날 + 리드타임 5일 + 지연 3일) 다섯 척이 모두 늦는다(F)
+        self.assertEqual(grades, {"unmanaged": "F", "managed": "B", "all_in": "B"})
+
+    def test_root_tips_reach_s(self):
+        # 4.48: 근본 해결 + 가공·의장 3명씩이면 조치 요청 없이 S
+        cfg = preset("managed")
+        cfg["pools"].update(processing=3, outfitting=3)
+        cfg["jit_buffer"] = 3
+        r = simulate(cfg)
+        self.assertIsNone(r.get("pending"))
+        self.assertEqual(r["grade"]["grade"], "S")
 
     def test_tips_reach_s(self):
         cfg = preset("managed")

@@ -712,6 +712,29 @@ def jit_buffer(config: dict[str, Any], scenario: dict[str, Any]) -> int:
     return config.get("jit_buffer", scenario["ordering"]["jit"]["buffer_days"])
 
 
+def kit_arrivals(config: dict[str, Any], scenario: dict[str, Any], order: dict[str, Any]) -> dict[str, int]:
+    """미리 발주해 둔 키트(수주 항목 kits)의 입고 예정일(지연 전, 4.48 D96).
+
+    kits의 날은 그 키트가 필요한 날(= 역산 발주 여유 0일의 입고일)이다. 키트도 발주 방식을 따른다:
+    역산 발주는 그날 − 여유일, 일괄 발주는 1일 발주 + 리드타임, 늦은 발주는 필요한 날 발주 + 리드타임,
+    발주 방식 없이 발주일을 직접 적었으면 그날 + 리드타임(적지 않았으면 필요한 날)."""
+    lead = {m["id"]: m["lead_days"] for m in scenario["materials"]}
+    ordering = config.get("ordering")
+    out = {}
+    for mid, need in (order.get("kits") or {}).items():
+        if ordering == "jit":
+            day = need - jit_buffer(config, scenario)
+        elif ordering == "bulk":
+            day = 1 + lead[mid]
+        elif ordering == "late":
+            day = need + lead[mid]
+        else:
+            ordered = ((config.get("ships") or {}).get(order["id"], {}).get("order_days") or {}).get(mid)
+            day = need if ordered is None else ordered + lead[mid]
+        out[mid] = max(1, day)
+    return out
+
+
 def supply_delay_days(scenario: dict[str, Any], ship_id: str, material_id: str) -> int:
     """입고 지연(4.13, D59): 그 발주가 며칠 늦게 들어오는지. 시나리오가 supply_delays를 켜지 않았으면 0.
 
@@ -1703,8 +1726,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         arrivals.setdefault(1 + materials[mid]["lead_days"], []).append((mid, qty, None))
     # 미리 발주해 둔 자재(4.43, D91): 수주 항목의 kits(자재 → 입고 예정일)는 수주 때 발주해 둔 그 배 몫이다. 1일 이하면 처음부터
     # 작업장에 있고(아래 kit_ready), 뒤 날이면 협력사가 그날 아침 그 자재를 쓰는 작업장으로 바로 납품한다(창고·지게차를 거치지 않는다).
-    # 입고 지연은 다른 발주처럼 난수표로 정하고 원래 입고일에 알린다. 이 자재는 설정의 발주일을 보지 않는다
-    own_kits = [dict(o.get("kits") or {}) for o in orders]
+    # 입고 지연은 다른 발주처럼 난수표로 정하고 원래 입고일에 알린다. 입고 예정일은 발주 방식을 따른다(4.48, kit_arrivals)
+    own_kits = [kit_arrivals(config, scenario, o) for o in orders]
     fixed_arrival: list[dict[str, int]] = [{} for _ in orders]   # 입고 예정일(지연 전)
     direct: dict[int, list[tuple[int, str]]] = {}                # 작업장 직납일 → (배, 자재)
     for i, order in enumerate(orders):
