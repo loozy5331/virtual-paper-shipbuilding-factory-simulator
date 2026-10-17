@@ -8,7 +8,7 @@
 // 공정을 들여다보는 길: 전경의 정반, 간트 막대, 평가서의 "작업 현황에서 보기" → 오른쪽 모니터의 공정 확대(재생 중에도 오늘을 본다).
 // 사람의 얼굴과 이름은 작업모를 쓰고 현장(3D)에 직접 나가야 보인다(D24). 화면에는 "CCTV"라는 말을 쓰지 않는다(감시처럼 느껴져서).
 
-import { activeStations, api, ApiError, blockStations, type ClassBest, type Config, type DispatchRule, type Finding, type Preview, type Result, type ScenarioPayload } from "./api";
+import { activeStations, api, ApiError, blockStations, type ClassBest, type Config, type DispatchRule, type Finding, type Preview, type Result, type ScenarioPayload, setBlockNames } from "./api";
 import { h, mount, num, pct, s as svgEl } from "./dom";
 import { shipProfile } from "./profile";
 import { renderDesk } from "./desk";
@@ -507,6 +507,7 @@ async function switchScenario(id: string): Promise<void> {
     return;
   }
   setShipLooks(data.scenario.ship_types);   // 선종 그림(4.17)
+  setBlockNames(data.scenario.block_names);   // 블록 표시 이름(4.43)
   const first = data.presets.find((p) => p.id === "managed") ?? data.presets[0];
   const last = state.runs.map((r, i) => (r.scenario === id ? i : -1)).filter((i) => i >= 0).pop();
   // 앞 분기의 설정으로 보낸 미리보기가 늦게 오면 버린다(배 수가 달라 계획 간트가 깨진다).
@@ -1855,6 +1856,7 @@ async function start(): Promise<void> {
     return;
   }
   setShipLooks(data.scenario.ship_types);   // 선종 그림(4.17)
+  setBlockNames(data.scenario.block_names);   // 블록 표시 이름(4.43)
 
   const first = data.presets.find((p) => p.id === "managed") ?? data.presets[0];
   state = {

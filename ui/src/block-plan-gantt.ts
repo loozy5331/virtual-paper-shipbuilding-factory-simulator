@@ -10,7 +10,7 @@
 // 보인다(계획 공정 기간은 조금 진하게). 막대가 띠 밖에 있으면 지금 자리까지 넓힌다(끌 때 막대가 반대쪽으로 튀지 않게).
 // 화면은 계산하지 않는다: 착수일을 바꾸면 미리보기가 새 막대를 준다(작업장이 차 있으면 정한 날보다 늦게 놓일 수 있다).
 
-import { blockLabel, dayHour, type BlockPlan, type BlockPlanItem, type Scenario, type Span } from "./api";
+import { type BlockPlan, type BlockPlanItem, blockShort, blockTitle, dayHour, type Scenario, type Span } from "./api";
 import { h, s } from "./dom";
 import { STATE_INFO, STATION_COLOR, STATION_TEXT } from "./labels";
 
@@ -120,9 +120,9 @@ export function renderBlockGantt(ctx: BlockGanttContext): SVGElement {
         const me = b.ship === ship;
         const bx = Math.max(LEFT, at(b.start, b.start_h));
         const bw = Math.max(1, Math.min(at(b.end, b.end_h), LEFT + span * dayW) - bx);
-        const label = me ? blockLabel(st.id, b.no) : b.ship;
+        const label = me ? blockShort(b.ship, st.id, b.no) : b.ship;
         g.append(s("rect", { x: bx, y: uy + 2.5, width: bw, height: UNIT_H - 5, rx: 1, fill: me ? STATION_COLOR[st.id] : OTHER, class: "unit-bar" },
-          s("title", null, `${u}호 작업장 · ${me ? "" : "다른 배 "}${b.ship} ${blockLabel(st.id, b.no)} ${dayHour(b.start, b.start_h)} ~ ${dayHour(b.end, b.end_h)} · 표준 ${num(b.std_mh)} MH`)));
+          s("title", null, `${u}호 작업장 · ${me ? "" : "다른 배 "}${blockTitle(b.ship, st.id, b.no)} ${dayHour(b.start, b.start_h)} ~ ${dayHour(b.end, b.end_h)} · 표준 ${num(b.std_mh)} MH`)));
         if (bw >= label.length * 5 + 2) {
           g.append(s("text", { x: bx + bw / 2, y: uy + UNIT_H - 3.5, class: "unit-label", fill: me ? STATION_TEXT[st.id] ?? "#fff" : "#4b5a51" }, label));
         }
@@ -161,23 +161,23 @@ export function renderBlockGantt(ctx: BlockGanttContext): SVGElement {
       const work = `${num(b.std_mh)} MH · 2명 × ${num(len)}시간`;
       const row = s("g", {
         class: `block-row${b.risk ? " risk" : ""}${pinned ? " pinned" : ""}`, tabindex: 0, role: "listitem", "data-block": id, "data-own-keys": "",
-        "aria-label": `${st.name} ${blockLabel(st.id, b.no)} ${dayHour(b.start, b.start_h)}~${dayHour(b.end, b.end_h)}, ${work}, ${b.unit}호 작업장, 납기 ${b.due}일`
+        "aria-label": `${blockTitle(st.name, st.id, b.no)} ${dayHour(b.start, b.start_h)}~${dayHour(b.end, b.end_h)}, ${work}, ${b.unit}호 작업장, 납기 ${b.due}일`
           + `${waitedH > 0 ? `, 작업장 대기 ${num(waitedH)}시간` : ""}${pinned ? `, 착수 ${pinText}` : ""}${b.risk ? ", 계획상 위험" : ""}`,
       });
       const bar = s("g", { class: "block-drag" },
         s("rect", {
           x: x0, y: ry + (ROW_H - BAR_H) / 2, width: Math.max(1, x1 - x0), height: BAR_H, rx: 2,
           fill: STATION_COLOR[st.id], class: "block-bar",
-        }, s("title", null, `${ship} ${blockLabel(st.id, b.no)} ${dayHour(b.start, b.start_h)} ~ ${dayHour(b.end, b.end_h)} · ${work} · ${b.unit}호 작업장 · 납기 ${b.due}일${pinned ? ` · 착수 ${pinText}` : ""}`)));
+        }, s("title", null, `${blockTitle(ship, st.id, b.no)} ${dayHour(b.start, b.start_h)} ~ ${dayHour(b.end, b.end_h)} · ${work} · ${b.unit}호 작업장 · 납기 ${b.due}일${pinned ? ` · 착수 ${pinText}` : ""}`)));
       row.append(
         s("rect", { x: 0, y: ry, width: W, height: ROW_H, class: "plan-hit" }),
-        s("text", { x: 14, y: ry + ROW_H - 3, class: "ship-id small" }, blockLabel(st.id, b.no)),
+        s("text", { x: 14, y: ry + ROW_H - 3, class: "ship-id small" }, blockShort(b.ship, st.id, b.no)),
       );
       // 들어갈 수 있었는데 작업장이 차서 기다린 시간(다른 블록을 하는 중): 막대 앞 얇은 띠
       if (waitedH > 0) {
         // 대기는 얇은 띠(4.29.2 사용자: 블록 막대와 같은 굵기는 어색해 되돌림)
         row.append(s("rect", { x: at(b.ready, b.ready_h ?? 0), y: ry + ROW_H / 2 - 1.5, width: Math.max(1, x0 - at(b.ready, b.ready_h ?? 0)), height: 3, fill: WAIT.color, class: "block-wait" },
-          s("title", null, `${ship} ${blockLabel(st.id, b.no)} ${WAIT.name} ${num(waitedH)}시간(${dayHour(b.ready, b.ready_h ?? 0)} ~ ${dayHour(b.start, b.start_h)}): 작업장에서 다른 블록을 하는 중`)));
+          s("title", null, `${blockTitle(ship, st.id, b.no)} ${WAIT.name} ${num(waitedH)}시간(${dayHour(b.ready, b.ready_h ?? 0)} ~ ${dayHour(b.start, b.start_h)}): 작업장에서 다른 블록을 하는 중`)));
       }
       row.append(bar, s("line", { x1: x(b.due + 1), x2: x(b.due + 1), y1: ry + 1, y2: ry + ROW_H - 1, class: "due block-due" }));
       if (b.risk) row.append(s("text", { x: Math.min(x1 + 2, W - RIGHT), y: ry + ROW_H - 3, class: "plan-late" }, "!"));
@@ -271,7 +271,7 @@ export function renderAllBlockGantt(scenario: Scenario, plan: BlockPlan, station
         const bar = s("g", null, s("title", null, `${id} ${dayHour(b.start, b.start_h)} ~ ${dayHour(b.end, b.end_h)} · 블록 납기 ${b.due}일${b.risk ? " · 계획상 위험" : ""}`),
           s("rect", { x: x0 + 0.5, y: y + 2, width: Math.max(1, w - 1), height: U - 6, rx: 2, fill: STATION_COLOR[g.st.id], opacity: shade,
             class: b.risk ? "risk" : "" }));
-        const label = w >= 34 ? `${b.ship} ${blockLabel(g.st.id, b.no)}` : w >= 14 ? b.ship : "";
+        const label = w >= 34 ? `${blockTitle(b.ship, g.st.id, b.no)}` : w >= 14 ? b.ship : "";
         if (label) bar.append(s("text", { x: x0 + w / 2, y: y + U / 2 + 2, class: "bar-name", fill: STATION_TEXT[g.st.id] ?? "#fff" }, label));
         svg.append(bar);
       }

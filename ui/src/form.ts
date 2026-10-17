@@ -274,7 +274,9 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
     ] : [
     h("div", { class: "plan-head" },
       h("b", null, "계획 간트"),
-      h("small", null, "배 줄을 좌우로 끌거나, 줄을 누르고 ←/→로 착수 예정일을 옮깁니다.")),
+      h("small", null, scenario.fixed_start
+        ? `블록이 이미 작업장 앞에 와 있어 착수일은 ${scenario.fixed_start}일로 고정입니다.`   // 4.43(D91)
+        : "배 줄을 좌우로 끌거나, 줄을 누르고 ←/→로 착수 예정일을 옮깁니다.")),
     h("div", { class: "plan-host", "data-plan": "" }),
     h("div", { class: "legend plan-legend" },
       activeStations(scenario).map((st) => h("span", null, h("i", { style: { background: STATION_COLOR[st.id] } }), st.name)),

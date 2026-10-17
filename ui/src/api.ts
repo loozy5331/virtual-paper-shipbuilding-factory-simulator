@@ -238,6 +238,12 @@ export interface Scenario {
   delivery?: { criteria: string[] };
   orders: Order[];
   blocks: Record<string, number>;
+  /** 블록 수를 시나리오가 직접 적은 공정(4.43, D91) */
+  block_stations?: string[];
+  /** 블록 표시 이름(4.43): 엔진 블록 이름 → 현장 블록 번호 */
+  block_names?: Record<string, string>;
+  /** 착수일 고정(4.43): 장면에서 시작하는 실습 */
+  fixed_start?: number;
   rules: {
     max_workers_per_station: number;
     max_pool: number;
@@ -273,7 +279,8 @@ export function planStations(scenario: Scenario): { id: string; name: string; co
 export function blockStations(scenario: Scenario): { id: string; name: string; count: number }[] {
   if (!scenario.block_mode) return [];
   return activeStations(scenario)
-    .filter((st) => st.trade === "assembly" && (scenario.blocks[st.id] ?? 1) > 1)
+    // 4.43(D91): 시나리오가 블록 수를 직접 적은 공정(block_stations)은 1개여도 블록 공정
+    .filter((st) => st.trade === "assembly" && ((scenario.blocks[st.id] ?? 1) > 1 || !!scenario.block_stations?.includes(st.id)))
     .map((st) => ({ id: st.id, name: st.name, count: scenario.blocks[st.id] }));
 }
 
@@ -288,6 +295,22 @@ export function blockId(ship: string, station: string, no: number): string {
 /** 화면에 쓰는 짧은 블록 이름: 소3 · 중2 · PE1 */
 export function blockLabel(station: string, no: number): string {
   return `${BLOCK_SHORT[station] ?? station}${no}`;
+}
+
+/** 시나리오의 블록 표시 이름(4.43, D91: 작업 배정 실습의 A-101 같은 현장 블록 번호). 시나리오를 열 때 main.ts가 넣는다 */
+let blockNames: Record<string, string> = {};
+export function setBlockNames(names: Record<string, string> | undefined): void {
+  blockNames = names ?? {};
+}
+
+/** 배와 함께 쓰는 블록 이름: "S1 중2", 표시 이름이 있으면 그 이름(A-101) */
+export function blockTitle(ship: string, station: string, no: number): string {
+  return blockNames[blockId(ship, station, no)] ?? `${ship} ${blockLabel(station, no)}`;
+}
+
+/** 배 줄 안에서 쓰는 짧은 블록 이름: "중2", 표시 이름이 있으면 그 이름 */
+export function blockShort(ship: string, station: string, no: number): string {
+  return blockNames[blockId(ship, station, no)] ?? blockLabel(station, no);
 }
 
 /** 이 시나리오가 쓰는 공정(간이공정은 일부가 빠진다, 4.4) */

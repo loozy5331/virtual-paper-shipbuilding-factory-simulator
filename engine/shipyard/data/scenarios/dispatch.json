@@ -1,0 +1,442 @@
+{
+  "id": "dispatch",
+  "name": "작업 배정",
+  "summary": "수업 주제 07 \"해야 할 작업은 많은데 사용할 수 있는 시간이 부족하다!\"의 현장. 1일 아침 중조립 작업장 앞에 다섯 척의 블록(A-101 · B-203 · C-115 · D-208 · E-320)이 와 있다. 오늘 가용 40시간에 필요 80시간. 블록마다 탑재에 넘길 때까지 남은 기간, 필요 작업시간, 자재 준비가 다르다. 조치 요청에서 어떤 블록부터 할지와 블록별 조치를 정해 탑재 일정과 인도 납기를 지킨다.",
+  "track": "drill",
+  "level": 3,
+  "block_mode": true,
+  "period": "실습",
+  "days": 8,
+  "fixed_start": 1,
+  "_scene_comment": "장면에서 시작하는 실습(4.43, D91): 배마다 남은 일은 중조립 블록 하나(work.block_assembly, 블록 1개)와 탑재. station_due.block_assembly = 탑재에 넘길 날(인계 기한), 계약 납기 = 그다음 날(탑재 1일). kits.paint = 의장품 키트가 작업장에 오는 날(1일 이하는 처음부터 작업장에, C는 3일 입고). 착수일은 1일로 고정(fixed_start)",
+  "orders": [
+    {
+      "id": "A",
+      "type": "BULK",
+      "order_day": 1,
+      "due_day": 2,
+      "price": 1500,
+      "work": {
+        "block_assembly": 2,
+        "erection": 1
+      },
+      "station_due": {
+        "block_assembly": 1
+      },
+      "kits": {
+        "paint": 0
+      }
+    },
+    {
+      "id": "B",
+      "type": "CONT",
+      "order_day": 1,
+      "due_day": 3,
+      "price": 1800,
+      "work": {
+        "block_assembly": 3,
+        "erection": 1
+      },
+      "station_due": {
+        "block_assembly": 2
+      },
+      "kits": {
+        "paint": 0
+      }
+    },
+    {
+      "id": "C",
+      "type": "FEEDER",
+      "order_day": 1,
+      "due_day": 4,
+      "price": 1400,
+      "work": {
+        "block_assembly": 1.5,
+        "erection": 1
+      },
+      "station_due": {
+        "block_assembly": 3
+      },
+      "kits": {
+        "paint": 3
+      }
+    },
+    {
+      "id": "D",
+      "type": "TUG",
+      "order_day": 1,
+      "due_day": 2,
+      "price": 1000,
+      "work": {
+        "block_assembly": 1,
+        "erection": 1
+      },
+      "station_due": {
+        "block_assembly": 1
+      },
+      "kits": {
+        "paint": 0
+      }
+    },
+    {
+      "id": "E",
+      "type": "PCTC",
+      "order_day": 1,
+      "due_day": 5,
+      "price": 1700,
+      "work": {
+        "block_assembly": 2.5,
+        "erection": 1
+      },
+      "station_due": {
+        "block_assembly": 4
+      },
+      "kits": {
+        "paint": 0
+      }
+    }
+  ],
+  "initial_stock": {
+    "paper": 0,
+    "paint": 0,
+    "flag": 0,
+    "insulation": 0
+  },
+  "kpi": {
+    "revenue": 7400,
+    "profit": 2700,
+    "on_time_rate": 1.0,
+    "first_pass_yield": 0.9
+  },
+  "decision_stations": [
+    "block_assembly"
+  ],
+  "contingency": {
+    "block_assembly": 200
+  },
+  "contingency_max": 500,
+  "skip": [
+    "cutting",
+    "processing",
+    "sub_assembly",
+    "painting",
+    "pre_outfitting",
+    "grand_assembly",
+    "quay_outfitting",
+    "sea_trial"
+  ],
+  "blocks": {
+    "block_assembly": 1
+  },
+  "block_names": {
+    "A-BA1": "A-101",
+    "B-BA1": "B-203",
+    "C-BA1": "C-115",
+    "D-BA1": "D-208",
+    "E-BA1": "E-320"
+  },
+  "material_names": {
+    "_comment": "4.42.1(D90): 중조립 자재 키트는 숫자 규칙은 물감 그대로, 이름만 의장품 키트(블록 단계에서 다는 배관·브래킷)",
+    "paint": {
+      "name": "의장품 키트",
+      "cheap_name": "저가 의장품 키트"
+    }
+  },
+  "station_material": {
+    "block_assembly": "paint"
+  },
+  "unlocks": "작업 배정 실습입니다. 중조립과 탑재 두 공정만 합니다. 다섯 척 모두 남은 일은 중조립 블록 하나와 탑재뿐이고, 1일 아침 블록이 모두 중조립 작업장 앞에 와 있습니다(착수일은 1일로 고정). 블록마다 탑재에 넘길 기한(인계 기한)이 있고, 넘긴 다음 날 탑재를 마치면 인도합니다. C의 의장품 키트는 3일에 들어옵니다. 중조립을 직접 대응으로 두면 1일 아침 조치 요청이 뜹니다. 작업장(정반)과 도크는 2곳까지, 공법·인력 종류·호이스트·나눠 하기는 잠겨 있습니다.",
+  "tips": [
+    "남은 기간이 짧은 블록부터 해. 1일 조치 요청에서 정책을 납기 빠른 순으로 바꾸면 A·D를 오늘 넘기고 다섯 척 모두 지켜. 선박 순서(지금대로)면 D가, 작업 짧은 순이면 B가 하루 늦어.",
+    "C-115는 의장품 키트가 3일에 들어와. 그 전에는 정반에 올릴 수 없으니 순서에서 빼고 봐. 인계 기한(3일) 안에 들어오니 긴급 자재 조달은 돈만 써. 잔업·특근도 순서를 바꾸지 않으면 D를 살리지 못해.",
+    "정반 2곳이면 4명이 하루 32시간이라 가용 40시간 중 한 명이 남아. 정반을 1곳으로 줄이고(증설비를 아낀다) 납기 빠른 순에 A·B 블록 응원 투입을 걸면 남는 사람으로 기한을 지키고 이익이 더 커."
+  ],
+  "options": {
+    "crews": [
+      "normal"
+    ],
+    "methods": [
+      "standard"
+    ],
+    "material_grades": [
+      "standard"
+    ],
+    "max_units": 2,
+    "hoist": false,
+    "split": false,
+    "forklift_counts": [
+      2
+    ],
+    "transporter_counts": [
+      1,
+      2
+    ],
+    "decisions": true,
+    "queue_cap": 8
+  },
+  "grade": {
+    "weights": {
+      "revenue": 30,
+      "profit": 40,
+      "delivery": 20,
+      "quality": 10
+    },
+    "profit_cap": 1.3,
+    "bands": {
+      "S": 100,
+      "A": 85,
+      "B": 70,
+      "C": 50
+    },
+    "late_cap": "B",
+    "baseline_preset": "all_in"
+  },
+  "random": {
+    "quality": {
+      "A": {
+        "block_assembly": 0.62,
+        "erection": 0.47
+      },
+      "B": {
+        "block_assembly": 0.81,
+        "erection": 0.73
+      },
+      "C": {
+        "block_assembly": 0.47,
+        "erection": 0.58
+      },
+      "D": {
+        "block_assembly": 0.73,
+        "erection": 0.62
+      },
+      "E": {
+        "block_assembly": 0.58,
+        "erection": 0.81
+      }
+    },
+    "block_quality": {
+      "A": {
+        "block_assembly": [
+          0.81
+        ]
+      },
+      "B": {
+        "block_assembly": [
+          0.47
+        ]
+      },
+      "C": {
+        "block_assembly": [
+          0.73
+        ]
+      },
+      "D": {
+        "block_assembly": [
+          0.58
+        ]
+      },
+      "E": {
+        "block_assembly": [
+          0.62
+        ]
+      }
+    },
+    "supply": {
+      "A": {
+        "paint": 0.9
+      },
+      "B": {
+        "paint": 0.9
+      },
+      "C": {
+        "paint": 0.9
+      },
+      "D": {
+        "paint": 0.9
+      },
+      "E": {
+        "paint": 0.9
+      }
+    }
+  },
+  "presets": [
+    {
+      "id": "unmanaged",
+      "name": "무관리",
+      "summary": "블록은 선박 순서(A → E)로만 한다. 중조립 정반 1곳(2명, 하루 16시간)에 정비 없이, 조립 5명 · 탑재 4명(도크 2곳).",
+      "config": {
+        "scenario": "dispatch",
+        "ordering": "late",
+        "ships": {
+          "A": {
+            "priority": 1,
+            "start_day": 1
+          },
+          "B": {
+            "priority": 2,
+            "start_day": 1
+          },
+          "C": {
+            "priority": 3,
+            "start_day": 1
+          },
+          "D": {
+            "priority": 4,
+            "start_day": 1
+          },
+          "E": {
+            "priority": 5,
+            "start_day": 1
+          }
+        },
+        "pools": {
+          "assembly": 5,
+          "erection": 4
+        },
+        "transporters": {
+          "maintenance": false,
+          "count": 1
+        },
+        "forklifts": {
+          "count": 2,
+          "maintenance": false
+        },
+        "research": [],
+        "stations": {
+          "block_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": false,
+            "dispatch": "ship",
+            "units": 1
+          },
+          "erection": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": false,
+            "units": 2
+          }
+        }
+      }
+    },
+    {
+      "id": "managed",
+      "name": "관리",
+      "summary": "중조립 정반 2곳(4명, 하루 32시간)을 직접 대응(조치 요청, 비상 예산 200)으로 둔다. 정책은 선박 순서(A → E) 그대로라 1일 아침 조치 요청에서 무엇을 바꿀지 정한다. 조립 5명 · 탑재 4명(도크 2곳), 모두 정비.",
+      "config": {
+        "scenario": "dispatch",
+        "ordering": "jit",
+        "ships": {
+          "A": {
+            "priority": 1,
+            "start_day": 1
+          },
+          "B": {
+            "priority": 2,
+            "start_day": 1
+          },
+          "C": {
+            "priority": 3,
+            "start_day": 1
+          },
+          "D": {
+            "priority": 4,
+            "start_day": 1
+          },
+          "E": {
+            "priority": 5,
+            "start_day": 1
+          }
+        },
+        "pools": {
+          "assembly": 5,
+          "erection": 4
+        },
+        "transporters": {
+          "maintenance": true,
+          "count": 1
+        },
+        "forklifts": {
+          "count": 2,
+          "maintenance": true
+        },
+        "research": [],
+        "stations": {
+          "block_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true,
+            "dispatch": "ship",
+            "dispatch_mode": "manual",
+            "units": 2
+          },
+          "erection": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true,
+            "units": 2
+          }
+        }
+      }
+    },
+    {
+      "id": "all_in",
+      "name": "전부 최대 투입",
+      "summary": "정반 2곳 · 도크 2곳에 인원 최대(조립 12명 · 탑재 6명), 중조립 잔업, 선박 순서.",
+      "config": {
+        "scenario": "dispatch",
+        "ordering": "bulk",
+        "ships": {
+          "A": {
+            "priority": 1,
+            "start_day": 1
+          },
+          "B": {
+            "priority": 2,
+            "start_day": 1
+          },
+          "C": {
+            "priority": 3,
+            "start_day": 1
+          },
+          "D": {
+            "priority": 4,
+            "start_day": 1
+          },
+          "E": {
+            "priority": 5,
+            "start_day": 1
+          }
+        },
+        "pools": {
+          "assembly": 12,
+          "erection": 6
+        },
+        "transporters": {
+          "maintenance": true,
+          "count": 2
+        },
+        "forklifts": {
+          "count": 2,
+          "maintenance": true
+        },
+        "research": [],
+        "stations": {
+          "block_assembly": {
+            "method": "standard",
+            "overtime": true,
+            "maintenance": true,
+            "dispatch": "ship",
+            "units": 2
+          },
+          "erection": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true,
+            "units": 2
+          }
+        }
+      }
+    }
+  ]
+}

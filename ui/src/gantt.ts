@@ -6,7 +6,7 @@
 // 막대를 누르면 onPick으로 그 배·공정·기간을 넘긴다(현장 들어가는 길, D7).
 // 재생 중에는 today까지만 그린다. 엔진이 준 segments와 daily를 자르고 묶기만 하고 새로 계산하지 않는다.
 
-import { activeStations, blockLabel, dayHour, type BlockResult, type ForkliftJob, type Plan, type Result, type Scenario, type Segment } from "./api";
+import { activeStations, type BlockResult, blockShort, blockTitle, dayHour, type ForkliftJob, type Plan, type Result, type Scenario, type Segment } from "./api";
 import { s } from "./dom";
 import { OUTSOURCED_STATE, PAIR_WAIT_EDGE, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, STATION_TEXT } from "./labels";
 
@@ -777,7 +777,7 @@ export function renderStationGantt(result: Result, scenario: Scenario, shipId: s
     // 이 배의 블록(4.29): 블록마다 일한 시간만큼(이어 하기로 한 블록이 끝난 자리에서 다음 블록이 시작한다)
     for (const b of blocks.filter((b) => b.unit === u.unit)) {
       const H = b.day_hours ?? 8;
-      const name = shipId === null ? `${b.ship} ${blockLabel(stationId, b.no)}` : blockLabel(stationId, b.no);
+      const name = shipId === null ? `${blockTitle(b.ship, stationId, b.no)}` : blockShort(b.ship, stationId, b.no);
       for (const pc of workPieces(b, Math.min(last, today))) {
         if (pc.end < first) continue;
         const x0 = at(pc.start, pc.from, H);
@@ -796,7 +796,7 @@ export function renderStationGantt(result: Result, scenario: Scenario, shipId: s
     const y = bTop + k * B_ROW;
     const g = s("g", { class: "ship-row" });
     g.append(s("text", { x: 24, y: y + B_ROW - 4, class: "ship-sub" },
-      `${shipId === null ? `${b.ship} ` : ""}${blockLabel(stationId, b.no)}${b.unit ? ` · ${b.unit}호` : b.daily.some((r) => r.state === "outsourced") ? " · 외주" : ""}`));
+      `${shipId === null ? blockTitle(b.ship, stationId, b.no) : blockShort(b.ship, stationId, b.no)}${b.unit ? ` · ${b.unit}호` : b.daily.some((r) => r.state === "outsourced") ? " · 외주" : ""}`));
     const segs = runs(b.daily, (day) => {
       const r = b.daily[day - 1];
       return day < first || day > last || !r || r.state === "not_started" || r.state === "done" ? null : r.state;
@@ -935,7 +935,7 @@ export function renderAssemblyGantt(result: Result, today: number,
       }
       for (const b of blocks.filter((b) => b.station === st.id && b.unit === u.unit)) {
         const H = b.day_hours ?? 8;
-        const name = `${b.ship} ${blockLabel(st.id, b.no)}`;
+        const name = `${blockTitle(b.ship, st.id, b.no)}`;
         for (const pc of workPieces(b, Math.min(last, today))) {
           const x0 = at(pc.start, pc.from, H);
           const w = at(pc.end, pc.to, H) - x0;
@@ -946,7 +946,7 @@ export function renderAssemblyGantt(result: Result, today: number,
           // 얇은 막대라 한 줄: 넓으면 "S1 소3", 좁으면 배만(이름은 마우스를 올리면)
           if (w >= 16) {
             bar.append(s("text", { x: x0 + w / 2, y: y + A_UNIT / 2 + 3.5, class: "bar-label tiny", fill: STATION_TEXT[st.id] ?? "#fff" },
-              w >= 40 ? `${b.ship} ${blockLabel(st.id, b.no)}` : b.ship));
+              w >= 40 ? `${blockTitle(b.ship, st.id, b.no)}` : b.ship));
           }
           g.append(bar);
         }
