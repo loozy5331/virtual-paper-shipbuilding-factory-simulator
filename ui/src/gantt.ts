@@ -732,7 +732,7 @@ function hourScale(blocks: BlockResult[], first: number, last: number, today: nu
       for (let d = first; d <= last; d++) {
         const ev = ax.evening(d);
         if (ev > 0) g.append(s("rect", { x: LEFT + ax.at(d, REG_HOURS) * u, y: y1, width: ev * u, height: y2 - y1, class: "night" },
-          s("title", null, `${d}일 근무시간 외(정규 ${REG_HOURS}시간 뒤 ${Math.round(ev * 10) / 10}시간, 잔업·특근)`)));
+          s("title", null, `${d}일 근무시간 외(정규 ${REG_HOURS}시간 뒤 ${Math.round(ev * 10) / 10}시간, 잔업·철야)`)));
       }
     },
   };
@@ -755,7 +755,7 @@ export function renderStationGantt(result: Result, scenario: Scenario, shipId: s
   const first = Math.max(1, (daysSeen.length ? Math.min(...daysSeen) : 1) - 2);
   const last = Math.min(days, Math.max(daysSeen.length ? Math.max(...daysSeen) : days, ...blocks.map((b) => b.due), due ?? 0) + 2);
   const span = last - first + 1;
-  // 4.47.2: 시각 축(1시간의 폭이 같다, 잔업·특근한 날만 근무시간 외 구간이 열린다)
+  // 4.47.2: 시각 축(1시간의 폭이 같다, 잔업·철야한 날만 근무시간 외 구간이 열린다)
   const { x, width, dw, at, cols, night } = hourScale(blocks, first, last, today);
   const clip = (d: number) => Math.min(d, today);
   const uTop = TOP;

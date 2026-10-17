@@ -60,14 +60,14 @@ def action_kinds(value: Any) -> list[str]:
 
 
 def action_combo_error(kinds: list[str]) -> str | None:
-    """여러 조치를 함께 걸 수 있는지(4.42, D89): 외주·포기는 혼자, 잔업·특근은 둘 중 하나, 같은 조치는 한 번."""
+    """여러 조치를 함께 걸 수 있는지(4.42, D89): 외주·포기는 혼자, 잔업·철야는 둘 중 하나, 같은 조치는 한 번."""
     if not kinds or any(k not in ACTION_KINDS for k in kinds) or len(set(kinds)) != len(kinds):
         return f"블록 조치는 {', '.join(ACTION_KINDS)} 가운데 하나 또는 겹치지 않는 목록이어야 합니다"
     if len(kinds) > 1 and ACTION_ALONE & set(kinds):
         return "외주·포기(지체보상금)는 다른 조치와 함께 걸 수 없습니다"
     if len(ACTION_HOURS & set(kinds)) > 1:
-        return "잔업과 특근은 둘 중 하나만 걸 수 있습니다"
-    return None   # 블록 조치(4.32): 잔업·특근·외주·포기(지체보상금), 4.40 응원 투입·긴급 자재 조달
+        return "잔업과 철야는 둘 중 하나만 걸 수 있습니다"
+    return None   # 블록 조치(4.32): 잔업·철야·외주·포기(지체보상금), 4.40 응원 투입·긴급 자재 조달
 # 블록 공정에 있는 배의 하루 상태(4.25): 블록들의 오늘 상태 가운데 이 순서로 앞선 것 하나(같으면 뒤 공정)
 BLOCK_SHIP_RANK = [WORK, REWORK, LABOR_WAIT, ACCIDENT_STOP, BREAKDOWN_STOP, MATERIAL_WAIT, STATION_WAIT, TRANSPORT, TRANSPORT_WAIT]
 
@@ -1831,7 +1831,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     dispatch = {p: config["stations"][stations[p]["id"]].get("dispatch", "ship") for p in block_set}
     order_rank = {bid: k for ids in (config.get("block_order") or {}).values() for k, bid in enumerate(ids)}
     # 몰리는 날의 결정(4.31·4.32, D78·D79): 직접 대응(dispatch_mode manual)인 블록 공정은 몰리는 날 액션 카드로 묻는다.
-    # 정책(공정마다 규칙 하나, 그날부터 블록 순서 대신)과 블록별 조치(잔업·특근·외주·지체보상금 감수, 공정별 비상 예산 안에서).
+    # 정책(공정마다 규칙 하나, 그날부터 블록 순서 대신)과 블록별 조치(잔업·철야·외주·지체보상금 감수, 공정별 비상 예산 안에서).
     # 기록에 없는 첫 물음은 pending으로 돌려주고, 그 뒤는 기본 대응으로 끝까지 돈다.
     manual = {p for p in block_set if config["stations"][stations[p]["id"]].get("dispatch_mode") == "manual"}
     # 작업장 적치 한도(4.35, D83): 블록 공정 앞에 둘 수 있는 블록 수. 넘치는 블록은 가공 적치장(yard)에서 기다리다가
@@ -2194,7 +2194,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         pid = stations[p]["id"]
         cur = current[p][u]
         new_work, last_ship = False, cur["ship"]
-        hours = hours or hours_of[p]   # 블록 조치(4.32): 잔업 10시간, 특근 16시간
+        hours = hours or hours_of[p]   # 블록 조치(4.32): 잔업 10시간, 철야 16시간
         per_h = cap / hours
         clock = 0.0
         mh[p]["input"] += workers * hours
@@ -2230,7 +2230,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             if not cur["rework"]:
                 # 검사는 블록마다(난수 random.block_quality). 재작업비는 블록 하나에 재작업비 ÷ 블록 수
                 inspections[p] += 1
-                # 잔업·특근으로 한 블록은 잔업 불량 가산(4.32)
+                # 잔업·철야로 한 블록은 잔업 불량 가산(4.32)
                 cfg_b = {**st_cfg[p], "overtime": True} if ACTION_HOURS & set(actions.get(b["id"], [])) else st_cfg[p]
                 rate = station_defect_rate(cfg_b, crews[p], scenario, done_research, inspections[p] - 1, grades[p],
                                            has_equipment(stations[p]))
@@ -2621,7 +2621,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
 
             rate_today = station_rate(st_cfg[p], rules, assigned[p][u], factor,
                                       cap=rules["max_workers_per_station"] + em["assist"]["extra_workers"] if assisted(p, u) else None)
-            # 블록 조치(4.32): 작업장에 든 블록이 잔업·특근이면 그 작업장의 오늘이 10·16시간(처리량 1.25·2배)
+            # 블록 조치(4.32): 작업장에 든 블록이 잔업·철야이면 그 작업장의 오늘이 10·16시간(처리량 1.25·2배)
             acts = actions.get(cur["block"]["id"], []) if "block" in cur else []
             act = next((k for k in acts if k in ACTION_HOURS), None)
             act_hours = None
@@ -2650,7 +2650,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                                                  and b["today"][0] in (WORK, REWORK) and b["today"][1] == u] or [first_block]
 
             # 5-1. 잔업일을 세고, 정해진 간격마다 사고 판정을 한다.
-            # 블록 조치의 잔업·특근(4.32)도 잔업일로 센다(특근은 accident_weight일). 비용은 결정 때 비상 예산에서 냈다
+            # 블록 조치의 잔업·철야(4.32)도 잔업일로 센다(철야는 accident_weight일). 비용은 결정 때 비상 예산에서 냈다
             for _ in range(1 if is_overtime(st_cfg[p]) or act == "overtime" else em["extra_shift"]["accident_weight"] if act == "extra" else 0):
                 overtime_days[p][u] += 1
                 if act is None:
@@ -2900,7 +2900,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     # 블록(4.25): 블록마다 작업장, 시작·끝·완료일, 하루 상태(배의 daily와 같은 길이)
     # 납기(4.25): 끝내지 못한 블록·공정은 기간 끝일로 늦은 날을 센다
     def action_hours(b: dict[str, Any]) -> int:
-        """블록 막대의 하루 칸 길이: 잔업·특근 조치(4.32)로 한 블록은 10·16시간"""
+        """블록 막대의 하루 칸 길이: 잔업·철야 조치(4.32)로 한 블록은 10·16시간"""
         act = next((k for k in actions.get(b["id"], []) if k in ACTION_HOURS), None)
         if act in ("overtime", "extra"):
             return rules["hours"]["day"] + (rules["hours"]["overtime"] if act == "overtime" else rules["hours"]["day"])

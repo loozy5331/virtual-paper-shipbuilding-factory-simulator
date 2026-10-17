@@ -51,7 +51,7 @@ class Example11(unittest.TestCase):
         self.assertEqual(done_days(r, "X"), [3, 3, 4, 4, 4, 5, 5, 5])
 
     def test_quotes(self):
-        # 견적(정원 2명): X 블록 0.75 → 잔업 1일(2 × 10 × 0.5 = 10), 특근 1일(2 × 10 × 1.5 = 30),
+        # 견적(정원 2명): X 블록 0.75 → 잔업 1일(2 × 10 × 0.5 = 10), 철야 1일(2 × 10 × 1.5 = 30),
         # 외주 0.75 × 10 × 2 = 15, 0.75 ÷ 2 → 1일 + 운반 2일 = 3일 뒤(4일) 돌아온다
         cfg, sc = manual_mini()
         q = simulate(cfg, sc, baseline=False)["pending"]["stations"]["sub_assembly"]["waiting"][0]["quotes"]
