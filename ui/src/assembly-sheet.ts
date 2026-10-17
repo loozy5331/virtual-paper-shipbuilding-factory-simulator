@@ -58,6 +58,10 @@ export function focusAssemblyShip(id: string): void {
   view = "schedule";
 }
 
+function zoomBtn(): HTMLElement {
+  return h("button", { type: "button", class: "btn small asm-zoom-btn", title: "블록 일정을 화면 가득", onclick: () => setZoom(true) }, "크게 보기");
+}
+
 function seg<T extends string>(name: string, options: { value: T; label: string }[], value: T, onPick: (v: T) => void): HTMLElement {
   return h("div", { class: "seg", role: "radiogroup" },
     options.map((o) => h("label", { class: "seg-item" },
@@ -118,11 +122,13 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
     }, `${o.id} ${scenario.ship_types[o.type].name}`, h("small", null, ` 납기 ${o.due_day}일`))));
   const schedule = h("section", { class: "panel asm-main" },
     h("div", { class: "panel-head" }, h("span", { class: "step" }, "1"), h("h2", null, action ? "블록 작업 일정" : "배별 블록 일정과 납기")),
-    h("p", { class: "hint plan-risk", "data-asm": "risks" }, "…"), tabs,
+    h("p", { class: "hint plan-risk", "data-asm": "risks" }, "…"),
+    // 4.32.1(사용자): 조립 현장 배정은 일정/납기 고르기 줄이 없어 크게 보기를 배 탭 줄 오른쪽 끝에
+    action ? h("div", { class: "asm-mode" }, tabs, zoomBtn()) : tabs,
     action ? null : h("div", { class: "asm-mode" }, seg("asm-mode", [{ value: "schedule", label: "블록 일정" }, { value: "dues", label: "공정·블록 납기" }] as { value: typeof view; label: string }[],
       view, (v) => { view = v; ctx.onEdit(true); }),
       // 크게 보기는 이 줄 오른쪽 끝에 고정(4.27.2): 단추가 늘었다 줄었다 하는 블록 일정 머리줄에 두면 다음 줄로 밀렸다
-      view === "schedule" ? h("button", { type: "button", class: "btn small asm-zoom-btn", title: "블록 일정을 화면 가득", onclick: () => setZoom(true) }, "크게 보기") : null),
+      view === "schedule" ? zoomBtn() : null),
     view === "schedule" ? h("div", { class: "asm-schedule", "data-asm": "gantt" }) : dueTable(ctx));
 
   const head = docHead({
@@ -214,18 +220,19 @@ export function updateAssemblySheet(root: HTMLElement, preview: Preview | null, 
       el.closest("tr")?.classList.toggle("at-risk", !!r);
     });
     const host = root.querySelector<HTMLElement>("[data-asm='gantt']");
-    if (host && preview.block_plan && ship === ALL) {
-      // 공통 탭(4.32): 모든 배의 블록을 공정·작업장 줄에(읽기만, 끌기는 배 탭에서)
-      mount(host, renderAllBlockGantt(scenario, preview.block_plan, blockStations(scenario)),
-        h("p", { class: "hint" }, "모든 배의 블록 계획입니다(막대 이름 = 배). 착수일·착수 시각은 배 탭에서 막대를 끌어 정합니다. 계획이라 고장·입고 지연·몰리는 날의 결정은 넣지 않았습니다."));
-    } else if (host && preview.block_plan && ship) {
+    if (host && preview.block_plan && ship) {
       const bp = preview.block_plan;
       const sid = ship;
       const bst = blockStations(scenario);
       const n = Object.values(bp.blocks).filter((b) => b.ship === sid && b.risk).length;
       const mineStarts = Object.keys(config.block_start ?? {}).filter((bid) => bp.blocks[bid]?.ship === sid);
-      const order = scenario.orders.find((o) => o.id === sid)!;
-      const body = () => [
+      const order = scenario.orders.find((o) => o.id === sid);
+      const label = order ? `${sid} ${scenario.ship_types[order.type].name}` : "공통(모든 배)";
+      const body = () => sid === ALL ? [
+        // 공통 탭(4.32): 모든 배의 블록을 공정·작업장 줄에(읽기만, 끌기는 배 탭에서)
+        renderAllBlockGantt(scenario, bp, bst),
+        h("p", { class: "hint" }, "모든 배의 블록 계획입니다(막대 이름 = 배). 착수일·착수 시각은 배 탭에서 막대를 끌어 정합니다. 계획이라 고장·입고 지연·몰리는 날의 결정은 넣지 않았습니다."),
+      ] : [
         h("div", { class: "block-panel-head" },
           h("small", null, "막대를 좌우로 끌거나 Alt+←/→(1시간씩, Shift를 함께 누르면 하루씩): 그 블록의 착수일과 착수 시각(옅은 띠 안에서)", n ? ` · 블록 납기를 넘기는 블록 ${n}개` : ""),
           mineStarts.length ? h("button", {
@@ -270,12 +277,17 @@ export function updateAssemblySheet(root: HTMLElement, preview: Preview | null, 
         mount(host, h("p", { class: "hint" }, "블록 일정을 크게 보는 중입니다(Esc: 이전 크기로)."));
         mount(zoomLayer(),
           h("div", { class: "asm-zoom-backdrop", onclick: () => setZoom(false) }),
-          h("div", { class: "asm-zoom", role: "dialog", "aria-modal": "true", "aria-label": `${sid} 블록 일정 크게 보기` },
+          h("div", { class: "asm-zoom", role: "dialog", "aria-modal": "true", "aria-label": `${label} 블록 일정 크게 보기` },
             h("div", { class: "win-titlebar" },
-              h("span", { class: "win-title" }, `조립 공정 계획서 · ${sid} ${scenario.ship_types[order.type].name} 블록 일정`),
-              h("div", { class: "asm-zoom-tabs" }, scenario.orders.map((o) => h("button", {
-                type: "button", class: `tab${o.id === sid ? " active" : ""}`, onclick: () => { ship = o.id; ctx.onEdit(true); },
-              }, o.id))),
+              h("span", { class: "win-title" }, `조립 공정 계획서 · ${label} 블록 일정`),
+              h("div", { class: "asm-zoom-tabs" },
+                // 공통 탭은 조립 현장 배정(4.32)에만 있다
+                scenario.decision_stations ? h("button", {
+                  type: "button", class: `tab${sid === ALL ? " active" : ""}`, onclick: () => { ship = ALL; ctx.onEdit(true); },
+                }, "공통") : null,
+                scenario.orders.map((o) => h("button", {
+                  type: "button", class: `tab${o.id === sid ? " active" : ""}`, onclick: () => { ship = o.id; ctx.onEdit(true); },
+                }, o.id))),
               h("div", { class: "win-buttons" },
                 h("button", { type: "button", class: "win-btn restore-btn", title: "이전 크기로 (Esc)", "aria-label": "이전 크기로 (Esc)", onclick: () => setZoom(false) }, "이전 크기로"))),
             h("div", { class: "asm-zoom-body" }, ...body())));
