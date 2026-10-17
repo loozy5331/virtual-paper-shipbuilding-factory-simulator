@@ -1880,3 +1880,7 @@ details.review-day[open] > .review-table { margin-top: 6px; }
 .dc-why > li b:first-child { display: inline-block; min-width: 1.2em; }
 .dc-why small { color: var(--ink-3); }
 .dc-verdict .dc-why { flex-basis: 100%; }
+.gantt .night { fill: #3a4656; opacity: 0.08; }
+/* 4.47.2: 시각 축의 근무시간 외 구간(잔업·특근이 있는 날만) */
+.dcg-track > .dcg-night { top: 0; bottom: 0; background: rgba(58, 70, 86, 0.10); }
+.dcg-axis .dcg-track > .dcg-night { top: -1px; bottom: -1px; }
