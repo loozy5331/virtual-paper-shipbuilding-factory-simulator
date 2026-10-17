@@ -257,11 +257,12 @@ class Forecast(unittest.TestCase):
         return forecast({**self.cfg, "decisions": [{"day": self.day, **decision}]})
 
     def test_mine_matches_running_it(self):
+        # 4.39(D86): 미리보기는 그날 아침까지 알고 있는 것만. 그날부터 새 사건이 없는 실행(quiet_from)과 같다
         f = self.ask(policy={"block_assembly": "ship"})
         cfg = {**self.cfg, "decisions": [{"day": self.day, "policy": {"block_assembly": "ship"}}], "decisions_end": True}
-        r = simulate(cfg, baseline=False)
+        r = simulate(cfg, {**load_scenario("assembly"), "quiet_from": self.day}, baseline=False)
         self.assertEqual(f["mine"]["late"], {s["id"]: s["late_days"] for s in r["ships"]})
-        self.assertEqual(f["mine"]["profit"], r["profit"])
+        self.assertEqual(f["mine"]["completed"], {s["id"]: s["completed_day"] for s in r["ships"]})
         self.assertEqual(f["policies"]["block_assembly"]["ship"], f["mine"])
         self.assertEqual(f["policies"]["block_assembly"]["keep"], f["keep"])
 
@@ -284,6 +285,17 @@ class Forecast(unittest.TestCase):
         out = f["mine"]["block_times"][last]
         self.assertEqual((out["unit"], out["done_day"]), (None, sit["waiting"][-1]["quotes"]["outsource"]["back_day"]))
         self.assertIsNotNone(f["keep"]["block_times"][last]["unit"])
+
+    def test_no_future_events(self):
+        # B안 15일 조치 요청: 실제로는 18일 중조립 고장·뒤 불량으로 S2 1일 지연·S1 버퍼 3일 소모지만,
+        # 15일 아침에 알 수 있는 것만으로 보면 S2는 지연이 없고 S1도 버퍼를 쓰지 않는다
+        cfg = copy.deepcopy(load_presets("assembly")[1]["config"])
+        day = simulate(cfg, baseline=False)["pending"]["day"]
+        f = forecast({**cfg, "decisions": [{"day": day}]})
+        self.assertEqual(day, 15)
+        self.assertEqual({s: v for s, v in f["keep"]["late"].items() if v}, {})
+        real = simulate({**cfg, "decisions_end": True}, baseline=False)
+        self.assertEqual({s["id"]: s["late_days"] for s in real["ships"] if s["late_days"]}, {"S2": 1})
 
     def test_wrong_day(self):
         with self.assertRaises(ConfigError):

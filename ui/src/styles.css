@@ -1855,3 +1855,6 @@ details.review-day[open] > .review-table { margin-top: 6px; }
 .dc-bills.band-mid .dc-bill.keep rect { fill: #d9a531; stroke: #8a5a00; }
 .dc-bills.band-hi .dc-bill.keep rect { fill: #c9573f; stroke: #7a2015; }
 @media (max-width: 900px) { .dc-split-body { grid-template-columns: 1fr; } .dc-split-left { border-right: 0; padding-right: 0; } }
+/* 4.39 머리글: 계획보다 늦을 블록 */
+.dc-late-label { font-size: 0.82rem; color: var(--ink-2); }
+.dc-late-chip { font-size: 0.82rem; font-weight: 700; color: var(--warn-ink); background: #fbf1d6; border: 1px solid var(--warn-edge); border-radius: 3px; padding: 1px 7px; }

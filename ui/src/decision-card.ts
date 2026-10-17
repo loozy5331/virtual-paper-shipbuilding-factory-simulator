@@ -108,9 +108,10 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
       // 4.37.3(사용자): "조치 요청"(옛 액션 카드), 메시지 앞에 노란 삼각형 경고 기호
       h("div", null, h("small", null, "조치 요청"),
         // 4.36(D84): 버퍼 시나리오는 "블록이 계획보다 늦어 버퍼를 먹을 것 같은 날" 묻는다
-        h("h2", { class: "dc-title" }, warnIcon(), sit.ships ? `${sit.day}일 아침 · 블록이 늦어 버퍼를 소모할 것 같습니다` : `${sit.day}일 아침 · 조립장에 블록이 몰렸습니다`),
+        h("h2", { class: "dc-title" }, warnIcon(), sit.ships ? `${sit.day}일 아침 · 블록이 계획보다 늦을 것 같습니다` : `${sit.day}일 아침 · 조립장에 블록이 몰렸습니다`),
         // 4.37(사용자 "조치 요청도 가독성이 좋지 않네"): 문제를 그림 한 줄로. 배마다 버퍼 칸, 지금 순서대로면 먹을 칸을 붉게
-        sit.ships ? h("div", { class: "dc-bufs" }, Object.entries(sit.ships).map(([sid, sh]) => bufferBar(sid, sh.buffer, sh.over))) : null,
+        // 4.39(D86): 머리글은 묻는 까닭(블록이 블록 납기를 넘길 것 같음)만. 배가 버퍼를 쓰는지는 아래 "이 선택이면"의 상황 태그가 말한다
+        sit.ships ? h("div", { class: "dc-bufs" }, lateBlocks(asked)) : null,
         // 4.37.2: 필요·가용 작업시간은 결과 미리보기의 맨아워 칸으로 옮겼다(버퍼 시나리오). 아니면 여기 한 줄
         sit.ships ? null : h("p", { class: "dc-sub" }, `작업장 앞 ${count}건${inYard ? ` · 적치장 ${inYard}건` : ""} · 오늘 가용 ${fmt(sit.capacity_mh)}H / 필요 ${fmt(sit.need_mh)}H`,
           short > 0 ? h("b", { class: "wl-hot" }, ` (${fmt(short)}H 부족)`) : null)),
@@ -142,7 +143,7 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
               }, h("b", null, label, sub ? h("small", null, ` ${sub}`) : null),
               polRows ? optionOutcome(polRows[id as DispatchRule | "keep"], polRows.keep) : h("small", { class: "dc-out dim" }, "…"))))),
         h("div", { class: "dc-step-head" }, h("span", { class: "dc-step" }, "블록별 조치"),
-          h("small", null, "막대 = 이 선택이면 작업하는 구간(진한 부분은 이미 한 만큼), 세로선 = 블록 납기. 선을 넘으면 노랑(버퍼 소모), 그 배 버퍼까지 넘으면 빨강(납기 지연). 얇은 선은 지금대로의 끝. 숫자는 비상 예산에서 낼 값")),
+          h("small", null, "막대 = 이 선택이면 작업하는 구간(진한 부분은 이미 한 만큼), 세로선 = 블록 납기(계획). 선을 넘으면 노랑(계획보다 늦음), 그 배 버퍼보다 더 넘으면 빨강. 배가 실제로 버퍼를 쓰는지는 위 상황 태그. 얇은 선은 지금대로의 끝. 숫자는 비상 예산에서 낼 값")),
         // 4.38(사용자 "결과 미리보기 대신 간트, 진행도처럼 채우고, 막대 연장선의 조치로 진행도가 바뀌게"): 블록 진행도 간트
         blockGantt(sit, sid, [...st.inside.map((r) => ({ r, inside: true, ord: "작업 중" })), ...order.map((id, k) => ({ r: rowOf[id], inside: false, ord: `${k + 1}` }))],
           f, fresh, (r, inside) => inside || r.action
@@ -265,7 +266,7 @@ function blockGantt(sit: Situation, sid: string, rows: GanttRow[], f: Forecast |
       h("div", { class: "dcg-label", title: rd.detail },
         h("small", { class: "dc-ord" }, ord), h("b", null, `${r.ship} ${blockLabel(sid, r.no)}`),
         h("span", { class: rd.hot ? "dc-hit" : "" }, rd.short),
-        sev ? h("em", { class: `dcg-sev ${sev}` }, sev === "late" ? `납기 ${late - bufferOf(r.ship)}일 지연` : `버퍼 ${late}일 소모`) : null),
+        sev ? h("em", { class: `dcg-sev ${sev}` }, `블록 납기 +${late}일`, sev === "late" ? " · 버퍼보다 큼" : "") : null),
       track,
       h("div", { class: "dcg-act" }, chips(r, inside)));
   }));
@@ -338,14 +339,14 @@ export function clearDecisionDraft(): void {
   window.clearTimeout(timer);
 }
 
-/** 배 버퍼 막대(4.37): 버퍼 칸 수만큼 칸, 지금 순서대로면 먹을 칸은 붉게 */
-function bufferBar(sid: string, buffer: number, over: number): HTMLElement {
-  return h("span", { class: `dc-buf${over > buffer ? " late" : over ? " hit" : ""}`, title: `${sid} 버퍼 ${buffer}일${over ? `, 지금 순서대로면 ${over}일 소모` : ""}` },
-    h("b", null, sid),
-    h("span", { class: "dc-buf-cells" }, Array.from({ length: Math.max(buffer, over) }, (_, k) =>
-      h("i", { class: k >= buffer ? "over" : k >= buffer - over ? "eat" : "" }))),
-    h("small", null, over ? `버퍼 ${buffer}일 중 ${Math.min(over, buffer)}일 소모${over > buffer ? ` · 납기 ${over - buffer}일 지연` : ""}` : `버퍼 ${buffer}일`));
+/** 머리글(4.39): 블록 납기를 넘길 것 같은 블록(지금 순서대로, 정원 2명 기준)을 공정 · 블록 · 날로 */
+function lateBlocks(stations: [string, Situation["stations"][string]][]): HTMLElement[] {
+  const rows = stations.flatMap(([sid, st]) => [...st.inside, ...st.waiting].filter((r) => r.over).map((r) => ({ sid, r })));
+  return rows.length
+    ? [h("span", { class: "dc-late-label" }, "계획보다 늦을 블록"), ...rows.map(({ sid, r }) => h("span", { class: "dc-late-chip" }, `${r.ship} ${blockLabel(sid, r.no)} 블록 납기 +${r.over}일`))]
+    : [h("span", { class: "dc-late-label" }, "블록이 계획대로 갑니다")];
 }
+
 
 /** 가공 적치장에서 기다리는 블록 한 줄(4.35): 배별 수 */
 function yardText(yard: { id: string; ship: string }[]): string {
