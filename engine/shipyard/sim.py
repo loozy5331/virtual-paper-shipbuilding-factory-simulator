@@ -1522,7 +1522,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         ex_days = math.ceil(a / (w * speed * em["extra_shift"]["speed"]) - EPS)
         out = em["outsource"]
         out_days = math.ceil(a / out["rate_per_day"] - EPS) + out["transport_days"]
-        return {"overtime": {"cost": ot_days * w * wage * ot["pay_rate"], "days": ot_days},
+        return {"none": {"cost": 0, "days": math.ceil(a / (w * speed) - EPS)},   # 조치 없이 정규 근무로 하면(비교용)
+                "overtime": {"cost": ot_days * w * wage * ot["pay_rate"], "days": ot_days},
                 "extra": {"cost": ex_days * w * wage * em["extra_shift"]["pay_rate"], "days": ex_days},
                 "outsource": {"cost": round(a * wage * out["price_rate"], 2), "days": out_days, "back_day": day + out_days},
                 "defer": {"cost": 0, "days": None}}

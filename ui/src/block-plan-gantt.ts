@@ -232,3 +232,52 @@ export function renderBlockGantt(ctx: BlockGanttContext): SVGElement {
   }
   return svg;
 }
+
+/**
+ * 공통 탭(4.32, 사용자): 모든 배의 블록 계획을 공정마다 작업장 줄에 그린다(읽기만). 막대 길이는 시간(하루 칸 = 8시간),
+ * 막대 안 이름은 배(넓으면 블록까지). 블록 납기를 넘기는 계획 블록은 붉은 테두리.
+ */
+export function renderAllBlockGantt(scenario: Scenario, plan: BlockPlan, stations: { id: string; name: string }[]): SVGElement {
+  const items = Object.entries(plan.blocks);
+  const first = Math.min(...items.map(([, b]) => b.start));
+  const last = Math.max(...items.map(([, b]) => b.end));
+  const span = last - first + 1;
+  const dayW = (W - LEFT - RIGHT) / span;
+  const x = (d: number, hr = 0, H = 8) => LEFT + (d - first + hr / H) * dayW;
+  const U = 18, HEAD = 15;
+  const groups = stations.map((st) => {
+    const mine = items.filter(([, b]) => b.station === st.id);
+    return { st, mine, units: Math.max(1, ...mine.map(([, b]) => b.unit)) };
+  });
+  const height = TOP + groups.reduce((n, g) => n + HEAD + g.units * U + 4, 0) + 4;
+  const svg = s("svg", { class: "block-gantt all-blocks", viewBox: `0 0 ${W} ${height}`, role: "img",
+    "aria-label": `모든 배의 블록 계획 ${first}~${last}일` });
+  for (let d = first; d <= last; d++) {
+    svg.append(s("line", { x1: x(d), x2: x(d), y1: TOP - 4, y2: height - 2, class: d % 5 === 0 ? "grid major" : "grid" }));
+    if (span <= 40 || d % 5 === 0) svg.append(s("text", { x: x(d) + dayW / 2, y: TOP - 8, class: "tick" }, d));
+  }
+  const ships = scenario.orders.map((o) => o.id);
+  let y = TOP;
+  for (const g of groups) {
+    svg.append(s("text", { x: 4, y: y + 11, class: "st-name" }, g.st.name));
+    y += HEAD;
+    for (let u = 1; u <= g.units; u++) {
+      svg.append(s("rect", { x: LEFT, y, width: span * dayW, height: U - 2, class: "lane" }),
+        s("text", { x: 10, y: y + 12, class: "unit-name" }, `${u}호`));
+      for (const [id, b] of g.mine.filter(([, b]) => b.unit === u)) {
+        const x0 = x(b.start, b.start_h, b.day_hours);
+        const w = Math.max(1, x(b.end, b.end_h, b.day_hours) - x0);
+        const shade = 0.55 + 0.45 * (1 - ships.indexOf(b.ship) / Math.max(1, ships.length - 1));   // 배마다 진하기를 조금 달리
+        const bar = s("g", null, s("title", null, `${id} ${dayHour(b.start, b.start_h)} ~ ${dayHour(b.end, b.end_h)} · 블록 납기 ${b.due}일${b.risk ? " · 계획상 위험" : ""}`),
+          s("rect", { x: x0 + 0.5, y: y + 2, width: Math.max(1, w - 1), height: U - 6, rx: 2, fill: STATION_COLOR[g.st.id], opacity: shade,
+            class: b.risk ? "risk" : "" }));
+        const label = w >= 34 ? `${b.ship} ${blockLabel(g.st.id, b.no)}` : w >= 14 ? b.ship : "";
+        if (label) bar.append(s("text", { x: x0 + w / 2, y: y + U / 2 + 2, class: "bar-name", fill: STATION_TEXT[g.st.id] ?? "#fff" }, label));
+        svg.append(bar);
+      }
+      y += U;
+    }
+    y += 4;
+  }
+  return svg;
+}

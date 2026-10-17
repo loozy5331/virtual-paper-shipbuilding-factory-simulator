@@ -4,7 +4,7 @@
 // 탭 전환도 hidden만 바꾼다. 처리량, 불량률, 고정비, 연구 일정, 발주일, 계획 막대는
 // 서버의 /api/preview 결과를 data-preview 자리에 채운다.
 
-import { activeStations, blockStations, completeConfig, staffTrades, type Config, type Crew, type Ordering, type Preset, type AbcRow, type Preview, type Scenario, type ScenarioOptions, type ScenarioSummary } from "./api";
+import { activeStations, planStations, blockStations, completeConfig, staffTrades, type Config, type Crew, type Ordering, type Preset, type AbcRow, type Preview, type Scenario, type ScenarioOptions, type ScenarioSummary } from "./api";
 import { h, mount, money, num, pct, s } from "./dom";
 import { STATION_COLOR } from "./labels";
 import { docHead } from "./paper";
@@ -85,7 +85,7 @@ function foldSummaries(ctx: FormContext): Record<string, string> {
   const opts = openOptions(scenario);
   const staff = staffTrades(scenario);
   const pools = config.pools ?? {};
-  const asm = new Set(blockStations(scenario).map((b) => b.id));   // 조립 공정은 PP-02에 있어 요약에서 뺀다(4.28.1)
+  const asm = new Set(planStations(scenario).map((b) => b.id));   // 조립 공정은 PP-02에 있어 요약에서 뺀다(4.28.1, 4.32: PE장은 여기)
   const act = activeStations(scenario).filter((s) => !asm.has(s.id));
   const st = (id: string) => config.stations[id];
   const names = (f: (id: string) => boolean) => act.filter((s) => f(s.id)).map((s) => s.name);
@@ -104,7 +104,11 @@ function foldSummaries(ctx: FormContext): Record<string, string> {
     stations: [`증설 ${listOr(names((id) => (st(id).units ?? 1) > 1))}`, `숙련공 ${listOr(names((id) => st(id).crew === "skilled"))}`,
       opts.crews.includes("robot") ? `로봇 ${listOr(names((id) => st(id).crew === "robot"))}` : null,
       `잔업 ${listOr(names((id) => !!st(id).overtime))}`,
-      opts.plan_buffer ? `여유 ${act.reduce((n, s) => n + (st(s.id).buffer ?? 0), 0)}일` : null].filter(Boolean).join(" · "),
+      opts.plan_buffer ? `여유 ${act.reduce((n, s) => n + (st(s.id).buffer ?? 0), 0)}일` : null,
+      // 4.32: 공정별 비상 예산(액션 카드용)
+      scenario.decision_stations && scenario.contingency
+        ? `비상 예산 ${planStations(scenario).map((b) => `${b.name} ${config.contingency?.[b.id] ?? scenario.contingency![b.id] ?? 0}`).join(" · ")}` : null,
+    ].filter(Boolean).join(" · "),
     research: config.research.length ? config.research.map((r) => scenario.research[r]?.name ?? r).join(" → ") : "없음",
   };
 }
@@ -345,8 +349,23 @@ function commonPane(ctx: FormContext): HTMLElement {
     h("small", null, `대${counts.length > 1 ? "" : "(고정)"} · 자재 키트, 가공 → 소조립 팔레트 · 한 대에 하루 ${scenario.forklift.jobs_per_day}건`),
     toggle("정비", fk.maintenance, (on) => { fk.maintenance = on; ctx.onEdit(false); }));
 
-  // 블록 실습(4.28.1, 사용자): 조립 공정(소조립·중조립·PE장) 카드는 조립 공정 계획서(PP-02)로 옮겼다
-  const asm = new Set(blockStations(scenario).map((b) => b.id));
+  // 블록 실습(4.28.1, 사용자): 조립 공정(소조립·중조립·PE장) 카드는 조립 공정 계획서(PP-02)로 옮겼다.
+  // 조립 현장 배정(4.32, 사용자): 직접 대응 공정(소조립·중조립)만 PP-02, PE장은 여기
+  const asm = new Set(planStations(scenario).map((b) => b.id));
+  // 공정별 비상 예산(4.32, D79): 몰리는 날 액션 카드의 블록 조치(잔업·특근·외주)에 쓴다. 쓴 만큼만 비용
+  const contingency = scenario.decision_stations && scenario.contingency ? h("div", { class: "contingency" },
+    h("div", { class: "field-row" }, h("span", { class: "field-label" }, "비상 예산"),
+      planStations(scenario).map((b) => h("label", { class: "budget-input" }, h("span", null, b.name),
+        h("input", {
+          type: "number", class: "day-input", min: 0, max: scenario.contingency_max ?? 500, step: 10,
+          value: config.contingency?.[b.id] ?? scenario.contingency![b.id] ?? 0, "aria-label": `${b.name} 비상 예산`,
+          oninput: (e: Event) => {
+            const raw = (e.target as HTMLInputElement).value.trim();
+            (config.contingency ??= {})[b.id] = raw === "" ? 0 : Number(raw);
+            ctx.onEdit(false);
+          },
+        })))),
+    h("p", { class: "hint field-hint" }, `몰리는 날 액션 카드에서 블록에 잔업·특근·외주를 지시할 때 이 예산에서 냅니다(공정마다 0~${scenario.contingency_max ?? 500}). 쓴 만큼만 비용이고, 남은 예산은 점수와 무관합니다.`)) : null;
   const stationCards = activeStations(scenario).filter((st) => !asm.has(st.id)).map((st) => stationCard(ctx, st));
 
   const orderings = Object.entries(scenario.ordering) as [Ordering, { name: string; summary: string }][];
@@ -381,8 +400,9 @@ function commonPane(ctx: FormContext): HTMLElement {
     sec(3, "자재", ["발주 방식", opts.material_grades.includes("cheap") ? "등급" : null, opts.safety_stock ? "안전 재고" : null].filter(Boolean).join(" · "), ordering, buffer, orderingHint,
       opts.material_grades.includes("cheap") || opts.safety_stock
         ? materialTable(ctx, opts.material_grades.includes("cheap"), !!opts.safety_stock) : null),
-    sec(4, "공정", `공정마다 인력 · 공법 · 설비 운영 · 작업장 수${opts.plan_buffer ? " · 여유" : ""}`, h("div", { class: "stations" }, stationCards),
-      asm.size ? h("p", { class: "hint field-hint" }, `조립 공정(${blockStations(scenario).map((b) => b.name).join("·")})은 조립 공정 계획서(PP-02, 위 탭)에서 블록 우선순위와 함께 정합니다.`) : null),
+    sec(4, "공정", `공정마다 인력 · 공법 · 설비 운영 · 작업장 수${opts.plan_buffer ? " · 여유" : ""}${contingency ? " · 비상 예산" : ""}`, h("div", { class: "stations" }, stationCards),
+      asm.size ? h("p", { class: "hint field-hint" }, `조립 공정(${planStations(scenario).map((b) => b.name).join("·")})은 조립 공정 계획서(PP-02, 위 탭)에서 블록 배치 정책과 함께 정합니다.`) : null,
+      contingency),
     sec(5, "연구", null, researchQueue(ctx)),
     h("p", { class: "hint fixed" },
       "고정비: 인건비 ", h("b", { "data-preview": "labor" }, "…"),
@@ -395,7 +415,7 @@ function commonPane(ctx: FormContext): HTMLElement {
 /** 공정 카드 하나(인력·공법·운영·작업장 수·여유, 미리보기의 최대 처리량·불량률 자리). 생산계획서 ②-4와 조립 공정 계획서가 같이 쓴다.
  *  lead: 카드 칸 맨 앞에 넣을 [이름, 칸] 쌍(조립 공정 계획서의 우선순위 규칙). compact: 고를 것이 하나뿐인 인력·공법 줄은 그리지 않는다 */
 export function stationCard(ctx: StationCardContext, st: Scenario["stations"][number],
-  extra: { lead?: (HTMLElement | null)[]; compact?: boolean; note?: string } = {}): HTMLElement {
+  extra: { lead?: (HTMLElement | null)[]; compact?: boolean; note?: string; fixed?: string } = {}): HTMLElement {
   const { scenario, config } = ctx;
   const opts = openOptions(scenario);
   // 쉬운 분기에서는 가린 옵션을 아예 그리지 않는다(D33).
@@ -433,8 +453,11 @@ export function stationCard(ctx: StationCardContext, st: Scenario["stations"][nu
       showMethod ? h("span", { class: "field-label" }, "공법") : null,
       !showMethod ? null : segmented(`method-${st.id}`, methods.map(([id, m]) => ({ value: id, label: m.name })),
         cfg.method, (v) => { cfg.method = v; ctx.onEdit(false); }),
-      h("span", { class: "field-label" }, "운영"),
-      h("div", { class: "toggles" },
+      // 4.32(사용자): 조립 현장 배정의 조립 공정은 운영(잔업·정비)과 작업장 수를 고르지 않는다(고정 문구 한 줄)
+      extra.fixed ? h("span", { class: "field-label" }, "운영") : null,
+      extra.fixed ? h("span", { class: "hint" }, extra.fixed) : null,
+      extra.fixed ? null : h("span", { class: "field-label" }, "운영"),
+      extra.fixed ? null : h("div", { class: "toggles" },
         trial ? null
           : robot
             ? h("span", { class: "hint", title: scenario.rules.crews.robot.summary }, "로봇은 잔업 없음")
@@ -453,8 +476,8 @@ export function stationCard(ctx: StationCardContext, st: Scenario["stations"][nu
           : h("span", { title: hoist.summary },
             toggle(`호이스트 (+${num(hoist.install_cost * (cfg.units ?? 1))})`, cfg.hoist ?? false,
               (on) => { if (on) cfg.hoist = true; else delete cfg.hoist; ctx.onEdit(false); }))),
-      unitCap(st.id) > 1 ? h("span", { class: "field-label" }, "작업장") : null,
-      unitCap(st.id) <= 1 ? null : segmented(`units-${st.id}`,
+      unitCap(st.id) > 1 && !extra.fixed ? h("span", { class: "field-label" }, "작업장") : null,
+      unitCap(st.id) <= 1 || extra.fixed ? null : segmented(`units-${st.id}`,
         Array.from({ length: unitCap(st.id) }, (_, k) => ({
           value: k + 1, label: k === 0 ? "1개" : `${k + 1}개 (+${num(scenario.expansion.cost[st.id] * k)})`,
         })),

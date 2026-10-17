@@ -52,6 +52,8 @@ export interface Config {
   /** 4.31: 몰리는 날의 결정 기록(그날 공정마다 기다리는 블록의 순서)과 "이후는 기본 대응" */
   decisions?: Decision[];
   decisions_end?: boolean;
+  /** 4.32: 공정별 비상 예산(생산계획서에서 편성, 직접 대응 공정만) */
+  contingency?: Record<string, number>;
   /** 4.26: 블록 착수일(블록 이름 → 그날보다 먼저 들이지 않는 날). 조립 공정 계획서에서 막대를 좌우로 끌어 정한다 */
   block_start?: Record<string, number>;
   /** 4.29(D76): 블록 착수 시각(블록 이름 → 근무 시작부터 몇 시간 뒤, 0~7). 착수일을 정한 블록에만. 0이면 적지 않는다 */
@@ -203,6 +205,12 @@ export interface Scenario {
   track?: string;
   /** 4.25(D71): 조립 직종 공정을 블록으로 계산하는 실습 */
   block_mode?: boolean;
+  /** 4.32(D79): 직접 대응(액션 카드)을 고를 수 있는 공정과 공정별 비상 예산 기본값·상한(조립 현장 배정) */
+  decision_stations?: string[];
+  contingency?: Record<string, number>;
+  contingency_max?: number;
+  /** 4.32: 블록 조치 규칙(잔업은 rules.overtime) */
+  emergency?: { extra_shift: { speed: number; pay_rate: number; accident_weight: number }; outsource: { rate_per_day: number; transport_days: number; price_rate: number } };
   /** 4.23: 평가서 뒷장 "선배의 팁"에 적는 이 반기의 고정 팁 */
   tips?: string[];
   /** 계획 기간의 이름. 60일은 이 분기의 작업일로 본다. */
@@ -248,6 +256,12 @@ export interface Scenario {
 }
 
 /** 블록 공정(4.25, D71): 블록 조립 실습에서 조립 직종 공정(소조립 8 · 중조립 4 · PE장 2). 엔진 block_counts와 같은 규칙 */
+/** 조립 공정 계획서(PP-02)에서 정하는 공정(4.32): 직접 대응 공정이 있으면 그것만(PE장은 생산계획서), 아니면 블록 공정 모두 */
+export function planStations(scenario: Scenario): { id: string; name: string; count: number }[] {
+  const bst = blockStations(scenario);
+  return scenario.decision_stations ? bst.filter((b) => scenario.decision_stations!.includes(b.id)) : bst;
+}
+
 export function blockStations(scenario: Scenario): { id: string; name: string; count: number }[] {
   if (!scenario.block_mode) return [];
   return activeStations(scenario)
@@ -612,26 +626,37 @@ export interface Result {
   /** 4.25: 평가서 선배의 팁의 우선순위 추천. 블록 순서를 비우고 규칙만 바꿔 더 돌린 네 결과와 지금 계획 */
   recommend?: Recommend;
   /** 4.31(D78): 적용한 결정(그날의 상황과 함께), 아직 답하지 않은 첫 물음(있으면 그날까지만 재생), 끝난 회차의 결정 돌아보기 */
-  decisions?: (Decision & { situation: Situation })[];
+  decisions?: (Decision & { situation: Situation; refused: Record<string, string> })[];
   pending?: Situation | null;
   review?: DecisionReview[];
 }
 
-export interface Decision { day: number; orders: Record<string, string[]> }
+/** 4.32(D79): 그날의 정책(공정 → 규칙)과 블록별 조치 */
+export type ActionKind = "overtime" | "extra" | "outsource" | "defer";
+export interface Decision { day: number; policy?: Record<string, DispatchRule>; actions?: Record<string, ActionKind> }
 
 /** 결정 카드의 블록 한 줄: 남은 기간(블록 납기 − 그날), 공수, 자재 키트, 후행(짝) */
 export interface SituationRow {
   id: string; ship: string; no: number; due: number; left_days: number; mh: number;
   kit: { material: string; state: "ready" | "in_stock" | "not_ordered" | "coming"; arrival_day?: number; delayed?: boolean } | null;
   next: string; mates: { id: string; state: string }[];
+  /** 이미 정한 조치(앞 결정에서) */
+  action?: ActionKind | null;
+  /** 조치별 견적: 비상 예산에서 낼 값과 그 블록에 걸리는 날(외주는 운반 포함, 돌아오는 날) */
+  quotes?: Record<ActionKind | "none", { cost: number; days: number | null; back_day?: number }>;
 }
 export interface Situation {
   day: number; capacity_mh: number; need_mh: number;
-  stations: Record<string, { manual: boolean; units: number; waiting: SituationRow[]; inside: SituationRow[]; rule_orders: Record<string, string[]> }>;
+  stations: Record<string, {
+    manual: boolean; units: number; waiting: SituationRow[]; inside: SituationRow[]; rule_orders: Record<string, string[]>;
+    /** 고른 정책(없으면 계획대로), 지금 규칙, 비상 예산과 남은 예산 */
+    policy: DispatchRule | null; rule: DispatchRule; budget: number; budget_left: number;
+  }>;
 }
 export interface DecisionReview {
   day: number; best: string; mine_is_best: boolean;
-  rows: (DispatchMetrics & { choice: "mine" | "auto" | DispatchRule; orders: Record<string, string[]> | null; late: Record<string, number> })[];
+  rows: (DispatchMetrics & { choice: "mine" | "auto" | "no_actions" | DispatchRule; policy: Record<string, DispatchRule>;
+    actions: Record<string, ActionKind>; spent: number; late: Record<string, number> })[];
 }
 
 export class ApiError extends Error {

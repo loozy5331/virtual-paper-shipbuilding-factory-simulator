@@ -830,7 +830,7 @@ function openDecision(): void {
   };
   renderDecisionCard(els.decision, {
     scenario: state.data.scenario, situation: sit, busy: deciding,
-    onSubmit: (orders) => void send((cfg) => { (cfg.decisions ??= []).push({ day: sit.day, orders }); }),
+    onSubmit: (decision) => void send((cfg) => { (cfg.decisions ??= []).push({ day: sit.day, ...decision }); }),
     onAuto: () => void send((cfg) => { cfg.decisions_end = true; }),
   });
 }

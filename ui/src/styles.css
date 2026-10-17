@@ -1535,3 +1535,21 @@ details.block-plan > summary small { color: var(--ink-3); }
 .review-table tr.mine th, .review-table tr.mine td { font-weight: 700; }
 .review-table tr.top { background: #e7f2ea; }
 .review-table td.late { color: var(--bad); font-weight: 700; }
+/* 4.32 조립 공정 계획서 공통 탭(모든 배 블록)과 생산계획서 비상 예산 */
+.all-blocks .grid { stroke: var(--line-soft); }
+.all-blocks .grid.major { stroke: var(--line); }
+.all-blocks .tick { font-size: 9px; fill: var(--ink-3); text-anchor: middle; }
+.all-blocks .st-name { font-size: 11px; font-weight: 700; fill: var(--ink); }
+.all-blocks .unit-name { font-size: 9px; fill: var(--ink-3); }
+.all-blocks .lane { fill: var(--panel-2); }
+.all-blocks .bar-name { font-size: 8.5px; font-weight: 700; text-anchor: middle; pointer-events: none; }
+.all-blocks rect.risk { stroke: var(--bad); stroke-width: 1.2; }
+.contingency { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.budget-input { display: inline-flex; align-items: center; gap: 6px; margin-right: 14px; font-size: 0.84rem; }
+.budget-input input { width: 76px; }
+/* 4.32 액션 카드: 공정마다 배치 정책과 비상 예산, 블록마다 조치 */
+.dc-station h3 { display: flex; align-items: baseline; gap: 6px; }
+.dc-budget { margin-left: auto; font-size: 0.8rem; font-weight: 700; color: var(--accent); }
+.dc-policy { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0; }
+.dc-action { font: inherit; font-size: 0.78rem; max-width: 260px; }
+.dc-done { font-size: 0.78rem; color: var(--ink-3); }

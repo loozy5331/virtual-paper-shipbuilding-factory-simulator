@@ -7,8 +7,8 @@
 //    4.26 사용자: 일정을 먼저, 규칙을 뒤로. 배 탭은 납기가 빠른 배부터, 블록 막대는 좌우로 끌어 착수일을 정한다)
 // 화면은 계산하지 않는다: 블록 일정·납기·위험은 미리보기(block_plan, dues, plan_risks)를 그린다.
 
-import { activeStations, blockId, blockLabel, blockStations, type Config, type DispatchRule, type Preview, type Scenario } from "./api";
-import { blockGanttLegend, renderBlockGantt } from "./block-plan-gantt";
+import { activeStations, blockId, blockLabel, blockStations, planStations, type Config, type DispatchRule, type Preview, type Scenario } from "./api";
+import { blockGanttLegend, renderAllBlockGantt, renderBlockGantt } from "./block-plan-gantt";
 import { h, mount } from "./dom";
 import { fillStationPreview, stationCard } from "./form";
 import { DISPATCH_INFO, STATION_COLOR } from "./labels";
@@ -21,6 +21,9 @@ export interface AssemblyContext {
   /** 값이 바뀌었다. redraw가 true면 이 장을 다시 그린다. */
   onEdit(redraw: boolean): void;
 }
+
+/** 공통 탭(4.32) */
+const ALL = "__all";
 
 /** 이 장 안의 배 탭과, 배 탭 안에서 보이는 것(블록 일정 또는 공정·블록 납기 표: 한 번에 하나라 스크롤이 생기지 않는다) */
 let ship: string | null = null;
@@ -66,23 +69,26 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
   current = ctx;
   const { scenario, config } = ctx;
   const bst = blockStations(scenario);
+  const action = !!scenario.decision_stations;   // 4.32 조립 현장 배정: 공통 탭, 납기 표 없음, 공정 카드는 직접 대응 공정만
+  if (action) view = "schedule";
   // 크게 보기는 블록 일정에서만: 다른 반기나 납기 표로 바뀌면 닫는다
   if (zoomed && (!bst.length || view !== "schedule")) { zoomed = false; if (layer) mount(layer, null); }
   if (!bst.length) { mount(root, null); return; }
   // 배 탭은 수주 목록 순서(실습은 목록이 납기 빠른 순, 4.26·4.27.2 사용자). 처음 여는 탭도 목록 첫 배
   const ships = scenario.orders;   // 실습은 수주 번호가 납기 빠른 순(S1 벌크선 → S2 → S3, 4.27.3)
-  ship = ships.some((o) => o.id === ship) ? ship : ships[0].id;
+  ship = ships.some((o) => o.id === ship) || (action && ship === ALL) ? ship : action ? ALL : ships[0].id;
 
   // ② 조립 공정(4.28.1, 사용자): 생산계획서의 조립 공정 카드(운영·작업장 수)를 이리로 옮기고, 카드 맨 위에 블록 우선순위 규칙.
   // 규칙은 작업장이 비었을 때 기다리는 블록 가운데 무엇을 먼저 들일지이고, 평가서 추천이 비교하는 것이다.
   // 고를 것이 하나뿐인 인력·공법 줄은 그리지 않는다(실습은 잠겨 있다)
   const rules = h("section", { class: "panel asm-rules" },
     h("div", { class: "panel-head" }, h("span", { class: "step" }, "2"), h("h2", null, "조립 공정")),
-    h("div", { class: "stations asm-stations" }, bst.map((b) => {
+    h("div", { class: "stations asm-stations" }, planStations(scenario).map((b) => {
       const cfg = config.stations[b.id];
       const st = scenario.stations.find((x) => x.id === b.id)!;
       return stationCard(ctx, st, {
         compact: true, note: `블록 ${b.count}개`,
+        fixed: action ? "작업장 1곳 · 정비함 · 잔업·특근·외주는 몰리는 날 액션 카드에서" : undefined,
         lead: [
           // 4.31(D78): 기본 대응(규칙대로)과 직접 대응(몰리는 날 관제실에서 블록 순서를 묻는다)
           ...(scenario.options?.decisions ? [
@@ -90,25 +96,30 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
             h("div", { class: "asm-rule" }, seg(`mode-${b.id}`, [{ value: "auto", label: "기본 대응" }, { value: "manual", label: "직접 대응" }] as { value: "auto" | "manual"; label: string }[],
               cfg.dispatch_mode ?? "auto", (v) => { if (v === "auto") delete cfg.dispatch_mode; else cfg.dispatch_mode = v; ctx.onEdit(true); })),
           ] : []),
-          h("span", { class: "field-label" }, scenario.options?.decisions ? "기본 규칙" : "우선순위"),
+          h("span", { class: "field-label" }, scenario.options?.decisions ? "배치 정책" : "우선순위"),
           h("div", { class: "asm-rule" }, seg(`dispatch-${b.id}`, (Object.keys(DISPATCH_INFO) as DispatchRule[]).map((id) => ({ value: id, label: DISPATCH_INFO[id].name })),
             cfg.dispatch ?? "ship", (v) => { if (v === "ship") delete cfg.dispatch; else cfg.dispatch = v; ctx.onEdit(true); })),
         ],
       });
     })),
-    scenario.options?.decisions ? h("p", { class: "hint" }, "직접 대응으로 둔 공정은 실행 중 블록이 몰리는 날(필요 작업시간 > 가용, 새 배의 블록이 대기열에 끼어든 날) 관제실이 멈추고 기다리는 블록의 순서를 묻습니다. 그 사이와 \"이후는 기본 대응\"을 고른 뒤에는 기본 규칙대로 합니다.") : null,
-    h("p", { class: "hint" }, "우선순위 규칙은 작업장이 비었을 때 기다리는 블록 가운데 무엇을 먼저 들일지 정합니다. 위 배 탭에서 정한 착수일 전에는 그 블록을 들이지 않습니다. 작업장을 2개로 늘리면 블록이 두 작업장으로 퍼집니다."));
+    scenario.options?.decisions ? h("p", { class: "hint" }, "배치 정책은 작업장이 비었을 때 기다리는 블록 가운데 무엇을 먼저 들일지 정합니다. 직접 대응으로 둔 공정은 실행 중 블록이 몰리는 날(필요 작업시간 > 가용, 새 배의 블록이 대기열에 끼어든 날) 관제실이 멈추고 액션 카드로 정책과 블록별 조치(잔업·특근·외주·지체보상금 감수, 생산계획서의 비상 예산 안에서)를 묻습니다.") : null,
+    action ? null : h("p", { class: "hint" }, "우선순위 규칙은 작업장이 비었을 때 기다리는 블록 가운데 무엇을 먼저 들일지 정합니다. 위 배 탭에서 정한 착수일 전에는 그 블록을 들이지 않습니다. 작업장을 2개로 늘리면 블록이 두 작업장으로 퍼집니다."));
 
   // ① 배별 블록 일정과 납기: 계획상 위험 한 줄(혼자 써도 공정 납기를 넘기는 공정, 작업장 겹침과는 원인이 다르다), 배 탭 한 줄
   const tabs = h("div", { class: "tabs asm-tabs", role: "tablist" },
+    // 4.32(사용자): 배 탭 왼쪽에 공통 탭(모든 배의 모든 블록)
+    action ? h("button", {
+      type: "button", class: `tab${ship === ALL ? " active" : ""}`, role: "tab",
+      onclick: () => { ship = ALL; ctx.onEdit(true); },
+    }, "공통", h("small", null, " 모든 배")) : null,
     ships.map((o) => h("button", {
       type: "button", class: `tab${ship === o.id ? " active" : ""}`, role: "tab", "data-asm-ship": o.id,
       onclick: () => { ship = o.id; ctx.onEdit(true); },
     }, `${o.id} ${scenario.ship_types[o.type].name}`, h("small", null, ` 납기 ${o.due_day}일`))));
   const schedule = h("section", { class: "panel asm-main" },
-    h("div", { class: "panel-head" }, h("span", { class: "step" }, "1"), h("h2", null, "배별 블록 일정과 납기")),
+    h("div", { class: "panel-head" }, h("span", { class: "step" }, "1"), h("h2", null, action ? "블록 작업 일정" : "배별 블록 일정과 납기")),
     h("p", { class: "hint plan-risk", "data-asm": "risks" }, "…"), tabs,
-    h("div", { class: "asm-mode" }, seg("asm-mode", [{ value: "schedule", label: "블록 일정" }, { value: "dues", label: "공정·블록 납기" }] as { value: typeof view; label: string }[],
+    action ? null : h("div", { class: "asm-mode" }, seg("asm-mode", [{ value: "schedule", label: "블록 일정" }, { value: "dues", label: "공정·블록 납기" }] as { value: typeof view; label: string }[],
       view, (v) => { view = v; ctx.onEdit(true); }),
       // 크게 보기는 이 줄 오른쪽 끝에 고정(4.27.2): 단추가 늘었다 줄었다 하는 블록 일정 머리줄에 두면 다음 줄로 밀렸다
       view === "schedule" ? h("button", { type: "button", class: "btn small asm-zoom-btn", title: "블록 일정을 화면 가득", onclick: () => setZoom(true) }, "크게 보기") : null),
@@ -116,7 +127,8 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
 
   const head = docHead({
     title: "조립 공정 계획서", period: scenario.period, code: "PP-02", approved: false,
-    fields: [["대상", `조립 세 공정(${bst.map((b) => b.name).join(" → ")})의 블록`], ["딸린 문서", "생산계획서 PP-01"]],
+    fields: [["대상", action ? `조립 공정(${planStations(scenario).map((b) => b.name).join(" → ")})의 블록 · PE장은 생산계획서`
+      : `조립 세 공정(${bst.map((b) => b.name).join(" → ")})의 블록`], ["딸린 문서", "생산계획서 PP-01"]],
   });
   mount(root, head, schedule, rules, h("div", { class: "errors", "data-asm": "errors" }));
   if (lastPreview) updateAssemblySheet(root, lastPreview, []);
@@ -202,7 +214,11 @@ export function updateAssemblySheet(root: HTMLElement, preview: Preview | null, 
       el.closest("tr")?.classList.toggle("at-risk", !!r);
     });
     const host = root.querySelector<HTMLElement>("[data-asm='gantt']");
-    if (host && preview.block_plan && ship) {
+    if (host && preview.block_plan && ship === ALL) {
+      // 공통 탭(4.32): 모든 배의 블록을 공정·작업장 줄에(읽기만, 끌기는 배 탭에서)
+      mount(host, renderAllBlockGantt(scenario, preview.block_plan, blockStations(scenario)),
+        h("p", { class: "hint" }, "모든 배의 블록 계획입니다(막대 이름 = 배). 착수일·착수 시각은 배 탭에서 막대를 끌어 정합니다. 계획이라 고장·입고 지연·몰리는 날의 결정은 넣지 않았습니다."));
+    } else if (host && preview.block_plan && ship) {
       const bp = preview.block_plan;
       const sid = ship;
       const bst = blockStations(scenario);
