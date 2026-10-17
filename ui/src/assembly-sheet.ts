@@ -92,7 +92,7 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
       const st = scenario.stations.find((x) => x.id === b.id)!;
       return stationCard(ctx, st, {
         compact: true, note: `블록 ${b.count}개`,
-        fixed: action ? "정비함 · 잔업·특근·외주는 몰리는 날 액션 카드에서" : undefined,
+        fixed: action ? "정비함 · 잔업·특근·외주는 조치 요청에서" : undefined,
         lead: [
           // 4.31(D78): 기본 대응(규칙대로)과 직접 대응(몰리는 날 관제실에서 블록 순서를 묻는다)
           ...(scenario.options?.decisions ? [
@@ -113,7 +113,7 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
                   ctx.onEdit(false);
                 },
               }),
-              h("small", null, `몰리는 날 액션 카드의 잔업·특근·외주에 씀(0~${scenario.contingency_max ?? 500}, 쓴 만큼만 비용)`)),
+              h("small", null, `조치 요청의 잔업·특근·외주에 씀(0~${scenario.contingency_max ?? 500}, 쓴 만큼만 비용)`)),
           ] : []),
           // 작업장 적치 한도(4.35, D83, 사용자 "작업장별 최대 블록 수용 갯수"): 넘치는 블록은 가공 적치장에서 기다린다
           ...(scenario.options?.queue_cap ? [
@@ -130,7 +130,7 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
         ],
       });
     })),
-    scenario.options?.decisions ? h("p", { class: "hint" }, "배치 정책은 작업장이 비었을 때 기다리는 블록 가운데 무엇을 먼저 들일지 정합니다. 직접 대응으로 둔 공정은 실행 중 블록이 몰리는 날(필요 작업시간 > 가용, 새 배의 블록이 작업장 앞에 올라온 날) 관제실이 멈추고 작업 중·작업장 앞 블록을 액션 카드로 보이며 정책과 블록별 조치(잔업·특근·외주·지체보상금 감수, 그 공정 비상 예산 안에서)를 묻습니다. 액션 카드는 고를 때마다 작업시간·납기·예산이 어떻게 되는지 미리 보여 줍니다.") : null,
+    scenario.options?.decisions ? h("p", { class: "hint" }, "배치 정책은 작업장이 비었을 때 기다리는 블록 가운데 무엇을 먼저 들일지 정합니다. 직접 대응으로 둔 공정은 실행 중 블록이 몰리는 날(필요 작업시간 > 가용, 새 배의 블록이 작업장 앞에 올라온 날) 관제실이 멈추고 작업 중·작업장 앞 블록을 조치 요청로 보이며 정책과 블록별 조치(잔업·특근·외주·지체보상금 감수, 그 공정 비상 예산 안에서)를 묻습니다. 조치 요청는 고를 때마다 작업시간·납기·예산이 어떻게 되는지 미리 보여 줍니다.") : null,
     action ? null : h("p", { class: "hint" }, "우선순위 규칙은 작업장이 비었을 때 기다리는 블록 가운데 무엇을 먼저 들일지 정합니다. 위 배 탭에서 정한 착수일 전에는 그 블록을 들이지 않습니다. 작업장을 2개로 늘리면 블록이 두 작업장으로 퍼집니다."));
 
   // ① 배별 블록 일정과 납기: 계획상 위험 한 줄(혼자 써도 공정 납기를 넘기는 공정, 작업장 겹침과는 원인이 다르다), 배 탭 한 줄
@@ -303,7 +303,7 @@ export function updateAssemblySheet(root: HTMLElement, preview: Preview | null, 
         blockGanttLegend(bst),
         scenario.project_buffer
           // 4.36(D84): 계획 = 변수 없이 돌린 실행, 블록 납기 = 계획에서 끝나는 날. 버퍼는 배 끝에만
-          ? h("p", { class: "hint" }, "공정마다 위는 작업장 줄, 아래는 이 배의 블록 줄입니다. 막대는 계획(불량·고장·사고·입고 지연 없이 돌린 실행)이고 길이가 시간입니다(하루 칸 = 8시간). 블록 납기는 그 막대가 끝나는 날이라 블록에는 여유가 없고, 여유는 배 끝의 버퍼에만 있습니다. 생산 중 블록이 늦어지면 그만큼 이 배의 버퍼를 소모하고, 그럴 것 같은 날 관제실이 액션 카드로 묻습니다. 착수를 정한 블록은 그 시각보다 먼저 들이지 않습니다.")
+          ? h("p", { class: "hint" }, "공정마다 위는 작업장 줄, 아래는 이 배의 블록 줄입니다. 막대는 계획(불량·고장·사고·입고 지연 없이 돌린 실행)이고 길이가 시간입니다(하루 칸 = 8시간). 블록 납기는 그 막대가 끝나는 날이라 블록에는 여유가 없고, 여유는 배 끝의 버퍼에만 있습니다. 생산 중 블록이 늦어지면 그만큼 이 배의 버퍼를 소모하고, 그럴 것 같은 날 관제실이 조치 요청로 묻습니다. 착수를 정한 블록은 그 시각보다 먼저 들이지 않습니다.")
           : h("p", { class: "hint" }, "공정마다 위는 작업장 줄, 아래는 이 배의 블록 줄입니다. 막대는 고장 없이 2명이 하루 8시간 했을 때의 계획으로 길이가 시간입니다(하루 칸 = 8시간, 7h는 근무 시작부터 7시간). 옅은 띠 중 진한 쪽은 생산계획서 계획 간트의 그 공정 기간, 더 옅은 쪽은 그 뒤 공정 납기까지입니다. 착수를 정한 블록은 그 시각보다 먼저 들이지 않고, 작업장이 차 있으면 정한 시각보다 뒤에 놓입니다."),
       ];
       if (zoomed && root.isConnected) {

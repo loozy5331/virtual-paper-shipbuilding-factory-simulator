@@ -1451,7 +1451,7 @@ def forecast(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> 
     base = _run(_with_order_days({**config, "decisions": before, "decisions_end": False}, scenario), scenario)
     sit = base.get("pending")
     if not sit or sit["day"] != day:
-        raise ConfigError([f"{day}일에는 고를 액션 카드가 없습니다"])
+        raise ConfigError([f"{day}일에는 고를 조치 요청이 없습니다"])
     asked = [sid for sid, st in sit["stations"].items() if st["manual"] and st["waiting"]]
     station_of = {row["id"]: sid for sid in asked for row in sit["stations"][sid]["waiting"]}
 

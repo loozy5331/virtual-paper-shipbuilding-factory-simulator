@@ -1,4 +1,4 @@
-// 몰리는 날의 액션 카드(4.31·4.32, D78·D79): 조립 현장 배정 관제실에서 재생이 멈추면 뜬다.
+// 몰리는 날의 조치 요청(4.31·4.32, D78·D79): 조립 현장 배정 관제실에서 재생이 멈추면 뜬다.
 // 수업 슬라이드 "해야 할 작업은 많은데 사용할 수 있는 시간이 부족하다!"의 표에, 생산관리자가 고를 수 있는 수단을 붙였다.
 //   공정 공통: 블록 배치 정책(지금대로 / 선박 순서 / 납기 빠른 순 / 여유 작은 순 / 작업 짧은 순). 표는 고른 정책의 순서로 보인다
 //   블록마다: 조치(없음 / 잔업 / 특근 / 외주 / 지체보상금 감수). 값은 그 공정 비상 예산에서, 남은 예산을 넘는 조치는 고를 수 없다
@@ -9,7 +9,7 @@
 // 화면은 계산하지 않는다: 상황·순서·견적은 엔진 결과 pending, 정한 것을 결정 기록으로 다시 돌리는 것은 main.ts가 한다.
 
 import { blockLabel, type ActionKind, type Decision, type DispatchRule, type Forecast, type ForecastRow, type Scenario, type Situation, type SituationRow } from "./api";
-import { h, mount } from "./dom";
+import { h, mount, s } from "./dom";
 import { DISPATCH_INFO, STATION_COLOR, STATION_TEXT } from "./labels";
 
 export interface DecisionContext {
@@ -107,18 +107,19 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
 
   if (collapsed) {
     mount(root, h("button", { type: "button", class: "dc-tab", onclick: () => { collapsed = false; redraw(); } },
-      `${sit.day}일 아침 액션 카드 · 펼치기`));
+      warnIcon(), `${sit.day}일 아침 조치 요청 · 펼치기`));
     return;
   }
   const short = sit.need_mh - sit.capacity_mh;
   const count = asked.reduce((n, [, st]) => n + st.waiting.length, 0);
   const inYard = asked.reduce((n, [, st]) => n + (st.yard?.length ?? 0), 0);
-  mount(root, h("div", { class: "dc-backdrop" }), h("section", { class: "dc-card", role: "dialog", "aria-label": `${sit.day}일 아침 액션 카드` },
+  mount(root, h("div", { class: "dc-backdrop" }), h("section", { class: "dc-card", role: "dialog", "aria-label": `${sit.day}일 아침 조치 요청` },
     h("header", { class: "dc-head" },
-      h("div", null, h("small", null, "액션 카드"),
+      // 4.37.3(사용자): "조치 요청"(옛 액션 카드), 메시지 앞에 노란 삼각형 경고 기호
+      h("div", null, h("small", null, "조치 요청"),
         // 4.36(D84): 버퍼 시나리오는 "블록이 계획보다 늦어 버퍼를 먹을 것 같은 날" 묻는다
-        h("h2", null, sit.ships ? `${sit.day}일 아침 · 블록이 늦어 버퍼를 소모할 것 같습니다` : `${sit.day}일 아침 · 조립장에 블록이 몰렸습니다`),
-        // 4.37(사용자 "액션 카드도 가독성이 좋지 않네"): 문제를 그림 한 줄로. 배마다 버퍼 칸, 지금 순서대로면 먹을 칸을 붉게
+        h("h2", { class: "dc-title" }, warnIcon(), sit.ships ? `${sit.day}일 아침 · 블록이 늦어 버퍼를 소모할 것 같습니다` : `${sit.day}일 아침 · 조립장에 블록이 몰렸습니다`),
+        // 4.37(사용자 "조치 요청도 가독성이 좋지 않네"): 문제를 그림 한 줄로. 배마다 버퍼 칸, 지금 순서대로면 먹을 칸을 붉게
         sit.ships ? h("div", { class: "dc-bufs" }, Object.entries(sit.ships).map(([sid, sh]) => bufferBar(sid, sh.buffer, sh.over))) : null,
         // 4.37.2: 필요·가용 작업시간은 결과 미리보기의 맨아워 칸으로 옮겼다(버퍼 시나리오). 아니면 여기 한 줄
         sit.ships ? null : h("p", { class: "dc-sub" }, `작업장 앞 ${count}건${inYard ? ` · 적치장 ${inYard}건` : ""} · 오늘 가용 ${fmt(sit.capacity_mh)}H / 필요 ${fmt(sit.need_mh)}H`,
@@ -188,6 +189,23 @@ function outcomePanel(scenario: Scenario, sit: Situation, stations: string[], na
     h("div", { class: "dc-outcome-head" }, h("b", null, "이 선택의 결과 미리보기"),
       h("small", null, fresh ? "오늘 이렇게 하고 그 뒤는 기본 대응으로 끝까지 돌린 결과 · \"지금대로\"는 오늘 아무것도 바꾸지 않았을 때" : "계산하는 중…")),
     sit.ships ? verdict(sit, m) : null,
+    // 4.37.3(사용자): 비상 예산은 판정 띠 바로 아래 한 줄
+    h("div", { class: "dc-budget-row" },
+        h("small", null, "비상 예산 · 이번에 쓰는 값"),
+        stations.map((sid) => {
+          const b = budget(sid);
+          const after = b.left - b.spend;
+          // 4.37.2(사용자 "예산도 구간에 따라 색이 변하도록"): 쓴 비율 50% 미만 초록, 80% 미만 노랑, 그 이상 빨강
+          const usedRate = b.total > 0 ? (b.total - after) / b.total : 0;
+          const band = usedRate >= 0.8 ? "hi" : usedRate >= 0.5 ? "mid" : "lo";
+          return h("div", { class: `dc-gauge-row band-${band}` },
+            h("span", null, name[sid]),
+            h("div", { class: "dc-gauge", title: `예산 ${fmt(b.total)} 중 앞서 ${fmt(b.total - b.left)}, 이번 ${fmt(b.spend)}` },
+              h("i", { class: "used", style: { width: `${pct(b.total - b.left, b.total)}%` } }),
+              h("i", { class: "now", style: { width: `${pct(b.spend, b.total)}%` } })),
+            h("b", null, b.spend ? `−${fmt(b.spend)}` : "0"), h("small", null, ` 남음 ${fmt(after)} / ${fmt(b.total)} (${Math.round(usedRate * 100)}% 사용)`));
+        }),
+        m && Object.keys(m.refused).length ? h("small", { class: "dc-note wl-hot" }, `예산을 넘어 받지 않는 조치 ${Object.keys(m.refused).length}건`) : null),
     h("div", { class: "dc-outcome-grid" },
       // 4.37.2(사용자): 작업시간은 맨아워 글자로. 오늘 필요(작업장 앞·작업 중 블록의 남은 작업) · 가용(조립 인원 × 8시간), 이 선택의 투입 공수
       h("div", { class: "dc-out-cell dc-mh" },
@@ -207,23 +225,15 @@ function outcomePanel(scenario: Scenario, sit: Situation, stations: string[], na
             was !== undefined && late !== undefined && was !== late ? h("small", null, ` (지금대로 ${was > 0 ? `+${was}일` : "납기 내"})`) : null);
         })),
         m ? h("small", { class: "dc-note" }, `블록 납기 ${m.block_on_time}/${m.blocks}`,
-          k && k.block_on_time !== m.block_on_time ? ` (지금대로 ${k.block_on_time})` : "") : null),
-      h("div", { class: "dc-out-cell" },
-        h("small", null, "비상 예산 · 이번에 쓰는 값"),
-        stations.map((sid) => {
-          const b = budget(sid);
-          const after = b.left - b.spend;
-          // 4.37.2(사용자 "예산도 구간에 따라 색이 변하도록"): 쓴 비율 50% 미만 초록, 80% 미만 노랑, 그 이상 빨강
-          const usedRate = b.total > 0 ? (b.total - after) / b.total : 0;
-          const band = usedRate >= 0.8 ? "hi" : usedRate >= 0.5 ? "mid" : "lo";
-          return h("div", { class: `dc-gauge-row band-${band}` },
-            h("span", null, name[sid]),
-            h("div", { class: "dc-gauge", title: `예산 ${fmt(b.total)} 중 앞서 ${fmt(b.total - b.left)}, 이번 ${fmt(b.spend)}` },
-              h("i", { class: "used", style: { width: `${pct(b.total - b.left, b.total)}%` } }),
-              h("i", { class: "now", style: { width: `${pct(b.spend, b.total)}%` } })),
-            h("b", null, b.spend ? `−${fmt(b.spend)}` : "0"), h("small", null, ` 남음 ${fmt(after)} / ${fmt(b.total)} (${Math.round(usedRate * 100)}% 사용)`));
-        }),
-        m && Object.keys(m.refused).length ? h("small", { class: "dc-note wl-hot" }, `예산을 넘어 받지 않는 조치 ${Object.keys(m.refused).length}건`) : null)));
+          k && k.block_on_time !== m.block_on_time ? ` (지금대로 ${k.block_on_time})` : "") : null)));
+}
+
+/** 경고 기호(4.37.3): 노란 삼각형에 검은 느낌표. 조치가 필요하다는 표시(글자와 함께 쓴다) */
+function warnIcon(): SVGElement {
+  return s("svg", { class: "dc-warn-icon", viewBox: "0 0 24 22", "aria-hidden": "true" },
+    s("path", { d: "M12 1.5 L23 20.5 H1 Z", fill: "#f5c518", stroke: "#1f1f1f", "stroke-width": "1.4", "stroke-linejoin": "round" }),
+    s("rect", { x: 10.8, y: 7.5, width: 2.4, height: 7, rx: 1, fill: "#111" }),
+    s("circle", { cx: 12, cy: 17.4, r: 1.4, fill: "#111" }));
 }
 
 /** 판정 띠(4.37.2, 사용자 "버퍼 소모 -> 노란색, 납기 지연 -> 빨간색"): 이 선택이면 납기를 넘기는 배(빨강), 버퍼만 쓰는 배(노랑) */
