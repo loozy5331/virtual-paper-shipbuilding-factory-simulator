@@ -1618,3 +1618,6 @@ details.block-plan > summary small { color: var(--ink-3); }
 .panel-head .asm-zoom-btn { margin-left: auto; }
 .asm-budget { display: flex; align-items: center; gap: 8px; }
 .asm-budget small { color: var(--ink-3); font-size: 0.76rem; }
+/* 4.35 액션 카드: 작업 중 블록 줄(조치 없음) */
+.dc-card .wl-table tr.dc-inside { background: #f3f6f4; }
+.dc-card .wl-table tr.dc-inside .wl-order { font-size: 0.72rem; color: var(--accent); font-weight: 700; }

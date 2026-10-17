@@ -404,6 +404,15 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
             errors.append(f"{pid}: 대응 방식(dispatch_mode)은 auto 또는 manual이어야 합니다")
         elif mode == "manual" and pid not in scenario.get("decision_stations", list(bst_all)):
             errors.append(f"{pid}: 직접 대응은 {', '.join(scenario.get('decision_stations', list(bst_all)))}에서만 고를 수 있습니다")
+    # 작업장 적치 한도(4.35, D83): 블록 공정 앞에 둘 수 있는 블록 수. 넘치는 블록은 가공 적치장에서 기다린다
+    for pid, st in (config.get("stations") or {}).items():
+        qc = st.get("queue_cap")
+        if qc is None:
+            continue
+        if pid not in bst_all:
+            errors.append(f"{pid}: 적치 한도(queue_cap)는 블록 공정에만 둘 수 있습니다")
+        elif not (_is_int(qc) and 1 <= qc <= 99):
+            errors.append(f"{pid}: 적치 한도(queue_cap)는 1 이상의 정수여야 합니다")
     decisions = config.get("decisions")
     if decisions is not None:
         if not isinstance(decisions, list):
@@ -490,6 +499,11 @@ def _locked_options(config: dict[str, Any], scenario: dict[str, Any]) -> list[st
     if (config.get("decisions") or any(st.get("dispatch_mode") == "manual" for st in config["stations"].values())) \
             and not opts.get("decisions"):
         errors.append(f"{name}에서는 몰리는 날 직접 대응을 쓸 수 없습니다")
+    caps = [st["queue_cap"] for st in config["stations"].values() if st.get("queue_cap") is not None]
+    if caps and not opts.get("queue_cap"):
+        errors.append(f"{name}에서는 작업장 적치 한도를 둘 수 없습니다")
+    elif caps and max(caps) > opts["queue_cap"]:
+        errors.append(f"{name}에서는 적치 한도를 1~{opts['queue_cap']}개로만 둘 수 있습니다")
     if any((config.get("safety_stock") or {}).values()) and not opts.get("safety_stock"):
         errors.append(f"{name}에서는 안전 재고를 둘 수 없습니다")
     if config.get("jit_buffer", scenario["ordering"]["jit"]["buffer_days"]) != scenario["ordering"]["jit"]["buffer_days"] and not opts.get("jit_buffer"):
@@ -1532,6 +1546,9 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     # 정책(공정마다 규칙 하나, 그날부터 블록 순서 대신)과 블록별 조치(잔업·특근·외주·지체보상금 감수, 공정별 비상 예산 안에서).
     # 기록에 없는 첫 물음은 pending으로 돌려주고, 그 뒤는 기본 대응으로 끝까지 돈다.
     manual = {p for p in block_set if config["stations"][stations[p]["id"]].get("dispatch_mode") == "manual"}
+    # 작업장 적치 한도(4.35, D83): 블록 공정 앞에 둘 수 있는 블록 수. 넘치는 블록은 가공 적치장(yard)에서 기다리다가
+    # 자리가 나면 그 공정 정책 순서로 올라온다. 작업장은 적치된 블록만 들이고, 액션 카드도 적치된 블록만 묻는다. 없으면 한도 없음
+    qcap = {p: config["stations"][stations[p]["id"]].get("queue_cap") for p in block_set}
     decided = {d["day"]: d for d in config.get("decisions") or []}
     stop_asking = bool(config.get("decisions_end"))
     seen_pairs: set[tuple[int, int]] = set()   # 이미 물은 (공정, 배): 새 배의 블록이 그 공정 대기열에 끼어들 때만 다시 묻는다
@@ -1575,10 +1592,27 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         return block_sort_key(dispatch[p], pos, b["due"], b["amount"],
                               orders[i]["due_day"] - day - rem_ideal[(i, p)], priority[i], b["no"], pins.get(b["id"]))
 
-    def waiting_blocks(p: int, day: int) -> list[dict[str, Any]]:
-        """공정 p 앞에서 오늘 들어갈 수 있는 블록(자재 대기 포함, 착수일 전은 뺀다)."""
+    def ready_blocks(p: int, day: int) -> list[dict[str, Any]]:
+        """공정 p에 들어갈 수 있게 된 블록(적치장 포함, 자재 대기 포함, 착수일 전은 뺀다)."""
         return [b for b in all_blocks if b["p"] == p and b["state"] == "wait" and b["avail"] <= day
                 and pins.get(b["id"], (1, 0))[0] <= day]
+
+    def waiting_blocks(p: int, day: int) -> list[dict[str, Any]]:
+        """공정 p 앞에서 오늘 들어갈 수 있는 블록. 적치 한도가 있으면 작업장 앞에 적치된 블록만(4.35)."""
+        ready = ready_blocks(p, day)
+        return ready if qcap[p] is None else [b for b in ready if b.get("staged")]
+
+    def yard_blocks(p: int, day: int) -> list[dict[str, Any]]:
+        """적치 한도에 막혀 가공 적치장에서 기다리는 블록(4.35)."""
+        return [] if qcap[p] is None else [b for b in ready_blocks(p, day) if not b.get("staged")]
+
+    def refill(p: int, day: int) -> None:
+        """작업장 앞 빈 적치 자리를 적치장 블록으로 채운다(그 공정 정책 순서, 4.35). 지체보상금 감수 블록은 다른 블록이 없을 때만."""
+        if qcap[p] is None:
+            return
+        room = qcap[p] - sum(1 for b in ready_blocks(p, day) if b.get("staged"))
+        for b in sorted(yard_blocks(p, day), key=lambda b: block_key(b, day))[:max(0, room)]:
+            b["staged"] = True
 
     def kit_status(i: int, p: int, day: int) -> dict[str, Any] | None:
         """블록의 자재 키트(배 × 공정): 작업장에 있음 / 창고에 있음(지게차 대기) / 창고 입고 예정일(지연은 알게 된 날부터)."""
@@ -1617,8 +1651,9 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         for p in sorted(block_set):
             sid = stations[p]["id"]
             wait = waiting_blocks(p, day)
+            yard = yard_blocks(p, day)
             inside = [c for c in current[p] if c and "block" in c]
-            need += sum(b["amount"] for b in wait) + sum(c["remaining"] for c in inside)
+            need += sum(b["amount"] for b in wait + yard) + sum(c["remaining"] for c in inside)
 
             def row(b: dict[str, Any], left: float) -> dict[str, Any]:
                 i = b["ship"]
@@ -1639,7 +1674,9 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                          "waiting": [{**row(b, b["amount"]), "quotes": quotes(b, day)} for b in sorted(wait, key=lambda b: block_key(b, day))],
                          "inside": [row(c["block"], c["remaining"]) for c in inside],
                          "rule_orders": rule_orders, "policy": dispatch[p] if p in policy_on else None, "rule": dispatch[p],
-                         "budget": budget[p], "budget_left": round(budget[p] - spent[p], 2)}
+                         "budget": budget[p], "budget_left": round(budget[p] - spent[p], 2),
+                         # 적치 한도(4.35): 작업장 앞 자리 수와 가공 적치장에서 기다리는 블록(배별 수는 화면이 센다)
+                         "queue_cap": qcap[p], "yard": [{"id": b["id"], "ship": orders[b["ship"]]["id"]} for b in yard]}
         return {"day": day, "capacity_mh": pools.get("assembly", 0) * mh_hours, "need_mh": round(need * mh_hours, 2),
                 "stations": rows}
 
@@ -1692,6 +1729,10 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                     spans[i].setdefault(pid, {"start": day, "end": day})
                     events.append({"day": day, "type": "outsource", "ship": orders[i]["id"], "station": pid, "block": bid,
                                    "back_day": b["back"]})
+                if kind in ("outsource", "defer"):
+                    b["staged"] = False   # 적치 자리를 비운다(4.35): 감수 블록은 적치장 맨 뒤로
+            for p in manual:
+                refill(p, day)
             seen_pairs.update((b["p"], b["ship"]) for b in wait_all)
             decision_log.append({"day": day, "policy": d.get("policy") or {}, "actions": applied, "refused": refused,
                                  "situation": snap})
@@ -1707,8 +1748,10 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     def pick_block(p: int, day: int, clock: float = 0.0) -> tuple[dict[str, Any] | None, float]:
         """공정 p에 오늘 근무 clock시간째에 들일 블록과 들이는 시각. 그 배의 자재 키트가 아직이면 자재 대기로 적고 다음 블록을 본다.
         지금 들어올 블록이 없고 오늘 뒤 시각에 착수 시각을 정한 블록만 있으면(4.29) 그 블록을 그 시각에 들인다."""
+        refill(p, day)
         waiting = [b for i in by_priority if i in ship_blocks for b in ship_blocks[i][p]
-                   if b["state"] == "wait" and b["avail"] <= day and pins.get(b["id"], (1, 0))[0] <= day]
+                   if b["state"] == "wait" and b["avail"] <= day and pins.get(b["id"], (1, 0))[0] <= day
+                   and (qcap[p] is None or b.get("staged"))]
         later = []
         for b in sorted(waiting, key=lambda b: block_key(b, day)):
             pin = pins.get(b["id"])
@@ -1728,7 +1771,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
 
     def enter_block(b: dict[str, Any], p: int, u: int, day: int, hour: float = 0.0) -> None:
         i, pid = b["ship"], stations[p]["id"]
-        b.update(state="in", unit=u, start=day, start_h=hour, today=None)
+        b.update(state="in", unit=u, start=day, start_h=hour, today=None, staged=False)
         current[p][u] = {"ship": i, "block": b, "remaining": b["amount"], "amount": b["amount"], "rework": False,
                          **({"not_before": (day, hour)} if hour > EPS else {})}
         if pid not in spans[i]:
@@ -2068,6 +2111,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                         if i not in ship_blocks:
                             create_blocks(i, day)
                 if p == min(block_set):
+                    for q in block_set:
+                        refill(q, day)
                     decide(day)   # 오늘 블록이 다 닿은 뒤(첫 블록 공정의 블록을 만든 뒤), 들이기 전에
                 waiting = []
             entered: set[int] = set()
@@ -2295,8 +2340,10 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             best: dict[int, tuple[int, str, int, int | None]] = {}
             for b in all_blocks:
                 today = block_today(b, day)
-                b["daily"].append({"state": today[0], "unit": None if today[1] is None else today[1] + 1} if today
-                                  else {"state": NOT_STARTED if b["state"] == "pending" else DONE, "unit": None})
+                b["daily"].append({"state": today[0], "unit": None if today[1] is None else today[1] + 1,
+                                   # 적치 한도에 막혀 가공 적치장에 있는 날(4.35). 대기 종류는 그대로 작업장 대기
+                                   **({"yard": True} if b["state"] == "wait" and qcap[b["p"]] is not None and not b.get("staged") else {})}
+                                  if today else {"state": NOT_STARTED if b["state"] == "pending" else DONE, "unit": None})
                 b["today"] = None
                 if today is None:
                     continue

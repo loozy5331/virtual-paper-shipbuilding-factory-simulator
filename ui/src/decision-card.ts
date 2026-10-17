@@ -103,10 +103,11 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
   }
   const short = sit.need_mh - sit.capacity_mh;
   const count = asked.reduce((n, [, st]) => n + st.waiting.length, 0);
+  const inYard = asked.reduce((n, [, st]) => n + (st.yard?.length ?? 0), 0);
   mount(root, h("div", { class: "dc-backdrop" }), h("section", { class: "dc-card", role: "dialog", "aria-label": `${sit.day}일 아침 액션 카드` },
     h("header", { class: "dc-head" },
       h("div", null, h("small", null, "액션 카드"), h("h2", null, `${sit.day}일 아침 · 조립장에 블록이 몰렸습니다`),
-        h("p", { class: "dc-sub" }, `배정 대기 ${count}건 · 오늘 가용 ${fmt(sit.capacity_mh)}H · 필요 ${fmt(sit.need_mh)}H`,
+        h("p", { class: "dc-sub" }, `배정 대기 ${count}건${inYard ? `(적치장 ${inYard}건 더)` : ""} · 오늘 가용 ${fmt(sit.capacity_mh)}H · 필요 ${fmt(sit.need_mh)}H`,
           short > 0 ? h("b", { class: "wl-hot" }, ` (${fmt(short)}H 부족)`) : null)),
       h("button", { type: "button", class: "btn small", title: "모니터를 보며 생각하기(재생은 멈춘 채)", onclick: () => { collapsed = true; redraw(); } }, "접기")),
     outcomePanel(scenario, asked.map(([sid]) => sid), name, f, fresh, (sid) => ({ left: sit.stations[sid].budget_left, total: sit.stations[sid].budget, spend: spentOn(sid) })),
@@ -122,7 +123,9 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
       return h("div", { class: "dc-station" },
         h("h3", null, h("button", { type: "button", class: "wl-station dc-focus", title: "모니터로 이 공정 작업장 보기",
           style: { background: STATION_COLOR[sid], color: STATION_TEXT[sid] }, onclick: () => ctx.onFocus?.(sid) }, `${name[sid]} 작업장 보기`),
-          h("small", null, st.inside.length ? ` 작업 중 ${st.inside.map((r) => `${r.id}(${fmt(r.mh)}H 남음)`).join(", ")}` : " 작업장 비어 있음")),
+          // 4.35(D83, 사용자 "해당 작업장에서 작업 예정 혹은 작업 중인 블록만"): 표는 작업 중 + 작업장 앞 적치, 적치장은 한 줄 요약
+          h("small", null, st.queue_cap ? ` 작업장 앞 ${st.waiting.length}/${st.queue_cap}개` : ` 작업장 앞 ${st.waiting.length}개`,
+            yardText(st.yard ?? []))),
         h("div", { class: "dc-policy" },
           h("span", { class: "field-label" }, "배치 정책"),
           h("div", { class: "dc-options", role: "radiogroup" },
@@ -136,7 +139,15 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
         h("table", { class: "plan wl-table" },
           h("thead", null, h("tr", null, h("th", null, "순서"), h("th", null, "작업"), h("th", null, "남은 기간"),
             h("th", null, "필요 작업시간"), h("th", null, "자재"), h("th", null, "후행 공정"), h("th", null, "조치 ", h("small", null, "(숫자 = 비상 예산에서 낼 값)")))),
-          h("tbody", null, order.map((id, k) => {
+          h("tbody", null, st.inside.map((r) => h("tr", { class: "dc-inside" },
+            h("td", { class: "wl-order" }, "작업 중"),
+            h("th", null, r.id, h("small", null, ` ${blockLabel(sid, r.no)}`)),
+            h("td", { class: r.left_days <= 1 ? "wl-hot" : "" }, r.left_days < 0 ? `${-r.left_days}일 지남` : `${r.left_days}일`),
+            h("td", null, `${fmt(r.mh)}시간 남음`),
+            kitCell(r),
+            h("td", null, mateText(r)),
+            h("td", null, h("span", { class: "dc-done" }, r.action ? `${ACTION_INFO[r.action].name}(앞서 지시)` : "작업장 안")))),
+          order.map((id, k) => {
             const r = rowOf[id];
             const urgent = r.left_days <= 1;
             return h("tr", { class: urgent ? "urgent" : "" },
@@ -168,7 +179,7 @@ function outcomePanel(scenario: Scenario, stations: string[], name: Record<strin
       h("small", null, fresh ? "오늘 이렇게 하고 그 뒤는 기본 대응으로 끝까지 돌린 결과 · \"지금대로\"는 오늘 아무것도 바꾸지 않았을 때" : "계산하는 중…")),
     h("div", { class: "dc-outcome-grid" },
       h("div", { class: "dc-out-cell" },
-        h("small", null, "작업시간 · 지금 몰린 블록이 다 끝나는 날"),
+        h("small", null, "작업시간 · 작업장 앞 블록이 다 끝나는 날"),
         h("b", { class: "dc-big" }, m?.done_day ? `${m.done_day}일` : "…"),
         k ? h("span", { class: `dc-delta${dayDelta < 0 ? " good" : dayDelta > 0 ? " bad" : ""}` },
           dayDelta ? `지금대로 ${k.done_day}일보다 ${Math.abs(dayDelta)}일 ${dayDelta < 0 ? "빠름" : "늦음"}` : "지금대로와 같음") : null,
@@ -234,6 +245,14 @@ export function clearDecisionDraft(): void {
   fc = null;
   asking = null;
   window.clearTimeout(timer);
+}
+
+/** 가공 적치장에서 기다리는 블록 한 줄(4.35): 배별 수 */
+function yardText(yard: { id: string; ship: string }[]): string {
+  if (!yard.length) return "";
+  const by: Record<string, number> = {};
+  for (const y of yard) by[y.ship] = (by[y.ship] ?? 0) + 1;
+  return ` · 가공 적치장 대기 ${Object.entries(by).map(([sh, n]) => `${sh} ${n}개`).join(", ")}(자리가 나면 정책 순서로 올라옴)`;
 }
 
 function pct(v: number, total: number): number {

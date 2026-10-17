@@ -105,8 +105,12 @@ export function renderAssemblyView(result: Result, scenario: Scenario, day: numb
       const next = bst[bst.findIndex((x) => x.id === b.station) + 1];
       return next?.id === st.id && r2.state === "pair_wait";
     });
-    g.append(s("text", { x: x0 + 4, y: queueY + 2, class: "asm-small" }, waiting.length ? `대기 ${waiting.length}` : "대기 없음"));
-    waiting.slice(0, QUEUE_COLS * 4).forEach((b, n) => {
+    // 적치 한도(4.35, D83): 가공 적치장에 있는 블록은 칩으로 늘어놓지 않고 수만 적는다
+    const yard = waiting.filter((b) => rec(b)!.yard);
+    const front = waiting.filter((b) => !rec(b)!.yard);
+    g.append(s("text", { x: x0 + 4, y: queueY + 2, class: "asm-small" },
+      (front.length ? `대기 ${front.length}` : "대기 없음") + (yard.length ? ` · 가공 적치장 ${yard.length}` : "")));
+    front.slice(0, QUEUE_COLS * 4).forEach((b, n) => {
       const cx = x0 + 4 + (n % QUEUE_COLS) * (CHIP_W + 2);
       const cy = queueY + 8 + Math.floor(n / QUEUE_COLS) * (CHIP_H + 3);
       const pair = rec(b)!.state === "pair_wait";
