@@ -546,6 +546,8 @@ export interface GradePart {
 export interface Grade {
   score: number;
   grade: string;
+  /** 4.33(D81): 납기를 놓쳐 등급을 내렸으면 내린 등급·내리기 전 등급·놓친 배. 옛 회차 결과에는 없다 */
+  cap?: { grade: string; from: string; late: string[] } | null;
   parts: GradePart[];
   /** 4.23: S까지 모자란 점수와 가장 많이 남은 항목(다 채웠으면 null). 옛 회차 결과에는 없다 */
   to_s?: { need: number; focus: string | null };

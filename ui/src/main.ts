@@ -15,7 +15,7 @@ import { renderDesk } from "./desk";
 import { planLabel, renderForm, renderPlanBar, renderPlanNotes, renderPlanTabs, updatePreview, type FormContext } from "./form";
 import { ASSEMBLY_WAIT_LEGEND, renderAssemblyGantt, renderGantt, renderShipGantt, renderStationGantt, type GanttPick } from "./gantt";
 import { docHead, REVIEWER } from "./paper";
-import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, PAIR_WAIT_EDGE, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, TRANSPORT_STATE } from "./labels";
+import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_RANK, GRADE_TEXT, LOSS_STATES, PAIR_WAIT_EDGE, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, TRANSPORT_STATE } from "./labels";
 import { eventText, renderAssemblyReport, renderMemo, renderReport } from "./report";
 import { renderCctv } from "./cctv";
 import { renderShipBoard } from "./shipboard";
@@ -365,7 +365,12 @@ async function openPlan(source: HTMLElement): Promise<void> {
 function sessionBest(scenarioId: string): Run | undefined {
   const done = state.runs.filter((r) => r.finished && r.scenario === scenarioId);
   if (!done.length) return undefined;
-  return done.reduce((a, b) => (b.result.grade.score > a.result.grade.score ? b : a));
+  // 등급이 먼저, 같으면 점수(4.33, 납기 상한 D81: 점수가 높아도 납기를 놓친 B는 A보다 아래)
+  const rank = (r: Run) => [GRADE_RANK[r.result.grade.grade] ?? 0, r.result.grade.score];
+  return done.reduce((a, b) => {
+    const [ga, sa] = rank(a), [gb, sb] = rank(b);
+    return gb > ga || (gb === ga && sb > sa) ? b : a;
+  });
 }
 
 function drawDesk(): void {

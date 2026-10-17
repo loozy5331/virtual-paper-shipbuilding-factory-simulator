@@ -128,7 +128,8 @@ class Store:
                 "grade": grade["grade"], "score": grade["score"], "profit": result["profit"]}
 
     def leaderboard(self, class_code: Any) -> dict:
-        """반 코드의 시나리오별 최고 회차(점수, 같으면 이익, 같으면 먼저 저장한 회차). 반 코드가 비면 빈 표."""
+        """반 코드의 시나리오별 최고 회차(등급, 같으면 점수, 이익, 먼저 저장한 회차). 반 코드가 비면 빈 표.
+        등급이 먼저인 것은 납기 상한(4.33, D81) 때문이다: 점수가 높아도 납기를 놓친 B는 A보다 아래다."""
         code = clean_class_code(class_code)
         best: dict[str, dict] = {}
         if not code:
@@ -137,7 +138,8 @@ class Store:
             rows = db.execute(
                 "SELECT r.scenario, r.grade, r.score, r.profit, r.on_time, r.ships, r.created_at, u.nickname"
                 " FROM runs r JOIN users u ON u.id = r.user_id WHERE u.class_code = ?"
-                " ORDER BY r.scenario, r.score DESC, r.profit DESC, r.id ASC", (code,)).fetchall()
+                " ORDER BY r.scenario, CASE r.grade WHEN 'S' THEN 0 WHEN 'A' THEN 1 WHEN 'B' THEN 2 WHEN 'C' THEN 3 ELSE 4 END,"
+                " r.score DESC, r.profit DESC, r.id ASC", (code,)).fetchall()
             players = db.execute(
                 "SELECT r.scenario, COUNT(DISTINCT r.user_id) AS n FROM runs r JOIN users u ON u.id = r.user_id"
                 " WHERE u.class_code = ? GROUP BY r.scenario", (code,)).fetchall()

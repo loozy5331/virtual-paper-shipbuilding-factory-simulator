@@ -192,7 +192,7 @@ function gradeCard(grade: Grade): HTMLElement {
   return h("div", { class: "grade-card" },
     h("div", { class: `grade-letter grade-${grade.grade}`, style: { background: GRADE_COLOR[grade.grade] ?? "#4b5a51", color: GRADE_TEXT[grade.grade] } },
       h("b", null, grade.grade), h("span", null, `${grade.score.toFixed(1)}점`),
-      GRADE_NOTE[grade.grade] ? h("em", null, GRADE_NOTE[grade.grade]) : null),
+      grade.cap ? h("em", null, "납기 상한") : GRADE_NOTE[grade.grade] ? h("em", null, GRADE_NOTE[grade.grade]) : null),
     h("div", { class: "grade-body" },
       h("div", { class: "grade-parts" }, grade.parts.map((p) =>
         h("div", { class: "grade-part", title: `목표 ${p.key === "delivery" || p.key === "quality" ? pct(p.target, 0) : num(p.target)}` },
@@ -206,7 +206,12 @@ function gradeCard(grade: Grade): HTMLElement {
           h("b", null, `인원 ${signed(vs.pool)}명`), ", ",
           h("b", { class: vs.score >= 0 ? "good" : "bad" }, `점수 ${signed(vs.score, (v) => v.toFixed(1))}`))
         : h("p", { class: "hint" }, "기준선과 비교할 수 없는 시나리오입니다."),
-      h("p", { class: "hint" }, "점수 = 매출 30 + 이익 40(최대 52) + 납기 20 + 직행률 10 · S 100, A 85, B 70, C 50")));
+      // 납기 상한(4.33, D81): 점수는 그대로, 등급만 내렸다
+      grade.cap
+        ? h("p", { class: "cap-line" }, h("b", { class: "bad" }, `${grade.cap.late.join("·")} 납기를 놓쳐 ${grade.cap.grade}`),
+          ` (점수만으로는 ${grade.cap.from}). 납기를 하나라도 놓치면 점수가 높아도 ${grade.cap.grade}를 넘지 못합니다.`)
+        : null,
+      h("p", { class: "hint" }, "점수 = 매출 30 + 이익 40(최대 52) + 납기 20 + 직행률 10 · S 100, A 85, B 70, C 50 · 납기를 하나라도 놓치면 B 이하")));
 }
 
 /** 재고 금액 추이. 한 계열이라 범례 없이 제목이 이름이다. 날마다 마우스를 올리면 금액이 나온다. */
@@ -457,6 +462,8 @@ function recommendCard(result: Result, onApplyRule?: (rule: DispatchRule) => voi
 function tipsCard(grade: Grade, scenario: Scenario): HTMLElement {
   const toS = grade.to_s;
   const lead = !toS ? null
+    : grade.cap ? h("p", { class: "tip-lead" }, h("b", null, `점수는 ${grade.cap.from}인데 ${grade.cap.grade}야.`), " ",
+      `${grade.cap.late.join("·")} 납기를 놓치면 점수가 아무리 높아도 ${grade.cap.grade}를 넘지 못해. 평가서 D 납기에서 그 배의 리드타임이 어디서 샜는지 봐.`)
     : toS.need > 0 ? h("p", { class: "tip-lead" }, h("b", null, `S까지 ${toS.need.toFixed(1)}점.`), " ", toS.focus ? FOCUS_TIP[toS.focus] ?? "" : "")
       : h("p", { class: "tip-lead" }, h("b", null, "S, 잘했어."), " ",
         toS.focus === "profit" ? `이익 점수는 목표를 넘어도 ${num(grade.parts.find((p) => p.key === "profit")?.max ?? 0)}점까지 올라가. 더 짜낼 데가 있는지 봐.`

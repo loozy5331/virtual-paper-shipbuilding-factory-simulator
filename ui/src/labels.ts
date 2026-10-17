@@ -135,6 +135,9 @@ export const GRADE_EDGE: Record<string, string> = { S: "#9a6a00" };
 /** 강조하는 등급의 한마디. 색만으로 알리지 않으려고 쓴다. */
 export const GRADE_NOTE: Record<string, string> = { S: "목표 초과", F: "목표 미달" };
 
+/** 등급의 높낮이(높을수록 큰 값). 세션·반 최고는 등급이 먼저, 같으면 점수(4.33, 납기 상한 D81) */
+export const GRADE_RANK: Record<string, number> = { S: 4, A: 3, B: 2, C: 1, F: 0 };
+
 /** 블록 우선순위 규칙(4.25, D71). 생산계획서 ④ 블록 공정 카드와 평가서 추천에 쓴다 */
 export const DISPATCH_INFO: Record<string, { name: string; note: string }> = {
   ship: { name: "선박 순서", note: "배 우선순위대로. 같은 배는 블록 번호 순" },
