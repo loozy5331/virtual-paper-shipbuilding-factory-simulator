@@ -1,98 +1,117 @@
 {
   "id": "dispatch",
   "name": "작업 배정",
-  "summary": "수업 주제 07 \"해야 할 작업은 많은데 사용할 수 있는 시간이 부족하다!\"의 현장. 1일 아침 중조립 작업장 앞에 다섯 척의 블록(A-101 · B-203 · C-115 · D-208 · E-320)이 와 있다. 오늘 가용 40시간에 필요 80시간. 블록마다 탑재에 넘길 때까지 남은 기간, 필요 작업시간, 자재 준비가 다르다. 조치 요청에서 어떤 블록부터 할지와 블록별 조치를 정해 탑재 일정과 인도 납기를 지킨다.",
+  "summary": "수업 주제 07 \"해야 할 작업은 많은데 사용할 수 있는 시간이 부족하다!\"의 현장. 간이공정(절단·가공·소조립·PE장·탑재·시운전)으로 다섯 척(A~E)을 만든다. 소조립 보강재 키트가 늦게 들어와 블록이 소조립 앞에 쌓이고, 키트가 들어온 날 아침 A-101 · B-203 · C-115 · D-208 · E-320 다섯 블록이 한꺼번에 작업장 앞에 선다(가용 40시간, 필요 80시간). 블록마다 PE장에 넘길 때까지 남은 기간, 필요 작업시간, 자재 준비를 보고 순서와 조치를 정한다. 배마다 둔 버퍼가 소조립에서 늦은 만큼을 덮는지 본다.",
   "track": "drill",
   "level": 3,
   "block_mode": true,
   "period": "실습",
-  "days": 8,
-  "fixed_start": 1,
-  "_scene_comment": "장면에서 시작하는 실습(4.43, D91): 배마다 남은 일은 중조립 블록 하나(work.block_assembly, 블록 1개)와 탑재. station_due.block_assembly = 탑재에 넘길 날(인계 기한), 계약 납기 = 그다음 날(탑재 1일). kits.paint = 의장품 키트가 작업장에 오는 날(1일 이하는 처음부터 작업장에, C는 3일 입고). 착수일은 1일로 고정(fixed_start)",
+  "days": 18,
+  "_scene_comment": "작업 배정 실습(4.43, D91): 배마다 소조립·PE장 블록 1개(blocks), 공정 작업량은 수주 항목 work(소조립 2·3·1.5·1·2.5 = 16·24·12·8·20시간). station_due.sub_assembly = PE장에 넘길 날(인계 기한). kits.paint = 보강재 키트 입고 예정일(협력사가 소조립에 바로 납품). 난수표 supply로 모두 3일 늦어 A·B·D·E는 10일, C는 12일에 들어온다. 그래서 10일 아침 소조립 앞에 다섯 블록이 선다",
   "orders": [
     {
       "id": "A",
       "type": "BULK",
       "order_day": 1,
-      "due_day": 2,
-      "price": 1500,
+      "due_day": 13,
+      "price": 3000,
       "work": {
-        "block_assembly": 2,
-        "erection": 1
+        "cutting": 1,
+        "processing": 1,
+        "sub_assembly": 2,
+        "grand_assembly": 1,
+        "erection": 1,
+        "sea_trial": 1
       },
       "station_due": {
-        "block_assembly": 1
+        "sub_assembly": 10
       },
       "kits": {
-        "paint": 0
+        "paint": 7
       }
     },
     {
       "id": "B",
       "type": "CONT",
       "order_day": 1,
-      "due_day": 3,
-      "price": 1800,
+      "due_day": 14,
+      "price": 3500,
       "work": {
-        "block_assembly": 3,
-        "erection": 1
+        "cutting": 1,
+        "processing": 1,
+        "sub_assembly": 3,
+        "grand_assembly": 1,
+        "erection": 1,
+        "sea_trial": 1
       },
       "station_due": {
-        "block_assembly": 2
+        "sub_assembly": 11
       },
       "kits": {
-        "paint": 0
+        "paint": 7
       }
     },
     {
       "id": "C",
       "type": "FEEDER",
       "order_day": 1,
-      "due_day": 4,
-      "price": 1400,
+      "due_day": 15,
+      "price": 2800,
       "work": {
-        "block_assembly": 1.5,
-        "erection": 1
+        "cutting": 1,
+        "processing": 1,
+        "sub_assembly": 1.5,
+        "grand_assembly": 1,
+        "erection": 1,
+        "sea_trial": 1
       },
       "station_due": {
-        "block_assembly": 3
+        "sub_assembly": 12
       },
       "kits": {
-        "paint": 3
+        "paint": 9
       }
     },
     {
       "id": "D",
       "type": "TUG",
       "order_day": 1,
-      "due_day": 2,
-      "price": 1000,
+      "due_day": 13,
+      "price": 2000,
       "work": {
-        "block_assembly": 1,
-        "erection": 1
+        "cutting": 1,
+        "processing": 1,
+        "sub_assembly": 1,
+        "grand_assembly": 1,
+        "erection": 1,
+        "sea_trial": 1
       },
       "station_due": {
-        "block_assembly": 1
+        "sub_assembly": 10
       },
       "kits": {
-        "paint": 0
+        "paint": 7
       }
     },
     {
       "id": "E",
       "type": "PCTC",
       "order_day": 1,
-      "due_day": 5,
-      "price": 1700,
+      "due_day": 16,
+      "price": 3200,
       "work": {
-        "block_assembly": 2.5,
-        "erection": 1
+        "cutting": 1,
+        "processing": 1,
+        "sub_assembly": 2.5,
+        "grand_assembly": 1,
+        "erection": 1,
+        "sea_trial": 1
       },
       "station_due": {
-        "block_assembly": 4
+        "sub_assembly": 13
       },
       "kits": {
-        "paint": 0
+        "paint": 7
       }
     }
   ],
@@ -103,53 +122,57 @@
     "insulation": 0
   },
   "kpi": {
-    "revenue": 7400,
-    "profit": 2700,
+    "revenue": 14500,
+    "profit": 5950,
     "on_time_rate": 1.0,
     "first_pass_yield": 0.9
   },
   "decision_stations": [
-    "block_assembly"
+    "sub_assembly"
   ],
+  "project_buffer": {
+    "_comment": "프로젝트 버퍼(4.36, D84): 배마다 0~max_days일. 계획 완료가 납기 − 버퍼 안에 들도록 착수일을 거꾸로 잡는다. 일찍 끝난 배는 하루 선가 × storage_rate_per_day의 보관비",
+    "max_days": 8,
+    "default_days": 0,
+    "storage_rate_per_day": 0.01
+  },
   "contingency": {
-    "block_assembly": 200
+    "sub_assembly": 200
   },
   "contingency_max": 500,
   "skip": [
-    "cutting",
-    "processing",
-    "sub_assembly",
+    "block_assembly",
     "painting",
     "pre_outfitting",
-    "grand_assembly",
-    "quay_outfitting",
-    "sea_trial"
+    "quay_outfitting"
   ],
   "blocks": {
-    "block_assembly": 1
+    "sub_assembly": 1,
+    "grand_assembly": 1
   },
   "block_names": {
-    "A-BA1": "A-101",
-    "B-BA1": "B-203",
-    "C-BA1": "C-115",
-    "D-BA1": "D-208",
-    "E-BA1": "E-320"
+    "A-SA1": "A-101",
+    "B-SA1": "B-203",
+    "C-SA1": "C-115",
+    "D-SA1": "D-208",
+    "E-SA1": "E-320"
   },
   "material_names": {
-    "_comment": "4.42.1(D90): 중조립 자재 키트는 숫자 규칙은 물감 그대로, 이름만 의장품 키트(블록 단계에서 다는 배관·브래킷)",
     "paint": {
-      "name": "의장품 키트",
-      "cheap_name": "저가 의장품 키트"
+      "name": "보강재 키트",
+      "cheap_name": "저가 보강재 키트"
     }
   },
   "station_material": {
-    "block_assembly": "paint"
+    "sub_assembly": "paint",
+    "grand_assembly": null,
+    "erection": null
   },
-  "unlocks": "작업 배정 실습입니다. 중조립과 탑재 두 공정만 합니다. 다섯 척 모두 남은 일은 중조립 블록 하나와 탑재뿐이고, 1일 아침 블록이 모두 중조립 작업장 앞에 와 있습니다(착수일은 1일로 고정). 블록마다 탑재에 넘길 기한(인계 기한)이 있고, 넘긴 다음 날 탑재를 마치면 인도합니다. C의 의장품 키트는 3일에 들어옵니다. 중조립을 직접 대응으로 두면 1일 아침 조치 요청이 뜹니다. 작업장(정반)과 도크는 2곳까지, 공법·인력 종류·호이스트·나눠 하기는 잠겨 있습니다.",
+  "unlocks": "작업 배정 실습입니다. 간이공정(절단 · 가공 · 소조립 · PE장 · 탑재 · 시운전)으로 다섯 척을 만들고, 조립 두 공정은 배마다 블록 하나씩으로 계산합니다. 소조립 보강재 키트는 수주 때 발주해 둔 것이라 정해진 날 협력사가 소조립 작업장에 바로 납품합니다. 블록마다 PE장에 넘길 날(인계 기한)이 정해져 있습니다. 생산계획서에서 배마다 버퍼를 두면 계획대로면 납기를 지키는 착수일이 잡히고, 조립 공정 계획서에서 소조립을 직접 대응으로 두면 블록이 늦을 것 같은 날 조치 요청이 뜹니다. 작업장(정반·도크·시운전 해역)은 공정마다 2곳까지, 공법·인력 종류·호이스트·나눠 하기는 잠겨 있습니다.",
   "tips": [
-    "남은 기간이 짧은 블록부터 해. 1일 조치 요청에서 정책을 납기 빠른 순으로 바꾸면 A·D를 오늘 넘기고 다섯 척 모두 지켜. 선박 순서(지금대로)면 D가, 작업 짧은 순이면 B가 하루 늦어.",
-    "C-115는 의장품 키트가 3일에 들어와. 그 전에는 정반에 올릴 수 없으니 순서에서 빼고 봐. 인계 기한(3일) 안에 들어오니 긴급 자재 조달은 돈만 써. 잔업·특근도 순서를 바꾸지 않으면 D를 살리지 못해.",
-    "정반 2곳이면 4명이 하루 32시간이라 가용 40시간 중 한 명이 남아. 정반을 1곳으로 줄이고(증설비를 아낀다) 납기 빠른 순에 A·B 블록 응원 투입을 걸면 남는 사람으로 기한을 지키고 이익이 더 커."
+    "10일 아침 조치 요청에서 정책을 납기 빠른 순으로 바꿔. 남은 기간 1일인 A-101·D-208을 오늘 넘기면 다섯 척 모두 지켜. 선박 순서(지금대로)면 D-208이 하루 늦어 D가, 작업 짧은 순이면 B가 하루 늦어.",
+    "키트가 사흘 늦어 모든 배가 소조립에서 버퍼를 써. 그래도 배마다 버퍼가 있어서 순서만 맞으면 납기는 지켜. C-115는 키트가 12일에 들어와 인계 기한(12일)에 맞으니 긴급 자재 조달은 돈만 써. D-208에 특근·응원을 걸어도 순서를 안 바꾸면 늦어.",
+    "가공 인원은 3명이면 충분해. 절단·가공 정반이 하나씩이라 4명째는 쉬는 날이 많아."
   ],
   "options": {
     "crews": [
@@ -194,104 +217,147 @@
   "random": {
     "quality": {
       "A": {
-        "block_assembly": 0.62,
-        "erection": 0.47
+        "cutting": 0.9,
+        "processing": 0.9,
+        "sub_assembly": 0.9,
+        "grand_assembly": 0.9,
+        "erection": 0.9,
+        "sea_trial": 0.9
       },
       "B": {
-        "block_assembly": 0.81,
-        "erection": 0.73
+        "cutting": 0.9,
+        "processing": 0.9,
+        "sub_assembly": 0.9,
+        "grand_assembly": 0.9,
+        "erection": 0.9,
+        "sea_trial": 0.9
       },
       "C": {
-        "block_assembly": 0.47,
-        "erection": 0.58
+        "cutting": 0.9,
+        "processing": 0.9,
+        "sub_assembly": 0.9,
+        "grand_assembly": 0.9,
+        "erection": 0.9,
+        "sea_trial": 0.9
       },
       "D": {
-        "block_assembly": 0.73,
-        "erection": 0.62
+        "cutting": 0.9,
+        "processing": 0.9,
+        "sub_assembly": 0.9,
+        "grand_assembly": 0.9,
+        "erection": 0.9,
+        "sea_trial": 0.9
       },
       "E": {
-        "block_assembly": 0.58,
-        "erection": 0.81
+        "cutting": 0.9,
+        "processing": 0.9,
+        "sub_assembly": 0.9,
+        "grand_assembly": 0.9,
+        "erection": 0.9,
+        "sea_trial": 0.9
       }
     },
     "block_quality": {
       "A": {
-        "block_assembly": [
-          0.81
+        "sub_assembly": [
+          0.9
+        ],
+        "grand_assembly": [
+          0.9
         ]
       },
       "B": {
-        "block_assembly": [
-          0.47
+        "sub_assembly": [
+          0.9
+        ],
+        "grand_assembly": [
+          0.9
         ]
       },
       "C": {
-        "block_assembly": [
-          0.73
+        "sub_assembly": [
+          0.9
+        ],
+        "grand_assembly": [
+          0.9
         ]
       },
       "D": {
-        "block_assembly": [
-          0.58
+        "sub_assembly": [
+          0.9
+        ],
+        "grand_assembly": [
+          0.9
         ]
       },
       "E": {
-        "block_assembly": [
-          0.62
+        "sub_assembly": [
+          0.9
+        ],
+        "grand_assembly": [
+          0.9
         ]
       }
     },
     "supply": {
       "A": {
-        "paint": 0.9
+        "paint": 0.1
       },
       "B": {
-        "paint": 0.9
+        "paint": 0.1
       },
       "C": {
-        "paint": 0.9
+        "paint": 0.1
       },
       "D": {
-        "paint": 0.9
+        "paint": 0.1
       },
       "E": {
-        "paint": 0.9
+        "paint": 0.1
       }
     }
   },
+  "supply_delays": true,
   "presets": [
     {
       "id": "unmanaged",
       "name": "무관리",
-      "summary": "블록은 선박 순서(A → E)로만 한다. 중조립 정반 1곳(2명, 하루 16시간)에 정비 없이, 조립 5명 · 탑재 4명(도크 2곳).",
+      "summary": "블록은 선박 순서(A → E)로만 한다. 버퍼 없이, 작업장은 공정마다 1곳, 정비 없이, 자재는 늦게 발주한다. 가공 2 · 조립 5 · 탑재 2 · 시운전 1명.",
       "config": {
         "scenario": "dispatch",
         "ordering": "late",
         "ships": {
           "A": {
             "priority": 1,
-            "start_day": 1
+            "start_day": 1,
+            "buffer": 0
           },
           "B": {
             "priority": 2,
-            "start_day": 1
+            "start_day": 1,
+            "buffer": 0
           },
           "C": {
             "priority": 3,
-            "start_day": 1
+            "start_day": 1,
+            "buffer": 0
           },
           "D": {
             "priority": 4,
-            "start_day": 1
+            "start_day": 1,
+            "buffer": 0
           },
           "E": {
             "priority": 5,
-            "start_day": 1
+            "start_day": 1,
+            "buffer": 0
           }
         },
         "pools": {
+          "processing": 2,
           "assembly": 5,
-          "erection": 4
+          "erection": 2,
+          "trial": 1
         },
         "transporters": {
           "maintenance": false,
@@ -303,18 +369,39 @@
         },
         "research": [],
         "stations": {
-          "block_assembly": {
+          "cutting": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": false
+          },
+          "processing": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": false
+          },
+          "sub_assembly": {
             "method": "standard",
             "overtime": false,
             "maintenance": false,
             "dispatch": "ship",
             "units": 1
           },
+          "grand_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": false
+          },
           "erection": {
             "method": "standard",
             "overtime": false,
             "maintenance": false,
-            "units": 2
+            "units": 1
+          },
+          "sea_trial": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": false,
+            "units": 1
           }
         }
       }
@@ -322,95 +409,42 @@
     {
       "id": "managed",
       "name": "관리",
-      "summary": "중조립 정반 2곳(4명, 하루 32시간)을 직접 대응(조치 요청, 비상 예산 200)으로 둔다. 정책은 선박 순서(A → E) 그대로라 1일 아침 조치 요청에서 무엇을 바꿀지 정한다. 조립 5명 · 탑재 4명(도크 2곳), 모두 정비.",
+      "summary": "버퍼 A 3 · B 3 · C 3 · D 2 · E 3일. 소조립 정반 2곳(4명, 하루 32시간)을 직접 대응(조치 요청, 비상 예산 200)으로 두고 정책은 선박 순서(A → E) 그대로. 도크 2곳 · 시운전 해역 2곳, 트랜스포터 2대, 모두 정비. 가공 4 · 조립 5 · 탑재 4 · 시운전 3명.",
       "config": {
         "scenario": "dispatch",
         "ordering": "jit",
         "ships": {
           "A": {
             "priority": 1,
-            "start_day": 1
+            "start_day": 1,
+            "buffer": 3
           },
           "B": {
             "priority": 2,
-            "start_day": 1
+            "start_day": 1,
+            "buffer": 3
           },
           "C": {
             "priority": 3,
-            "start_day": 1
+            "start_day": 1,
+            "buffer": 3
           },
           "D": {
             "priority": 4,
-            "start_day": 1
+            "start_day": 1,
+            "buffer": 2
           },
           "E": {
             "priority": 5,
-            "start_day": 1
+            "start_day": 1,
+            "buffer": 3
           }
         },
         "pools": {
+          "processing": 4,
           "assembly": 5,
-          "erection": 4
-        },
-        "transporters": {
-          "maintenance": true,
-          "count": 1
-        },
-        "forklifts": {
-          "count": 2,
-          "maintenance": true
-        },
-        "research": [],
-        "stations": {
-          "block_assembly": {
-            "method": "standard",
-            "overtime": false,
-            "maintenance": true,
-            "dispatch": "ship",
-            "dispatch_mode": "manual",
-            "units": 2
-          },
-          "erection": {
-            "method": "standard",
-            "overtime": false,
-            "maintenance": true,
-            "units": 2
-          }
-        }
-      }
-    },
-    {
-      "id": "all_in",
-      "name": "전부 최대 투입",
-      "summary": "정반 2곳 · 도크 2곳에 인원 최대(조립 12명 · 탑재 6명), 중조립 잔업, 선박 순서.",
-      "config": {
-        "scenario": "dispatch",
-        "ordering": "bulk",
-        "ships": {
-          "A": {
-            "priority": 1,
-            "start_day": 1
-          },
-          "B": {
-            "priority": 2,
-            "start_day": 1
-          },
-          "C": {
-            "priority": 3,
-            "start_day": 1
-          },
-          "D": {
-            "priority": 4,
-            "start_day": 1
-          },
-          "E": {
-            "priority": 5,
-            "start_day": 1
-          }
-        },
-        "pools": {
-          "assembly": 12,
-          "erection": 6
+          "erection": 4,
+          "trial": 3
         },
         "transporters": {
           "maintenance": true,
@@ -422,16 +456,125 @@
         },
         "research": [],
         "stations": {
-          "block_assembly": {
+          "cutting": {
             "method": "standard",
-            "overtime": true,
+            "overtime": false,
+            "maintenance": true
+          },
+          "processing": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          },
+          "sub_assembly": {
+            "method": "standard",
+            "overtime": false,
             "maintenance": true,
             "dispatch": "ship",
+            "dispatch_mode": "manual",
             "units": 2
+          },
+          "grand_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
           },
           "erection": {
             "method": "standard",
             "overtime": false,
+            "maintenance": true,
+            "units": 2
+          },
+          "sea_trial": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true,
+            "units": 2
+          }
+        }
+      }
+    },
+    {
+      "id": "all_in",
+      "name": "전부 최대 투입",
+      "summary": "버퍼 3일씩, 작업장은 모두 2곳, 인원 최대, 잔업과 정비를 모두 한다. 자재는 일괄 발주.",
+      "config": {
+        "scenario": "dispatch",
+        "ordering": "bulk",
+        "ships": {
+          "A": {
+            "priority": 1,
+            "start_day": 1,
+            "buffer": 3
+          },
+          "B": {
+            "priority": 2,
+            "start_day": 1,
+            "buffer": 3
+          },
+          "C": {
+            "priority": 3,
+            "start_day": 1,
+            "buffer": 3
+          },
+          "D": {
+            "priority": 4,
+            "start_day": 1,
+            "buffer": 3
+          },
+          "E": {
+            "priority": 5,
+            "start_day": 1,
+            "buffer": 3
+          }
+        },
+        "pools": {
+          "processing": 6,
+          "assembly": 12,
+          "erection": 6,
+          "trial": 3
+        },
+        "transporters": {
+          "maintenance": true,
+          "count": 2
+        },
+        "forklifts": {
+          "count": 2,
+          "maintenance": true
+        },
+        "research": [],
+        "stations": {
+          "cutting": {
+            "method": "standard",
+            "overtime": true,
+            "maintenance": true
+          },
+          "processing": {
+            "method": "standard",
+            "overtime": true,
+            "maintenance": true
+          },
+          "sub_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true,
+            "dispatch": "ship",
+            "units": 2
+          },
+          "grand_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          },
+          "erection": {
+            "method": "standard",
+            "overtime": true,
+            "maintenance": true,
+            "units": 2
+          },
+          "sea_trial": {
+            "method": "standard",
+            "overtime": true,
             "maintenance": true,
             "units": 2
           }

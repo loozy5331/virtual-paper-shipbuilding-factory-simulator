@@ -42,8 +42,7 @@ export function renderPlanGantt(ctx: PlanGanttContext): SVGElement {
   const orders = scenario.orders;
   const height = TOP + orders.length * ROW_H + 4;
   const stationName = Object.fromEntries(scenario.stations.map((st) => [st.id, st.name]));
-  // 4.43(D91): 착수일을 고정한 실습(블록이 이미 작업장 앞에 있다)은 끌어도 그날에 머문다
-  const clamp = (day: number) => scenario.fixed_start ?? Math.min(days, Math.max(1, day));
+  const clamp = (day: number) => Math.min(days, Math.max(1, day));
 
   const svg = s("svg", {
     class: "gantt plan-gantt", viewBox: `0 0 ${W} ${height}`, role: "group",
