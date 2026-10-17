@@ -4,7 +4,7 @@
 // 이 탭만 하루 안에서 움직인다(D71 예외): 재생 중이면 하루의 앞 30%(LEAD_IN) 동안 작업자가 대기소에서 정반으로 걷고,
 // 그 뒤 운반 블록이 트랜스포터에 실려 다음 공장으로 간다(CSS 애니메이션, 길이는 하루의 재생 시간). 멈춰 있으면 끝난 모습.
 
-import { blockLabel, blockStations, type Result, type Scenario } from "./api";
+import { blockStations, blockTitle, type Result, type Scenario } from "./api";
 import { s } from "./dom";
 import { HAT, STATE_INFO, STATION_COLOR, STATION_TEXT } from "./labels";
 import { LEAD_IN } from "./scene/frame";
@@ -89,14 +89,14 @@ export function renderAssemblyView(result: Result, scenario: Scenario, day: numb
       const bx = px + 7, by = y + 14;
       if (now) {
         g.append(s("g", worked.length ? {} : { opacity: 0.45 },
-          blockTop(bx, by, bw, bh, `${now.ship} ${blockLabel(st.id, now.no)}`, STATION_COLOR[st.id], STATION_TEXT[st.id], r.state === "rework" && worked.length > 0,
+          blockTop(bx, by, bw, bh, `${blockTitle(now.ship, st.id, now.no)}`, STATION_COLOR[st.id], STATION_TEXT[st.id], r.state === "rework" && worked.length > 0,
             worked.length ? undefined : STATE_INFO[rec(now)!.state]?.name)));
         craneOver = { x: bx + bw / 2, y: by + 4 };   // 거더는 블록 윗부분 위(이름을 가리지 않게)
       }
       if (doneToday.length) {
         const cx = px + pw + 30;
         g.append(s("text", { x: cx, y: y + 10, class: "asm-small" }, "오늘 마침"));
-        doneToday.slice(0, 3).forEach((b, n) => g.append(chip(cx, y + 14 + n * (CHIP_H + 2), `${b.ship} ${blockLabel(st.id, b.no)}`,
+        doneToday.slice(0, 3).forEach((b, n) => g.append(chip(cx, y + 14 + n * (CHIP_H + 2), `${blockTitle(b.ship, st.id, b.no)}`,
           "#f1eee6", "#33413a", false, "오늘 마친 블록")));
       }
       // 작업자: 지금 블록의 아래·위 가장자리에 서서 용접. 재생 중이면 대기소에서 걸어온다
@@ -133,7 +133,7 @@ export function renderAssemblyView(result: Result, scenario: Scenario, day: numb
       const cx = x0 + 4 + (n % QUEUE_COLS) * (CHIP_W + 2);
       const cy = queueY + 8 + Math.floor(n / QUEUE_COLS) * (CHIP_H + 3);
       const pair = rec(b)!.state === "pair_wait";
-      g.append(chip(cx, cy, `${b.ship} ${blockLabel(b.station, b.no)}`, pair ? "#e6e1d4" : "#f1eee6", "#33413a", false, pair ? "짝 대기" : STATE_INFO[rec(b)!.state]?.name));
+      g.append(chip(cx, cy, `${blockTitle(b.ship, b.station, b.no)}`, pair ? "#e6e1d4" : "#f1eee6", "#33413a", false, pair ? "짝 대기" : STATE_INFO[rec(b)!.state]?.name));
     });
     svg.append(g);
 
@@ -151,7 +151,7 @@ export function renderAssemblyView(result: Result, scenario: Scenario, day: numb
         const cy = ly + 8 + n * (CHIP_H + 2);
         // 끝난 모습(도착)에 그리고, 재생 중이면 출발 자리에서 다가온다
         svg.append(s("g", anim("asm-carry", lead, move, { "--dx": `${fromX - toX}px` }),
-          chip(toX, cy, `${b.ship} ${blockLabel(b.station, b.no)}`, STATION_COLOR[st.id], STATION_TEXT[st.id], false, "운반")));
+          chip(toX, cy, `${blockTitle(b.ship, b.station, b.no)}`, STATION_COLOR[st.id], STATION_TEXT[st.id], false, "운반")));
       });
       if (waitTr.length) {
         svg.append(s("text", { x: lx + 17, y: SHOP_Y - 6, class: "asm-flag mid", fill: STATE_INFO.transport_wait.color }, `운반 대기 ${waitTr.length}`));
@@ -167,9 +167,12 @@ export function renderAssemblyView(result: Result, scenario: Scenario, day: numb
     workerTop(208, H - 12), s("text", { x: 216, y: H - 9, class: "asm-small" }, "작업자"),
     spark(254, H - 12, false, 0), s("text", { x: 261, y: H - 9, class: "asm-small" }, "용접")));
   // 오른쪽 끝: PE장 블록이 끝나면 크레인이 탑재로 든다(배 단위). 오늘 탑재 중인 배
+  // 마지막 블록 공정(4.43: 작업 배정 실습은 중조립)
+  const all = blockStations(scenario);
+  const lastName = all.length ? all[all.length - 1].name : "PE장";
   const erecting = result.ships.filter((sh) => day > 0 && sh.daily[today - 1]?.station === "erection" && sh.daily[today - 1]?.state === "work");
   svg.append(s("text", { x: W - 8, y: H - 24, class: "asm-small end" },
-    erecting.length ? `탑재 중: ${erecting.map((sh) => sh.id).join(", ")}` : "PE장 블록이 모두 끝나면 다음 날 크레인이 탑재로 든다"));
+    erecting.length ? `탑재 중: ${erecting.map((sh) => sh.id).join(", ")}` : `${lastName} 블록이 모두 끝나면 다음 날 크레인이 탑재로 든다`));
   return svg;
 }
 

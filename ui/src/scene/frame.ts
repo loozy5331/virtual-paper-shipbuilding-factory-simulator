@@ -2,7 +2,7 @@
 // 엔진 결과의 일자별 기록(ships[].daily, stations[].daily, transporters[].daily, workforce, inventory)을 읽어 옮기기만 한다.
 // 규칙을 다시 계산하지 않는다. 3D 코드(Three.js)도 모른다.
 
-import { blockId, blockLabel, type BlockResult, type Config, type Crew, type Peg, type Result, type Scenario, type ShipState } from "../api";
+import { blockId, type BlockResult, blockShort, type Config, type Crew, type Peg, type Result, type Scenario, type ShipState } from "../api";
 import { SEA_MATERIALS, SUPPLY_DAYS } from "./layout";
 
 /** 로트가 있는 자리. */
@@ -411,7 +411,7 @@ function blockPieces(result: Result, stationIds: string[], day: number, frac: nu
       const g = groups.get(key) ?? { ...base, ...view, id: `${ship.id}:${key}`, mask: [], blockNames: [] };
       groups.set(key, g);
       g.mask!.push(u);
-      const name = b ? blockLabel(b.station, b.no) : null;
+      const name = b ? blockShort(b.ship, b.station, b.no) : null;
       if (name && !g.blockNames!.includes(name)) g.blockNames!.push(name);
     };
     for (let u = 0; u < 8; u++) {

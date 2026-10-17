@@ -8,7 +8,7 @@
 //   조치는 셀렉트 대신 값이 보이는 단추. 미리보기는 엔진 forecast(그날 그렇게 하고 그 뒤는 기본 대응으로 끝까지)
 // 화면은 계산하지 않는다: 상황·순서·견적은 엔진 결과 pending, 정한 것을 결정 기록으로 다시 돌리는 것은 main.ts가 한다.
 
-import { blockLabel, type ActionKind, type Decision, type DispatchRule, type Forecast, type ForecastRow, type Scenario, type Situation, type SituationRow } from "./api";
+import { type ActionKind, blockTitle, type Decision, type DispatchRule, type Forecast, type ForecastRow, type Scenario, type Situation, type SituationRow } from "./api";
 import { h, mount, s } from "./dom";
 import { DISPATCH_INFO, STATION_COLOR, STATION_TEXT } from "./labels";
 
@@ -94,8 +94,10 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
       : k.state === "in_stock" ? `${matName[k.material]} 창고` : k.state === "not_ordered" ? `${matName[k.material]} 발주 전`
         : `${matName[k.material]} ${k.arrival_day}일 입고`;
     const pairDone = r.mates.every((m) => ["pair", "merged", "finished"].includes(m.state));
-    return { short: `${fmt(r.mh)}h · ${kit ?? "자재 ✓"}${pairDone ? " · 끝나면 바로 다음 공정" : ""}`, hot: !!kit,
-      detail: `남은 작업 ${fmt(r.mh)}시간 · ${kit ?? "자재 준비됨"} · 다음: ${nextName(r)} · 짝 ${r.mates.map((m) => `${m.id} ${MATE_STATE[m.state] ?? m.state}`).join(", ") || "없음"}` };
+    // 4.43(D91, 사용자 "남은 기간은 다음 공정에 전달해야 하는 남은 기간"): 버퍼 없는 카드는 수업 슬라이드 표처럼 남은 기간을 앞에 둔다
+    const left = sit.ships ? "" : `남은 ${r.left_days}일 · `;
+    return { short: `${left}${fmt(r.mh)}h · ${kit ?? "자재 ✓"}${pairDone && r.mates.length ? " · 끝나면 바로 다음 공정" : ""}`, hot: !!kit,
+      detail: `${nextName(r)}에 넘길 날 ${r.due}일(오늘 넣어 ${r.left_days}일) · 남은 작업 ${fmt(r.mh)}시간 · ${kit ?? "자재 준비됨"} · 짝 ${r.mates.map((m) => `${m.id} ${MATE_STATE[m.state] ?? m.state}`).join(", ") || "없음"}` };
   };
   const spentOn = (sid: string) => sit.stations[sid].waiting.reduce((n, r) => n + kindsCost(r, d.actions[r.id] ?? []), 0);
 
@@ -161,7 +163,10 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
               }, h("b", null, label, sub ? h("small", null, ` ${sub}`) : null),
               polRows ? optionOutcome(polRows[id as DispatchRule | "keep"], polRows.keep) : h("small", { class: "dc-out dim" }, "…"))))),
         h("div", { class: "dc-step-head" }, h("span", { class: "dc-step" }, "블록별 조치"),
-          h("small", null, "막대 = 이 선택이면 작업하는 구간(진한 부분은 이미 한 만큼), 세로선 = 블록 납기(계획). 선을 넘으면 노랑(계획보다 늦음), 그 배 버퍼보다 더 넘으면 빨강. 배가 실제로 버퍼를 쓰는지는 위 상황 태그. 얇은 선은 지금대로의 끝. 숫자는 비상 예산에서 낼 값")),
+          h("small", null, sit.ships
+            ? "막대 = 이 선택이면 작업하는 구간(진한 부분은 이미 한 만큼), 세로선 = 블록 납기(계획). 선을 넘으면 노랑(계획보다 늦음), 그 배 버퍼보다 더 넘으면 빨강. 배가 실제로 버퍼를 쓰는지는 위 상황 태그. 얇은 선은 지금대로의 끝. 숫자는 비상 예산에서 낼 값"
+            // 4.43: 버퍼 없는 카드는 세로선이 인계 기한(다음 공정에 넘길 날)이고 넘기면 바로 빨강(여유가 없다)
+            : "막대 = 이 선택이면 작업하는 구간(진한 부분은 이미 한 만큼), 세로선 = 인계 기한(다음 공정에 넘길 날의 끝). 선을 넘으면 빨강. 얇은 선은 지금대로의 끝. 숫자는 비상 예산에서 낼 값")),
         // 4.38(사용자 "결과 미리보기 대신 간트, 진행도처럼 채우고, 막대 연장선의 조치로 진행도가 바뀌게"): 블록 진행도 간트
         blockGantt(sit, sid, [...st.inside.map((r) => ({ r, inside: true, ord: "작업 중" })), ...order.map((id, k) => ({ r: rowOf[id], inside: false, ord: `${k + 1}` }))],
           f, fresh, (r, inside) => inside || asKinds(r.action).length
@@ -282,9 +287,9 @@ function blockGantt(sit: Situation, sid: string, rows: GanttRow[], f: Forecast |
     if (k && m && Math.abs(k.e - m.e) > 0.01) track.append(h("i", { class: "dcg-keep", style: { left: x(k.s), width: w(k.s, k.e) }, title: `지금대로면 ${keep[r.id]?.end ?? keep[r.id]?.done_day}일에 끝남` }));
     return h("div", { class: `dcg-row${sev ? ` sev-${sev}` : ""}${inside ? " inside" : ""}` },
       h("div", { class: "dcg-label", title: rd.detail },
-        h("small", { class: "dc-ord" }, ord), h("b", null, `${r.ship} ${blockLabel(sid, r.no)}`),
+        h("small", { class: "dc-ord" }, ord), h("b", null, `${blockTitle(r.ship, sid, r.no)}`),
         h("span", { class: rd.hot ? "dc-hit" : "" }, rd.short),
-        sev ? h("em", { class: `dcg-sev ${sev}` }, `블록 납기 +${late}일`, sev === "late" ? " · 버퍼보다 큼" : "") : null),
+        sev ? h("em", { class: `dcg-sev ${sev}` }, sit.ships ? `블록 납기 +${late}일` : `인계 기한 +${late}일`, sev === "late" && sit.ships ? " · 버퍼보다 큼" : "") : null),
       track,
       h("div", { class: "dcg-act" }, chips(r, inside)));
   }));

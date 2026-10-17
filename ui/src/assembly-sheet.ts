@@ -7,7 +7,7 @@
 //    4.26 사용자: 일정을 먼저, 규칙을 뒤로. 배 탭은 납기가 빠른 배부터, 블록 막대는 좌우로 끌어 착수일을 정한다)
 // 화면은 계산하지 않는다: 블록 일정·납기·위험은 미리보기(block_plan, dues, plan_risks)를 그린다.
 
-import { activeStations, blockId, blockLabel, blockStations, planStations, type Config, type DispatchRule, type Preview, type Scenario } from "./api";
+import { activeStations, blockId, blockShort, blockStations, type Config, type DispatchRule, planStations, type Preview, type Scenario } from "./api";
 import { blockGanttLegend, renderAllBlockGantt, renderBlockGantt } from "./block-plan-gantt";
 import { h, mount } from "./dom";
 import { fillStationPreview, stationCard } from "./form";
@@ -158,7 +158,7 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
 
   const head = docHead({
     title: "조립 공정 계획서", period: scenario.period, code: "PP-02", approved: false,
-    fields: [["대상", action ? `조립 공정(${planStations(scenario).map((b) => b.name).join(" → ")})의 블록 · PE장은 생산계획서`
+    fields: [["대상", action ? `조립 공정(${planStations(scenario).map((b) => b.name).join(" → ")})의 블록${bst.some((b) => b.id === "grand_assembly") ? " · PE장은 생산계획서" : ""}`
       : `조립 세 공정(${bst.map((b) => b.name).join(" → ")})의 블록`], ["딸린 문서", "생산계획서 PP-01"]],
   });
   mount(root, head, schedule, rules, h("div", { class: "errors", "data-asm": "errors" }));
@@ -213,7 +213,7 @@ function dueTable(ctx: AssemblyContext): HTMLElement {
           h("td", null, b
             ? h("div", { class: "block-chips" }, Array.from({ length: b.count }, (_, k) => {
               const bid = blockId(sid, st.id, k + 1);
-              return h("span", { class: "block-chip" }, h("b", null, blockLabel(st.id, k + 1)),
+              return h("span", { class: "block-chip" }, h("b", null, blockShort(sid, st.id, k + 1)),
                 dayInput(config.due?.blocks?.[bid], `bdue:${bid}`, `${bid} 블록 납기`, (v) => setBlockDue(bid, v)));
             }))
             : h("small", { class: "hint" }, "배 한 척 단위")));
