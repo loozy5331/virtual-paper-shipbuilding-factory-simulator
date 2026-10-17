@@ -270,7 +270,7 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
       h("p", { class: "buffer-cost-line", "data-preview": "buffer-cost" }, "…"),
       h("p", { class: "hint" }, "계획 작업은 불량·고장·사고·입고 지연 없이 돌린 결과라, 계획대로면 모든 블록이 제때 끝나고 납기를 지킵니다. ",
         "버퍼를 늘리면 착수가 당겨져 변수에 강해지지만, 일찍 끝난 배는 납기일까지 안벽에서 기다리며 보관비(하루 선가의 ",
-        `${Math.round(pb.storage_rate_per_day * 1000) / 10}%)를 내고 자재도 일찍 들어와 재고비가 늡니다. 생산 중 블록이 계획보다 늦어 버퍼를 먹을 것 같으면 관제실이 액션 카드로 묻습니다.`),
+        `${Math.round(pb.storage_rate_per_day * 1000) / 10}%)를 내고 자재도 일찍 들어와 재고비가 늡니다. 생산 중 블록이 계획보다 늦어 버퍼를 소모할 것 같으면 관제실이 액션 카드로 묻습니다.`),
     ] : [
     h("div", { class: "plan-head" },
       h("b", null, "계획 간트"),
