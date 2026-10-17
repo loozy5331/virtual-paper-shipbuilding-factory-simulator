@@ -41,6 +41,7 @@ LOSS_STATES = [s for s in LEAD_TIME_STATES if s not in (WORK, TRANSPORT)]
 # 나눠 하기(3.0): 한 배의 작업량을 빈 작업장 여러 곳에 나눌 때, 먼저 끝난 부분이 나머지를 기다리는 상태.
 # 배의 하루 상태가 아니라 부분(parts) 기록에만 쓴다. 배는 부분 하나라도 일하면 작업이다.
 PAIR_WAIT = "pair_wait"
+OUTSOURCED = "outsourced"   # 블록 외주(4.32): 블록 기록에만 있다
 MAX_PARTS = 3
 # 트랜스포터 이름(4.3, D46): 블록 한 대. 4.2까지는 T1 자재·T2 블록 두 대였다(자재는 이제 공용 지게차 F1~F3).
 TRANSPORTER_IDS = ["TR", "TR2"]   # 블록 트랜스포터(4.8: 1~2대)
@@ -48,11 +49,12 @@ TRANSPORTER_IDS = ["TR", "TR2"]   # 블록 트랜스포터(4.8: 1~2대)
 BLOCK_CODES = {"sub_assembly": "SA", "block_assembly": "BA", "grand_assembly": "GA"}
 # 블록 공정의 우선순위 규칙(4.25): 선박 순서·납기 빠른 순·여유 작은 순·작업 짧은 순. 추천도 이 순서로 비교한다
 DISPATCH_RULES = ["ship", "edd", "slack", "spt"]
+ACTION_KINDS = ["overtime", "extra", "outsource", "defer"]   # 블록 조치(4.32): 잔업·특근·외주·지체보상금 감수
 # 블록 공정에 있는 배의 하루 상태(4.25): 블록들의 오늘 상태 가운데 이 순서로 앞선 것 하나(같으면 뒤 공정)
 BLOCK_SHIP_RANK = [WORK, REWORK, LABOR_WAIT, ACCIDENT_STOP, BREAKDOWN_STOP, MATERIAL_WAIT, STATION_WAIT, TRANSPORT, TRANSPORT_WAIT]
 
 COST_KEYS = ["labor", "overtime", "maintenance", "material", "holding", "wip", "rework",
-             "accident", "breakdown", "transporter", "investment", "research", "late_penalty"]
+             "accident", "breakdown", "transporter", "investment", "research", "late_penalty", "emergency"]
 
 EPS = 1e-9
 
@@ -390,30 +392,39 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
                 elif not (_is_int(h) and 0 <= h <= last_h):
                     errors.append(f"{bid}: 블록 착수 시각은 0~{last_h} 사이의 정수여야 합니다")
 
-    # 몰리는 날의 결정(4.31, D78): 블록 공정의 대응 방식과 결정 기록. 결정은 [{day, orders: {공정: [블록 이름]}}]
+    # 몰리는 날의 결정(4.31·4.32, D78·D79): 블록 공정의 대응 방식과 결정 기록. 결정은 [{day, policy: {공정: 규칙}, actions: {블록: 조치}}]
     bst_all = block_counts(scenario)
     for pid, st in (config.get("stations") or {}).items():
         mode = st.get("dispatch_mode", "auto")
         if mode not in ("auto", "manual"):
             errors.append(f"{pid}: 대응 방식(dispatch_mode)은 auto 또는 manual이어야 합니다")
-        elif mode == "manual" and pid not in bst_all:
-            errors.append(f"{pid}: 직접 대응은 블록 공정에서만 고를 수 있습니다")
+        elif mode == "manual" and pid not in scenario.get("decision_stations", list(bst_all)):
+            errors.append(f"{pid}: 직접 대응은 {', '.join(scenario.get('decision_stations', list(bst_all)))}에서만 고를 수 있습니다")
     decisions = config.get("decisions")
     if decisions is not None:
         if not isinstance(decisions, list):
             errors.append("결정 기록(decisions)은 목록이어야 합니다")
         else:
             seen: set[int] = set()
+            own_all = set(block_ids(scenario))
             for d in decisions:
-                if not isinstance(d, dict) or not (_is_int(d.get("day")) and 1 <= d["day"] <= days) or d["day"] in seen \
-                        or not isinstance(d.get("orders"), dict):
-                    errors.append("결정 기록은 날마다 한 번, {day, orders}여야 합니다")
+                if not isinstance(d, dict) or not (_is_int(d.get("day")) and 1 <= d["day"] <= days) or d["day"] in seen:
+                    errors.append("결정 기록은 날마다 한 번, {day, policy, actions}여야 합니다")
                     continue
                 seen.add(d["day"])
-                for pid, ids in d["orders"].items():
-                    own = {block_id(o["id"], pid, k) for o in scenario["orders"] for k in range(1, bst_all.get(pid, 0) + 1)}
-                    if pid not in bst_all or not isinstance(ids, list) or len(set(ids)) != len(ids) or any(b not in own for b in ids):
-                        errors.append(f"결정 기록 {d['day']}일: {pid}에는 그 공정의 블록 이름을 한 번씩만 적어야 합니다")
+                for pid, rule in (d.get("policy") or {}).items():
+                    if pid not in bst_all or rule not in DISPATCH_RULES:
+                        errors.append(f"결정 기록 {d['day']}일: 정책은 블록 공정마다 {', '.join(DISPATCH_RULES)} 중 하나여야 합니다")
+                for bid, kind in (d.get("actions") or {}).items():
+                    if bid not in own_all or kind not in ACTION_KINDS:
+                        errors.append(f"결정 기록 {d['day']}일: 블록 조치는 블록 이름 → {', '.join(ACTION_KINDS)} 중 하나여야 합니다")
+    # 공정별 비상 예산(4.32, D79): 생산계획서에서 편성. 직접 대응 공정만, 0~max
+    cont = config.get("contingency")
+    if cont is not None:
+        cmax = scenario.get("contingency_max", 0)
+        if not isinstance(cont, dict) or any(pid not in scenario.get("decision_stations", []) or not _is_int(v) or not 0 <= v <= cmax
+                                             for pid, v in cont.items()):
+            errors.append(f"비상 예산(contingency)은 직접 대응 공정마다 0~{cmax}여야 합니다")
     if not isinstance(config.get("decisions_end", False), bool):
         errors.append("decisions_end는 true 또는 false여야 합니다")
 
@@ -1173,27 +1184,42 @@ def _outcome(result: dict[str, Any]) -> dict[str, Any]:
 
 
 def _decision_review(config: dict[str, Any], scenario: dict[str, Any], result: dict[str, Any]) -> list[dict[str, Any]]:
-    """결정 돌아보기(4.31, D78): 끝난 회차의 결정마다 그날 순서를 다르게 했다면. 그 앞 결정은 그대로, 그날은 규칙 순서
-    (납기 빠른 순·여유 작은 순·작업 짧은 순·선박 순서) 또는 기본 대응(묻지 않음)으로, 그 뒤는 기본 대응으로 끝까지 돌린다.
+    """결정 돌아보기(4.31·4.32, D78·D79): 끝난 회차의 결정마다 그날 다르게 했다면. 그 앞 결정은 그대로, 그날은
+    정책 넷(조치 없이), 내 정책에서 조치만 뺀 것, 기본 대응(묻지 않음) 가운데 하나로, 그 뒤는 기본 대응으로 끝까지 돌린다.
     내 선택은 실제 결과(그 뒤 내 결정까지). 가장 좋은 줄은 D(인도 → 블록 납기) → C → Q 순(_dispatch_rank)."""
     decisions = config.get("decisions") or []
     mine = _outcome(result)
     out = []
-    for k, log in enumerate(result["decisions"]):
+    for log in result["decisions"]:
         day = log["day"]
         before = [d for d in decisions if d["day"] < day]
-        manual_ids = [sid for sid, st in log["situation"]["stations"].items() if st["manual"] and st["waiting"]]
-        rows = [{"choice": "mine", "orders": log["orders"], **mine}]
+        manual_ids = [sid for sid, st in log["situation"]["stations"].items() if st["manual"]]
+
+        def alt(decision: dict[str, Any] | None) -> dict[str, Any]:
+            cfg = {**config, "decisions": before + ([decision] if decision else []), "decisions_end": True}
+            return _outcome(_run(_with_order_days(cfg, scenario), scenario))
+        rows = [{"choice": "mine", "policy": log["policy"], "actions": log["actions"],
+                 "spent": sum(_action_cost(log, bid, kind) for bid, kind in log["actions"].items()), **mine}]
         for rule in DISPATCH_RULES:
-            orders = {sid: log["situation"]["stations"][sid]["rule_orders"][rule] for sid in manual_ids}
-            cfg = {**config, "decisions": before + [{"day": day, "orders": orders}], "decisions_end": True}
-            rows.append({"choice": rule, "orders": orders, **_outcome(_run(_with_order_days(cfg, scenario), scenario))})
-        cfg = {**config, "decisions": before, "decisions_end": True}
-        rows.append({"choice": "auto", "orders": None, **_outcome(_run(_with_order_days(cfg, scenario), scenario))})
+            policy = {sid: rule for sid in manual_ids}
+            rows.append({"choice": rule, "policy": policy, "actions": {}, "spent": 0, **alt({"day": day, "policy": policy})})
+        if log["actions"]:
+            rows.append({"choice": "no_actions", "policy": log["policy"], "actions": {}, "spent": 0,
+                         **alt({"day": day, "policy": log["policy"]})})
+        rows.append({"choice": "auto", "policy": {}, "actions": {}, "spent": 0, **alt(None)})
         best = max(rows[1:], key=_dispatch_rank)
         out.append({"day": day, "rows": rows, "best": best["choice"],
                     "mine_is_best": _dispatch_rank(mine) >= _dispatch_rank(best)})
     return out
+
+
+def _action_cost(log: dict[str, Any], bid: str, kind: str) -> float:
+    """결정 기록의 그날 견적에서 블록 조치 값."""
+    for st in log["situation"]["stations"].values():
+        for row in st["waiting"]:
+            if row["id"] == bid:
+                return row["quotes"][kind]["cost"]
+    return 0.0
 
 
 def _baseline_config(scenario: dict[str, Any]) -> dict[str, Any] | None:
@@ -1421,16 +1447,20 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     # 우선순위 규칙과 서두름(4.25). 여유(slack) = 인도 납기 − 오늘 − 이 공정과 뒤 공정의 이상 소요일 합
     dispatch = {p: config["stations"][stations[p]["id"]].get("dispatch", "ship") for p in block_set}
     order_rank = {bid: k for ids in (config.get("block_order") or {}).values() for k, bid in enumerate(ids)}
-    # 몰리는 날의 결정(4.31, D78): 직접 대응(dispatch_mode manual)인 블록 공정은 몰리는 날 기다리는 블록의 순서를 묻는다.
-    # 결정한 순서는 그날부터 블록 순서(block_order)보다 앞선다. 기록에 없는 첫 물음은 pending으로 돌려주고, 그 뒤는 기본 대응으로 끝까지 돈다.
-    live_rank: dict[str, int] = dict(order_rank)
+    # 몰리는 날의 결정(4.31·4.32, D78·D79): 직접 대응(dispatch_mode manual)인 블록 공정은 몰리는 날 액션 카드로 묻는다.
+    # 정책(공정마다 규칙 하나, 그날부터 블록 순서 대신)과 블록별 조치(잔업·특근·외주·지체보상금 감수, 공정별 비상 예산 안에서).
+    # 기록에 없는 첫 물음은 pending으로 돌려주고, 그 뒤는 기본 대응으로 끝까지 돈다.
     manual = {p for p in block_set if config["stations"][stations[p]["id"]].get("dispatch_mode") == "manual"}
     decided = {d["day"]: d for d in config.get("decisions") or []}
     stop_asking = bool(config.get("decisions_end"))
     seen_pairs: set[tuple[int, int]] = set()   # 이미 물은 (공정, 배): 새 배의 블록이 그 공정 대기열에 끼어들 때만 다시 묻는다
-    queue_pairs: set[tuple[int, int]] = set()  # 대기열에 나타난 적 있는 (공정, 배): 새로 나타나면 앞 결정이 만료된다
     decision_log: list[dict[str, Any]] = []
     pending: dict[str, Any] | None = None
+    policy_on: set[int] = set()                # 정책을 고른 공정: 계획의 블록 순서(block_order) 대신 그 규칙
+    actions: dict[str, str] = {}               # 블록 → 조치
+    em = scenario["emergency"]
+    budget = {p: float({**scenario.get("contingency", {}), **(config.get("contingency") or {})}.get(stations[p]["id"], 0)) for p in block_set}
+    spent = {p: 0.0 for p in block_set}
     pins = {bid: pin for bid in (config.get("block_start") or {}) if (pin := block_pin(config, bid))}   # 착수일·시각(4.26, 4.29)
     hours_of = [day_hours(c, rules) for c in st_cfg]   # 작업장의 하루 근무시간(4.29): 정규 8, 잔업 10
     mh_hours = rules["hours"]["day"]                   # 작업량 1 = 8 MH
@@ -1459,7 +1489,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     def block_key(b: dict[str, Any], day: int) -> tuple[Any, ...]:
         """블록 우선순위(4.25): 블록 순서(목록에 있으면 그 자리) → 그 공정의 규칙 → 배 우선순위 → 블록 번호."""
         i, p = b["ship"], b["p"]
-        return block_sort_key(dispatch[p], live_rank.get(b["id"]), b["due"], b["amount"],
+        pos = (1 << 31) if actions.get(b["id"]) == "defer" else None if p in policy_on else order_rank.get(b["id"])
+        return block_sort_key(dispatch[p], pos, b["due"], b["amount"],
                               orders[i]["due_day"] - day - rem_ideal[(i, p)], priority[i], b["no"], pins.get(b["id"]))
 
     def waiting_blocks(p: int, day: int) -> list[dict[str, Any]]:
@@ -1483,6 +1514,19 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         known = actual if day >= planned else planned
         return {"material": mid, "state": "coming", "arrival_day": known, "delayed": known > planned}
 
+    def quotes(b: dict[str, Any], day: int) -> dict[str, Any]:
+        """블록별 조치의 견적(4.32, 그날 들어가 정원 2명이 한다고 본 계약가): 비용과 끝나는 날(대략)."""
+        a, w, wage = b["amount"], rules["max_workers_per_station"], costs["wage_per_day"]
+        speed = rules["methods"][st_cfg[b["p"]]["method"]]["speed"]
+        ot_days = math.ceil(a / (w * speed * ot["speed"]) - EPS)
+        ex_days = math.ceil(a / (w * speed * em["extra_shift"]["speed"]) - EPS)
+        out = em["outsource"]
+        out_days = math.ceil(a / out["rate_per_day"] - EPS) + out["transport_days"]
+        return {"overtime": {"cost": ot_days * w * wage * ot["pay_rate"], "days": ot_days},
+                "extra": {"cost": ex_days * w * wage * em["extra_shift"]["pay_rate"], "days": ex_days},
+                "outsource": {"cost": round(a * wage * out["price_rate"], 2), "days": out_days, "back_day": day + out_days},
+                "defer": {"cost": 0, "days": None}}
+
     def situation(day: int) -> dict[str, Any]:
         """몰리는 날의 조립장(결정 카드): 공정마다 기다리는 블록과 작업장 안 블록, 규칙별 순서, 가용·필요 공수."""
         rows: dict[str, Any] = {}
@@ -1504,14 +1548,15 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                     mates, to = [x for x in ship_blocks[i][p][k * r:(k + 1) * r] if x is not b], ship_blocks[i][nxt][k]["id"]
                 return {"id": b["id"], "ship": orders[i]["id"], "no": b["no"], "due": b["due"], "left_days": b["due"] - day,
                         "mh": round(left * mh_hours, 2), "kit": kit_status(i, p, day), "next": to,
-                        "mates": [{"id": x["id"], "state": x["state"]} for x in mates]}
+                        "mates": [{"id": x["id"], "state": x["state"]} for x in mates], "action": actions.get(b["id"])}
             rule_orders = {rule: [b["id"] for b in sorted(wait, key=lambda b: block_sort_key(
                 rule, None, b["due"], b["amount"], orders[b["ship"]]["due_day"] - day - rem_ideal[(b["ship"], p)],
                 priority[b["ship"]], b["no"]))] for rule in DISPATCH_RULES}
             rows[sid] = {"manual": p in manual, "units": n_units[p],
-                         "waiting": [row(b, b["amount"]) for b in sorted(wait, key=lambda b: block_key(b, day))],
+                         "waiting": [{**row(b, b["amount"]), "quotes": quotes(b, day)} for b in sorted(wait, key=lambda b: block_key(b, day))],
                          "inside": [row(c["block"], c["remaining"]) for c in inside],
-                         "rule_orders": rule_orders}
+                         "rule_orders": rule_orders, "policy": dispatch[p] if p in policy_on else None, "rule": dispatch[p],
+                         "budget": budget[p], "budget_left": round(budget[p] - spent[p], 2)}
         return {"day": day, "capacity_mh": pools.get("assembly", 0) * mh_hours, "need_mh": round(need * mh_hours, 2),
                 "stations": rows}
 
@@ -1522,14 +1567,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         if not manual:
             return
         wait_all = [b for p in manual for b in waiting_blocks(p, day)]
-        pairs = {(b["p"], b["ship"]) for b in wait_all}
-        if pairs - queue_pairs:
-            # 작업 지시의 유효 기간: 새 배의 블록이 끼어들면 앞 결정의 순서는 끝나고 계획의 블록 순서·규칙으로 돌아간다
-            # (그날 다시 묻거나 결정을 적용하면 그 순서가 새로 선다). 안 그러면 늦게 닿은 급한 블록이 옛 목록 뒤로 밀린다
-            queue_pairs.update(pairs)
-            live_rank.clear()
-            live_rank.update(order_rank)
-        fresh = pairs - seen_pairs
+        fresh = {(b["p"], b["ship"]) for b in wait_all} - seen_pairs
         if not fresh or not any(len(waiting_blocks(p, day)) >= 2 for p, _ in fresh):
             return
         need = sum(b["amount"] for b in all_blocks if b["p"] in block_set and b["state"] == "wait" and b["avail"] <= day)
@@ -1541,15 +1579,38 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             return
         if day in decided:
             snap = situation(day)
-            base = -(len(decision_log) + 1) << 20   # 나중 결정이 앞 결정보다 먼저(같은 자리끼리 비기지 않게)
+            d = decided[day]
             for p in manual:
-                ids = decided[day]["orders"].get(stations[p]["id"])
-                if ids is None:
+                rule = (d.get("policy") or {}).get(stations[p]["id"])
+                if rule is not None:
+                    dispatch[p] = rule
+                    policy_on.add(p)
+            # 블록별 조치: 그날 기다리는 직접 대응 공정 블록만, 적은 순서대로 그 공정 비상 예산 안에서(넘치면 버리고 적어 둔다)
+            waiting_now = {b["id"]: b for b in wait_all}
+            applied, refused = {}, {}
+            for bid, kind in (d.get("actions") or {}).items():
+                b = waiting_now.get(bid)
+                if b is None or bid in actions:
+                    refused[bid] = "not_waiting"
                     continue
-                for k, bid in enumerate(ids):
-                    live_rank[bid] = base + k
+                cost_q = quotes(b, day)[kind]["cost"]
+                if spent[b["p"]] + cost_q > budget[b["p"]] + EPS:
+                    refused[bid] = "over_budget"
+                    continue
+                spent[b["p"]] += cost_q
+                cost["emergency"] += cost_q
+                actions[bid] = kind
+                applied[bid] = kind
+                if kind == "outsource":
+                    # 외주: 블록이 대기열을 떠나 (작업량 ÷ 외주 처리량)일 + 운반일 뒤 그 공정을 마친 채 돌아온다
+                    b.update(state="out", back=quotes(b, day)["outsource"]["back_day"], start=day)
+                    i, pid = b["ship"], stations[b["p"]]["id"]
+                    spans[i].setdefault(pid, {"start": day, "end": day})
+                    events.append({"day": day, "type": "outsource", "ship": orders[i]["id"], "station": pid, "block": bid,
+                                   "back_day": b["back"]})
             seen_pairs.update((b["p"], b["ship"]) for b in wait_all)
-            decision_log.append({"day": day, "orders": decided[day]["orders"], "situation": snap})
+            decision_log.append({"day": day, "policy": d.get("policy") or {}, "actions": applied, "refused": refused,
+                                 "situation": snap})
         elif pending is None and not stop_asking:
             pending = situation(day)
             seen_pairs.update((b["p"], b["ship"]) for b in wait_all)
@@ -1626,14 +1687,14 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             if last:
                 advance(i, p, day)
 
-    def block_work(p: int, u: int, cap: float, day: int, workers: int) -> tuple[str, int]:
+    def block_work(p: int, u: int, cap: float, day: int, workers: int, hours: int | None = None) -> tuple[str, int]:
         """작업장 u의 오늘 처리량 cap으로 블록을 차례로 한다(이어 하기). 오늘 상태(작업·재작업)와 마지막 배를 돌려준다.
         하루 근무시간 동안 처리량을 고르게 쓰는 시계로 블록의 시작·끝 시각과 공수(사람 × 시간)를 적는다(4.29)."""
         nonlocal defects
         pid = stations[p]["id"]
         cur = current[p][u]
         new_work, last_ship = False, cur["ship"]
-        hours = hours_of[p]
+        hours = hours or hours_of[p]   # 블록 조치(4.32): 잔업 10시간, 특근 16시간
         per_h = cap / hours
         clock = 0.0
         mh[p]["input"] += workers * hours
@@ -1669,7 +1730,9 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             if not cur["rework"]:
                 # 검사는 블록마다(난수 random.block_quality). 재작업비는 블록 하나에 재작업비 ÷ 블록 수
                 inspections[p] += 1
-                rate = station_defect_rate(st_cfg[p], crews[p], scenario, done_research, inspections[p] - 1, grades[p],
+                # 잔업·특근으로 한 블록은 잔업 불량 가산(4.32)
+                cfg_b = {**st_cfg[p], "overtime": True} if actions.get(b["id"]) in ("overtime", "extra") else st_cfg[p]
+                rate = station_defect_rate(cfg_b, crews[p], scenario, done_research, inspections[p] - 1, grades[p],
                                            has_equipment(stations[p]))
                 b["verdict"] = rnd["block_quality"][orders[i]["id"]][pid][b["no"] - 1] < rate
                 if b["verdict"]:
@@ -1707,6 +1770,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             return (PAIR_WAIT, None)
         if state == "in":
             return (STATION_WAIT, b["unit"])
+        if state == "out":
+            return (OUTSOURCED, None)
         return None
 
     ship_daily: list[list[dict[str, Any]]] = [[] for _ in range(n_ships)]
@@ -1856,6 +1921,12 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         #       같은 자리·크레인으로 넘어가는 블록(moving)은 끝난 다음 날 닿는다.
         if block_mode:
             block_tr_jobs = {k: [] for k in free}
+            # 외주(4.32): 돌아오는 날 그 공정을 마친 블록으로(검사는 외주처가 했다). 그다음은 직접 한 블록과 같다
+            for b in all_blocks:
+                if b["state"] == "out" and b["back"] == day:
+                    b.update(end=day)
+                    spans[b["ship"]][stations[b["p"]]["id"]]["end"] = day
+                    block_done(b, b["p"], day, 0)
             for b in all_blocks:
                 if b["state"] == "moving" and b["arrive"] <= day:
                     block_arrive(b, day)
@@ -2035,10 +2106,17 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                 continue
 
             rate_today = station_rate(st_cfg[p], rules, assigned[p][u], factor)
+            # 블록 조치(4.32): 작업장에 든 블록이 잔업·특근이면 그 작업장의 오늘이 10·16시간(처리량 1.25·2배)
+            act = actions.get(cur["block"]["id"]) if "block" in cur else None
+            act_hours = None
+            if act in ("overtime", "extra"):
+                speed = ot["speed"] if act == "overtime" else em["extra_shift"]["speed"]
+                rate_today = station_rate({**st_cfg[p], "overtime": False}, rules, assigned[p][u], factor) * speed
+                act_hours = rules["hours"]["day"] + (rules["hours"]["overtime"] if act == "overtime" else rules["hours"]["day"])
             if p in block_set:
                 # 블록 공정(4.25): 오늘 처리량으로 블록을 차례로 끝내고 다음 블록에 이어 쓴다(검사·운반 준비까지)
                 first_block = cur["block"]["id"]
-                state, i = block_work(p, u, rate_today, day, assigned[p][u])
+                state, i = block_work(p, u, rate_today, day, assigned[p][u], act_hours)
             else:
                 cur["remaining"] -= rate_today
                 state = REWORK if cur["rework"] else WORK
@@ -2054,10 +2132,12 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                                                  and b["today"][0] in (WORK, REWORK) and b["today"][1] == u] or [first_block]
 
             # 5-1. 잔업일을 세고, 정해진 간격마다 사고 판정을 한다.
-            if is_overtime(st_cfg[p]):
+            # 블록 조치의 잔업·특근(4.32)도 잔업일로 센다(특근은 accident_weight일). 비용은 결정 때 비상 예산에서 냈다
+            for _ in range(1 if is_overtime(st_cfg[p]) or act == "overtime" else em["extra_shift"]["accident_weight"] if act == "extra" else 0):
                 overtime_days[p][u] += 1
-                cost["overtime"] += assigned[p][u] * costs["wage_per_day"] * ot["pay_rate"]
-                if overtime_days[p][u] % ot["accident_every_days"] == 0:
+                if act is None:
+                    cost["overtime"] += assigned[p][u] * costs["wage_per_day"] * ot["pay_rate"]
+                if overtime_days[p][u] % ot["accident_every_days"] == 0 and day > stop_until[p][u]:
                     table = rnd["accident"][pid]
                     n = overtime_days[p][u] // ot["accident_every_days"]
                     if table[(n - 1 + u) % len(table)] < ot["accident_threshold"]:
@@ -2136,7 +2216,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                 b["today"] = None
                 if today is None:
                     continue
-                state = STATION_WAIT if today[0] == PAIR_WAIT else today[0]
+                # 짝 대기는 작업장 대기로, 외주(4.32)는 운반처럼(손실 아님) 배 상태에 넣는다
+                state = STATION_WAIT if today[0] == PAIR_WAIT else TRANSPORT if today[0] == OUTSOURCED else today[0]
                 rank = BLOCK_SHIP_RANK.index(state)
                 if b["ship"] not in best or (rank, -b["p"]) < best[b["ship"]][:2]:
                     best[b["ship"]] = (rank, -b["p"], b["p"], today[1])
@@ -2289,10 +2370,17 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
 
     # 블록(4.25): 블록마다 작업장, 시작·끝·완료일, 하루 상태(배의 daily와 같은 길이)
     # 납기(4.25): 끝내지 못한 블록·공정은 기간 끝일로 늦은 날을 센다
+    def action_hours(b: dict[str, Any]) -> int:
+        """블록 막대의 하루 칸 길이: 잔업·특근 조치(4.32)로 한 블록은 10·16시간"""
+        act = actions.get(b["id"])
+        if act in ("overtime", "extra"):
+            return rules["hours"]["day"] + (rules["hours"]["overtime"] if act == "overtime" else rules["hours"]["day"])
+        return hours_of[b["p"]]
+
     blocks_out = [{"id": b["id"], "ship": orders[b["ship"]]["id"], "station": stations[b["p"]]["id"], "no": b["no"],
                    "unit": None if b["unit"] is None else b["unit"] + 1, "start": b["start"], "end": b["end"],
                    "start_h": None if b["start_h"] is None else round(b["start_h"], 4),
-                   "end_h": None if b["end_h"] is None else round(b["end_h"], 4), "day_hours": hours_of[b["p"]],
+                   "end_h": None if b["end_h"] is None else round(b["end_h"], 4), "day_hours": action_hours(b),
                    "std_mh": round(b["amount"] * mh_hours, 4), "mh": round(b["mh"], 4), "rework_mh": round(b["rework_mh"], 4),
                    "done_day": b["done_day"], "defect": bool(b["verdict"]),
                    "due": b["due"], "late_days": max(0, (b["done_day"] or days) - b["due"]),

@@ -12,7 +12,7 @@
       "id": "S1",
       "type": "BULK",
       "order_day": 1,
-      "due_day": 34,
+      "due_day": 30,
       "price": 5000
     },
     {
@@ -26,7 +26,7 @@
       "id": "S3",
       "type": "FEEDER",
       "order_day": 1,
-      "due_day": 40,
+      "due_day": 38,
       "price": 4000
     }
   ],
@@ -38,10 +38,19 @@
   },
   "kpi": {
     "revenue": 12000,
-    "profit": 2200,
+    "profit": 1850,
     "on_time_rate": 1.0,
     "first_pass_yield": 0.9
   },
+  "decision_stations": [
+    "sub_assembly",
+    "block_assembly"
+  ],
+  "contingency": {
+    "sub_assembly": 100,
+    "block_assembly": 200
+  },
+  "contingency_max": 500,
   "skip": [
     "painting",
     "pre_outfitting"
@@ -51,9 +60,9 @@
   },
   "unlocks": "조립 공정 실습입니다. 도장·선행의장을 뺀 여덟 공정(절단·가공·소조립·중조립·PE장·탑재·안벽의장·시운전)을 하고, 조립 세 공정은 블록 단위로 계산합니다. 조립 공정 계획서에서 공정마다 기본 대응(규칙대로)과 직접 대응(몰리는 날 묻기)을 고릅니다. 중조립은 물감 키트를 씁니다. 공법·인력 종류·호이스트·나눠 하기는 잠겨 있습니다.",
   "tips": [
-    "몰리는 날 작업 지시에서는 남은 기간이 짧은 블록, 짝이 이미 끝나 후행 공정을 바로 풀어 주는 블록을 위로 올려. 평가서의 결정 돌아보기에서 그날 다른 순서였다면 어땠는지 비교해 봐.",
-    "조립 공정 계획서의 우선순위 규칙을 비교해 봐. 작업 짧은 순은 큰 벌크선(S1) 블록을 뒤로 미뤄 인도가 늦고, 여유 작은 순은 S2의 PE장 납기(도크 26일)를 넘겨. 납기 빠른 순이 둘 다 챙겨.",
-    "안벽의장은 배가 한 척씩 들어와 1명이면 되고, 가공도 1명으로 버텨. 조립장 5명은 그대로 두고 다른 직종 인건비를 줄이면 이익이 목표를 넘어."
+    "몰리는 날 액션 카드에서 배치 정책을 바꿔 봐. 납기 빠른 순은 블록 납기만 보다가 S2를 하루 넘기고, 선박 순서(가장 크고 납기가 빠른 S1부터)가 셋 다 지켜. 정책을 그대로 두려면 S1 블록에 잔업을 걸어도 돼. 외주는 운반 2일 때문에 오히려 늦어질 수 있어.",
+    "⑤ 자동화 연구로 조립이 빨라지면 사람을 줄일 여유가 생겨.",
+    "그다음 가공과 탑재를 1명씩으로 줄여도 납기를 지켜. 비상 예산은 쓴 만큼만 비용이니 꼭 필요한 블록에만 써."
   ],
   "options": {
     "crews": [
@@ -65,7 +74,7 @@
     "material_grades": [
       "standard"
     ],
-    "max_units": 2,
+    "max_units": 1,
     "hoist": false,
     "split": false,
     "forklift_counts": [
@@ -270,17 +279,17 @@
           "sub_assembly": {
             "method": "standard",
             "overtime": false,
-            "maintenance": false
+            "maintenance": true
           },
           "block_assembly": {
             "method": "standard",
             "overtime": false,
-            "maintenance": false
+            "maintenance": true
           },
           "grand_assembly": {
             "method": "standard",
             "overtime": false,
-            "maintenance": false
+            "maintenance": true
           },
           "erection": {
             "method": "standard",
@@ -313,7 +322,7 @@
     {
       "id": "managed",
       "name": "관리",
-      "summary": "납기가 가장 빠른 벌크선(S1)을 우선순위 1로 두고, 착수일을 S1 1일 → S2 5일 → S3 9일로 어긋나게 둔다. 블록 순서는 S1 → S2 → S3 블록 차례로 둔다. 자재는 역산 발주한다. 조립 5명(하루 40MH)에 정비를 하고 가공 2, 탑재 2, 의장 2, 시운전 1명. S2의 PE장 납기(도크 일정)는 적어 둔다.",
+      "summary": "납기가 가장 빠른 벌크선(S1)을 우선순위 1로 두고 착수일을 S1 1일 → S2 5일 → S3 9일로 어긋나게 둔다. 소조립·중조립은 납기 빠른 순 정책에 직접 대응(몰리는 날 액션 카드), 비상 예산 소조립 100·중조립 200. 자재는 역산 발주. 조립 5명(하루 40MH), 가공 2, 탑재 2, 의장 2, 시운전 1명. S2의 PE장 납기(도크 일정)는 적어 둔다.",
       "config": {
         "scenario": "assembly",
         "ordering": "jit",
@@ -362,19 +371,20 @@
             "method": "standard",
             "overtime": false,
             "maintenance": true,
-            "dispatch_mode": "manual"
+            "dispatch_mode": "manual",
+            "dispatch": "edd"
           },
           "block_assembly": {
             "method": "standard",
             "overtime": false,
             "maintenance": true,
-            "dispatch_mode": "manual"
+            "dispatch_mode": "manual",
+            "dispatch": "edd"
           },
           "grand_assembly": {
             "method": "standard",
             "overtime": false,
-            "maintenance": true,
-            "dispatch_mode": "manual"
+            "maintenance": true
           },
           "erection": {
             "method": "standard",
@@ -401,56 +411,6 @@
               "sub_assembly": 9
             }
           }
-        },
-        "block_order": {
-          "sub_assembly": [
-            "S1-SA1",
-            "S1-SA2",
-            "S1-SA3",
-            "S1-SA4",
-            "S1-SA5",
-            "S1-SA6",
-            "S1-SA7",
-            "S1-SA8",
-            "S2-SA1",
-            "S2-SA2",
-            "S2-SA3",
-            "S2-SA4",
-            "S2-SA5",
-            "S2-SA6",
-            "S2-SA7",
-            "S2-SA8",
-            "S3-SA1",
-            "S3-SA2",
-            "S3-SA3",
-            "S3-SA4",
-            "S3-SA5",
-            "S3-SA6",
-            "S3-SA7",
-            "S3-SA8"
-          ],
-          "block_assembly": [
-            "S1-BA1",
-            "S1-BA2",
-            "S1-BA3",
-            "S1-BA4",
-            "S2-BA1",
-            "S2-BA2",
-            "S2-BA3",
-            "S2-BA4",
-            "S3-BA1",
-            "S3-BA2",
-            "S3-BA3",
-            "S3-BA4"
-          ],
-          "grand_assembly": [
-            "S1-GA1",
-            "S1-GA2",
-            "S2-GA1",
-            "S2-GA2",
-            "S3-GA1",
-            "S3-GA2"
-          ]
         }
       }
     },
@@ -504,21 +464,18 @@
           },
           "sub_assembly": {
             "method": "standard",
-            "overtime": true,
-            "maintenance": true,
-            "units": 2
+            "overtime": false,
+            "maintenance": true
           },
           "block_assembly": {
             "method": "standard",
-            "overtime": true,
-            "maintenance": true,
-            "units": 2
+            "overtime": false,
+            "maintenance": true
           },
           "grand_assembly": {
             "method": "standard",
-            "overtime": true,
-            "maintenance": true,
-            "units": 2
+            "overtime": false,
+            "maintenance": true
           },
           "erection": {
             "method": "standard",
