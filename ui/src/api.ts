@@ -354,6 +354,8 @@ export interface Preview {
   plan_risks?: PlanRisk[];
   /** 4.25: 블록 계획 일정(계획 간트에서 펼친 공정의 블록 막대) */
   block_plan?: BlockPlan;
+  /** 4.30(D77) 조립 작업 목록: 계획 일정으로 본 날마다의 조립장 작업(블록 실습만) */
+  worklist?: Worklist;
 }
 
 export interface PlanRisk { ship: string; station: string; plan_end: number; due: number; days: number }
@@ -368,6 +370,22 @@ export interface BlockPlanItem {
   ready_h: number;
 }
 export interface BlockPlan { blocks: Record<string, BlockPlanItem>; order: Record<string, string[]>; risks: string[] }
+
+/** 4.30 작업 목록의 한 줄: 그날 남은 기간(블록 납기 − 그날)·남은 공수·자재(계획 입고일)·후행(짝) */
+export interface WorklistRow {
+  id: string; station: string; ship: string; no: number; due: number;
+  left_days: number; left_mh: number; std_mh: number;
+  material: string | null; kit_day: number | null; kit_ready: boolean;
+  /** 이 블록이 이룰 다음 공정 블록(마지막 블록 공정이면 "erection"), 함께 이루는 짝 블록, 짝이 그날 전에 모두 끝났는지 */
+  next: string; mates: string[]; mates_done: boolean;
+}
+export interface Worklist {
+  capacity_mh: number; workers: number; day_hours: number;
+  first: number; last: number;
+  /** 두 공정 이상이 함께 있고 필요 공수가 가용보다 처음 큰 날(없으면 블록이 가장 많은 날) */
+  focus: number;
+  days: Record<string, { rows: WorklistRow[]; need_mh: number }>;
+}
 
 export interface ShipSpec {
   type: string;

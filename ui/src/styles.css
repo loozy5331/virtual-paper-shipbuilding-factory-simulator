@@ -455,6 +455,7 @@ select.priority { max-width: 84px; }
 
 /* ----- v3: 간트 설비 줄 ----- */
 .gantt .bar-label.small { font-size: 11px; }
+.gantt .bar-label.tiny { font-size: 10px; }
 .gantt .transport { fill: none; stroke: var(--ink-3); stroke-width: 1.3; stroke-dasharray: 3 2; }
 .gantt .section-label { font-size: 13px; font-weight: 700; fill: var(--ink-2); }
 .gantt .unit-id { font-size: 11px; fill: var(--ink-3); text-anchor: end; }
@@ -1396,6 +1397,7 @@ details.block-plan > summary small { color: var(--ink-3); }
 .asm-view .asm-small.end { text-anchor: end; }
 .asm-view .asm-shop-name { font-size: 10px; font-weight: 800; }
 .asm-view .asm-flag { font-size: 8.5px; font-weight: 700; text-anchor: end; }
+.asm-view .asm-flag.mid { text-anchor: middle; }
 .asm-view .asm-chip text { font-size: 8px; font-weight: 700; text-anchor: middle; }
 .asm-view .asm-chip rect.rework { stroke: #fff; stroke-dasharray: 2 1.5; }
 .asm-view .asm-lane { stroke: #c9d3cc; stroke-width: 1.5; fill: none; stroke-dasharray: 3 2; }
@@ -1456,3 +1458,59 @@ details.block-plan > summary small { color: var(--ink-3); }
 .legend i.pinned-mark { background: transparent; outline: 1px solid var(--ink); outline-offset: -1px; }
 .legend i.risk-mark { background: transparent; outline: 1.5px solid var(--bad); outline-offset: -1.5px; }
 .block-legend i.wait-mark { height: 3px; border-radius: 1px; }
+
+/* 4.30(D77) 조립 작업 목록(PP-03): 수업 슬라이드의 "오늘의 작업 목록" 표 */
+.wl-main .panel-head { flex-wrap: wrap; }
+.wl-day { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.wl-day-now { min-width: 3.4em; text-align: center; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.wl-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 6px 0 12px; }
+.wl-stat { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; background: var(--panel-2); }
+.wl-stat b { display: block; font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+.wl-stat small { font-size: 0.78rem; }
+.wl-stat.warn { border-color: var(--bad); }
+.wl-stat.warn b, .wl-stat.warn small { color: var(--bad); }
+.wl-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; font-variant-numeric: tabular-nums; }
+.wl-table th, .wl-table td { padding: 5px 8px 5px 0; border-bottom: 1px solid var(--line-soft); text-align: left; vertical-align: middle; }
+.wl-table tbody th { color: var(--ink); white-space: nowrap; }
+.wl-table td small { color: var(--ink-3); font-size: 0.74rem; }
+.wl-station { display: inline-block; padding: 1px 7px; border-radius: 5px; font-size: 0.76rem; font-weight: 600; }
+.wl-table .wl-hot { color: var(--bad); font-weight: 700; }
+.wl-table .wl-unblock { color: var(--accent); font-weight: 600; }
+.wl-order { white-space: nowrap; }
+.wl-order .btn { margin-left: 6px; }
+.wl-reset { margin: 8px 0 0; }
+.wl-message { margin-top: 12px; padding: 10px 14px; border-left: 4px solid #d9a520; background: #fff6d6; border-radius: 4px; font-size: 0.84rem; }
+.wl-message b { display: block; margin-bottom: 2px; }
+.wl-message p { margin: 2px 0 0; color: var(--ink-2); }
+
+/* 4.30(D77) 블록 실습 "전체" 화면 구석: 조립과 연결된 자재 입고·짝 대기 */
+.asm-watch-host { position: absolute; left: 8px; bottom: 8px; max-width: min(46%, 420px); z-index: 2; pointer-events: none; }
+.asm-watch { pointer-events: auto; background: rgba(20, 27, 23, 0.88); color: #dfe6e1; border: 1px solid #46524b; border-radius: 8px;
+  padding: 8px 10px; font-size: 0.74rem; line-height: 1.45; max-height: 46vh; overflow: auto; }
+.asm-watch-title { display: block; font-size: 0.8rem; margin-bottom: 4px; color: #fff; }
+.asm-watch small { color: #9fb0a6; }
+.asm-watch-title small { color: #9fb0a6; font-weight: 400; }
+.asm-watch ul { margin: 2px 0 6px; padding-left: 14px; }
+.asm-watch p { margin: 2px 0 6px; color: #9fb0a6; }
+.asm-watch li b { color: #fff; font-weight: 600; }
+.asm-watch .hot { color: #f2b36b; }
+.asm-watch em { font-style: normal; color: #f2b36b; }
+/* 4.30 조립 공장 설비 기호 */
+.asm-plate rect { fill: #59645d; }
+.asm-plate line { stroke: #3c453f; stroke-width: 1; }
+.asm-welder rect { fill: #c9a227; }
+.asm-welder path { fill: none; stroke: #2a2f2c; stroke-width: 1; }
+.asm-welder .cable { stroke: #8b958f; }
+.asm-welder.broken rect { fill: #8e2e42; }
+.asm-crane .rail { stroke: #8b958f; stroke-width: 1.5; }
+.asm-crane rect { fill: #c9d3cc; }
+.asm-crane .rope { stroke: #c9d3cc; stroke-width: 0.8; fill: none; }
+
+/* 4.30(D77) 첫 화면 아래 줄: 조립 공정 실습(사다리 밖). 카드는 사다리 카드와 같은 클립보드 */
+.desk-drills { width: 100%; max-width: 1100px; border-top: 1.5px dashed var(--board-edge); padding-top: 18px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.desk-drills-head { text-align: center; }
+.desk-drills-head h3 { margin: 0 0 4px; font-size: 1.1rem; }
+.desk-drills-head p { margin: 0; color: var(--ink-2); font-size: 0.86rem; max-width: 680px; }
+.desk-drill-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 36px; }
+.desk-drill-row .desk-board { min-height: 0; opacity: 1; }
+.desk-drill-row .desk-board .desk-sheet { pointer-events: auto; }

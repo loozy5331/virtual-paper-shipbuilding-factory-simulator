@@ -841,3 +841,150 @@ export function renderStationGantt(result: Result, scenario: Scenario, shipId: s
   }
   return svg;
 }
+
+const WAIT_KINDS = [
+  { state: "material_wait", name: "자재 대기", short: "자재" },
+  { state: "station_wait", name: "작업장 대기", short: "작업장" },
+  { state: "labor_wait", name: "인력 대기", short: "인력" },
+  { state: "pair_wait", name: "짝 대기(먼저 와서 짝 블록을 기다림)", short: "짝" },
+] as const;
+const A_HEAD = 18;      // 조립장 탭: 공정 이름 줄
+const A_GAP = 10;
+
+/**
+ * 조립장 탭(4.30, D77): 블록 실습 관제실 왼쪽 모니터의 기본 화면. 소조립·중조립·PE장마다 작업장 줄에 모든 배의 블록(시간 길이),
+ * 그 아래 대기 줄에 그날 그 공정 앞에서 기다린 블록 수를 까닭별로 쌓는다. 짝 대기는 앞 공정을 끝내고 이 공정 앞에 와서
+ * 짝 블록을 기다리는 블록이라 이 공정(후행) 줄에 센다. 막대를 누르면 그 배의 공정 탭으로(onPick).
+ * 엔진 결과의 blocks[].daily와 작업장 daily를 그리기만 한다.
+ */
+export function renderAssemblyGantt(result: Result, today: number,
+  stations: { id: string; name: string }[], onPick?: (ship: string, station: string) => void,
+  size?: { width: number; height: number }): SVGElement {
+  useSize(size);
+  const days = result.days;
+  const blocks = result.blocks ?? [];
+  const ids = stations.map((st) => st.id);
+  // 블록이 보이는 기간만(앞뒤 하루씩)
+  const seen = blocks.flatMap((b) => b.daily.map((r, i) => (r.state !== "not_started" && r.state !== "done" ? i + 1 : 0)).filter(Boolean));
+  const first = Math.max(1, (seen.length ? Math.min(...seen) : 1) - 1);
+  const last = Math.min(days, (seen.length ? Math.max(...seen) : days) + 1);
+  const span = last - first + 1;
+  const dayW = (W - LEFT - RIGHT) / span;
+  const x = (day: number) => LEFT + (day - first) * dayW;
+  const at = (day: number, h: number, H: number) => x(day) + (h / H) * dayW;
+  const unitsOf = (sid: string) => result.stations.find((rs) => rs.id === sid)!.units;
+  // 그날 공정 앞에서 기다린 블록: 이 공정 블록의 자재·작업장·인력 대기 + 앞 공정 블록의 짝 대기
+  const waitsAt = (sid: string, d: number) => {
+    const prev = ids[ids.indexOf(sid) - 1];
+    const out: Record<string, string[]> = {};
+    for (const b of blocks) {
+      const st = b.daily[d - 1]?.state;
+      if (!st) continue;
+      const here = b.station === sid && st !== "pair_wait" && WAIT_KINDS.some((k) => k.state === st);
+      const mate = b.station === prev && st === "pair_wait";
+      if (here || mate) (out[st] ??= []).push(b.id);
+    }
+    return out;
+  };
+  let maxWait = 1;
+  for (const sid of ids) {
+    for (let d = first; d <= Math.min(last, today); d++) {
+      maxWait = Math.max(maxWait, Object.values(waitsAt(sid, d)).reduce((n, v) => n + v.length, 0));
+    }
+  }
+  // 작업장 줄과 대기 줄은 같은 높이로, 모니터 높이에 맞춘다(24~56)
+  const rowsN = ids.reduce((n, sid) => n + unitsOf(sid).length + 1, 0);
+  const fit = size?.height ? (size.height - TOP - 8 - ids.length * (A_HEAD + A_GAP)) / rowsN : 28;
+  const A_UNIT = Math.max(24, Math.min(56, Math.floor(fit)));
+  const A_WAIT = A_UNIT;
+  const sectionH = (sid: string) => A_HEAD + unitsOf(sid).length * A_UNIT + A_WAIT + A_GAP;
+  const height = TOP + ids.reduce((n, sid) => n + sectionH(sid), 0) + 6;
+  const svg = s("svg", { class: "gantt asm-gantt", viewBox: `0 0 ${W} ${height}`, role: "img",
+    "aria-label": `조립장: 공정별 작업장의 블록과 대기, ${today}일째` });
+  svg.append(s("defs", null,
+    s("pattern", { id: "hatch", width: 6, height: 6, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" },
+      s("rect", { width: 2.4, height: 6, fill: "#ffffff", opacity: 0.6 }))));
+  const axis = s("g", { class: "axis" });
+  for (let d = first; d <= last; d++) {
+    if (span <= 40 || d % 5 === 0) {
+      axis.append(s("line", { x1: x(d), x2: x(d), y1: TOP - 6, y2: height - 4, class: d % 5 === 0 ? "grid major" : "grid" }),
+        s("text", { x: x(d) + dayW / 2, y: TOP - 14, class: "tick" }, d));
+    }
+  }
+  svg.append(axis);
+
+  let y = TOP;
+  for (const st of stations) {
+    const color = STATION_COLOR[st.id];
+    svg.append(s("text", { x: 12, y: y + 13, class: "ship-id small" }, st.name),
+      s("rect", { x: LEFT - 14, y: y + 4, width: 9, height: 9, rx: 2, fill: color }));
+    y += A_HEAD;
+    for (const u of unitsOf(st.id)) {
+      const g = s("g", { class: "ship-row" });
+      g.append(s("rect", { x: LEFT, y: y + 2, width: span * dayW, height: A_UNIT - 4, class: "lane" }),
+        s("text", { x: 24, y: y + A_UNIT / 2 + 4, class: "ship-sub" }, `${u.unit}호 작업장`));
+      // 멈춘 날(고장·사고)은 작업장 줄 아래 얇은 띠
+      for (let d = first; d <= Math.min(last, today); d++) {
+        const rec = u.daily[d - 1];
+        if (rec && (rec.state === "breakdown_stop" || rec.state === "accident_stop")) {
+          g.append(barEl(x(d), y + A_UNIT - 5, dayW, 3, STATE_INFO[rec.state].color, `${d}일 ${STATE_INFO[rec.state].name}`));
+        }
+      }
+      for (const b of blocks.filter((b) => b.station === st.id && b.unit === u.unit)) {
+        const H = b.day_hours ?? 8;
+        const name = `${b.ship} ${blockLabel(st.id, b.no)}`;
+        for (const pc of workPieces(b, Math.min(last, today))) {
+          const x0 = at(pc.start, pc.from, H);
+          const w = at(pc.end, pc.to, H) - x0;
+          const bar = barEl(x0, y + 4, w, A_UNIT - 8, color,
+            `${name} ${dayHour(pc.start, pc.from)} ~ ${dayHour(pc.end, pc.to)}${pc.rework ? " (재작업)" : ""} · 블록 납기 ${b.due}일`,
+            { hatch: pc.rework, className: "unit-piece", onPick: onPick ? () => onPick(b.ship, st.id) : undefined });
+          // 막대가 좁아 이름이 한 줄에 안 들어가면 배 위, 블록 아래로 두 줄(그래도 좁으면 배만)
+          if (w >= 16) {
+            const two = A_UNIT >= 36;
+            bar.append(s("text", { x: x0 + w / 2, y: y + A_UNIT / 2 + (two ? -1 : 4), class: "bar-label tiny", fill: STATION_TEXT[st.id] ?? "#fff" }, b.ship));
+            if (two && w >= 22) bar.append(s("text", { x: x0 + w / 2, y: y + A_UNIT / 2 + 11, class: "bar-label tiny", fill: STATION_TEXT[st.id] ?? "#fff" }, blockLabel(st.id, b.no)));
+          }
+          g.append(bar);
+        }
+      }
+      svg.append(g);
+      y += A_UNIT;
+    }
+    // 대기 줄: 날마다 까닭별로 쌓은 막대(높이 = 블록 수)
+    const g = s("g", { class: "ship-row asm-wait" });
+    g.append(s("text", { x: 24, y: y + A_WAIT / 2 + 4, class: "ship-sub" }, "앞에서 대기"));
+    const unitH = (A_WAIT - 6) / maxWait;
+    for (let d = first; d <= Math.min(last, today); d++) {
+      const w = waitsAt(st.id, d);
+      let top = y + A_WAIT - 3;
+      const lines: string[] = [];
+      for (const k of WAIT_KINDS) {
+        const list = w[k.state];
+        if (!list?.length) continue;
+        const info = k.state === "pair_wait" ? PAIR_WAIT_STATE : STATE_INFO[k.state];
+        top -= list.length * unitH;
+        g.append(s("rect", { x: x(d) + 1, y: top, width: Math.max(1, dayW - 2), height: list.length * unitH, fill: info.color,
+          ...(k.state === "pair_wait" ? { stroke: PAIR_WAIT_EDGE, "stroke-width": 0.8 } : {}) }));
+        lines.push(`${k.short} ${list.join(", ")}`);
+      }
+      if (lines.length) {
+        g.append(s("rect", { x: x(d), y, width: dayW, height: A_WAIT, fill: "transparent" },
+          s("title", null, `${d}일 ${st.name} 앞에서 대기 · ${lines.join(" / ")}`)));
+      }
+    }
+    svg.append(g);
+    y += A_WAIT + A_GAP;
+  }
+  if (today >= first && today <= last) {
+    const cx = x(today + 1);
+    svg.append(s("g", { class: "cursor" },
+      s("line", { x1: cx, x2: cx, y1: TOP - 4, y2: height - 4 }),
+      s("rect", { x: cx - 21, y: 1, width: 42, height: 18, rx: 9 }),
+      s("text", { x: cx, y: 14.5 }, `${today}일`)));
+  }
+  return svg;
+}
+
+/** 조립장 탭의 범례: 공정 색, 재작업, 대기 줄의 까닭 */
+export const ASSEMBLY_WAIT_LEGEND = WAIT_KINDS.map((k) => ({ ...k, color: k.state === "pair_wait" ? PAIR_WAIT_STATE.color : STATE_INFO[k.state].color }));

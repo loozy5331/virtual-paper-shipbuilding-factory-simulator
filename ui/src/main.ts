@@ -13,7 +13,7 @@ import { h, mount, num, pct, s as svgEl } from "./dom";
 import { shipProfile } from "./profile";
 import { renderDesk } from "./desk";
 import { planLabel, renderForm, renderPlanBar, renderPlanNotes, renderPlanTabs, updatePreview, type FormContext } from "./form";
-import { renderGantt, renderShipGantt, renderStationGantt, type GanttPick } from "./gantt";
+import { ASSEMBLY_WAIT_LEGEND, renderAssemblyGantt, renderGantt, renderShipGantt, renderStationGantt, type GanttPick } from "./gantt";
 import { docHead, REVIEWER } from "./paper";
 import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_TEXT, LOSS_STATES, PAIR_WAIT_EDGE, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, TRANSPORT_STATE } from "./labels";
 import { eventText, renderAssemblyReport, renderMemo, renderReport } from "./report";
@@ -21,6 +21,8 @@ import { renderCctv } from "./cctv";
 import { renderShipBoard } from "./shipboard";
 import { renderAssemblyView } from "./assembly-view";
 import { assemblyBadge, focusAssemblyShip, isAssemblyError, renderAssemblySheet, updateAssemblySheet } from "./assembly-sheet";
+import { renderWorklistSheet, updateWorklistSheet } from "./worklist-sheet";
+import { renderAsmWatch } from "./asm-watch";
 import { renderTrackCard, type TrackPick } from "./track";
 import { buildFrame, TRIAL_DEPART, type Frame } from "./scene/frame";
 import type { FieldView, Yard } from "./scene/yard";
@@ -79,6 +81,8 @@ interface State {
   ganttShip: string | null;
   /** 4.25 공정 탭: 배 탭에서 고른 블록 공정(전체 > 선박 > 공정). null이면 그 배의 공정 전체 */
   ganttStation?: string | null;
+  /** 4.30(D77): 블록 실습에서 "전체" 탭을 골랐다. 아니면 배를 고르지 않은 왼쪽 모니터는 조립장 탭(기본) */
+  ganttAll?: boolean;
   day: number;
   playing: boolean;
   speed: number;
@@ -119,6 +123,8 @@ const els = {
   form: h("aside", { class: "form" }),
   // 4.25(D71): 블록 조립 실습의 두 번째 낱장(조립 공정 계획서)과 클립보드 위 인덱스 탭
   assemblyForm: h("aside", { class: "form assembly-form", hidden: true }),
+  // 4.30(D77): 세 번째 낱장(조립 작업 목록)
+  worklistForm: h("aside", { class: "form worklist-form", hidden: true }),
   sheetTabs: h("nav", { class: "sheet-tabs", "aria-label": "낱장" }),
   planBar: h("div", { class: "bar-row" }),
   planTabs: h("nav", { class: "plan-tabs", "aria-label": "계획안" }),
@@ -198,6 +204,7 @@ function drawForm(): void {
   renderForm(els.form, ctx);
   if (!state.data.scenario.block_mode) planSheet = "plan";
   renderAssemblySheet(els.assemblyForm, { scenario: state.data.scenario, config: state.config, onEdit: ctx.onEdit });
+  renderWorklistSheet(els.worklistForm, { scenario: state.data.scenario, config: state.config, onEdit: ctx.onEdit });
   drawSheetTabs();
   renderPlanBar(els.planBar, ctx);
   renderPlanNotes(els.planNotes, ctx);
@@ -209,13 +216,14 @@ function drawForm(): void {
 /** 평가서 클립보드의 낱장(4.25): 생산실적 평가서 | 조립 공정 실적서 | 뒷장 메모 */
 let reportSheet: "report" | "assembly" | "memo" = "report";
 
-/** 생산계획서 클립보드의 낱장(4.25, D71): 생산계획서 | 조립 공정 계획서. 한 번에 한 장만 보이고 탭으로 넘긴다(스크롤로 잇지 않는다) */
-let planSheet: "plan" | "assembly" = "plan";
+/** 생산계획서 클립보드의 낱장(4.25, D71): 생산계획서 | 조립 공정 계획서 | 조립 작업 목록(4.30). 한 번에 한 장만 보이고 탭으로 넘긴다(스크롤로 잇지 않는다) */
+let planSheet: "plan" | "assembly" | "worklist" = "plan";
 
 function drawSheetTabs(): void {
   const block = !!state.data.scenario.block_mode;
   els.form.hidden = block && planSheet !== "plan";
   els.assemblyForm.hidden = !block || planSheet !== "assembly";
+  els.worklistForm.hidden = !block || planSheet !== "worklist";
   if (!block) { mount(els.sheetTabs, null); return; }
   const badge = assemblyBadge(state.preview);
   const warn = state.errors.some(isAssemblyError);
@@ -226,12 +234,14 @@ function drawSheetTabs(): void {
   mount(els.sheetTabs,
     tab("plan", "생산계획서", state.errors.some((e) => !isAssemblyError(e)) ? h("span", { class: "warn" }, " ⚠") : null),
     tab("assembly", "조립 공정 계획서",
-      warn ? h("span", { class: "warn" }, " ⚠") : badge ? h("span", { class: "sheet-badge", title: `계획상 위험 ${badge}곳` }, String(badge)) : null));
+      warn ? h("span", { class: "warn" }, " ⚠") : badge ? h("span", { class: "sheet-badge", title: `계획상 위험 ${badge}곳` }, String(badge)) : null),
+    tab("worklist", "조립 작업 목록", null));
 }
 
 function updateForm(): void {
   updatePreview(els.form, state.preview, state.errors, state.busy);
   updateAssemblySheet(els.assemblyForm, state.preview, state.errors);
+  updateWorklistSheet(els.worklistForm, state.preview);
   drawSheetTabs();
   const blocked = state.busy || state.errors.length > 0;
   els.pen.classList.toggle("blocked", blocked);
@@ -497,7 +507,7 @@ async function switchScenario(id: string): Promise<void> {
   previewSeq++;
   Object.assign(state, {
     data, config: structuredClone(first.config), presetId: first.id, edited: false, preview: null, errors: [],
-    current: last ?? null, ganttShip: null, ganttStation: null, cctv: null, board: "none",
+    current: last ?? null, ...roomDefaults(data.scenario), board: "none",
     day: last !== undefined && state.runs[last].finished ? data.scenario.days : 0,
   });
   drawForm();
@@ -539,7 +549,7 @@ async function backToPlan(sheet?: typeof planSheet): Promise<void> {
 
 let planUp = false;
 /** 펼친 계획서에서 보던 낱장(블록 실습). "계획 고치기"는 이 장을 펼친 채로 간다 */
-let boardSheet: "plan" | "assembly" = "plan";
+let boardSheet: "plan" | "assembly" | "worklist" = "plan";
 
 async function openPlanBoard(): Promise<void> {
   const r = currentRun();
@@ -556,13 +566,15 @@ async function openPlanBoard(): Promise<void> {
   // 블록 실습(4.28.2, 사용자): 생산계획서 화면처럼 낱장 탭 [생산계획서 | 조립 공정 계획서]. 한 번에 한 장
   const block = !!state.data.scenario.block_mode;
   const asmSheet = block ? h("aside", { class: "form assembly-form plan-readonly", hidden: boardSheet !== "assembly" }) : null;
+  const wlSheet = block ? h("aside", { class: "form worklist-form plan-readonly", hidden: boardSheet !== "worklist" }) : null;
   if (!block) boardSheet = "plan";
   sheet.hidden = boardSheet !== "plan";
   const tabs = h("nav", { class: "sheet-tabs", "aria-label": "낱장" });
-  const drawTabs = () => mount(tabs, !block ? null : (["plan", "assembly"] as const).map((id) => h("button", {
+  const sheetName = { plan: "생산계획서", assembly: "조립 공정 계획서", worklist: "조립 작업 목록" } as const;
+  const drawTabs = () => mount(tabs, !block ? null : (["plan", "assembly", "worklist"] as const).map((id) => h("button", {
     type: "button", class: `sheet-tab${boardSheet === id ? " active" : ""}`, "aria-pressed": String(boardSheet === id),
-    onclick: () => { boardSheet = id; sheet.hidden = id !== "plan"; asmSheet!.hidden = id !== "assembly"; drawTabs(); },
-  }, id === "plan" ? "생산계획서" : "조립 공정 계획서")));
+    onclick: () => { boardSheet = id; sheet.hidden = id !== "plan"; asmSheet!.hidden = id !== "assembly"; wlSheet!.hidden = id !== "worklist"; drawTabs(); },
+  }, sheetName[id])));
   drawTabs();
   mount(els.planBoard,
     h("div", { class: "board-pages single" }, tabs,
@@ -570,7 +582,7 @@ async function openPlanBoard(): Promise<void> {
         h("div", { class: "report-actions" },
           h("span", { class: "hint" }, `${r.n}회차에 실행한 계획 · 바깥 어두운 곳을 누르면 내려 둡니다`),
           h("button", { class: "btn primary small", type: "button", onclick: () => void backToPlan(boardSheet) }, "계획 고치기")),
-        sheet, asmSheet)));
+        sheet, asmSheet, wlSheet)));
   try {
     r.preview ??= await api.preview(r.config);
   } catch {
@@ -603,7 +615,11 @@ async function openPlanBoard(): Promise<void> {
     readonly(asmSheet);
   };
   drawAsm();
-  for (const s of [sheet, asmSheet]) {
+  if (wlSheet) {
+    renderWorklistSheet(wlSheet, { scenario: state.data.scenario, config: runConfig, onEdit: () => {}, readonly: true });
+    updateWorklistSheet(wlSheet, r.preview ?? null);
+  }
+  for (const s of [sheet, asmSheet, wlSheet]) {
     s?.querySelector<HTMLElement>('[data-sign="승인"]')?.append(h("span", { class: "sign-name" }, r.signer?.nickname ?? REVIEWER));
   }
   drawForm();
@@ -704,7 +720,7 @@ async function run(signer: Signer | null = null): Promise<void> {
   state.runs.push({ n: state.runs.length + 1, scenario: state.data.scenario.id, label: runLabel(), config, result, finished: false, signer, preview });
   state.current = state.runs.length - 1;
   reportSheet = "report";   // 새 회차의 평가서는 첫 장부터
-  Object.assign(state, { day: 0, ganttShip: null, ganttStation: null, cctv: null, board: "none", playing: false });
+  Object.assign(state, { day: 0, ...roomDefaults(state.data.scenario), board: "none", playing: false });
 
   const source = els.plan.querySelector<HTMLElement>(".board-left");
   // 생산계획서 클립보드를 띄워 두고(복제), 관제실을 보이지 않게 그려 책상 위 자리를 잰다.
@@ -795,6 +811,13 @@ function fitFeedText(): void {
   svg.style.setProperty("--ts", String(Math.min(1.35, Math.max(1, 0.8 / scale)).toFixed(2)));
 }
 
+/** 회차를 열 때 모니터가 보여 줄 것. 블록 실습(4.30, D77)은 조립 공정이 기본이고 "전체"는 탭으로 본다 */
+function roomDefaults(scenario: ScenarioPayload["scenario"]): Partial<State> {
+  const block = !!scenario.block_mode;
+  return { ganttShip: null, ganttStation: null, ganttAll: false, cctv: null,
+    rightView: block ? "assembly" : state.rightView === "assembly" ? "map" : state.rightView };
+}
+
 /** 왼쪽 모니터의 간트. 모니터의 실제 폭으로 그려 글자가 줄지 않는다(4.15.6). */
 function drawGanttChart(): void {
   const r = currentRun();
@@ -807,7 +830,13 @@ function drawGanttChart(): void {
   const screen = els.ganttScreen.getBoundingClientRect();
   const size = { width: chart.clientWidth, height: screen.bottom - chart.getBoundingClientRect().top - els.ganttScreen.scrollTop - 8 };
   const plan = r.preview?.plan;
-  mount(chart, ship && state.ganttStation && result.blocks
+  mount(chart, !ship && result.blocks && !state.ganttAll
+    ? renderAssemblyGantt(result, state.day, blockStations(scenario), (sh, st) => {
+      Object.assign(state, { ganttShip: sh, ganttStation: st });
+      drawGanttScreen();
+      tick(true);
+    }, size)
+    : ship && state.ganttStation && result.blocks
     ? renderStationGantt(result, scenario, ship.id, state.ganttStation, state.day, size)
     : ship ? renderShipGantt(result, scenario, ship.id, state.day, pickBar, size, plan) : renderGantt(result, scenario, state.day, pickBar, size, plan));
 }
@@ -855,6 +884,9 @@ function tick(jump: boolean): void {
       focus: state.cctv, onSector: openSector, track: state.track, onPick: openTrack, manager: yard?.managerSpot(),
       due: Object.fromEntries(result.ships.map((sh) => [sh.id, sh.due_day])),
     }));
+    // 4.30(D77) 블록 실습: 조립과 연결된 자재 입고·후행 짝 대기 카드
+    const watch = els.rightTop.querySelector<HTMLElement>(".asm-watch-host");
+    if (watch) mount(watch, renderAsmWatch(result, scenario, state.day));
   }
   fitFeedText();
   const cam = els.rightTop.querySelector(".cam-label");
@@ -1131,7 +1163,7 @@ function drawPlates(): void {
         onclick: () => {
           pause();
           state.current = i;
-          Object.assign(state, { day: run.finished ? run.result.days : 0, ganttShip: null, ganttStation: null, cctv: null, board: run.finished ? "down" : "none" });
+          Object.assign(state, { day: run.finished ? run.result.days : 0, ...roomDefaults(state.data.scenario), board: run.finished ? "down" : "none" });
           drawRoom();
         },
       }, `${run.n}`, run.finished ? gradeChip(run.result.grade.grade, "chip-grade") : null))) : null);
@@ -1178,11 +1210,18 @@ function drawGanttScreen(): void {
   const r = currentRun();
   if (!r) return (mount(els.ganttScreen), mount(els.ganttLegend));
   const { scenario } = state.data;
+  const asm = !!r.result.blocks;
   const shipTab = (id: string | null, label: string) =>
     h("button", {
-      type: "button", class: `screen-tab${state.ganttShip === id ? " active" : ""}`,
-      onclick: () => { state.ganttShip = id; state.ganttStation = null; drawGanttScreen(); tick(true); },
+      type: "button", class: `screen-tab${state.ganttShip === id && (!asm || id !== null || state.ganttAll) ? " active" : ""}`,
+      onclick: () => { state.ganttShip = id; state.ganttStation = null; state.ganttAll = id === null; drawGanttScreen(); tick(true); },
     }, label);
+  // 4.30(D77) 블록 실습: 맨 앞 "조립장"(기본, 모든 배의 블록), "전체"는 조선소 전체 공정
+  const asmTab = asm ? h("button", {
+    type: "button", class: `screen-tab${!state.ganttShip && !state.ganttAll ? " active" : ""}`,
+    onclick: () => { Object.assign(state, { ganttShip: null, ganttStation: null, ganttAll: false }); drawGanttScreen(); tick(true); },
+  }, "조립장") : null;
+  const asmView = asm && !state.ganttShip && !state.ganttAll;
   // 4.25 공정 탭(블록 조립 실습): 배를 고르면 [공정 전체 | 소조립 | 중조립 | PE장]
   const blockSt = state.ganttShip && r.result.blocks ? blockStations(scenario) : [];
   const stationTab = (id: string | null, label: string) =>
@@ -1192,10 +1231,20 @@ function drawGanttScreen(): void {
     }, label);
   const sameColor = LOSS_STATES.filter((l) => l.state !== "rework");
   mount(els.ganttScreen,
-    h("div", { class: "screen-tabs" }, shipTab(null, "전체"), r.result.ships.map((sh) => shipTab(sh.id, sh.id))),
+    h("div", { class: "screen-tabs" }, asmTab, shipTab(null, "전체"), r.result.ships.map((sh) => shipTab(sh.id, sh.id))),
     blockSt.length ? h("div", { class: "screen-tabs sub" }, stationTab(null, `${state.ganttShip} 공정 전체`),
       blockSt.map((b) => stationTab(b.id, b.name))) : null,
     h("div", { class: "gantt-chart" }));
+  if (asmView) {
+    // 조립장 탭(4.30): 공정 색과 대기 줄의 까닭
+    mount(els.ganttLegend,
+      blockStations(scenario).map((st) => h("span", null, h("i", { style: { background: STATION_COLOR[st.id] } }), st.name)),
+      h("span", null, h("i", { class: "hatch" }), "재작업(빗금)"),
+      h("span", { class: "break" }),
+      h("span", null, "앞에서 대기(블록 수):"),
+      ASSEMBLY_WAIT_LEGEND.map((k) => h("span", null, h("i", { class: "thin", style: { background: k.color } }), k.name)));
+    return;
+  }
   mount(els.ganttLegend,
     // 공정 색은 전체 탭에만. 배 탭은 줄마다 공정 이름이 있다(4.12.7).
     state.ganttShip ? null : activeStations(scenario).map((st) => h("span", null, h("i", { style: { background: STATION_COLOR[st.id] } }), st.name)),
@@ -1234,6 +1283,7 @@ function drawRightTop(): void {
   }
   mount(els.rightTop,
     h("div", { class: "cc-host" }),
+    currentRun()?.result.blocks ? h("div", { class: "asm-watch-host" }) : null,
     // 머리줄(4.15.2): 현장 머리줄과 같은 차례로. 어디(제목) → 무엇을 볼까(전경·구획) → 무엇을 따라갈까(추적)
     h("div", { class: "cam-bar" },
       h("span", { class: "cam-label" }, camLabel()),
@@ -1258,10 +1308,11 @@ function drawRightTabs(): void {
       ondblclick: (e: Event) => e.stopPropagation(),   // 제목 줄 두 번 누르기(크게 보기)와 겹치지 않게
       onclick: () => setRightView(view),
     }, label);
+  // 4.30(D77) 블록 실습: 조립 공장 안이 기본(맨 앞), 조선소 전경은 "전체"
+  const block = !!currentRun()?.result.blocks;
   mount(title, h("span", { class: "right-tabs", role: "group", "aria-label": "오른쪽 모니터 화면" },
-    tab("map", "작업 현황"), tab("ships", "선박별"),
-    // 4.25: 블록 조립 실습만
-    currentRun()?.result.blocks ? tab("assembly", "조립 공정") : null));
+    block ? tab("assembly", "조립 공장") : null,
+    tab("map", block ? "전체" : "작업 현황"), tab("ships", "선박별")));
 }
 
 function setRightView(view: State["rightView"]): void {
@@ -1704,7 +1755,7 @@ async function start(): Promise<void> {
     h("div", { class: "plan-bar" }, els.planBar),
     h("div", { class: "plan-body" },
       els.planTabs,
-      h("div", { class: "clipboard board-left" }, els.sheetTabs, els.form, els.assemblyForm),
+      h("div", { class: "clipboard board-left" }, els.sheetTabs, els.form, els.assemblyForm, els.worklistForm),
       h("aside", { class: "plan-notes", "aria-label": "메모" }, els.planNotes, els.goalNote)));
 
   monitor(els.monitorLeft, "left", "공정 간트", els.ganttScreen, els.ganttLegend, els.osd);
