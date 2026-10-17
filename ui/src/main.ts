@@ -823,7 +823,8 @@ function openDecision(): void {
   // 4.32(사용자): 액션 카드가 처음 뜨면 두 모니터를 그 공정의 작업장으로(카메라가 다가간다). 카드의 공정 이름을 누르면 그 공정으로
   const focusOn = (station: string) => {
     state.focus = { station, unit: 1 };
-    Object.assign(state, { ganttShip: null, ganttStation: null, ganttAll: false, ganttUnit: true });
+    // 4.37.1(사용자): 작업장 단계를 없앴다. 왼쪽은 조립 공정, 오른쪽은 그 공정 공장
+    Object.assign(state, { ganttShip: null, ganttStation: null, ganttAll: false, ganttUnit: false });
     drawGanttScreen();
     goRight(2);
     camMove(els.ganttScreen.querySelector(".gantt-chart"), "in");
@@ -1302,8 +1303,8 @@ function drawGanttScreen(): void {
       onclick: () => { state.ganttStation = id; drawGanttScreen(); tick(true); },
     }, label);
   const sameColor = LOSS_STATES.filter((l) => l.state !== "rework");
-  // 4.32(사용자) 브레드크럼: 전체 > 조립 공정 > 소조립 작업장1. 전체 단계에서는 배 탭이 아래 줄에
-  const leftLevel = state.ganttShip || state.ganttAll ? 0 : state.ganttUnit && state.focus ? 2 : 1;
+  // 4.32(사용자) 브레드크럼: 전체 > 조립 공정. 4.37.1(사용자 "작업장 단위 시각화 제거")로 작업장 단계는 뺐다. 전체 단계에서는 배 탭이 아래 줄에
+  const leftLevel = state.ganttShip || state.ganttAll ? 0 : 1;
   const goLeft = (level: number, focus?: { station: string; unit: number }) => {
     const from = leftLevel;
     Object.assign(state, { ganttStation: null, ganttShip: null, ganttAll: level === 0, ganttUnit: level === 2, ...(focus ? { focus } : {}) });
@@ -1314,8 +1315,7 @@ function drawGanttScreen(): void {
   mount(els.ganttScreen,
     asm ? h("nav", { class: "crumbs", "aria-label": "왼쪽 모니터 단계" },
       crumb("전체", leftLevel === 0, () => goLeft(0)), h("span", { class: "crumb-sep" }, "›"),
-      crumb("조립 공정", leftLevel === 1, () => goLeft(1)), h("span", { class: "crumb-sep" }, "›"),
-      unitSelect(scenario, r.result, leftLevel === 2, (f) => goLeft(2, f))) : null,
+      crumb("조립 공정", leftLevel === 1, () => goLeft(1))) : null,
     !asm || leftLevel === 0 ? h("div", { class: `screen-tabs${asm ? " sub" : ""}` }, asm ? null : asmTab, shipTab(null, "전체"),
       r.result.ships.map((sh) => shipTab(sh.id, sh.id))) : null,
     blockSt.length ? h("div", { class: "screen-tabs sub" }, stationTab(null, `${state.ganttShip} 공정 전체`),
@@ -1365,7 +1365,7 @@ function drawRightTop(): void {
   if (state.rightView === "assembly") {
     state.focus ??= { station: blockStations(state.data.scenario)[0].id, unit: 1 };
     mount(els.rightTop, h("div", { class: "asm-host" }),
-      h("p", { class: "asm-note" }, "작업장 하나를 가까이에서 봅니다(정반·용접기·천장 크레인, 작업자는 기호). 재생 중에는 하루 안에서 작업자가 정반으로 걷습니다. 위 브레드크럼으로 내업 영역·전체로 물러납니다."));
+      h("p", { class: "asm-note" }, "조립 공장 하나를 위에서 내려다봅니다(정반·블록·용접기·천장 크레인, 작업자는 기호). 재생 중에는 작업자가 정반으로 걸어와 용접합니다. 위 브레드크럼으로 다른 공장을 고르거나 내업 영역·전체로 물러납니다."));
     return;
   }
   mount(els.rightTop,
@@ -1397,12 +1397,12 @@ function drawRightTabs(): void {
     }, label);
   const r = currentRun();
   if (r?.result.blocks) {
-    // 4.32(사용자) 블록 실습 브레드크럼: 전체(전경) > 내업 영역(내업 구획) > 소조립 작업장1(그 공장 하나). 선박별은 따로
+    // 4.32(사용자) 블록 실습 브레드크럼: 전체(전경) > 내업 영역(내업 구획) > 소조립(그 공장 하나, 4.37.1 작업장이 아니라 공장 단위). 선박별은 따로
     const level = rightLevel();
     mount(title, h("nav", { class: "crumbs right-tabs", "aria-label": "오른쪽 모니터 단계" },
       crumb("전체", level === 0, () => goRight(0)), h("span", { class: "crumb-sep" }, "›"),
       crumb("내업 영역", level === 1, () => goRight(1)), h("span", { class: "crumb-sep" }, "›"),
-      unitSelect(state.data.scenario, r.result, level === 2, (f) => goRight(2, f)),
+      shopSelect(state.data.scenario, level === 2, (f) => goRight(2, f)),
       h("span", { class: "crumb-gap" }), tab("ships", "선박별")));
     return;
   }
@@ -1434,19 +1434,16 @@ function crumb(label: string, current: boolean, onclick: () => void): HTMLElemen
     ondblclick: (e: Event) => e.stopPropagation(), onclick }, label);
 }
 
-/** 브레드크럼 끝칸: 작업장 고르기(블록 공정 × 작업장). 고르면 그 작업장 단계로 */
-function unitSelect(scenario: ScenarioPayload["scenario"], result: Result, current: boolean,
-  onPick: (focus: { station: string; unit: number }) => void): HTMLElement {
-  const options = blockStations(scenario).flatMap((b) =>
-    (result.stations.find((st) => st.id === b.id)?.units ?? []).map((u) => ({ value: `${b.id}:${u.unit}`, label: `${b.name} 작업장${u.unit}` })));
-  const now = state.focus ? `${state.focus.station}:${state.focus.unit}` : "";
+/** 브레드크럼 끝칸: 조립 공장 고르기(블록 공정, 4.37.1 작업장 단위를 뺐다). 고르면 그 공장 단계로 */
+function shopSelect(scenario: ScenarioPayload["scenario"], current: boolean, onPick: (focus: { station: string; unit: number }) => void): HTMLElement {
+  const now = state.focus?.station ?? "";
   return h("select", {
-    class: `crumb crumb-select${current ? " current" : ""}`, "aria-label": "작업장",
+    class: `crumb crumb-select${current ? " current" : ""}`, "aria-label": "조립 공장",
     ondblclick: (e: Event) => e.stopPropagation(),
-    onchange: (e: Event) => { const [station, unit] = (e.target as HTMLSelectElement).value.split(":"); onPick({ station, unit: Number(unit) }); },
-    // 지금 단계가 아니면 누르는 순간 고른 작업장 그대로 그 단계로 내려간다(목록은 그 단계에서 연다)
+    onchange: (e: Event) => onPick({ station: (e.target as HTMLSelectElement).value, unit: 1 }),
+    // 지금 단계가 아니면 누르는 순간 고른 공장 그대로 그 단계로 내려간다(목록은 그 단계에서 연다)
     onmousedown: (e: Event) => { if (!current && state.focus) { e.preventDefault(); onPick(state.focus); } },
-  }, options.map((o) => h("option", { value: o.value, selected: o.value === now }, o.label)));
+  }, blockStations(scenario).map((b) => h("option", { value: b.id, selected: b.id === now }, b.name)));
 }
 
 /** 카메라가 다가가거나 물러나는 짧은 전환(4.32). 움직임 줄이기 설정이면 하지 않는다 */
