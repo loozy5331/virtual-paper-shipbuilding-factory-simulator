@@ -144,7 +144,12 @@ def load_scenario(scenario_id: str = DEFAULT_SCENARIO) -> dict[str, Any]:
     material = sc.get("station_material", {})
     stations = [{**st, "material": None if st["id"] in skip else material.get(st["id"], st.get("material")),
                  **({"skipped": True} if st["id"] in skip else {})} for st in rules["stations"]]
-    return {**sc, **rules, "stations": stations, "skip": [st["id"] for st in stations if st["id"] in skip], "random": random}
+    # 자재 이름(4.42.1, D90): 시나리오가 자재를 다른 이름으로 보이게 할 수 있다(숫자 규칙은 그대로). 조립 현장 배정은
+    # 중조립에 붙인 물감 키트를 "의장품 키트"(블록 단계에서 다는 배관·브래킷)로 부른다(중조립에 페인트는 현실과 다르다)
+    names = sc.pop("material_names", {})
+    materials = [{**m, **names.get(m["id"], {})} for m in rules.pop("materials")]
+    return {**sc, **rules, "materials": materials, "stations": stations, "skip": [st["id"] for st in stations if st["id"] in skip],
+            "random": random}
 
 
 def load_presets(scenario_id: str = DEFAULT_SCENARIO) -> list[dict[str, Any]]:
