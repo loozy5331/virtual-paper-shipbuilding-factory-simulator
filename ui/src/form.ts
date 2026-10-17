@@ -105,7 +105,7 @@ function foldSummaries(ctx: FormContext): Record<string, string> {
       opts.crews.includes("robot") ? `로봇 ${listOr(names((id) => st(id).crew === "robot"))}` : null,
       `잔업 ${listOr(names((id) => !!st(id).overtime))}`,
       opts.plan_buffer ? `여유 ${act.reduce((n, s) => n + (st(s.id).buffer ?? 0), 0)}일` : null,
-      // 4.32: 공정별 비상 예산(액션 카드용)
+      // 4.32: 공정별 비상 예산(조치 요청용)
       scenario.decision_stations && scenario.contingency
         ? `비상 예산 ${listOr(planStations(scenario).filter((b) => st(b.id).dispatch_mode === "manual")
           .map((b) => `${b.name} ${config.contingency?.[b.id] ?? scenario.contingency![b.id] ?? 0}`))}` : null,
@@ -270,7 +270,7 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
       h("p", { class: "buffer-cost-line", "data-preview": "buffer-cost" }, "…"),
       h("p", { class: "hint" }, "계획 작업은 불량·고장·사고·입고 지연 없이 돌린 결과라, 계획대로면 모든 블록이 제때 끝나고 납기를 지킵니다. ",
         "버퍼를 늘리면 착수가 당겨져 변수에 강해지지만, 일찍 끝난 배는 납기일까지 안벽에서 기다리며 보관비(하루 선가의 ",
-        `${Math.round(pb.storage_rate_per_day * 1000) / 10}%)를 내고 자재도 일찍 들어와 재고비가 늡니다. 생산 중 블록이 계획보다 늦어 버퍼를 소모할 것 같으면 관제실이 액션 카드로 묻습니다.`),
+        `${Math.round(pb.storage_rate_per_day * 1000) / 10}%)를 내고 자재도 일찍 들어와 재고비가 늡니다. 생산 중 블록이 계획보다 늦어 버퍼를 소모할 것 같으면 관제실이 조치 요청로 묻습니다.`),
     ] : [
     h("div", { class: "plan-head" },
       h("b", null, "계획 간트"),

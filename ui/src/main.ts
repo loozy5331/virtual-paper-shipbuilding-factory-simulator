@@ -820,7 +820,7 @@ function openDecision(): void {
   const sit = r?.result.pending;
   if (!r || !sit || state.screen !== "room") { els.decision.hidden = true; return; }
   els.decision.hidden = false;
-  // 4.32(사용자): 액션 카드가 처음 뜨면 두 모니터를 그 공정의 작업장으로(카메라가 다가간다). 카드의 공정 이름을 누르면 그 공정으로
+  // 4.32(사용자): 조치 요청가 처음 뜨면 두 모니터를 그 공정의 작업장으로(카메라가 다가간다). 카드의 공정 이름을 누르면 그 공정으로
   const focusOn = (station: string) => {
     state.focus = { station, unit: 1 };
     // 4.37.1(사용자): 작업장 단계를 없앴다. 왼쪽은 조립 공정, 오른쪽은 그 공정 공장

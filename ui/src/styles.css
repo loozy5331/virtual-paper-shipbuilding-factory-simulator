@@ -1783,3 +1783,12 @@ details.review-day[open] > .review-table { margin-top: 6px; }
 .dc-gauge-row .dc-gauge i.used { opacity: 0.55; }
 .dc-gauge-row.band-mid > small { color: var(--warn-ink); }
 .dc-gauge-row.band-hi > small { color: var(--late-fill); font-weight: 700; }
+/* 4.37.3 조치 요청: 제목 앞 노란 삼각형 경고 기호, 비상 예산은 판정 띠 바로 아래 한 줄 */
+.dc-title { display: flex; align-items: center; gap: 8px; }
+.dc-warn-icon { width: 24px; height: 22px; flex: none; }
+.dc-tab .dc-warn-icon { width: 18px; height: 16px; vertical-align: -3px; margin-right: 6px; }
+.dc-tab { display: inline-flex; align-items: center; }
+.dc-budget-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 8px; }
+.dc-budget-row > small:first-child { color: var(--ink-3); font-size: 0.74rem; }
+.dc-budget-row .dc-gauge-row { flex: 1 1 360px; max-width: 560px; }
+.dc-outcome-grid { grid-template-columns: 0.9fr 1.6fr; }
