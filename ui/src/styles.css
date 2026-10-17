@@ -1866,3 +1866,5 @@ details.review-day[open] > .review-table { margin-top: 6px; }
 .dcg-act .dc-chips { gap: 3px; }
 .dcg-act .dc-chip { padding: 1px 5px; font-size: 0.74rem; }
 .dc-why { margin: 2px 0 4px; font-size: 0.9rem; font-weight: 700; color: var(--warn-ink); }
+/* 4.42 조치 여러 개: 혼자만 되는 조치(외주·포기)는 점선 테두리 */
+.dc-chip.alone { border-style: dashed; }

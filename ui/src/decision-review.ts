@@ -29,7 +29,7 @@ function day(rv: DecisionReview, result: Result): HTMLElement {
   const mine = rv.rows[0];
   const best = rv.rows.find((row) => row.choice === rv.best)!;
   const policy = Object.values(mine.policy).map((r) => DISPATCH_INFO[r]?.name).join(" · ") || "정책 그대로";
-  const acts = Object.entries(mine.actions).map(([bid, k]) => `${bid} ${ACTION_NAME[k]}`).join(", ");
+  const acts = Object.entries(mine.actions).map(([bid, k]) => `${bid} ${(Array.isArray(k) ? k : [k]).map((x) => ACTION_NAME[x]).join("+")}`).join(", ");
   const mineOrder = `${policy}${acts ? ` · ${acts}` : ""}${mine.spent ? ` (비상 예산 ${num(mine.spent, 0)})` : ""}`;
   const verdict = rv.mine_is_best
     ? "이날은 내 지시가 가장 좋았습니다."
