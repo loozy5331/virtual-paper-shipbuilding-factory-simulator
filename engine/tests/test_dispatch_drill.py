@@ -8,7 +8,9 @@
     C-115   3일        12시간         미완료(12일 입고)
     D-208   1일         8시간         완료
     E-320   4일        20시간         완료
-조립 5명 = 가용 40시간, 필요 80시간. 배마다 버퍼(B안 A 3 · B 3 · C 3 · D 2 · E 3일)가 있다.
+조립 5명 = 가용 40시간, 필요 80시간. 배마다 버퍼(B안 A 3 · B 3 · C 3 · D 1 · E 3일)가 있다.
+4.50(사용자 "현실감 있게 블록 수를 늘리되 조치 요청은 그대로"): 소조립은 배마다 블록 4개. 위 표의 블록(SA1)만 보강재 키트를 쓰고,
+나머지 셋(A·B 8·6·4시간, C·D 1시간씩, E 2시간씩)은 키트 없이 키트를 기다리는 동안 먼저 만든다. 네 블록이 대조립(block_assembly) 블록 하나가 된다.
 """
 
 import copy
@@ -73,7 +75,12 @@ class Scene(unittest.TestCase):
                           "sea_trial"])   # 조립 현장 배정과 같다(도장·선행의장은 블록 공정 사이라 뺀다)
         self.assertEqual(sc["block_names"]["C-SA1"], "C-115")
         self.assertEqual((sc["blocks"]["sub_assembly"], sc["blocks"]["block_assembly"], sc["blocks"]["grand_assembly"],
-                          sc["blocks"]["painting"]), (1, 1, 1, 4))
+                          sc["blocks"]["painting"]), (4, 1, 1, 4))
+        # 4.50: 소조립 네 블록을 배 한 블록으로 합치는 공정을 대조립이라 부른다(숫자 규칙은 중조립 그대로)
+        self.assertEqual(next(st["name"] for st in sc["stations"] if st["id"] == "block_assembly"), "대조립")
+        a = next(o for o in sc["orders"] if o["id"] == "A")
+        self.assertEqual((a["block_work"]["sub_assembly"], a["kit_blocks"]["sub_assembly"]), ([2, 1, 0.75, 0.5], [1]))
+        self.assertEqual([sc["block_names"][f"A-SA{k}"] for k in range(1, 5)], ["A-101", "A-102", "A-103", "A-104"])
 
     def test_kits_go_to_station(self):
         # 미리 발주해 둔 키트는 창고를 거치지 않고 소조립에 바로(지게차 일감이 아니다), 지연은 원래 입고일에 알린다
@@ -82,6 +89,37 @@ class Scene(unittest.TestCase):
                          [(7, "supply_delay", s) for s in "ABDE"] + [(9, "supply_delay", "C")]
                          + [(10, "arrival", s) for s in "ABDE"] + [(12, "arrival", "C")])
         self.assertTrue(all(e.get("direct") for e in ev if e["type"] == "arrival"))
+
+
+class BlockWork(unittest.TestCase):
+    """4.50: 블록별 작업량(block_work)과 키트를 쓰는 블록(kit_blocks). 키트 없는 블록은 키트를 기다리는 동안 먼저 한다."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.r = decide(preset("managed"), policy={"sub_assembly": "edd"})
+
+    def test_amounts(self):
+        mh = {b["id"]: b["std_mh"] for b in self.r["blocks"] if b["ship"] == "A" and b["station"] == "sub_assembly"}
+        self.assertEqual(mh, {"A-SA1": 16, "A-SA2": 8, "A-SA3": 6, "A-SA4": 4})
+
+    def test_kit_free_blocks_first(self):
+        # 키트 없는 블록은 10일 장면 전에 모두 끝나고, 대조립은 네 블록이 다 닿아야 시작한다
+        done = {b["id"]: b["done_day"] for b in self.r["blocks"] if b["station"] == "sub_assembly"}
+        self.assertTrue(all(d < SCENE for bid, d in done.items() if not bid.endswith("SA1")), done)
+        ba = {b["ship"]: b["start"] for b in self.r["blocks"] if b["station"] == "block_assembly"}
+        self.assertTrue(all(ba[s] > done[f"{s}-SA1"] for s in ba), ba)
+
+    def test_rules(self):
+        from shipyard.sim import block_amounts, block_weight, ideal_days, needs_kit
+        sc = load_scenario("dispatch")
+        b = next(o for o in sc["orders"] if o["id"] == "B")
+        cfg = {"stations": {"sub_assembly": {"method": "standard", "units": 2}}}
+        self.assertEqual(block_amounts(cfg, sc, "sub_assembly", b), [3, 1, 0.75, 0.5])
+        self.assertAlmostEqual(block_weight(sc, "sub_assembly", b, 1), 12 * 3 / 5.25)   # 무게는 작업량 비율(4.50)
+        self.assertEqual((needs_kit(b, "sub_assembly", 1), needs_kit(b, "sub_assembly", 2)), (True, False))
+        # 이상 소요일: 작업장 2곳에 퍼져도 가장 큰 블록(3 = 1.5일)보다 빨리 끝나지 않는다
+        p = [st["id"] for st in sc["stations"]].index("sub_assembly")
+        self.assertEqual(ideal_days(cfg, sc, p, b), 2)
 
 
 class Order(unittest.TestCase):
@@ -97,7 +135,7 @@ class Order(unittest.TestCase):
         self.assertEqual(late(r), {})
         self.assertEqual(r["grade"]["grade"], "A")
         # 소조립에서 C-115·E-320은 인계 기한을 하루 넘기지만(버퍼 소모) 배는 납기 안. E는 뒤 공정에서 하루를 되찾는다
-        sa = {b["id"]: (b["done_day"], b["due"]) for b in r["blocks"] if b["station"] == "sub_assembly"}
+        sa = {b["id"]: (b["done_day"], b["due"]) for b in r["blocks"] if b["station"] == "sub_assembly" and b["no"] == 1}
         self.assertEqual(sa, {"A-SA1": (10, 10), "D-SA1": (10, 10), "B-SA1": (11, 11), "C-SA1": (13, 12), "E-SA1": (14, 13)})
         self.assertEqual({s["id"]: s["due_day"] - s["completed_day"] for s in r["ships"]}, {"A": 0, "B": 0, "C": 0, "D": 0, "E": 1})
         # 배마다 버퍼를 썼다(목표 완료 = 납기 − 버퍼보다 늦게 끝남). 그래도 납기 안
@@ -110,7 +148,8 @@ class Order(unittest.TestCase):
         r = decide(preset("managed"), policy={"sub_assembly": "edd"})
         sa = {s["id"]: s["station_dues"]["sub_assembly"] for s in r["ships"]}
         self.assertEqual({k: (d["plan"], d["due"], d["plan_late"], d["late_days"]) for k, d in sa.items()},
-                         {"A": (7, 10, 3, 0), "B": (8, 11, 3, 0), "C": (10, 12, 3, 1), "D": (8, 10, 2, 0), "E": (12, 13, 2, 1)})
+                         {"A": (7, 10, 3, 0), "B": (8, 11, 3, 0), "C": (10, 12, 3, 1), "D": (10, 10, 0, 0), "E": (11, 13, 3, 1)})
+        # 4.50: D는 계획에서도 C의 블록과 조립 인원을 나눠 써 인계 기한 날에 소조립을 마친다(버퍼 1일)
         # 인계 기한이 없는 공정은 공정 납기가 곧 계획 끝
         ba = [s["station_dues"]["block_assembly"] for s in r["ships"]]
         self.assertTrue(all(d["plan"] == d["due"] and d["plan_late"] == d["late_days"] for d in ba), ba)
@@ -137,16 +176,17 @@ class Why(unittest.TestCase):
         return forecast(cfg)["mine"]
 
     def test_plan_end_before_handoff(self):
-        # D-208은 계획에서 8일에 끝난다. 인계 기한 10일까지 가면 이미 버퍼 2일(D 버퍼 전부)을 쓴 것
-        b = self.card()["block_times"]["D-SA1"]
-        self.assertEqual((b["plan_end"], b["due"]), (8, 10))
+        # 4.50: 블록이 늘어 D-208은 계획에서도 인계 기한 10일에 끝난다(A-101은 7일, 인계 기한 10일까지 가면 버퍼 3일을 쓴 것)
+        times = self.card()["block_times"]
+        self.assertEqual((times["D-SA1"]["plan_end"], times["D-SA1"]["due"]), (10, 10))
+        self.assertEqual((times["A-SA1"]["plan_end"], times["A-SA1"]["due"]), (7, 10))
 
     def test_downstream_cause(self):
-        # 납기 빠른 순에 C-115 철야: D-208은 그대로 10일에 끝나지만, C가 하루 일찍 내려와 D 중조립 블록이 운반을 하루 더 기다린다
+        # 납기 빠른 순에 C-115 철야: D-208은 그대로 10일에 끝나지만, C가 하루 일찍 내려와 D 대조립 블록이 운반을 하루 더 기다린다
         m = self.card(policy={"sub_assembly": "edd"}, actions={"C-SA1": "extra"})
         self.assertEqual(m["block_times"]["D-SA1"]["end"], 10)
         w = m["why"]["D"]
-        self.assertEqual((w["plan_finish"], w["days"]), (14, 3))
+        self.assertEqual((w["plan_finish"], w["days"]), (15, 2))
         self.assertIn({"state": "transport_wait", "station": "block_assembly", "days": 2}, w["items"])
         self.assertEqual(sum(it["days"] for it in w["items"]), w["days"])   # 합 = 계획보다 늦은 날
 
@@ -179,8 +219,8 @@ class RootCause(unittest.TestCase):
         self.assertIsNone(r.get("pending"))                                   # 여유 3일: 물을 날이 없다
         self.assertEqual(late(r), {})
         waits = lambda res: sum(1 for s in res["ships"] for d in s["daily"] if d["state"] == "material_wait" and d.get("station") == "sub_assembly")
-        # 소조립 앞 자재 대기 16일 → 2일(계획이 키트가 일찍 온다고 보고 B·C 착수를 당겨 하루씩 남는다, 버퍼 안)
-        self.assertEqual((waits(self.go()), waits(r)), (16, 2))
+        # 소조립 앞 자재 대기 11일 → 1일(4.50: 키트를 쓰지 않는 블록을 먼저 만드는 날은 자재 대기가 아니다)
+        self.assertEqual((waits(self.go()), waits(r)), (11, 1))
 
     def test_root_beats_symptom(self):
         # 근본 해결(여유 3일)이 증상 대응(10일에 납기 빠른 순)보다 점수가 높고, 여유일은 3일이 가장 좋다

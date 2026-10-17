@@ -283,7 +283,7 @@ export function renderForm(root: HTMLElement, ctx: FormContext): void {
       h("span", null, h("i", { class: "due-mark" }), "납기")),
     h("p", { class: "hint", "data-preview": "conflicts" }),
     h("p", { class: "hint" }, "막대는 배 한 척이 작업장을 혼자 쓸 때의 일정입니다. 겹치는 날은 뒤 순위 배가 기다립니다.",
-      scenario.block_mode ? " 소조립·중조립·PE장 막대를 누르면 조립 공정 계획서(위 탭)의 그 배 블록 일정으로 갑니다." : ""),
+      scenario.block_mode ? ` ${blockStations(scenario).map((b) => b.name).join("·")} 막대를 누르면 조립 공정 계획서(위 탭)의 그 배 블록 일정으로 갑니다.` : ""),
     ]),
   );
 
