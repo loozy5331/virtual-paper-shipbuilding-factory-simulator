@@ -94,10 +94,10 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
         compact: true, note: `블록 ${b.count}개`,
         fixed: action ? "정비함 · 잔업·철야·외주는 조치 요청에서" : undefined,
         lead: [
-          // 4.31(D78): 기본 대응(규칙대로)과 직접 대응(몰리는 날 관제실에서 블록 순서를 묻는다)
+          // 4.31(D78): 자동 대응(규칙대로)과 직접 대응(몰리는 날 관제실에서 블록 순서를 묻는다)
           ...(scenario.options?.decisions ? [
             h("span", { class: "field-label" }, "대응"),
-            h("div", { class: "asm-rule" }, seg(`mode-${b.id}`, [{ value: "auto", label: "기본 대응" }, { value: "manual", label: "직접 대응" }] as { value: "auto" | "manual"; label: string }[],
+            h("div", { class: "asm-rule" }, seg(`mode-${b.id}`, [{ value: "auto", label: "자동 대응" }, { value: "manual", label: "직접 대응" }] as { value: "auto" | "manual"; label: string }[],
               cfg.dispatch_mode ?? "auto", (v) => { if (v === "auto") delete cfg.dispatch_mode; else cfg.dispatch_mode = v; ctx.onEdit(true); })),
           ] : []),
           // 비상 예산(4.32, 4.34 사용자 "비상 예산은 어디서 확인"): 생산계획서 공정 칸에서 직접 대응 공정 카드로 옮겼다. 직접 대응일 때만 쓴다

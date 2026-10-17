@@ -38,7 +38,7 @@ class Example11(unittest.TestCase):
         st = pd["stations"]["sub_assembly"]
         self.assertEqual((len(st["waiting"]), st["budget"], st["budget_left"], st["policy"]), (16, 100, 100, None))
         self.assertEqual(st["rule_orders"]["spt"][:2], ["Y-SA1", "Y-SA2"])   # 작업 짧은 순: Y 블록(0.5)이 X(0.75)보다 먼저
-        # 묻는 동안은 기본 대응(선박 순서)으로 끝까지 돈다: 예시 9와 같다
+        # 묻는 동안은 자동 대응(선박 순서)으로 끝까지 돈다: 예시 9와 같다
         self.assertEqual(done_days(r, "X"), [1, 1, 2, 2, 2, 3, 3, 3])
 
     def test_policy_spt(self):

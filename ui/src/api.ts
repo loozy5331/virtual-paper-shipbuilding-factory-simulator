@@ -53,7 +53,7 @@ export interface Config {
   due?: { stations?: Record<string, Record<string, number>>; blocks?: Record<string, number> };
   /** 4.25: 블록 순서. 블록 공정 → 먼저 할 블록 이름 목록(계획 간트에서 끌어 정한다). 없는 블록은 규칙 순으로 뒤에 */
   block_order?: Record<string, string[]>;
-  /** 4.31: 몰리는 날의 결정 기록(그날 공정마다 기다리는 블록의 순서)과 "이후는 기본 대응" */
+  /** 4.31: 몰리는 날의 결정 기록(그날 공정마다 기다리는 블록의 순서)과 "이후는 자동 대응" */
   decisions?: Decision[];
   decisions_end?: boolean;
   /** 4.32: 공정별 비상 예산(생산계획서에서 편성, 직접 대응 공정만) */
@@ -719,7 +719,7 @@ export interface Situation {
     queue_cap?: number | null; yard?: { id: string; ship: string }[];
   }>;
 }
-/** 4.34(D82): 액션 카드 결과 미리보기의 한 줄(그날 그렇게 하고 그 뒤는 기본 대응으로 끝까지) */
+/** 4.34(D82): 액션 카드 결과 미리보기의 한 줄(그날 그렇게 하고 그 뒤는 자동 대응으로 끝까지) */
 export interface ForecastRow {
   /** 그날 기다리던 블록이 다 끝나는 날, 그 공정들의 투입 공수 */
   done_day: number | null; mh: number;
