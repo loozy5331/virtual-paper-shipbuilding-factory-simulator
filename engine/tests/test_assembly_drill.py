@@ -273,6 +273,18 @@ class Forecast(unittest.TestCase):
         self.assertEqual(f["keep"]["spent"]["sub_assembly"], 0)
         self.assertEqual(f["budget"]["sub_assembly"], 100)
 
+    def test_block_times_for_the_gantt(self):
+        # 4.38(조치 요청 진행도 간트): 카드에 보이는 블록(작업 중 + 작업장 앞)마다 이 선택이면 언제 끝나나. 외주는 작업장 없이 돌아온 날
+        pend = simulate(self.cfg, baseline=False)["pending"]["stations"]
+        ids = {r["id"] for st in pend.values() if st["manual"] and st["waiting"] for r in st["waiting"] + st["inside"]}
+        sit = pend["sub_assembly"]
+        last = sit["waiting"][-1]["id"]
+        f = self.ask(actions={last: "outsource"})
+        self.assertEqual(set(f["mine"]["block_times"]), ids)
+        out = f["mine"]["block_times"][last]
+        self.assertEqual((out["unit"], out["done_day"]), (None, sit["waiting"][-1]["quotes"]["outsource"]["back_day"]))
+        self.assertIsNotNone(f["keep"]["block_times"][last]["unit"])
+
     def test_wrong_day(self):
         with self.assertRaises(ConfigError):
             forecast({**self.cfg, "decisions": [{"day": self.day + 1}]})

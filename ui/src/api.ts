@@ -702,6 +702,9 @@ export interface ForecastRow {
   late: Record<string, number>; on_time: number; ships: number; block_on_time: number; blocks: number;
   /** 4.36: 배가 마친 날(납기 − 마친 날 = 남는 버퍼) */
   completed?: Record<string, number | null>;
+  /** 4.38: 카드에 보이는 블록마다 이 선택이면 언제 시작·끝나나(unit이 없으면 외주, done_day = 돌아온 날) */
+  block_times?: Record<string, { start: number | null; start_h: number | null; end: number | null; end_h: number | null; day_hours: number | null;
+    done_day: number | null; unit: number | null; std_mh: number; due: number }>;
   /** 그날 쓴 비상 예산(공정별), 예산을 넘어 받지 않은 조치 */
   spent: Record<string, number>; refused: Record<string, string>; profit: number;
 }
