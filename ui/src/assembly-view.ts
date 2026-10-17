@@ -9,8 +9,8 @@ import { s } from "./dom";
 import { HAT, STATE_INFO, STATION_COLOR, STATION_TEXT } from "./labels";
 import { LEAD_IN } from "./scene/frame";
 
-const W = 640;
-const H = 300;
+const FULL_W = 640;
+const FULL_H = 300;
 const POOL_W = 70;          // 왼쪽 작업대기소
 const SHOP_Y = 46;          // 공장 위쪽
 const SLOT_H = 40;
@@ -22,10 +22,15 @@ export interface AssemblyViewOptions {
   /** 재생 중이면 하루 안의 움직임을 보인다 */
   animate: boolean;
   msPerDay: number;
+  /** 4.32: 작업장 단계(브레드크럼 "소조립 작업장1"): 그 공정 공장 하나만 화면 가득 */
+  focus?: string;
 }
 
 export function renderAssemblyView(result: Result, scenario: Scenario, day: number, opts: AssemblyViewOptions): SVGElement {
-  const bst = blockStations(scenario);
+  const bst = blockStations(scenario).filter((b) => !opts.focus || b.id === opts.focus);
+  // 작업장 단계는 같은 그림을 좁은 화면 틀로 그려 확대해 보인다(카메라가 다가간 것처럼)
+  const W = opts.focus ? 400 : FULL_W;
+  const H = opts.focus ? 220 : FULL_H;
   const blocks = result.blocks ?? [];
   const today = Math.max(1, day);
   const rec = (b: typeof blocks[number]) => b.daily[today - 1];

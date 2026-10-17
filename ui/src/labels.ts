@@ -77,6 +77,8 @@ export const LOSS_STATES: StateInfo[] = [
  * 손실이 아니므로 손실 회색(운반 대기와 같은 빗금)과 다르게, 모든 공정에서 같은 옅은 종이색 + 대기 회색 테두리(4.12.3) */
 export const PAIR_WAIT_STATE: StateInfo = { state: "pair_wait", name: "짝 대기", color: "#e6e1d4" };
 export const PAIR_WAIT_EDGE = WAIT;
+/** 블록 외주(4.32): 블록이 밖에 나가 있는 동안(손실 아님, 블록 기록에만). 운반과 비슷한 옅은 청회색 + 라벨 */
+export const OUTSOURCED_STATE: StateInfo = { state: "outsourced", name: "외주", color: "#9fb3c8" };
 
 // 리드타임 분해의 아홉 칸. 작업은 작업장 색과 섞이지 않게 짙은 먹색, 운반은 손실이 아니라 옅은 중립색이다.
 export const WORK_STATE: StateInfo = { state: "work", name: "작업", color: "#33413a" };
@@ -98,6 +100,7 @@ export const COST_ITEMS: { key: string; name: string; note: string }[] = [
   { key: "investment", name: "설비 투자비", note: "증설(정반 300, 크레인 800), 로봇 도입(작업장마다 700), 신공법 도입(공정마다 150)" },
   { key: "research", name: "연구비", note: "대기열에 넣은 연구 비용" },
   { key: "late_penalty", name: "지연 배상", note: "계약금의 3%/일" },
+  { key: "emergency", name: "비상 조치", note: "액션 카드의 잔업·특근·외주(공정별 비상 예산에서, 조립 현장 배정)" },
 ];
 
 /** 자재 상자 뚜껑 색(종이, 물감, 깃발, 보냉재 4.14). 관제실 2D와 현장 3D가 함께 쓴다 */
