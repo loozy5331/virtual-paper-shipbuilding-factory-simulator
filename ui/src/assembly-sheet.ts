@@ -84,12 +84,19 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
       return stationCard(ctx, st, {
         compact: true, note: `블록 ${b.count}개`,
         lead: [
-          h("span", { class: "field-label" }, "우선순위"),
+          // 4.31(D78): 기본 대응(규칙대로)과 직접 대응(몰리는 날 관제실에서 블록 순서를 묻는다)
+          ...(scenario.options?.decisions ? [
+            h("span", { class: "field-label" }, "대응"),
+            h("div", { class: "asm-rule" }, seg(`mode-${b.id}`, [{ value: "auto", label: "기본 대응" }, { value: "manual", label: "직접 대응" }] as { value: "auto" | "manual"; label: string }[],
+              cfg.dispatch_mode ?? "auto", (v) => { if (v === "auto") delete cfg.dispatch_mode; else cfg.dispatch_mode = v; ctx.onEdit(true); })),
+          ] : []),
+          h("span", { class: "field-label" }, scenario.options?.decisions ? "기본 규칙" : "우선순위"),
           h("div", { class: "asm-rule" }, seg(`dispatch-${b.id}`, (Object.keys(DISPATCH_INFO) as DispatchRule[]).map((id) => ({ value: id, label: DISPATCH_INFO[id].name })),
             cfg.dispatch ?? "ship", (v) => { if (v === "ship") delete cfg.dispatch; else cfg.dispatch = v; ctx.onEdit(true); })),
         ],
       });
     })),
+    scenario.options?.decisions ? h("p", { class: "hint" }, "직접 대응으로 둔 공정은 실행 중 블록이 몰리는 날(필요 작업시간 > 가용, 새 배의 블록이 대기열에 끼어든 날) 관제실이 멈추고 기다리는 블록의 순서를 묻습니다. 그 사이와 \"이후는 기본 대응\"을 고른 뒤에는 기본 규칙대로 합니다.") : null,
     h("p", { class: "hint" }, "우선순위 규칙은 작업장이 비었을 때 기다리는 블록 가운데 무엇을 먼저 들일지 정합니다. 위 배 탭에서 정한 착수일 전에는 그 블록을 들이지 않습니다. 작업장을 2개로 늘리면 블록이 두 작업장으로 퍼집니다."));
 
   // ① 배별 블록 일정과 납기: 계획상 위험 한 줄(혼자 써도 공정 납기를 넘기는 공정, 작업장 겹침과는 원인이 다르다), 배 탭 한 줄

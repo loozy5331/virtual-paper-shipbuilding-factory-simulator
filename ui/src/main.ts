@@ -21,7 +21,8 @@ import { renderCctv } from "./cctv";
 import { renderShipBoard } from "./shipboard";
 import { renderAssemblyView } from "./assembly-view";
 import { assemblyBadge, focusAssemblyShip, isAssemblyError, renderAssemblySheet, updateAssemblySheet } from "./assembly-sheet";
-import { renderWorklistSheet, updateWorklistSheet } from "./worklist-sheet";
+import { clearDecisionDraft, renderDecisionCard } from "./decision-card";
+import { renderDecisionReview } from "./decision-review";
 import { renderAsmWatch } from "./asm-watch";
 import { renderTrackCard, type TrackPick } from "./track";
 import { buildFrame, TRIAL_DEPART, type Frame } from "./scene/frame";
@@ -123,8 +124,8 @@ const els = {
   form: h("aside", { class: "form" }),
   // 4.25(D71): 블록 조립 실습의 두 번째 낱장(조립 공정 계획서)과 클립보드 위 인덱스 탭
   assemblyForm: h("aside", { class: "form assembly-form", hidden: true }),
-  // 4.30(D77): 세 번째 낱장(조립 작업 목록)
-  worklistForm: h("aside", { class: "form worklist-form", hidden: true }),
+  // 4.31(D78): 몰리는 날의 작업 지시 카드(관제실 위에 뜬다)
+  decision: h("div", { class: "decision-host", hidden: true }),
   sheetTabs: h("nav", { class: "sheet-tabs", "aria-label": "낱장" }),
   planBar: h("div", { class: "bar-row" }),
   planTabs: h("nav", { class: "plan-tabs", "aria-label": "계획안" }),
@@ -204,7 +205,6 @@ function drawForm(): void {
   renderForm(els.form, ctx);
   if (!state.data.scenario.block_mode) planSheet = "plan";
   renderAssemblySheet(els.assemblyForm, { scenario: state.data.scenario, config: state.config, onEdit: ctx.onEdit });
-  renderWorklistSheet(els.worklistForm, { scenario: state.data.scenario, config: state.config, onEdit: ctx.onEdit });
   drawSheetTabs();
   renderPlanBar(els.planBar, ctx);
   renderPlanNotes(els.planNotes, ctx);
@@ -214,16 +214,15 @@ function drawForm(): void {
 
 /** 양식의 미리보기 숫자와 오류, 승인 버튼 상태를 갱신한다. */
 /** 평가서 클립보드의 낱장(4.25): 생산실적 평가서 | 조립 공정 실적서 | 뒷장 메모 */
-let reportSheet: "report" | "assembly" | "memo" = "report";
+let reportSheet: "report" | "assembly" | "review" | "memo" = "report";
 
-/** 생산계획서 클립보드의 낱장(4.25, D71): 생산계획서 | 조립 공정 계획서 | 조립 작업 목록(4.30). 한 번에 한 장만 보이고 탭으로 넘긴다(스크롤로 잇지 않는다) */
-let planSheet: "plan" | "assembly" | "worklist" = "plan";
+/** 생산계획서 클립보드의 낱장(4.25, D71): 생산계획서 | 조립 공정 계획서. 한 번에 한 장만 보이고 탭으로 넘긴다(스크롤로 잇지 않는다) */
+let planSheet: "plan" | "assembly" = "plan";
 
 function drawSheetTabs(): void {
   const block = !!state.data.scenario.block_mode;
   els.form.hidden = block && planSheet !== "plan";
   els.assemblyForm.hidden = !block || planSheet !== "assembly";
-  els.worklistForm.hidden = !block || planSheet !== "worklist";
   if (!block) { mount(els.sheetTabs, null); return; }
   const badge = assemblyBadge(state.preview);
   const warn = state.errors.some(isAssemblyError);
@@ -234,14 +233,12 @@ function drawSheetTabs(): void {
   mount(els.sheetTabs,
     tab("plan", "생산계획서", state.errors.some((e) => !isAssemblyError(e)) ? h("span", { class: "warn" }, " ⚠") : null),
     tab("assembly", "조립 공정 계획서",
-      warn ? h("span", { class: "warn" }, " ⚠") : badge ? h("span", { class: "sheet-badge", title: `계획상 위험 ${badge}곳` }, String(badge)) : null),
-    tab("worklist", "조립 작업 목록", null));
+      warn ? h("span", { class: "warn" }, " ⚠") : badge ? h("span", { class: "sheet-badge", title: `계획상 위험 ${badge}곳` }, String(badge)) : null));
 }
 
 function updateForm(): void {
   updatePreview(els.form, state.preview, state.errors, state.busy);
   updateAssemblySheet(els.assemblyForm, state.preview, state.errors);
-  updateWorklistSheet(els.worklistForm, state.preview);
   drawSheetTabs();
   const blocked = state.busy || state.errors.length > 0;
   els.pen.classList.toggle("blocked", blocked);
@@ -549,7 +546,7 @@ async function backToPlan(sheet?: typeof planSheet): Promise<void> {
 
 let planUp = false;
 /** 펼친 계획서에서 보던 낱장(블록 실습). "계획 고치기"는 이 장을 펼친 채로 간다 */
-let boardSheet: "plan" | "assembly" | "worklist" = "plan";
+let boardSheet: "plan" | "assembly" = "plan";
 
 async function openPlanBoard(): Promise<void> {
   const r = currentRun();
@@ -566,15 +563,13 @@ async function openPlanBoard(): Promise<void> {
   // 블록 실습(4.28.2, 사용자): 생산계획서 화면처럼 낱장 탭 [생산계획서 | 조립 공정 계획서]. 한 번에 한 장
   const block = !!state.data.scenario.block_mode;
   const asmSheet = block ? h("aside", { class: "form assembly-form plan-readonly", hidden: boardSheet !== "assembly" }) : null;
-  const wlSheet = block ? h("aside", { class: "form worklist-form plan-readonly", hidden: boardSheet !== "worklist" }) : null;
   if (!block) boardSheet = "plan";
   sheet.hidden = boardSheet !== "plan";
   const tabs = h("nav", { class: "sheet-tabs", "aria-label": "낱장" });
-  const sheetName = { plan: "생산계획서", assembly: "조립 공정 계획서", worklist: "조립 작업 목록" } as const;
-  const drawTabs = () => mount(tabs, !block ? null : (["plan", "assembly", "worklist"] as const).map((id) => h("button", {
+  const drawTabs = () => mount(tabs, !block ? null : (["plan", "assembly"] as const).map((id) => h("button", {
     type: "button", class: `sheet-tab${boardSheet === id ? " active" : ""}`, "aria-pressed": String(boardSheet === id),
-    onclick: () => { boardSheet = id; sheet.hidden = id !== "plan"; asmSheet!.hidden = id !== "assembly"; wlSheet!.hidden = id !== "worklist"; drawTabs(); },
-  }, sheetName[id])));
+    onclick: () => { boardSheet = id; sheet.hidden = id !== "plan"; asmSheet!.hidden = id !== "assembly"; drawTabs(); },
+  }, id === "plan" ? "생산계획서" : "조립 공정 계획서")));
   drawTabs();
   mount(els.planBoard,
     h("div", { class: "board-pages single" }, tabs,
@@ -582,7 +577,7 @@ async function openPlanBoard(): Promise<void> {
         h("div", { class: "report-actions" },
           h("span", { class: "hint" }, `${r.n}회차에 실행한 계획 · 바깥 어두운 곳을 누르면 내려 둡니다`),
           h("button", { class: "btn primary small", type: "button", onclick: () => void backToPlan(boardSheet) }, "계획 고치기")),
-        sheet, asmSheet, wlSheet)));
+        sheet, asmSheet)));
   try {
     r.preview ??= await api.preview(r.config);
   } catch {
@@ -615,11 +610,7 @@ async function openPlanBoard(): Promise<void> {
     readonly(asmSheet);
   };
   drawAsm();
-  if (wlSheet) {
-    renderWorklistSheet(wlSheet, { scenario: state.data.scenario, config: runConfig, onEdit: () => {}, readonly: true });
-    updateWorklistSheet(wlSheet, r.preview ?? null);
-  }
-  for (const s of [sheet, asmSheet, wlSheet]) {
+  for (const s of [sheet, asmSheet]) {
     s?.querySelector<HTMLElement>('[data-sign="승인"]')?.append(h("span", { class: "sign-name" }, r.signer?.nickname ?? REVIEWER));
   }
   drawForm();
@@ -748,9 +739,15 @@ function currentRun(): Run | null {
   return state.current === null ? null : state.runs[state.current] ?? null;
 }
 
+/** 재생할 수 있는 마지막 날(4.31): 답하지 않은 물음이 있으면 그 전날 끝까지(그날 아침에 묻는다) */
+function lastDay(r: Run): number {
+  return r.result.pending ? r.result.pending.day - 1 : r.result.days;
+}
+
 function play(): void {
   const r = currentRun();
   if (!r) return;
+  if (r.result.pending && state.day >= lastDay(r)) return void openDecision();
   // 추적 상자는 떠 있는 동안 재생을 멈춰 둔다(읽기 쉽게, 사용자 결정). 재생하면 닫는다.
   if (state.pick) { state.pick = null; drawTrackCard(); }
   if (state.day >= r.result.days) state.day = 0;
@@ -771,9 +768,11 @@ function restartTimer(): void {
   timer = window.setInterval(() => {
     const r = currentRun();
     if (!r) return pause();
-    state.day = Math.min(r.result.days, state.day + 1);
+    state.day = Math.min(lastDay(r), state.day + 1);
+    // 몰리는 날(4.31): 그 전날 끝에서 멈추고 작업 지시를 받는다
+    if (r.result.pending && state.day >= lastDay(r)) { pause(); openDecision(); }
     // 이미 평가서를 받은 회차는 60일에 닿아도 다시 받지 않는다.
-    if (state.day >= r.result.days && !r.finished) finish();
+    else if (state.day >= r.result.days && !r.finished) finish();
     else if (state.day >= r.result.days) pause();
     else tick(false);
   }, msPerDay());
@@ -782,8 +781,9 @@ function restartTimer(): void {
 function seek(day: number): void {
   const r = currentRun();
   if (!r) return;
-  state.day = Math.max(0, Math.min(r.result.days, day));
-  if (state.day >= r.result.days && state.playing) pause();
+  state.day = Math.max(0, Math.min(lastDay(r), day));
+  if (r.result.pending && state.day >= lastDay(r)) { if (state.playing) pause(); else tick(true); openDecision(); }
+  else if (state.day >= r.result.days && state.playing) pause();
   else tick(true);
 }
 
@@ -791,6 +791,7 @@ function seek(day: number): void {
 function finish(): void {
   const r = currentRun();
   if (!r) return;
+  if (r.result.pending) return seek(lastDay(r));   // 끝으로 가도 답하지 않은 몰리는 날에서 멈춘다
   state.day = r.result.days;
   state.playing = false;
   window.clearInterval(timer);
@@ -800,6 +801,38 @@ function finish(): void {
   unzoom();   // 크게 보던 모니터가 평가서를 가리지 않게 줄인다(3.0.2). 재생 막대는 왼쪽 모니터에 남는다.
   if (state.screen !== "room") setScreen("room");   // 현장에서 끝으로 건너뛰면 관제실로 돌아와 받는다.
   drawRoom();
+}
+
+/** 몰리는 날의 작업 지시 카드(4.31, D78). 정한 순서를 결정 기록에 더해 서버에서 다시 돌리고 그날부터 이어서 재생한다 */
+let deciding = false;
+function openDecision(): void {
+  const r = currentRun();
+  const sit = r?.result.pending;
+  if (!r || !sit || state.screen !== "room") { els.decision.hidden = true; return; }
+  els.decision.hidden = false;
+  const send = async (change: (cfg: Config) => void) => {
+    deciding = true;
+    openDecision();
+    const cfg = structuredClone(r.config);
+    change(cfg);
+    try {
+      r.result = await api.simulate(cfg);
+      r.config = cfg;
+    } catch (error) {
+      notify(`작업 지시를 반영하지 못했습니다: ${error instanceof ApiError ? error.messages.join(" ") : String(error)}`);
+    } finally {
+      deciding = false;
+    }
+    clearDecisionDraft();
+    els.decision.hidden = true;
+    drawRoom();
+    play();
+  };
+  renderDecisionCard(els.decision, {
+    scenario: state.data.scenario, situation: sit, busy: deciding,
+    onSubmit: (orders) => void send((cfg) => { (cfg.decisions ??= []).push({ day: sit.day, orders }); }),
+    onAuto: () => void send((cfg) => { cfg.decisions_end = true; }),
+  });
 }
 
 /** 작업 현황 그림을 모니터에 줄여 넣은 만큼 글자를 키운다(4.15.7, 최대 1.35배. 더 키우면 이웃 글과 겹친다). */
@@ -1124,6 +1157,10 @@ function drawRoom(): void {
   drawDeskItems();
   drawReportBoard();
   tick(true);
+  // 몰리는 날(4.31): 그날에 멈춰 있으면 작업 지시 카드를 다시 띄운다(다른 회차를 열면 닫힌다)
+  const r = currentRun();
+  if (r?.result.pending && state.day >= lastDay(r)) openDecision();
+  else els.decision.hidden = true;
 }
 
 const gradeChip = (grade: string, cls: string) =>
@@ -1395,12 +1432,15 @@ function drawReportBoard(): void {
   // 위 인덱스 탭으로 넘기고 한 번에 한 장만 보인다(4.23의 "함께 스크롤"을 바꿨다)
   const assembly = renderAssemblyReport(r.result, state.data.scenario, (rule) => void applyRecommendedRule(r.config, rule));
   if (reportSheet === "assembly" && !assembly) reportSheet = "report";
+  const review = renderDecisionReview(r.result);   // 4.31: 몰리는 날의 결정을 한 회차만
+  if (reportSheet === "review" && !review) reportSheet = "report";
   const sheetTab = (id: typeof reportSheet, label: string) => h("button", {
     type: "button", class: `sheet-tab${reportSheet === id ? " active" : ""}`, "aria-pressed": String(reportSheet === id),
     onclick: () => { reportSheet = id; drawReportBoard(); },
   }, label);
   const tabs = h("nav", { class: "sheet-tabs", "aria-label": "낱장" },
-    sheetTab("report", "생산실적 평가서"), assembly ? sheetTab("assembly", "조립 공정 실적서") : null, sheetTab("memo", "뒷장 메모"));
+    sheetTab("report", "생산실적 평가서"), assembly ? sheetTab("assembly", "조립 공정 실적서") : null,
+    review ? sheetTab("review", "결정 돌아보기") : null, sheetTab("memo", "뒷장 메모"));
   const actions = h("div", { class: "report-actions" },
     h("span", { class: "hint" }, state.board === "up" ? "바깥 어두운 곳을 누르면 내려 둡니다" : "생산실적 평가서 · 누르면 다시 올림"),
     h("button", { class: "btn primary small", type: "button", onclick: () => void backToPlan() }, "계획 고치기"));
@@ -1411,7 +1451,12 @@ function drawReportBoard(): void {
         docHead({ title: "조립 공정 실적서", code: `PE-${r.n}-A`, approver: r.signer?.nickname,
           fields: [["회차", `${r.n}회차`], ["설정", r.label]] }),
         assembly)
-      : null;
+      : reportSheet === "review"
+        ? h("div", { class: "report-sheet" }, actions,
+          docHead({ title: "결정 돌아보기", code: `PE-${r.n}-D`, approver: r.signer?.nickname,
+            fields: [["회차", `${r.n}회차`], ["결정", `몰리는 날 ${r.result.review!.length}번`]] }),
+          review)
+        : null;
   mount(els.reportBoard, h("div", { class: "board-pages single" }, tabs, sheet ??
     h("div", { class: "report-sheet" },
       h("div", { class: "report-actions" },
@@ -1755,7 +1800,7 @@ async function start(): Promise<void> {
     h("div", { class: "plan-bar" }, els.planBar),
     h("div", { class: "plan-body" },
       els.planTabs,
-      h("div", { class: "clipboard board-left" }, els.sheetTabs, els.form, els.assemblyForm, els.worklistForm),
+      h("div", { class: "clipboard board-left" }, els.sheetTabs, els.form, els.assemblyForm),
       h("aside", { class: "plan-notes", "aria-label": "메모" }, els.planNotes, els.goalNote)));
 
   monitor(els.monitorLeft, "left", "공정 간트", els.ganttScreen, els.ganttLegend, els.osd);
@@ -1799,7 +1844,7 @@ async function start(): Promise<void> {
     h("div", { class: "monitor-arm", "aria-hidden": "true" }),
     h("div", { class: "monitors" }, els.monitorLeft, els.monitorRight),
     h("div", { class: "room-desk" }, h("div", { class: "desk-top" }), h("div", { class: "arm-clamp", "aria-hidden": "true" }), els.deskClip, els.calendar, els.hands, els.hat),
-    els.reportBoard, els.planBoard);
+    els.reportBoard, els.planBoard, els.decision);
 
   els.sceneField.append(els.trackField, els.deliveredField, els.trialField);
   mount(els.field, els.fieldHead, els.sceneField, els.fieldOsd);
