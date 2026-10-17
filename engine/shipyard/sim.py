@@ -1244,6 +1244,56 @@ def _decision_review(config: dict[str, Any], scenario: dict[str, Any], result: d
     return out
 
 
+def forecast(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> dict[str, Any]:
+    """액션 카드의 결과 미리보기(4.34, D82): 설정의 마지막 결정(그날 고르는 중인 정책·조치)대로 하고 그 뒤는 기본 대응으로
+    끝까지 돌리면 어떻게 되나. 학생이 고르는 동안 카드가 부른다(화면은 계산하지 않는다, 원칙 1).
+    mine = 고른 대로, keep = 그날 아무것도 바꾸지 않음(지금 정책, 조치 없음), policies = 공정마다 정책만 바꾼 것(조치는 고른 대로,
+    "keep"은 그 공정 정책을 그대로).
+    줄마다: 그날 기다리던 블록이 다 끝나는 날, 그 공정들의 투입 공수, 배별 인도 지연, 블록 납기 준수, 그날 쓴 비상 예산."""
+    config = normalize_config(config)
+    scenario = scenario or scenario_of(config)
+    config = complete_config(config, scenario)
+    decisions = config.get("decisions") or []
+    if not decisions:
+        raise ConfigError(["미리볼 결정(decisions의 마지막 항목)이 없습니다"])
+    *before, cand = decisions
+    day = cand["day"]
+
+    def run(decision: dict[str, Any]) -> dict[str, Any]:
+        cfg = {**config, "decisions": before + [decision], "decisions_end": True}
+        return _run(_with_order_days(cfg, scenario), scenario)
+
+    base = _run(_with_order_days({**config, "decisions": before, "decisions_end": False}, scenario), scenario)
+    sit = base.get("pending")
+    if not sit or sit["day"] != day:
+        raise ConfigError([f"{day}일에는 고를 액션 카드가 없습니다"])
+    asked = [sid for sid, st in sit["stations"].items() if st["manual"] and st["waiting"]]
+    station_of = {row["id"]: sid for sid in asked for row in sit["stations"][sid]["waiting"]}
+
+    def row(result: dict[str, Any]) -> dict[str, Any]:
+        log = next((d for d in result.get("decisions") or [] if d["day"] == day), None)
+        done = [b["done_day"] or result["days"] for b in result["blocks"] if b["id"] in station_of]
+        spent = {sid: 0.0 for sid in asked}
+        for bid, kind in (log or {}).get("actions", {}).items():
+            spent[station_of[bid]] += _action_cost(log, bid, kind)
+        return {"done_day": max(done, default=None),
+                "mh": round(sum(result["manhours"]["stations"][sid]["input"] for sid in asked), 2),
+                "late": {s["id"]: s["late_days"] for s in result["ships"]},
+                "on_time": result["qcd"]["delivery"]["on_time"], "ships": len(result["ships"]),
+                "block_on_time": result["block_due"]["on_time"], "blocks": result["block_due"]["blocks"],
+                "spent": {k: round(v, 2) for k, v in spent.items()}, "refused": (log or {}).get("refused", {}),
+                "profit": result["profit"]}
+    def with_policy(sid: str, rule: str | None) -> dict[str, Any]:
+        policy = {k: v for k, v in (cand.get("policy") or {}).items() if k != sid}
+        return {**cand, "policy": {**policy, sid: rule} if rule else policy}
+    # "keep" = 그 공정은 정책을 바꾸지 않음(다른 공정 정책과 조치는 고른 대로)
+    policies = {sid: {rule: row(run(with_policy(sid, rule))) for rule in [*DISPATCH_RULES, None]} for sid in asked}
+    policies = {sid: {rule or "keep": v for rule, v in rows.items()} for sid, rows in policies.items()}
+    return {"day": day, "mine": row(run(cand)), "keep": row(run({"day": day})), "policies": policies,
+            "budget": {sid: sit["stations"][sid]["budget"] for sid in asked},
+            "budget_left": {sid: sit["stations"][sid]["budget_left"] for sid in asked}}
+
+
 def _action_cost(log: dict[str, Any], bid: str, kind: str) -> float:
     """결정 기록의 그날 견적에서 블록 조치 값."""
     for st in log["situation"]["stations"].values():

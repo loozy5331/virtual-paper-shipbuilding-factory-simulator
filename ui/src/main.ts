@@ -855,6 +855,12 @@ function openDecision(): void {
     onSubmit: (decision) => void send((cfg) => { (cfg.decisions ??= []).push({ day: sit.day, ...decision }); }),
     onAuto: () => void send((cfg) => { cfg.decisions_end = true; }),
     onFocus: focusOn,
+    // 결과 미리보기(4.34, D82): 지금까지의 결정 + 고르는 중인 결정, 그 뒤는 기본 대응
+    forecast: (decision) => {
+      const cfg = structuredClone(r.config);
+      (cfg.decisions ??= []).push({ day: sit.day, ...decision });
+      return api.forecast(cfg);
+    },
   });
 }
 
