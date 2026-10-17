@@ -30,7 +30,9 @@ export function renderAssemblyView(result: Result, scenario: Scenario, day: numb
   const bst = blockStations(scenario).filter((b) => !opts.focus || b.id === opts.focus);
   // 작업장 단계는 같은 그림을 좁은 화면 틀로 그려 확대해 보인다(카메라가 다가간 것처럼)
   const W = opts.focus ? 400 : FULL_W;
-  const H = opts.focus ? 220 : FULL_H;
+  // 4.37: 작업장(정반)이 2곳이면 정반 칸만큼 그림을 늘린다(대기 블록 줄과 범례가 아래로 밀려도 잘리지 않게)
+  const unitRows = Math.max(1, ...bst.map((b) => result.stations.find((rs) => rs.id === b.id)!.units.length));
+  const H = (opts.focus ? 220 : FULL_H) + (unitRows - 1) * (SLOT_H + 6);
   const blocks = result.blocks ?? [];
   const today = Math.max(1, day);
   const rec = (b: typeof blocks[number]) => b.daily[today - 1];

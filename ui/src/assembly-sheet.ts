@@ -92,7 +92,7 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
       const st = scenario.stations.find((x) => x.id === b.id)!;
       return stationCard(ctx, st, {
         compact: true, note: `블록 ${b.count}개`,
-        fixed: action ? "작업장 1곳 · 정비함 · 잔업·특근·외주는 몰리는 날 액션 카드에서" : undefined,
+        fixed: action ? "정비함 · 잔업·특근·외주는 몰리는 날 액션 카드에서" : undefined,
         lead: [
           // 4.31(D78): 기본 대응(규칙대로)과 직접 대응(몰리는 날 관제실에서 블록 순서를 묻는다)
           ...(scenario.options?.decisions ? [

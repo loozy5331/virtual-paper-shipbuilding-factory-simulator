@@ -487,8 +487,9 @@ export function stationCard(ctx: StationCardContext, st: Scenario["stations"][nu
           : h("span", { title: hoist.summary },
             toggle(`호이스트 (+${num(hoist.install_cost * (cfg.units ?? 1))})`, cfg.hoist ?? false,
               (on) => { if (on) cfg.hoist = true; else delete cfg.hoist; ctx.onEdit(false); }))),
-      unitCap(st.id) > 1 && !extra.fixed ? h("span", { class: "field-label" }, "작업장") : null,
-      unitCap(st.id) <= 1 || extra.fixed ? null : segmented(`units-${st.id}`,
+      // 4.37(D85, 사용자 "가"): 운영을 고정한 카드(조립 현장 배정)도 작업장 수는 고른다(정반을 늘릴까, 사람을 늘릴까)
+      unitCap(st.id) > 1 ? h("span", { class: "field-label" }, "작업장") : null,
+      unitCap(st.id) <= 1 ? null : segmented(`units-${st.id}`,
         Array.from({ length: unitCap(st.id) }, (_, k) => ({
           value: k + 1, label: k === 0 ? "1개" : `${k + 1}개 (+${num(scenario.expansion.cost[st.id] * k)})`,
         })),

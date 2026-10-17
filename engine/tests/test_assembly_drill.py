@@ -164,7 +164,7 @@ class AssemblyScenario(unittest.TestCase):
     def test_full_yard_after_assembly(self):
         sc = load_scenario("assembly")
         self.assertEqual(sc["skip"], ["painting", "pre_outfitting"])
-        self.assertEqual((sc["decision_stations"], sc["options"]["max_units"]), (list(ASM), 1))
+        self.assertEqual((sc["decision_stations"], sc["options"]["max_units"]), (list(ASM), 2))
         r = simulate(load_presets("assembly")[1]["config"], baseline=False)
         self.assertTrue(all("sea_trial" in s["spans"] for s in r["ships"]))
 
@@ -217,6 +217,20 @@ class AssemblyGrade(unittest.TestCase):
         cfg, _ = play(tips, policy("edd"))
         r = simulate(cfg)
         self.assertEqual((r["grade"]["grade"], r["qcd"]["delivery"]["on_time"]), ("S", 3))
+
+    def test_more_platens_without_people_hurts(self):
+        # 4.37(D85, 사용자 "가"): 작업장(정반) 증설을 연다. 조립 5명 그대로 소조립 정반만 2곳이면 사람이 나뉘어 더 늦고(증설비 300),
+        # 병목은 정반이 아니라 사람이다. 사람을 한 명 늘리면 지연은 없지만 인건비로 이익이 준다
+        base = simulate(load_presets("assembly")[1]["config"])
+        cfg = copy.deepcopy(load_presets("assembly")[1]["config"])
+        cfg["stations"]["sub_assembly"]["units"] = 2
+        r = simulate(cfg)
+        self.assertEqual(({s["id"]: s["late_days"] for s in r["ships"] if s["late_days"]}, r["costs"]["investment"]), ({"S1": 1, "S2": 1}, 300))
+        self.assertLess(r["grade"]["score"], base["grade"]["score"])
+        cfg = copy.deepcopy(load_presets("assembly")[1]["config"])
+        cfg["pools"]["assembly"] = 6
+        r = simulate(cfg)
+        self.assertEqual((r["qcd"]["delivery"]["on_time"], r["profit"] < base["profit"]), (3, True))
 
     def test_block_eval_levels(self):
         # 블록 평가(3.2): 전체 = 공정별 합 = 작업장별 합 = 선박별 합
