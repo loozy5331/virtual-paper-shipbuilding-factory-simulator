@@ -1930,9 +1930,12 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         out: dict[str, int] = {}
         for p in manual:
             rate = rules["max_workers_per_station"] * rules["methods"][st_cfg[p]["method"]]["speed"]
-            t = sum(c["remaining"] for c in current[p] if c and "block" in c) / rate
+            # 4.42.2(사용자 "9일 카드는 왜? 다 초록인데"): 작업장마다 따로 비는 때를 센다. 블록은 순서대로 먼저 비는 작업장에 든다
+            # (예전에는 작업장이 2곳이어도 한 줄로 이어 붙여 늦는다고 보고 헛경보를 냈다)
+            free = sorted((c["remaining"] / rate) if c and "block" in c else 0.0 for c in current[p])
             for b in sorted(waiting_blocks(p, day) + yard_blocks(p, day), key=lambda b: block_key(b, day)):
-                t += b["amount"] / rate
+                t = free.pop(0) + b["amount"] / rate
+                free = sorted(free + [t])
                 finish = day + math.ceil(t - EPS) - 1
                 if finish > b["due"]:
                     out[b["id"]] = finish - b["due"]
