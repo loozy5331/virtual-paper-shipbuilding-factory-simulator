@@ -200,15 +200,15 @@ class AssemblyGrade(unittest.TestCase):
         late = lambda r: {s["id"]: s["late_days"] for s in r["ships"] if s["late_days"]}
         for rule in ("ship", "edd", "slack", "spt"):
             self.assertEqual(late(play(load_presets("assembly")[1]["config"], policy(rule))[1]), {"S2": 1}, rule)
-        # 중조립도 직접 대응(4.36): 버퍼를 먹을 블록(over > 0)에 잔업 → 3척(예산 60), 외주 → 3척이지만 비싸다(155),
-        # 특근 → 예산이 모자라 S2 하루, 선박 순서로 바꾸면 S3가 이틀 늦다
+        # 중조립도 직접 대응(4.36, 4.40 S2 물감 입고 지연): 버퍼를 소모할 블록(over > 0)에 잔업 → 3척(예산 60), 외주 → 3척이지만 비싸다(155),
+        # 특근 → 3척(150), 선박 순서로 바꾸면 S2가 하루 늦다
         cfg = both_manual()
         over = lambda kind: (lambda w: kind if w.get("over") else None)
         c, ot = play(cfg, policy("edd", over("overtime")))
         self.assertEqual((late(ot), ot["costs"]["emergency"], simulate(c)["grade"]["grade"]), ({}, 60, "A"))
         self.assertEqual((late(play(cfg, policy("edd", over("outsource")))[1]), play(cfg, policy("edd", over("outsource")))[1]["costs"]["emergency"]), ({}, 155))
-        self.assertEqual(late(play(cfg, policy("edd", over("extra")))[1]), {"S2": 1})
-        self.assertEqual(late(play(cfg, policy("ship"))[1]), {"S3": 2})
+        self.assertEqual(late(play(cfg, policy("edd", over("extra")))[1]), {})
+        self.assertEqual(late(play(cfg, policy("ship"))[1]), {"S2": 1})
 
     def test_tips_reach_s(self):
         tips = both_manual()
@@ -217,6 +217,27 @@ class AssemblyGrade(unittest.TestCase):
         cfg, _ = play(tips, policy("edd"))
         r = simulate(cfg)
         self.assertEqual((r["grade"]["grade"], r["qcd"]["delivery"]["on_time"]), ("S", 3))
+
+    def test_assist_and_expedite(self):
+        # 4.40(D87): 응원 투입은 그 작업장에 정원 + 1명(대기소에서 먼저 데려와 다른 작업장이 빈다), 수당은 싸다.
+        # 이 판은 사람이 병목이라 버퍼를 소모할 블록마다 응원을 넣으면 다른 공정이 비어 S1이 하루 늦는다
+        cfg = both_manual()
+        _, r = play(cfg, policy("edd", lambda w: "assist" if w.get("over") else None))
+        self.assertEqual(({s["id"]: s["late_days"] for s in r["ships"] if s["late_days"]}, r["costs"]["emergency"]), ({"S1": 1}, 12))
+        # 긴급 자재 조달은 키트가 입고 전일 때만: 21일 S2 중조립 첫 블록(물감 3일 지연)에서만 고를 수 있고, 다음 날 입고로 당긴다
+        avail = []
+
+        def choose(pd):
+            for st in pd["stations"].values():
+                for w in st["waiting"]:
+                    if w["quotes"]["expedite"].get("available"):
+                        avail.append((pd["day"], w["id"], w["quotes"]["expedite"]["arrival_day"]))
+            return policy("edd", lambda w: "expedite" if w["quotes"]["expedite"].get("available") else None)(pd)
+        _, r = play(cfg, choose)
+        self.assertEqual(avail, [(21, "S2-BA1", 22)])
+        ev = [e for e in r["events"] if e["type"] == "expedite"]
+        self.assertEqual([(e["day"], e["ship"], e["material"], e["arrival_day"]) for e in ev], [(21, "S2", "paint", 22)])
+        self.assertEqual(r["costs"]["emergency"], 80)
 
     def test_more_platens_without_people_hurts(self):
         # 4.37(D85, 사용자 "가"): 작업장(정반) 증설을 연다. 조립 5명 그대로 소조립 정반만 2곳이면 사람이 나뉘어 더 늦고(증설비 300),

@@ -1796,7 +1796,7 @@ details.review-day[open] > .review-table { margin-top: 6px; }
 .dc-outcome-grid { grid-template-columns: 1fr; }
 .dcg { display: flex; flex-direction: column; gap: 3px; transition: opacity 0.15s; }
 .dcg.loading .dcg-track { opacity: 0.55; }
-.dcg-row { display: grid; grid-template-columns: 150px minmax(200px, 1fr) 340px; align-items: center; gap: 10px; padding: 3px 0; border-bottom: 1px solid var(--line-soft, #e6e1d4); }
+.dcg-row { display: grid; grid-template-columns: 140px minmax(180px, 1fr) 380px; align-items: center; gap: 10px; padding: 3px 0; border-bottom: 1px solid var(--line-soft, #e6e1d4); }
 .dcg-row.sev-warn .dcg-label { box-shadow: inset 3px 0 0 var(--warn-edge); }
 .dcg-row.sev-late .dcg-label { box-shadow: inset 5px 0 0 var(--late-fill); }
 .dcg-axis { border-bottom: 0; padding: 0; }
@@ -1862,3 +1862,6 @@ details.review-day[open] > .review-table { margin-top: 6px; }
 /* 4.39.2 조치 요청 머리글 오른쪽 단추(공정 작업장 보기 + 접기) */
 .dc-head-btns { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .dc-head-btns .dc-focus { padding: 4px 10px; border-radius: 4px; }
+/* 4.40 조치 단추 일곱 개: 두 줄로 접혀도 줄 높이 안에 */
+.dcg-act .dc-chips { gap: 3px; }
+.dcg-act .dc-chip { padding: 1px 5px; font-size: 0.74rem; }
