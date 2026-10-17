@@ -290,15 +290,21 @@ export function blockId(ship: string, station: string, no: number): string {
   return `${ship}-${BLOCK_CODE[station] ?? station.slice(0, 2).toUpperCase()}${no}`;
 }
 
+/** 시나리오가 공정 이름을 바꾼 블록 공정의 짧은 이름(4.50: 작업 배정은 block_assembly가 "대조립" → 대). 시나리오를 열 때 main.ts가 넣는다 */
+let blockShortNames: Record<string, string> = {};
+
 /** 화면에 쓰는 짧은 블록 이름: 소3 · 중2 · PE1 */
 export function blockLabel(station: string, no: number): string {
-  return `${BLOCK_SHORT[station] ?? station}${no}`;
+  return `${blockShortNames[station] ?? BLOCK_SHORT[station] ?? station}${no}`;
 }
 
 /** 시나리오의 블록 표시 이름(4.43, D91: 작업 배정 실습의 A-101 같은 현장 블록 번호). 시나리오를 열 때 main.ts가 넣는다 */
 let blockNames: Record<string, string> = {};
-export function setBlockNames(names: Record<string, string> | undefined): void {
+export function setBlockNames(names: Record<string, string> | undefined, stations: StationInfo[] = []): void {
   blockNames = names ?? {};
+  // 짧은 이름은 공정 이름 첫 글자(PE장은 PE). 기본 이름(소조립·중조립·PE장)이면 BLOCK_SHORT와 같다
+  blockShortNames = Object.fromEntries(stations.filter((st) => st.id in BLOCK_SHORT)
+    .map((st) => [st.id, st.name.startsWith("PE") ? "PE" : st.name.slice(0, 1)]));
 }
 
 /** 배와 함께 쓰는 블록 이름: "S1 중2", 표시 이름이 있으면 그 이름(A-101) */

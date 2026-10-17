@@ -507,7 +507,7 @@ async function switchScenario(id: string): Promise<void> {
     return;
   }
   setShipLooks(data.scenario.ship_types);   // 선종 그림(4.17)
-  setBlockNames(data.scenario.block_names);   // 블록 표시 이름(4.43)
+  setBlockNames(data.scenario.block_names, data.scenario.stations);   // 블록 표시 이름(4.43), 짧은 공정 이름(4.50)
   const first = data.presets.find((p) => p.id === "managed") ?? data.presets[0];
   const last = state.runs.map((r, i) => (r.scenario === id ? i : -1)).filter((i) => i >= 0).pop();
   // 앞 분기의 설정으로 보낸 미리보기가 늦게 오면 버린다(배 수가 달라 계획 간트가 깨진다).
@@ -1856,7 +1856,7 @@ async function start(): Promise<void> {
     return;
   }
   setShipLooks(data.scenario.ship_types);   // 선종 그림(4.17)
-  setBlockNames(data.scenario.block_names);   // 블록 표시 이름(4.43)
+  setBlockNames(data.scenario.block_names, data.scenario.stations);   // 블록 표시 이름(4.43), 짧은 공정 이름(4.50)
 
   const first = data.presets.find((p) => p.id === "managed") ?? data.presets[0];
   state = {

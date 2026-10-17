@@ -47,7 +47,7 @@ export function renderAssemblyView(result: Result, scenario: Scenario, day: numb
     opts.animate && day > 0 ? { class: name, style: `animation-delay:${delay}ms;animation-duration:${dur}ms;${Object.entries(vars).map(([k, v]) => `${k}:${v}`).join(";")}` } : {};
 
   const svg = s("svg", { class: "asm-view", viewBox: `0 0 ${W} ${H}`, role: "img",
-    "aria-label": `조립 공정 ${day}일: 소조립·중조립·PE장의 작업장 블록, 대기 블록, 운반 블록` });
+    "aria-label": `조립 공정 ${day}일: ${blockStations(scenario).map((b) => b.name).join("·")}의 작업장 블록, 대기 블록, 운반 블록` });
   // 작업대기소(왼쪽): 오늘 조립 직종 인원 중 쉬는 사람
   const wf = result.workforce.daily[today - 1];
   const idle = day > 0 ? (wf?.trades?.assembly?.idle ?? 0) : (result.workforce.pools?.assembly ?? 0);
