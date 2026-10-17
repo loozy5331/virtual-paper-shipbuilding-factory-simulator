@@ -1871,3 +1871,12 @@ details.review-day[open] > .review-table { margin-top: 6px; }
 /* 4.42.3 첫 화면: 조립 공정 실습이 맨 위, 구분 점선은 그 아래 */
 .desk-brand-top { display: block; text-align: center; }
 .desk-drills.top { border-top: 0; padding-top: 0; border-bottom: 1.5px dashed var(--board-edge); padding-bottom: 18px; }
+
+/* 4.47: 조치 요청 간트의 계획 끝 ~ 인계 기한(버퍼 소모 구간)과 배별 까닭 */
+.dcg-bufzone { top: 0; bottom: 0; background: repeating-linear-gradient(135deg, #fbf0c9 0 5px, #f7e6a8 5px 7px); }
+.dcg-planline { top: 0; bottom: 0; width: 0; border-left: 1px solid var(--warn-edge); }
+.dcg-bufend { top: -2px; bottom: -2px; width: 0; border-left: 2px solid var(--late-fill); }
+.dc-why { margin: 0 0 6px; padding: 0; list-style: none; font-size: 0.8rem; color: var(--ink-2); display: flex; flex-direction: column; gap: 2px; }
+.dc-why > li b:first-child { display: inline-block; min-width: 1.2em; }
+.dc-why small { color: var(--ink-3); }
+.dc-verdict .dc-why { flex-basis: 100%; }

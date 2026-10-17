@@ -10,7 +10,7 @@
 
 import { type ActionKind, blockTitle, type Decision, type DispatchRule, type Forecast, type ForecastRow, type Scenario, type Situation, type SituationRow } from "./api";
 import { h, mount, s } from "./dom";
-import { DISPATCH_INFO, STATION_COLOR, STATION_TEXT } from "./labels";
+import { DISPATCH_INFO, LOSS_STATES, OUTSOURCED_STATE, PAIR_WAIT_STATE, STATION_COLOR, STATION_TEXT, TRANSPORT_STATE, WORK_STATE } from "./labels";
 
 export interface DecisionContext {
   scenario: Scenario;
@@ -165,7 +165,8 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
               polRows ? optionOutcome(polRows[id as DispatchRule | "keep"], polRows.keep) : h("small", { class: "dc-out dim" }, "…"))))),
         h("div", { class: "dc-step-head" }, h("span", { class: "dc-step" }, "블록별 조치"),
           h("small", null, sit.ships
-            ? "막대 = 이 선택이면 작업하는 구간(진한 부분은 이미 한 만큼), 세로선 = 블록 납기(계획). 선을 넘으면 노랑(계획보다 늦음), 그 배 버퍼보다 더 넘으면 빨강. 배가 실제로 버퍼를 쓰는지는 위 상황 태그. 얇은 선은 지금대로의 끝. 숫자는 비상 예산에서 낼 값"
+            // 4.47(사용자 "D가 지연된다는데 간트로는 확인하기 어렵다"): 노랑은 계획 끝부터(버퍼 소모), 빨강은 인계 기한부터
+            ? "막대 = 이 선택이면 작업하는 구간(진한 부분은 이미 한 만큼). 노란 칸 = 계획 끝 ~ 버퍼 끝(계획 끝 + 그 배 버퍼, 빨간 선). 여기서 끝나면 버퍼 소모, 빨간 선을 넘으면 빨강. 점선 = 인계 기한. 소조립 뒤 공정에서 늦는 것은 위 상황 태그 아래 까닭에. 얇은 선은 지금대로의 끝. 숫자는 비상 예산에서 낼 값"
             // 4.43: 버퍼 없는 카드는 세로선이 인계 기한(다음 공정에 넘길 날)이고 넘기면 바로 빨강(여유가 없다)
             : "막대 = 이 선택이면 작업하는 구간(진한 부분은 이미 한 만큼), 세로선 = 인계 기한(다음 공정에 넘길 날의 끝). 선을 넘으면 빨강. 얇은 선은 지금대로의 끝. 숫자는 비상 예산에서 낼 값")),
         // 4.38(사용자 "결과 미리보기 대신 간트, 진행도처럼 채우고, 막대 연장선의 조치로 진행도가 바뀌게"): 블록 진행도 간트
@@ -200,7 +201,7 @@ function outcomePanel(scenario: Scenario, sit: Situation, stations: string[], na
         mhRow("가용", `${fmt(sit.capacity_mh)} MH/일`, short > 0 ? h("span", { class: "wl-hot" }, `하루치로는 ${fmt(short)} MH 모자람`) : "조립 인원 × 8시간"),
         mhRow("이 선택의 투입", m ? `${fmt(m.mh)} MH` : "…", mhDelta ? `지금대로보다 ${mhDelta > 0 ? "+" : ""}${fmt(mhDelta)} MH` : "지금대로와 같음")),
       h("div", { class: "dc-split-right" },
-        sit.ships ? verdict(sit, m) : shipChips(scenario, m, k),
+        sit.ships ? verdict(sit, m, name) : shipChips(scenario, m, k),
         h("small", { class: "dc-cap" }, "비상 예산"),
         stations.map((sid) => bills(name[sid], budget(sid))),
         m && Object.keys(m.refused).length ? h("small", { class: "dc-note wl-hot" }, `예산을 넘어 받지 않는 조치 ${Object.keys(m.refused).length}건`) : null)));
@@ -259,6 +260,12 @@ function blockGantt(sit: Situation, sid: string, rows: GanttRow[], f: Forecast |
     const e0 = out ? (b.done_day ?? today) - today + 1 : pos(b.end, b.end_h, b.day_hours, true);
     return s0 === null || e0 === null ? null : { s: s0, e: Math.max(e0, s0 + 0.05), out };
   };
+  // 4.47: 계획 끝(버퍼 시나리오, 그날 끝). 인계 기한(세로선)이 계획 끝보다 늦을 수 있어, 선 앞에서도 이미 버퍼를 쓴다.
+  // 배의 버퍼는 날 단위라 계획이 그날 낮에 끝나도 그날 끝까지를 계획으로 본다
+  const planOf = (id: string) => {
+    const b = mine[id] ?? keep[id];
+    return sit.ships && b?.plan_end != null ? b.plan_end - today + 1 : null;
+  };
   const ends = rows.flatMap(({ r }) => [span(mine[r.id])?.e ?? 0, span(keep[r.id])?.e ?? 0, r.due - today + 1]);
   const total = Math.max(4, Math.ceil(Math.max(...ends)) + 0.5);
   const x = (v: number) => `${(Math.max(0, Math.min(total, v)) / total) * 100}%`;
@@ -271,26 +278,43 @@ function blockGantt(sit: Situation, sid: string, rows: GanttRow[], f: Forecast |
   return h("div", { class: `dcg${fresh ? "" : " loading"}` }, axis, rows.map(({ r, inside, ord }) => {
     const m = span(mine[r.id]), k = span(keep[r.id]);
     const dueX = r.due - today + 1;
-    const late = m ? Math.ceil(m.e - dueX - 1e-9) : 0;                 // 블록 납기를 넘긴 날
-    const sev = late <= 0 ? "" : late > bufferOf(r.ship) ? "late" : "warn";
+    const pl = planOf(r.id);
+    const late = m ? Math.ceil(m.e - dueX - 1e-9) : 0;                 // 블록 납기(인계 기한)를 넘긴 날
+    // 4.47: 계획 끝을 넘긴 날(그 배 버퍼 소모)과 버퍼 끝(계획 끝 + 그 배 버퍼)을 넘긴 날(납기 지연). 인계 기한은 버퍼 끝과
+    // 같지 않다(C·E는 버퍼 끝이 더 뒤): 인계 기한을 넘겨도 버퍼 안이면 노랑
+    const bufEnd = pl === null ? null : pl + bufferOf(r.ship);
+    const used = m && pl !== null ? Math.ceil(m.e - pl - 1e-9) : 0;
+    const over = m && bufEnd !== null ? Math.ceil(m.e - bufEnd - 1e-9) : 0;
+    const sev = pl !== null ? (over > 0 ? "late" : used > 0 ? "warn" : "")
+      : late <= 0 ? "" : late > bufferOf(r.ship) ? "late" : "warn";
+    const planDay = (mine[r.id] ?? keep[r.id])?.plan_end;
     const rd = ready(r);
     const doneFrac = inside && m && mine[r.id]?.std_mh ? Math.max(0, Math.min(1, 1 - r.mh / mine[r.id]!.std_mh)) : 0;
-    const track = h("div", { class: "dcg-track" },
-      h("i", { class: "dcg-plan", style: { left: "0%", width: x(dueX) } }),
-      h("i", { class: "dcg-due", style: { left: x(dueX) } }));
+    const track = h("div", { class: "dcg-track", title: pl !== null ? `계획 끝 ${planDay}일 · 버퍼 ${bufferOf(r.ship)}일 · 인계 기한 ${r.due}일` : `인계 기한 ${r.due}일` },
+      h("i", { class: "dcg-plan", style: { left: "0%", width: x(pl ?? dueX) } }),
+      pl !== null && bufEnd! > pl ? h("i", { class: "dcg-bufzone", style: { left: x(pl), width: w(pl, bufEnd!) } }) : null,
+      pl !== null && pl > 0 ? h("i", { class: "dcg-planline", style: { left: x(pl) } }) : null,
+      h("i", { class: "dcg-due", style: { left: x(dueX) } }),
+      bufEnd !== null && bufEnd > 0 ? h("i", { class: "dcg-bufend", style: { left: x(bufEnd) } }) : null);
     if (m) {
       const bar = h("i", { class: `dcg-bar${m.out ? " out" : ""}`, style: { left: x(m.s), width: w(m.s, m.e) },
         title: m.out ? `외주: ${today + Math.floor(m.s)}일에 보내 ${mine[r.id]?.done_day}일에 돌아옴` : `${r.ship} ${r.id} 이 선택이면 ${mine[r.id]?.end}일에 끝남` });
       if (doneFrac > 0) bar.append(h("b", { class: "dcg-progress", style: { width: `${doneFrac * 100}%` } }));
       track.append(bar);
-      if (m.e > dueX) track.append(h("i", { class: `dcg-over ${sev}`, style: { left: x(Math.max(dueX, m.s)), width: w(Math.max(dueX, m.s), m.e) } }));
+      if (pl !== null) {
+        // 4.47: 계획 끝 ~ 인계 기한은 노랑(버퍼 소모), 인계 기한 뒤는 빨강
+        const be = bufEnd!;
+        if (m.e > pl && be > Math.max(pl, m.s)) track.append(h("i", { class: "dcg-over warn", style: { left: x(Math.max(pl, m.s)), width: w(Math.max(pl, m.s), Math.min(m.e, be)) } }));
+        if (m.e > be) track.append(h("i", { class: "dcg-over late", style: { left: x(Math.max(be, m.s)), width: w(Math.max(be, m.s), m.e) } }));
+      } else if (m.e > dueX) track.append(h("i", { class: `dcg-over ${sev}`, style: { left: x(Math.max(dueX, m.s)), width: w(Math.max(dueX, m.s), m.e) } }));
     }
     if (k && m && Math.abs(k.e - m.e) > 0.01) track.append(h("i", { class: "dcg-keep", style: { left: x(k.s), width: w(k.s, k.e) }, title: `지금대로면 ${keep[r.id]?.end ?? keep[r.id]?.done_day}일에 끝남` }));
     return h("div", { class: `dcg-row${sev ? ` sev-${sev}` : ""}${inside ? " inside" : ""}` },
       h("div", { class: "dcg-label", title: rd.detail },
         h("small", { class: "dc-ord" }, ord), h("b", null, `${blockTitle(r.ship, sid, r.no)}`),
         h("span", { class: rd.hot ? "dc-hit" : "" }, rd.short),
-        sev ? h("em", { class: `dcg-sev ${sev}` }, sit.ships ? `블록 납기 +${late}일` : `인계 기한 +${late}일`, sev === "late" && sit.ships ? " · 버퍼보다 큼" : "") : null),
+        sev ? h("em", { class: `dcg-sev ${sev}` }, pl !== null ? (sev === "late" ? `버퍼 넘김 +${over}일` : `계획 끝(${planDay}일) +${used}일 · 버퍼 소모`)
+          : sit.ships ? `블록 납기 +${late}일` : `인계 기한 +${late}일`, sev === "late" && sit.ships && pl === null ? " · 버퍼보다 큼" : "") : null),
       track,
       h("div", { class: "dcg-act" }, chips(r, inside)));
   }));
@@ -305,7 +329,7 @@ function warnIcon(): SVGElement {
 }
 
 /** 판정 띠(4.37.2, 사용자 "버퍼 소모 -> 노란색, 납기 지연 -> 빨간색"): 이 선택이면 납기를 넘기는 배(빨강), 버퍼만 쓰는 배(노랑) */
-function verdict(sit: Situation, m: ForecastRow | undefined): HTMLElement {
+function verdict(sit: Situation, m: ForecastRow | undefined, name: Record<string, string>): HTMLElement {
   if (!m?.completed) return h("div", { class: "dc-verdict" }, "계산하는 중…");
   const late: string[] = [], used: string[] = [];
   for (const [sid, sh] of Object.entries(sit.ships!)) {
@@ -318,7 +342,29 @@ function verdict(sit: Situation, m: ForecastRow | undefined): HTMLElement {
   return h("div", { class: "dc-verdict" },
     late.length ? h("span", { class: "v-late" }, h("b", null, "납기 지연"), ` ${late.join(" · ")}`) : null,
     used.length ? h("span", { class: "v-warn" }, h("b", null, "버퍼 소모"), ` ${used.join(" · ")}`) : null,
-    !late.length && !used.length ? h("span", { class: "v-ok" }, h("b", null, "버퍼 그대로"), " 모든 배가 계획대로 끝납니다") : null);
+    !late.length && !used.length ? h("span", { class: "v-ok" }, h("b", null, "버퍼 그대로"), " 모든 배가 계획대로 끝납니다") : null,
+    whyList(sit, m, name));
+}
+
+const STATE_NAME: Record<string, string> = Object.fromEntries([...LOSS_STATES, PAIR_WAIT_STATE, OUTSOURCED_STATE, WORK_STATE, TRANSPORT_STATE].map((x) => [x.state, x.name]));
+/** 공정에 붙는 자리: 기다림은 그 공정 앞, 운반·짝은 그 공정을 마친 뒤 */
+const AFTER = new Set(["transport_wait", "transport", "pair_wait"]);
+
+/** 까닭(4.47, 사용자 "D가 지연된다는데 아래 간트로는 확인하기 어렵다"): 버퍼를 쓰거나 납기를 넘기는 배마다
+ *  계획보다 어디서 날을 더 썼나(엔진 forecast why). 소조립 간트에 없는 하류(운반 대기 등)도 여기서 보인다.
+ *  늘어난 날은 공정·상태별로, 줄어든 날은 합쳐서 한 칸(합 = 계획보다 늦은 날) */
+function whyList(sit: Situation, m: ForecastRow, name: Record<string, string>): HTMLElement | null {
+  const rows = Object.entries(m.why ?? {}).filter(([sid]) => sit.ships?.[sid] && (m.completed?.[sid] ?? 0) > sit.ships[sid].due - sit.ships[sid].buffer);
+  if (!rows.length) return null;
+  const where = (st: string, pid: string | null) => !pid ? STATE_NAME[st] ?? st
+    : st === "work" ? `${name[pid]} 작업` : `${name[pid]} ${AFTER.has(st) ? "뒤" : "앞"} ${STATE_NAME[st] ?? st}`;
+  return h("ul", { class: "dc-why" }, rows.map(([sid, w]) => {
+    const plus = w.items.filter((it) => it.days > 0);
+    const minus = w.items.filter((it) => it.days < 0).reduce((a, it) => a + it.days, 0);
+    return h("li", null, h("b", null, sid), ` 계획(${w.plan_finish}일)보다 ${w.days}일 늦게 끝남: `,
+      plus.map((it, k) => h("span", { class: "dc-why-item" }, k ? " · " : "", where(it.state, it.station), h("b", null, ` +${it.days}일`))),
+      minus ? h("small", null, ` · 줄어든 날 ${minus}일`) : null);
+  }));
 }
 
 
