@@ -16,7 +16,8 @@ import { planLabel, renderForm, renderPlanBar, renderPlanNotes, renderPlanTabs, 
 import { ASSEMBLY_WAIT_LEGEND, renderAssemblyGantt, renderGantt, renderShipGantt, renderStationGantt, type GanttPick } from "./gantt";
 import { docHead, REVIEWER } from "./paper";
 import { EVENT_NAME, GRADE_COLOR, GRADE_EDGE, GRADE_RANK, GRADE_TEXT, LOSS_STATES, PAIR_WAIT_EDGE, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, TRANSPORT_STATE } from "./labels";
-import { eventText, renderAssemblyReport, renderMemo, renderReport } from "./report";
+import { renderAssemblyReport } from "./assembly-report";
+import { eventText, renderMemo, renderReport } from "./report";
 import { renderCctv } from "./cctv";
 import { renderShipBoard } from "./shipboard";
 import { renderAssemblyView } from "./assembly-view";

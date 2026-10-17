@@ -13,7 +13,7 @@ const FULL_W = 640;
 const FULL_H = 300;
 const POOL_W = 70;          // 왼쪽 작업대기소
 const SHOP_Y = 46;          // 공장 위쪽
-const SLOT_H = 40;
+const SLOT_H = 58;          // 4.36.1: 정반 한 칸(위에서 내려다본 바닥)
 const CHIP_W = 52;
 const CHIP_H = 14;
 const QUEUE_COLS = 3;
@@ -61,41 +61,52 @@ export function renderAssemblyView(result: Result, scenario: Scenario, day: numb
     g.append(s("rect", { x: x0, y: SHOP_Y, width: shopW, height: queueY - SHOP_Y - 8, rx: 6, class: "asm-shop-box" }),
       s("rect", { x: x0, y: SHOP_Y, width: shopW, height: 16, rx: 6, fill: STATION_COLOR[st.id] }),
       s("text", { x: x0 + 8, y: SHOP_Y + 12, class: "asm-shop-name", fill: STATION_TEXT[st.id] ?? "#fff" }, `${st.name} · 블록 ${st.count}`));
-    // 작업장(정반) 칸: 오늘 일한 블록과 작업자
+    // 작업장(정반) 칸(4.36.1, 사용자 "작업장 위쪽에서 내려다보는 자연스러움"): 위에서 본 공장 바닥.
+    // 격자 철판 정반 위에 오늘 일한 블록(위에서 본 판과 보강재), 블록 가장자리에 작업자(안전모)와 용접 불꽃,
+    // 정반 옆 바닥에 용접기와 케이블. 일하지 못한 날(인력 대기·중지)은 정반에 놓인 블록만 흐리게
+    let craneOver: { x: number; y: number } | null = null;
     units(st.id).forEach((u, j) => {
       const y = SHOP_Y + 22 + j * (SLOT_H + 6);
       const r = day > 0 ? u.daily[today - 1] : undefined;
-      g.append(s("rect", { x: x0 + 6, y, width: shopW - 12, height: SLOT_H, rx: 4, class: "asm-slot" }),
-        // 설비(4.30): 정반(블록을 놓는 철판 바닥)과 용접기. 고장 중이면 붉게
-        plate(x0 + 9, y + SLOT_H - 7, shopW - 50),
-        welder(x0 + 48, y + 3, r?.state === "breakdown_stop"),
-        s("text", { x: x0 + 10, y: y + 11, class: "asm-small" }, `${u.unit}호 정반`));
+      const px = x0 + 6, pw = shopW - 34;          // 정반(오른쪽 26은 용접기 자리)
+      const broken = r?.state === "breakdown_stop";
+      g.append(s("rect", { x: x0 + 4, y: y - 2, width: shopW - 8, height: SLOT_H + 4, rx: 3, class: "asm-bay" }),
+        platen(px, y + 2, pw, SLOT_H - 4),
+        s("text", { x: px + 3, y: y + 10, class: "asm-small" }, `${u.unit}호 정반`),
+        welder(px + pw + 6, y + SLOT_H / 2 - 6, broken));
       if (!r) return;
-      // 일한 블록(이어 하기로 여럿). 일하지 못한 날(인력 대기·중지)은 정반에 들어가 있는 블록을 흐리게
       const held = blocks.filter((b) => b.station === st.id && rec(b)?.unit === u.unit
         && ["labor_wait", "accident_stop", "breakdown_stop"].includes(rec(b)!.state));
-      held.slice(0, 1).forEach((b) => g.append(s("g", { opacity: 0.45 },
-        chip(x0 + 10, y + 16, `${b.ship} ${blockLabel(st.id, b.no)}`, STATION_COLOR[st.id], STATION_TEXT[st.id], false, STATE_INFO[rec(b)!.state]?.name))));
-      const ids = r.blocks ?? [];
-      ids.slice(0, 3).forEach((id, n) => {
-        const b = blocks.find((x) => x.id === id);
-        if (!b) return;
-        g.append(chip(x0 + 10 + n * (CHIP_W + 4), y + 16, `${b.ship} ${blockLabel(st.id, b.no)}`, STATION_COLOR[st.id], STATION_TEXT[st.id], r.state === "rework"));
+      const worked = (r.blocks ?? []).map((id) => blocks.find((x) => x.id === id)).filter((b): b is typeof blocks[number] => !!b);
+      const onPlaten = worked.length ? worked.slice(0, 3) : held.slice(0, 1);
+      const bw = Math.min(64, (pw - 12 - (onPlaten.length - 1) * 6) / Math.max(1, onPlaten.length));
+      const bh = SLOT_H - 22;
+      const working = worked.length > 0 && (r.state === "work" || r.state === "rework");
+      onPlaten.forEach((b, n) => {
+        const bx = px + 6 + n * (bw + 6);
+        const by = y + 14;
+        g.append(s("g", worked.length ? {} : { opacity: 0.45 },
+          blockTop(bx, by, bw, bh, `${b.ship} ${blockLabel(st.id, b.no)}`, STATION_COLOR[st.id], STATION_TEXT[st.id], r.state === "rework" && worked.length > 0,
+            worked.length ? undefined : STATE_INFO[rec(b)!.state]?.name)));
+        if (n === onPlaten.length - 1) craneOver = { x: bx + bw / 2, y: by + 4 };   // 거더는 블록 윗부분 위(이름을 가리지 않게)
       });
-      // 작업자: 대기소에서 정반으로 걸어온다(재생 중, 하루의 앞 30%)
+      // 작업자: 마지막(지금 하는) 블록의 아래·위 가장자리에 서서 용접. 재생 중이면 대기소에서 걸어온다
+      const target = onPlaten.length ? { bx: px + 6 + (onPlaten.length - 1) * (bw + 6), by: y + 14 } : null;
       for (let n = 0; n < r.workers; n++) {
-        const wx = x0 + shopW - 22 - n * 12;
-        const wy = y + 30;
-        g.append(s("g", anim("asm-walk", 0, lead, { "--dx": `${16 - wx}px`, "--dy": `${SHOP_Y + 30 - wy}px` }), worker(wx, wy)));
+        const wx = target ? target.bx + bw * (n === 0 ? 0.3 : 0.75) : px + pw - 10 - n * 12;
+        const wy = target ? (n === 0 ? target.by + bh + 5 : target.by - 5) : y + SLOT_H / 2;
+        const torch = target && working ? { x: wx, y: n === 0 ? target.by + bh : target.by } : null;
+        g.append(s("g", anim("asm-walk", 0, lead, { "--dx": `${16 - wx}px`, "--dy": `${SHOP_Y + 30 - wy}px` }),
+          cable(px + pw + 11, y + SLOT_H / 2, wx, wy), workerTop(wx, wy),
+          torch ? spark(torch.x, torch.y, opts.animate && day > 0, n) : null));
       }
       const info = STATE_INFO[r.state];
       if (r.state !== "work" && r.state !== "rework" && r.state !== "idle" && info) {
-        g.append(s("text", { x: x0 + shopW - 10, y: y + 11, class: "asm-flag", fill: info.color }, info.name));
+        g.append(s("text", { x: px + pw - 2, y: y + 10, class: "asm-flag end", fill: info.color }, info.name));
       }
     });
-    // 천장 크레인(4.30): 공장을 가로지르는 레일과 트롤리. 오늘 일한 첫 정반 위에 갈고리를 내린다
-    const workingAt = units(st.id).findIndex((u) => day > 0 && ["work", "rework"].includes(u.daily[today - 1]?.state));
-    g.append(crane(x0 + 4, x0 + shopW - 4, SHOP_Y + 19, workingAt < 0 ? null : SHOP_Y + 22 + workingAt * (SLOT_H + 6) + 14, x0 + shopW * 0.62));
+    // 천장 크레인(4.30): 공장을 가로지르는 거더와 트롤리. 오늘 일하는 블록 위에 선다
+    g.append(crane(x0 + 2, x0 + shopW - 2, SHOP_Y + 22 - 4, SHOP_Y + 22 + units(st.id).length * (SLOT_H + 6) - 4, craneOver));
     // 공장 앞: 기다리는 블록(작업장 대기·자재 대기), 앞 공장에서 닿아 짝을 기다리는 블록
     const waiting = blocks.filter((b) => {
       const r2 = rec(b);
@@ -144,10 +155,12 @@ export function renderAssemblyView(result: Result, scenario: Scenario, day: numb
   svg.append(s("g", { class: "asm-legend" },
     plate(8, H - 14, 16), s("text", { x: 28, y: H - 9, class: "asm-small" }, "정반"),
     welder(58, H - 18, false), s("text", { x: 72, y: H - 9, class: "asm-small" }, "용접기"),
-    crane(110, 130, H - 16, H - 8, 120), s("text", { x: 134, y: H - 9, class: "asm-small" }, "천장 크레인")));
+    crane(108, 128, H - 18, H - 6, { x: 118, y: H - 12 }), s("text", { x: 134, y: H - 9, class: "asm-small" }, "천장 크레인"),
+    workerTop(208, H - 12), s("text", { x: 216, y: H - 9, class: "asm-small" }, "작업자"),
+    spark(254, H - 12, false, 0), s("text", { x: 261, y: H - 9, class: "asm-small" }, "용접")));
   // 오른쪽 끝: PE장 블록이 끝나면 크레인이 탑재로 든다(배 단위). 오늘 탑재 중인 배
   const erecting = result.ships.filter((sh) => day > 0 && sh.daily[today - 1]?.station === "erection" && sh.daily[today - 1]?.state === "work");
-  svg.append(s("text", { x: W - 8, y: H - 10, class: "asm-small end" },
+  svg.append(s("text", { x: W - 8, y: H - 24, class: "asm-small end" },
     erecting.length ? `탑재 중: ${erecting.map((sh) => sh.id).join(", ")}` : "PE장 블록이 모두 끝나면 다음 날 크레인이 탑재로 든다"));
   return svg;
 }
@@ -159,31 +172,70 @@ function chip(x: number, y: number, label: string, fill: string, ink: string | u
     s("text", { x: x + CHIP_W / 2, y: y + CHIP_H - 4, fill: ink ?? "#fff" }, label));
 }
 
-/** 정반: 블록을 놓고 조립하는 철판 바닥(줄무늬) */
+/** 범례용 정반(작은 격자 철판) */
 function plate(x: number, y: number, w: number): SVGElement {
-  const g = s("g", { class: "asm-plate" }, s("title", null, "정반"), s("rect", { x, y, width: w, height: 4, rx: 1 }));
-  for (let k = 6; k < w; k += 8) g.append(s("line", { x1: x + k, x2: x + k, y1: y, y2: y + 4 }));
+  return platen(x, y - 3, w, 8);
+}
+
+/** 정반: 블록을 놓고 조립하는 철판 바닥. 위에서 보면 격자 무늬 */
+function platen(x: number, y: number, w: number, hgt: number): SVGElement {
+  const g = s("g", { class: "asm-platen" }, s("title", null, "정반(블록을 놓고 조립하는 철판 바닥)"),
+    s("rect", { x, y, width: w, height: hgt, rx: 2 }));
+  for (let k = 8; k < w; k += 10) g.append(s("line", { x1: x + k, x2: x + k, y1: y + 1, y2: y + hgt - 1 }));
+  for (let k = 8; k < hgt; k += 10) g.append(s("line", { x1: x + 1, x2: x + w - 1, y1: y + k, y2: y + k }));
   return g;
 }
 
-/** 용접기: 작은 상자와 케이블. 고장이면 붉게 */
+/** 블록(위에서 본 모양): 공정 색 판, 안쪽 보강재 줄, 이름. 재작업이면 흰 점선 테두리 */
+function blockTop(x: number, y: number, w: number, hgt: number, label: string, fill: string, ink: string | undefined, rework: boolean, title?: string): SVGElement {
+  const g = s("g", { class: "asm-blk" }, s("title", null, title ? `${label} · ${title}` : label),
+    s("rect", { x, y, width: w, height: hgt, rx: 1.5, fill, class: rework ? "rework" : "" }));
+  for (let k = 1; k <= 3; k++) g.append(s("line", { x1: x + 3, x2: x + w - 3, y1: y + (hgt * k) / 4, y2: y + (hgt * k) / 4, class: "rib" }));
+  g.append(s("text", { x: x + w / 2, y: y + hgt - 5, fill: ink ?? "#fff" }, label));
+  return g;
+}
+
+/** 용접기: 바닥에 놓인 작은 상자. 고장이면 붉게 */
 function welder(x: number, y: number, broken: boolean): SVGElement {
   return s("g", { class: `asm-welder${broken ? " broken" : ""}` }, s("title", null, broken ? "용접기 · 고장" : "용접기"),
-    s("rect", { x, y, width: 10, height: 7, rx: 1.5 }),
-    s("path", { d: `M${x + 3} ${y + 2} L${x + 6} ${y + 2} L${x + 4} ${y + 4} L${x + 7} ${y + 4}` }),
-    s("path", { d: `M${x + 10} ${y + 5} q 5 2 3 8`, class: "cable" }));
+    s("rect", { x, y, width: 12, height: 12, rx: 2 }),
+    s("path", { d: `M${x + 4} ${y + 3} L${x + 8} ${y + 3} L${x + 5} ${y + 6} L${x + 9} ${y + 6} L${x + 6} ${y + 9}` }));
 }
 
-/** 천장 크레인: 레일, 트롤리, 갈고리(hookY가 있으면 그 높이까지 줄을 내린다) */
-function crane(x1: number, x2: number, y: number, hookY: number | null, tx: number): SVGElement {
+/** 용접기에서 작업자까지 바닥을 지나는 케이블 */
+function cable(x1: number, y1: number, x2: number, y2: number): SVGElement {
+  const mx = (x1 + x2) / 2;
+  return s("path", { d: `M${x1} ${y1} C ${mx} ${y1 + 10}, ${mx} ${y2}, ${x2} ${y2}`, class: "asm-cable" });
+}
+
+/** 용접 불꽃: 토치가 닿은 곳의 작은 빛. 재생 중이면 깜빡인다(작업자마다 엇갈려) */
+function spark(x: number, y: number, live: boolean, n: number): SVGElement {
+  return s("g", { class: `asm-spark${live ? " live" : ""}`, style: live ? `animation-delay:${n * 170}ms` : "" },
+    s("circle", { cx: x, cy: y, r: 2.2 }),
+    s("path", { d: `M${x - 3.5} ${y} L${x + 3.5} ${y} M${x} ${y - 3.5} L${x} ${y + 3.5}` }));
+}
+
+/** 천장 크레인: 공장 양옆 레일 사이를 오가는 거더(가로 다리)와 트롤리. 일하는 블록이 있으면 그 위에 */
+function crane(x1: number, x2: number, yTop: number, yBottom: number, over: { x: number; y: number } | null): SVGElement {
+  const gx = over ? over.x : x1 + (x2 - x1) * 0.62;
   const g = s("g", { class: "asm-crane" }, s("title", null, "천장 크레인(블록을 들어 옮김)"),
-    s("line", { x1, x2, y1: y, y2: y, class: "rail" }),
-    s("rect", { x: tx - 5, y: y - 3, width: 10, height: 5, rx: 1 }));
-  if (hookY !== null) g.append(s("line", { x1: tx, x2: tx, y1: y + 2, y2: hookY, class: "rope" }), s("path", { d: `M${tx - 2} ${hookY} q 2 4 4 0`, class: "rope" }));
+    s("line", { x1, x2: x1, y1: yTop, y2: yBottom, class: "rail" }),
+    s("line", { x1: x2, x2, y1: yTop, y2: yBottom, class: "rail" }));
+  if (over) {
+    g.append(s("line", { x1: x1, x2, y1: over.y, y2: over.y, class: "girder" }),
+      s("rect", { x: gx - 4, y: over.y - 3, width: 8, height: 6, rx: 1, class: "trolley" }));
+  }
   return g;
 }
 
-/** 작업자 기호: 둥근 몸 + 고깔모자(관제실 작업 현황과 같은 익명 기호) */
+/** 작업자(위에서 본 모양): 어깨(타원)와 안전모(원). 관제실 작업 현황과 같은 모자 색 */
+function workerTop(x: number, y: number): SVGElement {
+  return s("g", { class: "asm-worker" },
+    s("ellipse", { cx: x, cy: y, rx: 4.6, ry: 2.8, fill: "#5b6b62" }),
+    s("circle", { cx: x, cy: y, r: 2.4, fill: HAT.worker }));
+}
+
+/** 작업대기소의 작업자 기호: 둥근 몸 + 고깔모자(관제실 작업 현황과 같은 익명 기호) */
 function worker(x: number, y: number): SVGElement {
   return s("g", { class: "asm-worker" },
     s("circle", { cx: x, cy: y + 4, r: 4, fill: "#5b6b62" }),
