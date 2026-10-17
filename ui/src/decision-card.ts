@@ -111,7 +111,13 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
         h("h2", { class: "dc-title" }, warnIcon(), sit.ships ? `${sit.day}일 아침 · 블록이 계획보다 늦을 것 같습니다` : `${sit.day}일 아침 · 조립장에 블록이 몰렸습니다`),
         // 4.37(사용자 "조치 요청도 가독성이 좋지 않네"): 문제를 그림 한 줄로. 배마다 버퍼 칸, 지금 순서대로면 먹을 칸을 붉게
         // 4.39(D86): 머리글은 묻는 까닭(블록이 블록 납기를 넘길 것 같음)만. 배가 버퍼를 쓰는지는 아래 "이 선택이면"의 상황 태그가 말한다
-        sit.ships ? h("div", { class: "dc-bufs" }, lateBlocks(asked)) : null,
+        // 4.39.1(사용자: 4.39에서 빠진 배별 잔여 버퍼 막대를 되살림): 지금대로 가면 배마다 남는 버퍼(미리보기 "지금대로", 그날까지 아는 것만).
+        // 그 아래 줄에 계획보다 늦을 블록
+        sit.ships ? h("div", { class: "dc-bufs" }, Object.entries(sit.ships).map(([sid, sh]) => {
+          const c = f?.keep.completed?.[sid];
+          return bufferBar(sid, sh.buffer, c === undefined || c === null ? null : Math.max(0, c - (sh.due - sh.buffer)));
+        })) : null,
+        sit.ships ? h("div", { class: "dc-bufs dc-late-row" }, lateBlocks(asked)) : null,
         // 4.37.2: 필요·가용 작업시간은 결과 미리보기의 맨아워 칸으로 옮겼다(버퍼 시나리오). 아니면 여기 한 줄
         sit.ships ? null : h("p", { class: "dc-sub" }, `작업장 앞 ${count}건${inYard ? ` · 적치장 ${inYard}건` : ""} · 오늘 가용 ${fmt(sit.capacity_mh)}H / 필요 ${fmt(sit.need_mh)}H`,
           short > 0 ? h("b", { class: "wl-hot" }, ` (${fmt(short)}H 부족)`) : null)),
@@ -347,6 +353,18 @@ function lateBlocks(stations: [string, Situation["stations"][string]][]): HTMLEl
     : [h("span", { class: "dc-late-label" }, "블록이 계획대로 갑니다")];
 }
 
+
+/** 배 잔여 버퍼 막대(4.37, 4.39.1): 버퍼 일수만큼 칸. 지금대로 가면 쓸 칸은 노랑(소모), 버퍼를 넘는 칸은 빨강(납기 지연), 남는 칸은 초록 */
+function bufferBar(sid: string, buffer: number, used: number | null): HTMLElement {
+  const u = used ?? 0;
+  const over = Math.max(0, u - buffer);
+  return h("span", { class: `dc-buf${over ? " late" : u ? " hit" : ""}`, title: `${sid} 버퍼 ${buffer}일 · 지금대로 가면 ${used === null ? "계산 중" : `${Math.min(u, buffer)}일 소모`}` },
+    h("b", null, sid),
+    h("span", { class: "dc-buf-cells" }, Array.from({ length: Math.max(buffer, u) }, (_, k) =>
+      h("i", { class: k >= buffer ? "over" : k >= buffer - Math.min(u, buffer) ? "eat" : "" }))),
+    h("small", null, used === null ? `버퍼 ${buffer}일`
+      : over ? `납기 ${over}일 지연` : u ? `버퍼 ${buffer - u}일 남음 (${u}일 소모)` : `버퍼 ${buffer}일 남음`));
+}
 
 /** 가공 적치장에서 기다리는 블록 한 줄(4.35): 배별 수 */
 function yardText(yard: { id: string; ship: string }[]): string {

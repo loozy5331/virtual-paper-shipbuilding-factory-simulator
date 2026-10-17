@@ -1858,3 +1858,4 @@ details.review-day[open] > .review-table { margin-top: 6px; }
 /* 4.39 머리글: 계획보다 늦을 블록 */
 .dc-late-label { font-size: 0.82rem; color: var(--ink-2); }
 .dc-late-chip { font-size: 0.82rem; font-weight: 700; color: var(--warn-ink); background: #fbf1d6; border: 1px solid var(--warn-edge); border-radius: 3px; padding: 1px 7px; }
+.dc-late-row { margin-top: 2px; }
