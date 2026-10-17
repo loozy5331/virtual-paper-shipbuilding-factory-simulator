@@ -109,6 +109,8 @@ function foldSummaries(ctx: FormContext): Record<string, string> {
       scenario.decision_stations && scenario.contingency
         ? `비상 예산 ${listOr(planStations(scenario).filter((b) => st(b.id).dispatch_mode === "manual")
           .map((b) => `${b.name} ${config.contingency?.[b.id] ?? scenario.contingency![b.id] ?? 0}`))}` : null,
+      // 4.35: 작업장 적치 한도
+      opts.queue_cap ? `적치 한도 ${listOr(planStations(scenario).filter((b) => st(b.id).queue_cap).map((b) => `${b.name} ${st(b.id).queue_cap}개`))}` : null,
     ].filter(Boolean).join(" · "),
     research: config.research.length ? config.research.map((r) => scenario.research[r]?.name ?? r).join(" → ") : "없음",
   };

@@ -62,7 +62,7 @@ function zoomBtn(): HTMLElement {
   return h("button", { type: "button", class: "btn small asm-zoom-btn", title: "블록 일정을 화면 가득", onclick: () => setZoom(true) }, "크게 보기");
 }
 
-function seg<T extends string>(name: string, options: { value: T; label: string }[], value: T, onPick: (v: T) => void): HTMLElement {
+function seg<T extends string | number>(name: string, options: { value: T; label: string }[], value: T, onPick: (v: T) => void): HTMLElement {
   return h("div", { class: "seg", role: "radiogroup" },
     options.map((o) => h("label", { class: "seg-item" },
       h("input", { type: "radio", name, checked: o.value === value, onchange: () => onPick(o.value) }),
@@ -115,13 +115,22 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
               }),
               h("small", null, `몰리는 날 액션 카드의 잔업·특근·외주에 씀(0~${scenario.contingency_max ?? 500}, 쓴 만큼만 비용)`)),
           ] : []),
+          // 작업장 적치 한도(4.35, D83, 사용자 "작업장별 최대 블록 수용 갯수"): 넘치는 블록은 가공 적치장에서 기다린다
+          ...(scenario.options?.queue_cap ? [
+            h("span", { class: "field-label" }, "적치 한도"),
+            h("div", { class: "asm-rule asm-budget" },
+              seg(`qcap-${b.id}`, [{ value: 0, label: "없음" }, ...[2, 3, 4, 5, 6, 8].filter((n) => n <= scenario.options!.queue_cap!)
+                .map((n) => ({ value: n, label: `${n}개` }))], cfg.queue_cap ?? 0,
+              (v) => { if (v) cfg.queue_cap = v; else delete cfg.queue_cap; ctx.onEdit(false); }),
+              h("small", null, "넘치는 블록은 가공 적치장에서 대기")),
+          ] : []),
           h("span", { class: "field-label" }, scenario.options?.decisions ? "배치 정책" : "우선순위"),
           h("div", { class: "asm-rule" }, seg(`dispatch-${b.id}`, (Object.keys(DISPATCH_INFO) as DispatchRule[]).map((id) => ({ value: id, label: DISPATCH_INFO[id].name })),
             cfg.dispatch ?? "ship", (v) => { if (v === "ship") delete cfg.dispatch; else cfg.dispatch = v; ctx.onEdit(true); })),
         ],
       });
     })),
-    scenario.options?.decisions ? h("p", { class: "hint" }, "배치 정책은 작업장이 비었을 때 기다리는 블록 가운데 무엇을 먼저 들일지 정합니다. 직접 대응으로 둔 공정은 실행 중 블록이 몰리는 날(필요 작업시간 > 가용, 새 배의 블록이 대기열에 끼어든 날) 관제실이 멈추고 액션 카드로 정책과 블록별 조치(잔업·특근·외주·지체보상금 감수, 그 공정 비상 예산 안에서)를 묻습니다. 액션 카드는 고를 때마다 작업시간·납기·예산이 어떻게 되는지 미리 보여 줍니다.") : null,
+    scenario.options?.decisions ? h("p", { class: "hint" }, "배치 정책은 작업장이 비었을 때 기다리는 블록 가운데 무엇을 먼저 들일지 정합니다. 직접 대응으로 둔 공정은 실행 중 블록이 몰리는 날(필요 작업시간 > 가용, 새 배의 블록이 작업장 앞에 올라온 날) 관제실이 멈추고 작업 중·작업장 앞 블록을 액션 카드로 보이며 정책과 블록별 조치(잔업·특근·외주·지체보상금 감수, 그 공정 비상 예산 안에서)를 묻습니다. 액션 카드는 고를 때마다 작업시간·납기·예산이 어떻게 되는지 미리 보여 줍니다.") : null,
     action ? null : h("p", { class: "hint" }, "우선순위 규칙은 작업장이 비었을 때 기다리는 블록 가운데 무엇을 먼저 들일지 정합니다. 위 배 탭에서 정한 착수일 전에는 그 블록을 들이지 않습니다. 작업장을 2개로 늘리면 블록이 두 작업장으로 퍼집니다."));
 
   // ① 배별 블록 일정과 납기: 계획상 위험 한 줄(혼자 써도 공정 납기를 넘기는 공정, 작업장 겹침과는 원인이 다르다), 배 탭 한 줄

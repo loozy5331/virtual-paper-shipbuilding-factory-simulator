@@ -259,5 +259,52 @@ class Forecast(unittest.TestCase):
             forecast({**self.cfg, "decisions": [{"day": self.day + 1}]})
 
 
+
+class QueueCap(unittest.TestCase):
+    """작업장 적치 한도(4.35, D83): 넘치는 블록은 가공 적치장에서 기다리고, 작업장·액션 카드는 적치된 블록만 본다."""
+
+    def b_plan(self, cap):
+        cfg = copy.deepcopy(load_presets("assembly")[1]["config"])
+        if cap is None:
+            del cfg["stations"]["sub_assembly"]["queue_cap"]
+        else:
+            cfg["stations"]["sub_assembly"]["queue_cap"] = cap
+        return cfg
+
+    def test_card_shows_staged_only(self):
+        st = simulate(self.b_plan(4), baseline=False)["pending"]["stations"]["sub_assembly"]
+        self.assertEqual((st["queue_cap"], len(st["waiting"]), len(st["yard"])), (4, 4, 7))
+        free = simulate(self.b_plan(None), baseline=False)["pending"]["stations"]["sub_assembly"]
+        self.assertEqual((free["queue_cap"], len(free["waiting"]), free["yard"]), (None, 11, []))
+
+    def test_never_more_than_cap_in_front(self):
+        r = simulate(self.b_plan(3), baseline=False)
+        sub = [b for b in r["blocks"] if b["station"] == "sub_assembly"]
+        for d in range(r["days"]):
+            front = sum(1 for b in sub if b["daily"][d]["state"] in ("station_wait", "material_wait") and not b["daily"][d].get("yard"))
+            self.assertLessEqual(front, 3, d + 1)
+        self.assertTrue(any(day.get("yard") for b in sub for day in b["daily"]))
+
+    def test_sub_assembly_cap_keeps_the_result(self):
+        # 이 판은 병목이 중조립이라 소조립 적치 한도는 결과를 바꾸지 않는다(B안 기본 4, 판 조율 그대로)
+        base = simulate(self.b_plan(None))
+        for cap in (2, 4, 8):
+            r = simulate(self.b_plan(cap))
+            self.assertEqual((r["grade"]["score"], r["profit"]), (base["grade"]["score"], base["profit"]), cap)
+
+    def test_validation(self):
+        cfg = self.b_plan(9)
+        with self.assertRaises(ConfigError):
+            simulate(cfg, baseline=False)
+        cfg = self.b_plan(4)
+        cfg["stations"]["cutting"]["queue_cap"] = 2
+        with self.assertRaises(ConfigError):
+            simulate(cfg, baseline=False)
+        simple = copy.deepcopy(load_presets("simple")[1]["config"])
+        simple["stations"]["sub_assembly"]["queue_cap"] = 2
+        with self.assertRaises(ConfigError):
+            simulate(simple, baseline=False)
+
+
 if __name__ == "__main__":
     unittest.main()

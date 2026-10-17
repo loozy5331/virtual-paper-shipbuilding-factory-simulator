@@ -84,7 +84,8 @@
       1,
       2
     ],
-    "decisions": true
+    "decisions": true,
+    "queue_cap": 8
   },
   "grade": {
     "weights": {
@@ -323,7 +324,7 @@
     {
       "id": "managed",
       "name": "관리",
-      "summary": "납기가 가장 빠른 벌크선(S1)을 우선순위 1로 두고 착수일을 S1 1일 → S2 5일 → S3 9일로 어긋나게 둔다. 소조립·중조립은 납기 빠른 순 정책, 소조립만 직접 대응(몰리는 날 액션 카드, 비상 예산 100). 자재는 역산 발주. 조립 5명(하루 40MH), 가공 2, 탑재 2, 의장 2, 시운전 1명. S2의 PE장 납기(도크 일정)는 적어 둔다.",
+      "summary": "납기가 가장 빠른 벌크선(S1)을 우선순위 1로 두고 착수일을 S1 1일 → S2 5일 → S3 9일로 어긋나게 둔다. 소조립·중조립은 납기 빠른 순 정책, 소조립만 직접 대응(몰리는 날 액션 카드, 비상 예산 100), 소조립 작업장 앞 적치 4개. 자재는 역산 발주. 조립 5명(하루 40MH), 가공 2, 탑재 2, 의장 2, 시운전 1명. S2의 PE장 납기(도크 일정)는 적어 둔다.",
       "config": {
         "scenario": "assembly",
         "ordering": "jit",
@@ -373,6 +374,7 @@
             "overtime": false,
             "maintenance": true,
             "dispatch_mode": "manual",
+            "queue_cap": 4,
             "dispatch": "edd"
           },
           "block_assembly": {

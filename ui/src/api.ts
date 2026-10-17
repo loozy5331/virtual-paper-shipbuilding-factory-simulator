@@ -19,6 +19,8 @@ export interface StationConfig {
   dispatch?: DispatchRule;
   /** 4.31(D78): 블록 공정의 대응 방식. manual이면 몰리는 날 블록 순서를 묻는다(조립 현장 배정만) */
   dispatch_mode?: "auto" | "manual";
+  /** 4.35(D83): 작업장 앞 적치 한도(블록 수). 넘치는 블록은 가공 적치장에서 기다린다. 없으면 한도 없음 */
+  queue_cap?: number;
 }
 
 /** 블록 우선순위 규칙(4.25): 선박 순서 · 납기 빠른 순 · 여유 작은 순 · 작업 짧은 순 */
@@ -187,6 +189,8 @@ export interface ScenarioOptions {
   plan_buffer?: boolean;
   /** 4.31(D78): 블록 공정을 직접 대응(몰리는 날 묻기)으로 둘 수 있는가(조립 현장 배정) */
   decisions?: boolean;
+  /** 4.35(D83): 작업장 적치 한도의 최댓값(있으면 블록 공정 카드에서 고른다) */
+  queue_cap?: number;
 }
 
 /** 호이스트(4.9): 작업량 배수, 작업장마다 도입비·정비비, 고장 판정 간격(일한 날) */
@@ -664,6 +668,8 @@ export interface Situation {
     manual: boolean; units: number; waiting: SituationRow[]; inside: SituationRow[]; rule_orders: Record<string, string[]>;
     /** 고른 정책(없으면 계획대로), 지금 규칙, 비상 예산과 남은 예산 */
     policy: DispatchRule | null; rule: DispatchRule; budget: number; budget_left: number;
+    /** 4.35(D83): 작업장 앞 적치 한도(없으면 null)와 가공 적치장에서 기다리는 블록(액션 카드에 묻지 않는다) */
+    queue_cap?: number | null; yard?: { id: string; ship: string }[];
   }>;
 }
 /** 4.34(D82): 액션 카드 결과 미리보기의 한 줄(그날 그렇게 하고 그 뒤는 기본 대응으로 끝까지) */
@@ -771,7 +777,8 @@ export interface Recommend {
 export interface BlockResult {
   id: string; ship: string; station: string; no: number; unit: number | null; start: number | null; end: number | null;
   done_day: number | null; defect: boolean; due: number; late_days: number; on_time: boolean;
-  daily: { state: string; unit: number | null }[];
+  /** yard: 적치 한도에 막혀 가공 적치장에 있던 날(4.35) */
+  daily: { state: string; unit: number | null; yard?: boolean }[];
   /** 4.29(D76): 시작·끝 시각(그날 근무 시작부터 지난 시간)과 그 작업장의 하루 근무시간(정규 8, 잔업 10). 옛 회차에는 없다 */
   start_h?: number | null; end_h?: number | null; day_hours?: number;
   /** 4.29: 표준 공수, 들인 공수(작업 + 재작업, 사람 × 시간), 그 가운데 재작업 공수 */
