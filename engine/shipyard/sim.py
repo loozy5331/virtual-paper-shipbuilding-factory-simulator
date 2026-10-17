@@ -1254,7 +1254,7 @@ def ship_buffers(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, 
 
 
 def _plan_config(config: dict[str, Any], starts: dict[str, int]) -> dict[str, Any]:
-    """계획 실행 설정: 고른 착수일, 몰리는 날 묻지 않음(기본 대응), 결정 기록 없음."""
+    """계획 실행 설정: 고른 착수일, 몰리는 날 묻지 않음(자동 대응), 결정 기록 없음."""
     cfg = {k: v for k, v in config.items() if k not in ("decisions", "decisions_end")}
     cfg["ships"] = {sid: {**sh, "start_day": starts[sid]} for sid, sh in config["ships"].items()}
     cfg["stations"] = {pid: {k: v for k, v in st.items() if k != "dispatch_mode"} for pid, st in config["stations"].items()}
@@ -1477,7 +1477,7 @@ def _outcome(result: dict[str, Any]) -> dict[str, Any]:
 
 def _decision_review(config: dict[str, Any], scenario: dict[str, Any], result: dict[str, Any]) -> list[dict[str, Any]]:
     """결정 돌아보기(4.31·4.32, D78·D79): 끝난 회차의 결정마다 그날 다르게 했다면. 그 앞 결정은 그대로, 그날은
-    정책 넷(조치 없이), 내 정책에서 조치만 뺀 것, 기본 대응(묻지 않음) 가운데 하나로, 그 뒤는 기본 대응으로 끝까지 돌린다.
+    정책 넷(조치 없이), 내 정책에서 조치만 뺀 것, 자동 대응(묻지 않음) 가운데 하나로, 그 뒤는 자동 대응으로 끝까지 돌린다.
     내 선택은 실제 결과(그 뒤 내 결정까지). 가장 좋은 줄은 D(인도 → 블록 납기) → C → Q 순(_dispatch_rank)."""
     decisions = config.get("decisions") or []
     mine = _outcome(result)
@@ -1506,7 +1506,7 @@ def _decision_review(config: dict[str, Any], scenario: dict[str, Any], result: d
 
 
 def forecast(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> dict[str, Any]:
-    """액션 카드의 결과 미리보기(4.34, D82): 설정의 마지막 결정(그날 고르는 중인 정책·조치)대로 하고 그 뒤는 기본 대응으로
+    """액션 카드의 결과 미리보기(4.34, D82): 설정의 마지막 결정(그날 고르는 중인 정책·조치)대로 하고 그 뒤는 자동 대응으로
     끝까지 돌리면 어떻게 되나. 학생이 고르는 동안 카드가 부른다(화면은 계산하지 않는다, 원칙 1).
     mine = 고른 대로, keep = 그날 아무것도 바꾸지 않음(지금 정책, 조치 없음), policies = 공정마다 정책만 바꾼 것(조치는 고른 대로,
     "keep"은 그 공정 정책을 그대로).
@@ -1855,7 +1855,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     order_rank = {bid: k for ids in (config.get("block_order") or {}).values() for k, bid in enumerate(ids)}
     # 몰리는 날의 결정(4.31·4.32, D78·D79): 직접 대응(dispatch_mode manual)인 블록 공정은 몰리는 날 액션 카드로 묻는다.
     # 정책(공정마다 규칙 하나, 그날부터 블록 순서 대신)과 블록별 조치(잔업·철야·외주·지체보상금 감수, 공정별 비상 예산 안에서).
-    # 기록에 없는 첫 물음은 pending으로 돌려주고, 그 뒤는 기본 대응으로 끝까지 돈다.
+    # 기록에 없는 첫 물음은 pending으로 돌려주고, 그 뒤는 자동 대응으로 끝까지 돈다.
     manual = {p for p in block_set if config["stations"][stations[p]["id"]].get("dispatch_mode") == "manual"}
     # 작업장 적치 한도(4.35, D83): 블록 공정 앞에 둘 수 있는 블록 수. 넘치는 블록은 가공 적치장(yard)에서 기다리다가
     # 자리가 나면 그 공정 정책 순서로 올라온다. 작업장은 적치된 블록만 들이고, 액션 카드도 적치된 블록만 묻는다. 없으면 한도 없음

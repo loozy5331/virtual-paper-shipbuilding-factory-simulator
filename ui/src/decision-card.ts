@@ -5,7 +5,7 @@
 // 외주는 운반일 때문에 직접 하는 것보다 늦게 끝날 수 있어 "직접 하면 며칠"을 옆에 둔다.
 // 4.34(D82, 사용자 "이 선택을 함으로서 결과적으로 작업시간은 어떻게 되고, 납기는 잘 지켜지고, 예산은 얼마나 소진되는지"):
 //   카드 맨 위 결과 미리보기(대기 블록이 다 끝나는 날 · 배별 인도 · 비상 예산)가 고를 때마다 바뀐다. 정책 단추마다 그 정책이면 어떻게 되는지,
-//   조치는 셀렉트 대신 값이 보이는 단추. 미리보기는 엔진 forecast(그날 그렇게 하고 그 뒤는 기본 대응으로 끝까지)
+//   조치는 셀렉트 대신 값이 보이는 단추. 미리보기는 엔진 forecast(그날 그렇게 하고 그 뒤는 자동 대응으로 끝까지)
 // 화면은 계산하지 않는다: 상황·순서·견적은 엔진 결과 pending, 정한 것을 결정 기록으로 다시 돌리는 것은 main.ts가 한다.
 
 import { type ActionKind, blockTitle, dayHour, type Decision, type DispatchRule, type Forecast, type ForecastRow, type Scenario, type Situation, type SituationRow } from "./api";
@@ -18,7 +18,7 @@ export interface DecisionContext {
   situation: Situation;
   busy: boolean;
   onSubmit(decision: Omit<Decision, "day">): void;
-  /** 이후는 묻지 않고 기본 대응(정책대로) */
+  /** 이후는 묻지 않고 자동 대응(정책대로) */
   onAuto(): void;
   /** 공정 이름을 눌렀다: 두 모니터를 그 공정 작업장으로 */
   onFocus?(station: string): void;
@@ -180,7 +180,7 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
           (r) => readyText(r)));
     })),
     h("footer", { class: "dc-foot" },
-      h("button", { type: "button", class: "btn", disabled: ctx.busy, title: "남은 날은 묻지 않고 정책대로 합니다", onclick: ctx.onAuto }, "이후는 기본 대응으로"),
+      h("button", { type: "button", class: "btn", disabled: ctx.busy, title: "남은 날은 묻지 않고 정책대로 합니다", onclick: ctx.onAuto }, "이후는 자동 대응으로"),
       h("button", { type: "button", class: "btn primary", disabled: ctx.busy, onclick: () => ctx.onSubmit(decision()) },
         ctx.busy ? "지시하는 중…" : "이대로 작업 지시"))));
 }
@@ -196,7 +196,7 @@ function outcomePanel(scenario: Scenario, sit: Situation, stations: string[], na
     h("div", { class: "dc-mh-big" }, h("span", null, label), h("b", null, value), note ? h("small", null, note) : null);
   return h("section", { class: `dc-outcome dc-split${fresh ? "" : " loading"}`, "aria-live": "polite" },
     h("div", { class: "dc-outcome-head" }, h("b", null, "이 선택이면"),
-      h("small", null, fresh ? "오늘 이렇게 하고 그 뒤는 기본 대응으로 끝까지 돌린 결과 · \"지금대로\"는 오늘 아무것도 바꾸지 않았을 때" : "계산하는 중…")),
+      h("small", null, fresh ? "오늘 이렇게 하고 그 뒤는 자동 대응으로 끝까지 돌린 결과 · \"지금대로\"는 오늘 아무것도 바꾸지 않았을 때" : "계산하는 중…")),
     h("div", { class: "dc-split-body" },
       h("div", { class: "dc-split-left" },
         h("small", { class: "dc-cap" }, "작업시간 (MH = 사람 × 시간)"),
