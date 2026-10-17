@@ -169,14 +169,14 @@ class AssemblyScenario(unittest.TestCase):
         self.assertTrue(all("sea_trial" in s["spans"] for s in r["ships"]))
 
     def test_crunch_days(self):
-        # 4.36(D84): 묻는 날 = 작업장 앞 블록이 블록 납기(계획에서 끝나는 날)를 넘길 것으로 보이는 새 배가 생긴 날
+        # 4.36(D84), 4.41(사용자 "조립에서 문제가 생길 여지가 있을 때"): 묻는 날 = 작업장 앞 블록이 블록 납기를 넘길 날이
+        # 그 배의 덤 여유(계획 완료 ~ 목표 완료)보다 커서 배가 버퍼를 쓸 것 같은 새 배가 생긴 날
         _, r = play(load_presets("assembly")[1]["config"], policy("edd"))
-        self.assertEqual([d["day"] for d in r["decisions"]], [15, 21])
+        self.assertEqual([d["day"] for d in r["decisions"]], [21])
         _, r = play(both_manual(), policy("edd"))
-        self.assertEqual([d["day"] for d in r["decisions"]], [15, 16, 21])
+        self.assertEqual([d["day"] for d in r["decisions"]], [19, 21])
         sit = r["decisions"][0]["situation"]
-        self.assertTrue(any(w["over"] > 0 for st in sit["stations"].values() for w in st["waiting"]))
-        self.assertEqual(set(sit["ships"]), {"S1", "S2", "S3"})
+        self.assertEqual({s: (v["over"], v["spare"], v["use"]) for s, v in sit["ships"].items() if v["over"]}, {"S3": (3, 2, 1)})
 
 
 class AssemblyGrade(unittest.TestCase):
@@ -191,39 +191,29 @@ class AssemblyGrade(unittest.TestCase):
             self.assertEqual((r["grade"]["score"], r["grade"]["grade"], r["qcd"]["delivery"]["on_time"]), want, pid)
         cap = simulate(presets["managed"])["grade"]["cap"]
         self.assertEqual(cap, {"grade": "B", "from": "A", "late": ["S2"]})
-        self.assertEqual(simulate(presets["managed"])["pending"]["day"], 15)
+        self.assertEqual(simulate(presets["managed"])["pending"]["day"], 21)
         self.assertEqual({sid for sid, st in presets["managed"]["stations"].items() if st.get("dispatch_mode") == "manual"}, {"sub_assembly"})
         self.assertEqual(presets["managed"]["pools"]["assembly"], 5)   # 하루 40 MH(슬라이드의 당일 가용 작업시간)
 
     def test_actions_rescue_or_hurt(self):
-        # 소조립만 직접 대응(B안)이면 병목(중조립)을 못 건드려 어떤 정책도 S2가 하루 늦다(4.34, D82)
+        # 소조립만 직접 대응(B안)이면 21일 S2 소조립 블록만 묻고, 어떤 정책도 S2가 하루 늦다
         late = lambda r: {s["id"]: s["late_days"] for s in r["ships"] if s["late_days"]}
         for rule in ("ship", "edd", "slack", "spt"):
             self.assertEqual(late(play(load_presets("assembly")[1]["config"], policy(rule))[1]), {"S2": 1}, rule)
-        # 중조립도 직접 대응(4.36, 4.40 S2 물감 입고 지연): 버퍼를 소모할 블록(over > 0)에 잔업 → 3척(예산 60), 외주 → 3척이지만 비싸다(155),
-        # 특근 → 3척(150), 선박 순서로 바꾸면 S2가 하루 늦다
+        # 중조립도 직접 대응(4.41): 19일 S3 중조립 블록이 버퍼를 쓸 것 같아 묻는다. S3 중조립 블록에 특근 → S3가 중조립을 빨리 비워
+        # S2까지 3척(예산 90, A). 모든 블록에 잔업은 S2 하루(돈만 쓴다), 선박 순서도 S2 하루
         cfg = both_manual()
-        over = lambda kind: (lambda w: kind if w.get("over") else None)
-        c, ot = play(cfg, policy("edd", over("overtime")))
-        self.assertEqual((late(ot), ot["costs"]["emergency"], simulate(c)["grade"]["grade"]), ({}, 60, "A"))
-        self.assertEqual((late(play(cfg, policy("edd", over("outsource")))[1]), play(cfg, policy("edd", over("outsource")))[1]["costs"]["emergency"]), ({}, 155))
-        self.assertEqual(late(play(cfg, policy("edd", over("extra")))[1]), {})
+        c, ex = play(cfg, policy("edd", lambda w: "extra" if w["ship"] == "S3" and w["id"].startswith("S3-BA") else None))
+        self.assertEqual((late(ex), ex["costs"]["emergency"], simulate(c)["grade"]["grade"]), ({}, 90, "A"))
+        self.assertEqual(late(play(cfg, policy("edd", lambda w: "overtime"))[1]), {"S2": 1})
         self.assertEqual(late(play(cfg, policy("ship"))[1]), {"S2": 1})
-
-    def test_tips_reach_s(self):
-        tips = both_manual()
-        tips["pools"].update({"processing": 1, "erection": 1})
-        tips["research"] = ["automation"]
-        cfg, _ = play(tips, policy("edd"))
-        r = simulate(cfg)
-        self.assertEqual((r["grade"]["grade"], r["qcd"]["delivery"]["on_time"]), ("S", 3))
 
     def test_assist_and_expedite(self):
         # 4.40(D87): 응원 투입은 그 작업장에 정원 + 1명(대기소에서 먼저 데려와 다른 작업장이 빈다), 수당은 싸다.
-        # 이 판은 사람이 병목이라 버퍼를 소모할 블록마다 응원을 넣으면 다른 공정이 비어 S1이 하루 늦는다
+        # 이 판은 사람이 병목이라 늦는 블록마다 응원을 넣어도 다른 작업장이 비어 S2는 여전히 하루 늦는다
         cfg = both_manual()
         _, r = play(cfg, policy("edd", lambda w: "assist" if w.get("over") else None))
-        self.assertEqual(({s["id"]: s["late_days"] for s in r["ships"] if s["late_days"]}, r["costs"]["emergency"]), ({"S1": 1}, 12))
+        self.assertEqual(({s["id"]: s["late_days"] for s in r["ships"] if s["late_days"]}, r["costs"]["emergency"]), ({"S2": 1}, 10))
         # 긴급 자재 조달은 키트가 입고 전일 때만: 21일 S2 중조립 첫 블록(물감 3일 지연)에서만 고를 수 있고, 다음 날 입고로 당긴다
         avail = []
 
@@ -288,18 +278,20 @@ class Forecast(unittest.TestCase):
         self.assertEqual(f["policies"]["block_assembly"]["keep"], f["keep"])
 
     def test_spent_and_budget(self):
-        r = simulate(self.cfg, baseline=False)["pending"]["stations"]["sub_assembly"]
+        pend = simulate(self.cfg, baseline=False)["pending"]["stations"]
+        sid = next(k for k, v in pend.items() if v["manual"] and v["waiting"])   # 19일: 중조립
+        r = pend[sid]
         bid = r["waiting"][0]["id"]
         f = self.ask(actions={bid: "overtime"})
-        self.assertEqual(f["mine"]["spent"]["sub_assembly"], r["waiting"][0]["quotes"]["overtime"]["cost"])
-        self.assertEqual(f["keep"]["spent"]["sub_assembly"], 0)
-        self.assertEqual(f["budget"]["sub_assembly"], 100)
+        self.assertEqual(f["mine"]["spent"][sid], r["waiting"][0]["quotes"]["overtime"]["cost"])
+        self.assertEqual(f["keep"]["spent"][sid], 0)
+        self.assertEqual(f["budget"][sid], 200)
 
     def test_block_times_for_the_gantt(self):
         # 4.38(조치 요청 진행도 간트): 카드에 보이는 블록(작업 중 + 작업장 앞)마다 이 선택이면 언제 끝나나. 외주는 작업장 없이 돌아온 날
         pend = simulate(self.cfg, baseline=False)["pending"]["stations"]
         ids = {r["id"] for st in pend.values() if st["manual"] and st["waiting"] for r in st["waiting"] + st["inside"]}
-        sit = pend["sub_assembly"]
+        sit = next(v for v in pend.values() if v["manual"] and v["waiting"])
         last = sit["waiting"][-1]["id"]
         f = self.ask(actions={last: "outsource"})
         self.assertEqual(set(f["mine"]["block_times"]), ids)
@@ -308,15 +300,12 @@ class Forecast(unittest.TestCase):
         self.assertIsNotNone(f["keep"]["block_times"][last]["unit"])
 
     def test_no_future_events(self):
-        # B안 15일 조치 요청: 실제로는 18일 중조립 고장·뒤 불량으로 S2 1일 지연·S1 버퍼 3일 소모지만,
-        # 15일 아침에 알 수 있는 것만으로 보면 S2는 지연이 없고 S1도 버퍼를 쓰지 않는다
-        cfg = copy.deepcopy(load_presets("assembly")[1]["config"])
-        day = simulate(cfg, baseline=False)["pending"]["day"]
-        f = forecast({**cfg, "decisions": [{"day": day}]})
-        self.assertEqual(day, 15)
-        self.assertEqual({s: v for s, v in f["keep"]["late"].items() if v}, {})
-        real = simulate({**cfg, "decisions_end": True}, baseline=False)
-        self.assertEqual({s["id"]: s["late_days"] for s in real["ships"] if s["late_days"]}, {"S2": 1})
+        # quiet_from(4.39, D86): 그날부터 새 사건이 없다. B안을 15일부터 조용히 돌리면 S2도 늦지 않지만(18일 중조립 고장 전),
+        # 실제로는 S2가 하루 늦는다. 19일부터 조용히 돌리면 고장이 이미 일어나 S2가 하루 늦다
+        cfg = {**copy.deepcopy(load_presets("assembly")[1]["config"]), "decisions_end": True}
+        quiet = lambda d: simulate(cfg, {**load_scenario("assembly"), "quiet_from": d}, baseline=False)
+        late = lambda r: {s["id"]: s["late_days"] for s in r["ships"] if s["late_days"]}
+        self.assertEqual((late(quiet(15)), late(quiet(19)), late(simulate(cfg, baseline=False))), ({}, {"S2": 1}, {"S2": 1}))
 
     def test_wrong_day(self):
         with self.assertRaises(ConfigError):

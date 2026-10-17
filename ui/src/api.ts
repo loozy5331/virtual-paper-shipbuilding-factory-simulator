@@ -687,7 +687,7 @@ export interface SituationRow {
 export interface Situation {
   day: number; capacity_mh: number; need_mh: number;
   /** 4.36(D84): 배마다 납기·버퍼와 버퍼를 먹을 날(그 배 블록 가운데 가장 크게 늦는 블록) */
-  ships?: Record<string, { due: number; buffer: number; over: number }>;
+  ships?: Record<string, { due: number; buffer: number; over: number; use?: number; spare?: number }>;
   stations: Record<string, {
     manual: boolean; units: number; waiting: SituationRow[]; inside: SituationRow[]; rule_orders: Record<string, string[]>;
     /** 고른 정책(없으면 계획대로), 지금 규칙, 비상 예산과 남은 예산 */
