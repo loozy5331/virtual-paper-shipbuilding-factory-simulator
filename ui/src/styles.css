@@ -1767,3 +1767,19 @@ details.review-day[open] > .review-table { margin-top: 6px; }
 .dc-bufnote small { color: var(--ink-3); font-weight: 400; }
 .dc-bufnote.warn { color: var(--warn-ink); font-weight: 700; }
 .dc-bufnote.late { color: var(--late-fill); font-weight: 800; }
+/* 4.37.2 결과 미리보기: 판정 띠(빨강 납기 지연 / 노랑 버퍼 소모 / 초록 그대로), 맨아워 글자, 예산 구간 색 */
+.dc-verdict { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; font-size: 0.88rem; }
+.dc-verdict > span { padding: 3px 10px; border-radius: 4px; }
+.dc-verdict .v-late { background: var(--late-fill); color: #fff; }
+.dc-verdict .v-warn { background: var(--warn-fill); color: #4a3200; border: 1px solid var(--warn-edge); }
+.dc-verdict .v-ok { background: #e3f0e7; color: var(--good); border: 1px solid #8fb79c; }
+.dc-mh-row { display: flex; align-items: baseline; gap: 8px; font-size: 0.86rem; }
+.dc-mh-row span { min-width: 72px; color: var(--ink-3); font-size: 0.78rem; }
+.dc-mh-row b { font-variant-numeric: tabular-nums; }
+.dc-mh-row small { color: var(--ink-3); }
+.dc-gauge-row.band-lo .dc-gauge i.now, .dc-gauge-row.band-lo .dc-gauge i.used { background: #3f8a5a; }
+.dc-gauge-row.band-mid .dc-gauge i.now, .dc-gauge-row.band-mid .dc-gauge i.used { background: #d9a531; }
+.dc-gauge-row.band-hi .dc-gauge i.now, .dc-gauge-row.band-hi .dc-gauge i.used { background: var(--late-fill); }
+.dc-gauge-row .dc-gauge i.used { opacity: 0.55; }
+.dc-gauge-row.band-mid > small { color: var(--warn-ink); }
+.dc-gauge-row.band-hi > small { color: var(--late-fill); font-weight: 700; }

@@ -88,8 +88,8 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
   const exceeds = (r: SituationRow) => !!r.over && !!sit.ships && r.over > sit.ships[r.ship].buffer;
   const impactCell = (r: SituationRow) => r.over !== undefined
     ? h("td", { title: `블록 납기(계획에서 끝나는 날) ${r.due}일` }, !r.over ? h("span", { class: "dc-ok" }, "계획대로")
-      : exceeds(r) ? h("span", { class: "dc-late" }, `${r.ship} ${r.over - sit.ships![r.ship].buffer}일 지연`, h("small", null, " 버퍼 초과"))
-        : h("span", { class: "dc-warn" }, `${r.ship} 버퍼 −${r.over}일`))
+      : exceeds(r) ? h("span", { class: "dc-late" }, `${r.ship} 납기 ${r.over - sit.ships![r.ship].buffer}일 지연`)
+        : h("span", { class: "dc-warn" }, `${r.ship} 버퍼 ${r.over}일 소모`))
     : h("td", { class: r.left_days <= 1 ? "wl-hot" : "" }, r.left_days < 0 ? `${-r.left_days}일 지남` : `${r.left_days}일`);
   // 4.37: 자재와 후행(짝)을 한 칸에 짧게, 자세한 것은 마우스를 올리면
   const readyCell = (r: SituationRow) => {
@@ -117,10 +117,11 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
     h("header", { class: "dc-head" },
       h("div", null, h("small", null, "액션 카드"),
         // 4.36(D84): 버퍼 시나리오는 "블록이 계획보다 늦어 버퍼를 먹을 것 같은 날" 묻는다
-        h("h2", null, sit.ships ? `${sit.day}일 아침 · 블록이 늦어 버퍼를 먹을 것 같습니다` : `${sit.day}일 아침 · 조립장에 블록이 몰렸습니다`),
+        h("h2", null, sit.ships ? `${sit.day}일 아침 · 블록이 늦어 버퍼를 소모할 것 같습니다` : `${sit.day}일 아침 · 조립장에 블록이 몰렸습니다`),
         // 4.37(사용자 "액션 카드도 가독성이 좋지 않네"): 문제를 그림 한 줄로. 배마다 버퍼 칸, 지금 순서대로면 먹을 칸을 붉게
         sit.ships ? h("div", { class: "dc-bufs" }, Object.entries(sit.ships).map(([sid, sh]) => bufferBar(sid, sh.buffer, sh.over))) : null,
-        h("p", { class: "dc-sub" }, `작업장 앞 ${count}건${inYard ? ` · 적치장 ${inYard}건` : ""} · 오늘 가용 ${fmt(sit.capacity_mh)}H / 필요 ${fmt(sit.need_mh)}H`,
+        // 4.37.2: 필요·가용 작업시간은 결과 미리보기의 맨아워 칸으로 옮겼다(버퍼 시나리오). 아니면 여기 한 줄
+        sit.ships ? null : h("p", { class: "dc-sub" }, `작업장 앞 ${count}건${inYard ? ` · 적치장 ${inYard}건` : ""} · 오늘 가용 ${fmt(sit.capacity_mh)}H / 필요 ${fmt(sit.need_mh)}H`,
           short > 0 ? h("b", { class: "wl-hot" }, ` (${fmt(short)}H 부족)`) : null)),
       h("button", { type: "button", class: "btn small", title: "모니터를 보며 생각하기(재생은 멈춘 채)", onclick: () => { collapsed = true; redraw(); } }, "접기")),
     outcomePanel(scenario, sit, asked.map(([sid]) => sid), name, f, fresh, (sid) => ({ left: sit.stations[sid].budget_left, total: sit.stations[sid].budget, spend: spentOn(sid) })),
@@ -150,7 +151,7 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
               }, h("b", null, label, sub ? h("small", null, ` ${sub}`) : null),
               polRows ? optionOutcome(polRows[id as DispatchRule | "keep"], polRows.keep) : h("small", { class: "dc-out dim" }, "…"))))),
         h("div", { class: "dc-step-head" }, h("span", { class: "dc-step" }, "블록별 조치"),
-          h("small", null, "황색 줄은 버퍼를 먹을 블록, 빨간 줄은 버퍼를 넘겨 인도가 늦을 블록입니다. 숫자는 비상 예산에서 낼 값")),
+          h("small", null, "노란 줄은 버퍼를 소모할 블록, 빨간 줄은 버퍼를 넘겨 납기가 늦을 블록입니다. 숫자는 비상 예산에서 낼 값")),
         h("table", { class: "plan wl-table dc-table" },
           h("thead", null, h("tr", null, h("th", null, "블록"), h("th", null, sit.ships ? "버퍼 영향" : "남은 기간"),
             h("th", null, "남은 작업"), h("th", null, "준비"), h("th", null, "조치"))),
@@ -182,19 +183,20 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
 function outcomePanel(scenario: Scenario, sit: Situation, stations: string[], name: Record<string, string>, f: Forecast | null, fresh: boolean,
   budget: (sid: string) => { left: number; total: number; spend: number }): HTMLElement {
   const m = f?.mine, k = f?.keep;
-  const dayDelta = m && k && m.done_day !== null && k.done_day !== null ? m.done_day - k.done_day : 0;
   const mhDelta = m && k ? m.mh - k.mh : 0;
   return h("section", { class: `dc-outcome${fresh ? "" : " loading"}`, "aria-live": "polite" },
     h("div", { class: "dc-outcome-head" }, h("b", null, "이 선택의 결과 미리보기"),
       h("small", null, fresh ? "오늘 이렇게 하고 그 뒤는 기본 대응으로 끝까지 돌린 결과 · \"지금대로\"는 오늘 아무것도 바꾸지 않았을 때" : "계산하는 중…")),
+    sit.ships ? verdict(sit, m) : null,
     h("div", { class: "dc-outcome-grid" },
-      // 4.37.1(사용자 "선택 결과 미리보기도 막대로"): 오늘부터 작업장 앞 블록이 다 끝나는 날까지, 내 선택과 지금대로 두 막대
-      h("div", { class: "dc-out-cell" },
-        h("small", null, "작업시간 · 작업장 앞 블록이 다 끝나는 날"),
-        workBars(sit.day, m?.done_day ?? null, k?.done_day ?? null),
-        k ? h("span", { class: `dc-delta${dayDelta < 0 ? " good" : dayDelta > 0 ? " bad" : ""}` },
-          dayDelta ? `지금대로보다 ${Math.abs(dayDelta)}일 ${dayDelta < 0 ? "빠름" : "늦음"}` : "지금대로와 같음") : null,
-        m ? h("small", { class: "dc-note" }, `투입 ${fmt(m.mh)}H${mhDelta ? ` (${mhDelta > 0 ? "+" : ""}${fmt(mhDelta)}H)` : ""}`) : null),
+      // 4.37.2(사용자): 작업시간은 맨아워 글자로. 오늘 필요(작업장 앞·작업 중 블록의 남은 작업) · 가용(조립 인원 × 8시간), 이 선택의 투입 공수
+      h("div", { class: "dc-out-cell dc-mh" },
+        h("small", null, "작업시간(MH = 사람 × 시간)"),
+        h("div", { class: "dc-mh-row" }, h("span", null, "필요"), h("b", null, `${fmt(sit.need_mh)} MH`)),
+        h("div", { class: "dc-mh-row" }, h("span", null, "가용"), h("b", null, `${fmt(sit.capacity_mh)} MH/일`)),
+        sit.need_mh > sit.capacity_mh ? h("small", { class: "dc-note" }, `하루치로는 ${fmt(sit.need_mh - sit.capacity_mh)} MH 모자람`) : null,
+        m ? h("div", { class: "dc-mh-row" }, h("span", null, "이 선택의 투입"),
+          h("b", null, `${fmt(m.mh)} MH`), mhDelta ? h("small", null, ` 지금대로 ${mhDelta > 0 ? "+" : ""}${fmt(mhDelta)}`) : null) : null),
       sit.ships ? bufferCell(scenario, sit, m, k) : h("div", { class: "dc-out-cell" },
         h("small", null, "납기 · 배별 인도"),
         h("div", { class: "dc-ships" }, scenario.orders.map((o) => {
@@ -211,14 +213,34 @@ function outcomePanel(scenario: Scenario, sit: Situation, stations: string[], na
         stations.map((sid) => {
           const b = budget(sid);
           const after = b.left - b.spend;
-          return h("div", { class: "dc-gauge-row" },
+          // 4.37.2(사용자 "예산도 구간에 따라 색이 변하도록"): 쓴 비율 50% 미만 초록, 80% 미만 노랑, 그 이상 빨강
+          const usedRate = b.total > 0 ? (b.total - after) / b.total : 0;
+          const band = usedRate >= 0.8 ? "hi" : usedRate >= 0.5 ? "mid" : "lo";
+          return h("div", { class: `dc-gauge-row band-${band}` },
             h("span", null, name[sid]),
             h("div", { class: "dc-gauge", title: `예산 ${fmt(b.total)} 중 앞서 ${fmt(b.total - b.left)}, 이번 ${fmt(b.spend)}` },
               h("i", { class: "used", style: { width: `${pct(b.total - b.left, b.total)}%` } }),
               h("i", { class: "now", style: { width: `${pct(b.spend, b.total)}%` } })),
-            h("b", null, b.spend ? `−${fmt(b.spend)}` : "0"), h("small", null, ` 남음 ${fmt(after)} / ${fmt(b.total)}`));
+            h("b", null, b.spend ? `−${fmt(b.spend)}` : "0"), h("small", null, ` 남음 ${fmt(after)} / ${fmt(b.total)} (${Math.round(usedRate * 100)}% 사용)`));
         }),
         m && Object.keys(m.refused).length ? h("small", { class: "dc-note wl-hot" }, `예산을 넘어 받지 않는 조치 ${Object.keys(m.refused).length}건`) : null)));
+}
+
+/** 판정 띠(4.37.2, 사용자 "버퍼 소모 -> 노란색, 납기 지연 -> 빨간색"): 이 선택이면 납기를 넘기는 배(빨강), 버퍼만 쓰는 배(노랑) */
+function verdict(sit: Situation, m: ForecastRow | undefined): HTMLElement {
+  if (!m?.completed) return h("div", { class: "dc-verdict" }, "계산하는 중…");
+  const late: string[] = [], used: string[] = [];
+  for (const [sid, sh] of Object.entries(sit.ships!)) {
+    const c = m.completed[sid];
+    if (c === null || c === undefined) continue;
+    const u = Math.max(0, c - (sh.due - sh.buffer));
+    if (u > sh.buffer) late.push(`${sid} ${u - sh.buffer}일`);
+    else if (u > 0) used.push(`${sid} ${u}일`);
+  }
+  return h("div", { class: "dc-verdict" },
+    late.length ? h("span", { class: "v-late" }, h("b", null, "납기 지연"), ` ${late.join(" · ")}`) : null,
+    used.length ? h("span", { class: "v-warn" }, h("b", null, "버퍼 소모"), ` ${used.join(" · ")}`) : null,
+    !late.length && !used.length ? h("span", { class: "v-ok" }, h("b", null, "버퍼 그대로"), " 모든 배가 계획대로 끝납니다") : null);
 }
 
 /** 버퍼 칸(4.36, D84): 배마다 이 선택이면 마친 날과 남는 버퍼(납기 − 마친 날, 고른 버퍼보다 많으면 덤). 넘치면 지연 */
@@ -239,8 +261,8 @@ function bufferCell(scenario: Scenario, sit: Situation, m: ForecastRow | undefin
         h("b", null, o.id),
         h("div", { class: "dc-bufpair" }, cells(sh.buffer, now, false), cells(sh.buffer, was, true)),
         h("span", { class: `dc-bufnote${over ? " late" : now ? " warn" : ""}` },
-          now === null ? "…" : over ? `${over}일 지연` : now ? `${now}일 먹음 · ${sh.buffer - now}일 남음` : `${sh.buffer}일 그대로`,
-          was !== null && now !== null && was !== now ? h("small", null, ` (지금대로 ${was > sh.buffer ? `${was - sh.buffer}일 지연` : `${was}일 먹음`})`) : null));
+          now === null ? "…" : over ? `납기 ${over}일 지연` : now ? `버퍼 ${now}일 소모 · ${sh.buffer - now}일 남음` : `버퍼 ${sh.buffer}일 그대로`,
+          was !== null && now !== null && was !== now ? h("small", null, ` (지금대로 ${was > sh.buffer ? `납기 ${was - sh.buffer}일 지연` : `${was}일 소모`})`) : null));
     })),
     m ? h("small", { class: "dc-note" }, `블록 납기 ${m.block_on_time}/${m.blocks}`,
       k && k.block_on_time !== m.block_on_time ? ` (지금대로 ${k.block_on_time})` : "") : null);
@@ -253,15 +275,6 @@ function cells(buffer: number, used: number | null, ghost: boolean): HTMLElement
     h("i", { class: used === null ? "" : k >= buffer ? "over" : k >= buffer - Math.min(used, buffer) ? "eat" : "" })));
 }
 
-/** 작업시간 막대: 오늘부터 끝나는 날까지(내 선택 진하게, 지금대로 옅게) */
-function workBars(today: number, mine: number | null, keep: number | null): HTMLElement {
-  const span = Math.max(1, (mine ?? today) - today + 1, (keep ?? today) - today + 1);
-  const bar = (v: number | null, ghost: boolean, label: string) => h("div", { class: "dc-workrow" },
-    h("small", null, label),
-    h("span", { class: `dc-workbar${ghost ? " ghost" : ""}` }, h("i", { style: { width: v === null ? "0%" : `${((v - today + 1) / span) * 100}%` } })),
-    h("b", null, v === null ? "…" : `${v}일`));
-  return h("div", { class: "dc-work" }, bar(mine, false, "내 선택"), bar(keep, true, "지금대로"));
-}
 
 /** 정책 단추 아래 한 줄(4.37): 그 공정 정책을 그대로 둘 때와 같으면 "그대로와 같음", 다르면 늦는 배 */
 function optionOutcome(r: ForecastRow, keep: ForecastRow): HTMLElement {
@@ -304,11 +317,11 @@ export function clearDecisionDraft(): void {
 
 /** 배 버퍼 막대(4.37): 버퍼 칸 수만큼 칸, 지금 순서대로면 먹을 칸은 붉게 */
 function bufferBar(sid: string, buffer: number, over: number): HTMLElement {
-  return h("span", { class: `dc-buf${over > buffer ? " late" : over ? " hit" : ""}`, title: `${sid} 버퍼 ${buffer}일${over ? `, 지금 순서대로면 ${over}일 먹음` : ""}` },
+  return h("span", { class: `dc-buf${over > buffer ? " late" : over ? " hit" : ""}`, title: `${sid} 버퍼 ${buffer}일${over ? `, 지금 순서대로면 ${over}일 소모` : ""}` },
     h("b", null, sid),
     h("span", { class: "dc-buf-cells" }, Array.from({ length: Math.max(buffer, over) }, (_, k) =>
       h("i", { class: k >= buffer ? "over" : k >= buffer - over ? "eat" : "" }))),
-    h("small", null, over ? `${buffer}일 중 ${Math.min(over, buffer)}일 먹음${over > buffer ? ` · ${over - buffer}일 지연` : ""}` : `버퍼 ${buffer}일`));
+    h("small", null, over ? `버퍼 ${buffer}일 중 ${Math.min(over, buffer)}일 소모${over > buffer ? ` · 납기 ${over - buffer}일 지연` : ""}` : `버퍼 ${buffer}일`));
 }
 
 /** 가공 적치장에서 기다리는 블록 한 줄(4.35): 배별 수 */
