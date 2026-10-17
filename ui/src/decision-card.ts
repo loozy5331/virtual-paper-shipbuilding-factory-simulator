@@ -165,8 +165,9 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
               polRows ? optionOutcome(polRows[id as DispatchRule | "keep"], polRows.keep) : h("small", { class: "dc-out dim" }, "…"))))),
         h("div", { class: "dc-step-head" }, h("span", { class: "dc-step" }, "블록별 조치"),
           h("small", null, sit.ships
-            // 4.47(사용자 "D가 지연된다는데 간트로는 확인하기 어렵다"): 노랑은 계획 끝부터(버퍼 소모), 빨강은 인계 기한부터
-            ? "막대 = 이 선택이면 작업하는 구간(진한 부분은 이미 한 만큼). 노란 칸 = 계획 끝 ~ 버퍼 끝(계획 끝 + 그 배 버퍼, 빨간 선). 여기서 끝나면 버퍼 소모, 빨간 선을 넘으면 빨강. 점선 = 인계 기한. 소조립 뒤 공정에서 늦는 것은 위 상황 태그 아래 까닭에. 얇은 선은 지금대로의 끝. 숫자는 비상 예산에서 낼 값"
+            // 4.47(사용자 "D가 지연된다는데 간트로는 확인하기 어렵다"): 노랑은 계획 끝부터(버퍼 소모), 빨강은 버퍼 끝부터.
+            // 4.47.1(사용자): 인계 기한 점선은 뺀다(판정에 안 쓰는 세 번째 선이라 헷갈린다). 인계 기한은 "남은 n일"과 마우스 설명으로
+            ? "막대 = 이 선택이면 작업하는 구간(진한 부분은 이미 한 만큼). 노란 칸 = 계획 끝 ~ 버퍼 끝(계획 끝 + 그 배 버퍼, 빨간 선). 여기서 끝나면 버퍼 소모, 빨간 선을 넘으면 빨강. 소조립 뒤 공정에서 늦는 것은 위 상황 태그 아래 까닭에. 얇은 선은 지금대로의 끝. 숫자는 비상 예산에서 낼 값"
             // 4.43: 버퍼 없는 카드는 세로선이 인계 기한(다음 공정에 넘길 날)이고 넘기면 바로 빨강(여유가 없다)
             : "막대 = 이 선택이면 작업하는 구간(진한 부분은 이미 한 만큼), 세로선 = 인계 기한(다음 공정에 넘길 날의 끝). 선을 넘으면 빨강. 얇은 선은 지금대로의 끝. 숫자는 비상 예산에서 낼 값")),
         // 4.38(사용자 "결과 미리보기 대신 간트, 진행도처럼 채우고, 막대 연장선의 조치로 진행도가 바뀌게"): 블록 진행도 간트
@@ -294,7 +295,7 @@ function blockGantt(sit: Situation, sid: string, rows: GanttRow[], f: Forecast |
       h("i", { class: "dcg-plan", style: { left: "0%", width: x(pl ?? dueX) } }),
       pl !== null && bufEnd! > pl ? h("i", { class: "dcg-bufzone", style: { left: x(pl), width: w(pl, bufEnd!) } }) : null,
       pl !== null && pl > 0 ? h("i", { class: "dcg-planline", style: { left: x(pl) } }) : null,
-      h("i", { class: "dcg-due", style: { left: x(dueX) } }),
+      pl === null ? h("i", { class: "dcg-due", style: { left: x(dueX) } }) : null,
       bufEnd !== null && bufEnd > 0 ? h("i", { class: "dcg-bufend", style: { left: x(bufEnd) } }) : null);
     if (m) {
       const bar = h("i", { class: `dcg-bar${m.out ? " out" : ""}`, style: { left: x(m.s), width: w(m.s, m.e) },
@@ -302,7 +303,7 @@ function blockGantt(sit: Situation, sid: string, rows: GanttRow[], f: Forecast |
       if (doneFrac > 0) bar.append(h("b", { class: "dcg-progress", style: { width: `${doneFrac * 100}%` } }));
       track.append(bar);
       if (pl !== null) {
-        // 4.47: 계획 끝 ~ 인계 기한은 노랑(버퍼 소모), 인계 기한 뒤는 빨강
+        // 4.47: 계획 끝 ~ 버퍼 끝은 노랑(버퍼 소모), 버퍼 끝 뒤는 빨강
         const be = bufEnd!;
         if (m.e > pl && be > Math.max(pl, m.s)) track.append(h("i", { class: "dcg-over warn", style: { left: x(Math.max(pl, m.s)), width: w(Math.max(pl, m.s), Math.min(m.e, be)) } }));
         if (m.e > be) track.append(h("i", { class: "dcg-over late", style: { left: x(Math.max(be, m.s)), width: w(Math.max(be, m.s), m.e) } }));
