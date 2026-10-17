@@ -879,10 +879,10 @@ function fitFeedText(): void {
 /** 회차를 열 때 모니터가 보여 줄 것. 블록 실습(4.30, D77)은 조립 공정이 기본이고 "전체"는 탭으로 본다 */
 function roomDefaults(scenario: ScenarioPayload["scenario"]): Partial<State> {
   const block = !!scenario.block_mode;
-  // 4.32: 블록 실습은 왼쪽 "조립 공정", 오른쪽 "내업 영역"에서 시작하고, 작업장 단계는 첫 조립 공정 1호를 본다
-  const first = scenario.decision_stations?.[0] ?? (scenario.block_mode ? "sub_assembly" : null);
+  // 4.32: 블록 실습은 왼쪽 "조립 공정"에서 시작한다. 4.44.1(사용자): 오른쪽은 소조립 공장(내업 영역 › 소조립)에서 시작한다
+  const first = block ? "sub_assembly" : null;
   return { ganttShip: null, ganttStation: null, ganttAll: false, ganttUnit: false, focus: first ? { station: first, unit: 1 } : null,
-    cctv: block ? "shop" : null, rightView: block ? "map" : state.rightView === "assembly" ? "map" : state.rightView };
+    cctv: block ? "shop" : null, rightView: block ? "assembly" : state.rightView === "assembly" ? "map" : state.rightView };
 }
 
 /** 왼쪽 모니터의 간트. 모니터의 실제 폭으로 그려 글자가 줄지 않는다(4.15.6). */
