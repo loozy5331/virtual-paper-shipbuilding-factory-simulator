@@ -95,7 +95,8 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
         : `${matName[k.material]} ${k.arrival_day}일 입고`;
     const pairDone = r.mates.every((m) => ["pair", "merged", "finished"].includes(m.state));
     // 4.43(D91, 사용자 "남은 기간은 다음 공정에 전달해야 하는 남은 기간"): 수업 슬라이드 표처럼 남은 기간(오늘 포함)을 앞에 둔다
-    const left = `남은 ${r.left_days}일 · `;
+    // 4.45: 이미 기한을 넘긴 블록(작업 중인 블록 등)은 "기한 n일 지남"
+    const left = r.left_days > 0 ? `남은 ${r.left_days}일 · ` : `기한 ${1 - r.left_days}일 지남 · `;
     return { short: `${left}${fmt(r.mh)}h · ${kit ?? "자재 ✓"}${pairDone && r.mates.length ? " · 끝나면 바로 다음 공정" : ""}`, hot: !!kit,
       detail: `${nextName(r)}에 넘길 날 ${r.due}일(오늘 넣어 ${r.left_days}일) · 남은 작업 ${fmt(r.mh)}시간 · ${kit ?? "자재 준비됨"} · 짝 ${r.mates.map((m) => `${m.id} ${MATE_STATE[m.state] ?? m.state}`).join(", ") || "없음"}` };
   };
