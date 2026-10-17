@@ -41,7 +41,7 @@ export const ACTION_INFO: Record<ActionKind, { name: string; note: string }> = {
   overtime: { name: "잔업", note: "그 블록을 하는 날 10시간(처리량 1.25배). 잔업 불량·사고 위험" },
   extra: { name: "특근", note: "그 블록을 하는 날 16시간(처리량 2배). 사고 위험이 더 크다" },
   outsource: { name: "외주", note: "블록을 밖으로 보낸다. 우리 정반이 비지만 운반일이 붙어 늦게 돌아올 수 있다" },
-  defer: { name: "지체보상금 감수", note: "이 블록을 끝까지 맨 뒤로. 값은 0이지만 늦으면 위약금" },
+  defer: { name: "포기(지체보상금)", note: "이 블록을 끝까지 맨 뒤로 미룬다. 값은 0이지만 그 배가 늦으면 지체보상금(위약금)을 문다" },
 };
 
 export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): void {
@@ -103,6 +103,9 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
   const short = sit.need_mh - sit.capacity_mh;
   const count = asked.reduce((n, [, st]) => n + st.waiting.length, 0);
   const inYard = asked.reduce((n, [, st]) => n + (st.yard?.length ?? 0), 0);
+  // 4.39.2(사용자 "아래쪽 블록 옵션을 누를 때 스크롤이 위로 올라감"): 다시 그려도 카드 스크롤 자리를 지킨다
+  const keepScroll = root.querySelector<HTMLElement>(".dc-card")?.scrollTop ?? 0;
+  requestAnimationFrame(() => { const card = root.querySelector<HTMLElement>(".dc-card"); if (card) card.scrollTop = keepScroll; });
   mount(root, h("div", { class: "dc-backdrop" }), h("section", { class: "dc-card", role: "dialog", "aria-label": `${sit.day}일 아침 조치 요청` },
     h("header", { class: "dc-head" },
       // 4.37.3(사용자): "조치 요청"(옛 액션 카드), 메시지 앞에 노란 삼각형 경고 기호
@@ -117,11 +120,14 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
           const c = f?.keep.completed?.[sid];
           return bufferBar(sid, sh.buffer, c === undefined || c === null ? null : Math.max(0, c - (sh.due - sh.buffer)));
         })) : null,
-        sit.ships ? h("div", { class: "dc-bufs dc-late-row" }, lateBlocks(asked)) : null,
         // 4.37.2: 필요·가용 작업시간은 결과 미리보기의 맨아워 칸으로 옮겼다(버퍼 시나리오). 아니면 여기 한 줄
         sit.ships ? null : h("p", { class: "dc-sub" }, `작업장 앞 ${count}건${inYard ? ` · 적치장 ${inYard}건` : ""} · 오늘 가용 ${fmt(sit.capacity_mh)}H / 필요 ${fmt(sit.need_mh)}H`,
           short > 0 ? h("b", { class: "wl-hot" }, ` (${fmt(short)}H 부족)`) : null)),
-      h("button", { type: "button", class: "btn small", title: "모니터를 보며 생각하기(재생은 멈춘 채)", onclick: () => { collapsed = true; redraw(); } }, "접기")),
+      // 4.39.2(사용자): 공정 작업장 보기 단추는 머리글 오른쪽, 접기 왼쪽 옆
+      h("div", { class: "dc-head-btns" },
+        asked.map(([sid]) => h("button", { type: "button", class: "wl-station dc-focus", title: "모니터로 이 공정 작업장 보기",
+          style: { background: STATION_COLOR[sid], color: STATION_TEXT[sid] }, onclick: () => ctx.onFocus?.(sid) }, `${name[sid]} 작업장 보기`)),
+        h("button", { type: "button", class: "btn small", title: "모니터를 보며 생각하기(재생은 멈춘 채)", onclick: () => { collapsed = true; redraw(); } }, "접기"))),
     outcomePanel(scenario, sit, asked.map(([sid]) => sid), name, f, fresh, (sid) => ({ left: sit.stations[sid].budget_left, total: sit.stations[sid].budget, spend: spentOn(sid) })),
     h("div", { class: "dc-stations" }, asked.map(([sid, st]) => {
       const pol = d.policy[sid];
@@ -133,8 +139,7 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
       const left = st.budget_left - spentOn(sid);
       const polRows = f?.policies[sid];
       return h("div", { class: "dc-station" },
-        h("h3", null, h("button", { type: "button", class: "wl-station dc-focus", title: "모니터로 이 공정 작업장 보기",
-          style: { background: STATION_COLOR[sid], color: STATION_TEXT[sid] }, onclick: () => ctx.onFocus?.(sid) }, `${name[sid]} 작업장 보기`),
+        h("h3", null, h("span", { class: "wl-station", style: { background: STATION_COLOR[sid], color: STATION_TEXT[sid] } }, name[sid]),
           // 4.35(D83, 사용자 "해당 작업장에서 작업 예정 혹은 작업 중인 블록만"): 표는 작업 중 + 작업장 앞 적치, 적치장은 한 줄 요약
           h("small", null, st.queue_cap ? ` 작업장 앞 ${st.waiting.length}/${st.queue_cap}개` : ` 작업장 앞 ${st.waiting.length}개`,
             yardText(st.yard ?? []))),
@@ -345,13 +350,6 @@ export function clearDecisionDraft(): void {
   window.clearTimeout(timer);
 }
 
-/** 머리글(4.39): 블록 납기를 넘길 것 같은 블록(지금 순서대로, 정원 2명 기준)을 공정 · 블록 · 날로 */
-function lateBlocks(stations: [string, Situation["stations"][string]][]): HTMLElement[] {
-  const rows = stations.flatMap(([sid, st]) => [...st.inside, ...st.waiting].filter((r) => r.over).map((r) => ({ sid, r })));
-  return rows.length
-    ? [h("span", { class: "dc-late-label" }, "계획보다 늦을 블록"), ...rows.map(({ sid, r }) => h("span", { class: "dc-late-chip" }, `${r.ship} ${blockLabel(sid, r.no)} 블록 납기 +${r.over}일`))]
-    : [h("span", { class: "dc-late-label" }, "블록이 계획대로 갑니다")];
-}
 
 
 /** 배 잔여 버퍼 막대(4.37, 4.39.1): 버퍼 일수만큼 칸. 지금대로 가면 쓸 칸은 노랑(소모), 버퍼를 넘는 칸은 빨강(납기 지연), 남는 칸은 초록 */

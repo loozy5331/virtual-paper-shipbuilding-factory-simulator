@@ -9,7 +9,7 @@ import { DISPATCH_INFO } from "./labels";
 
 const CHOICE: Record<string, string> = { mine: "내 지시", auto: "기본 대응(묻지 않음)", no_actions: "내 정책, 조치 없이" };
 const label = (c: string) => CHOICE[c] ?? `${DISPATCH_INFO[c]?.name ?? c} 정책이었다면`;
-const ACTION_NAME: Record<string, string> = { overtime: "잔업", extra: "특근", outsource: "외주", defer: "지체보상금 감수" };
+const ACTION_NAME: Record<string, string> = { overtime: "잔업", extra: "특근", outsource: "외주", defer: "포기(지체보상금)" };
 
 export function renderDecisionReview(result: Result): HTMLElement | null {
   const review = result.review;
@@ -22,7 +22,7 @@ export function renderDecisionReview(result: Result): HTMLElement | null {
       `몰리는 날 ${review.length}번 가운데 ${wins}번은 내 지시가 가장 좋았습니다. `,
       `내 결과는 인도 ${mine.on_time}척 · 이익 ${num(mine.profit, 0)}, 처음부터 묻지 않고 기본 대응만 했다면 인도 ${allAuto.on_time}척 · 이익 ${num(allAuto.profit, 0)}입니다(첫 결정의 기본 대응 줄).`),
     review.map((rv) => day(rv, result)),
-    h("p", { class: "hint" }, "날을 누르면 그날 다른 선택이었다면의 비교 표가 펼쳐집니다. 다른 줄은 그날 앞의 내 결정은 그대로 두고, 그날만 그 정책으로(조치 없이), 그 뒤는 기본 대응으로 끝까지 다시 돌린 결과입니다. \"내 정책, 조치 없이\"는 그날 건 조치(잔업·특근·외주·지체보상금 감수)가 값을 했는지 봅니다. 가장 좋은 줄은 인도 → 블록 납기 → 이익 → 직행률 순으로 고릅니다."));
+    h("p", { class: "hint" }, "날을 누르면 그날 다른 선택이었다면의 비교 표가 펼쳐집니다. 다른 줄은 그날 앞의 내 결정은 그대로 두고, 그날만 그 정책으로(조치 없이), 그 뒤는 기본 대응으로 끝까지 다시 돌린 결과입니다. \"내 정책, 조치 없이\"는 그날 건 조치(잔업·특근·외주·포기(지체보상금))가 값을 했는지 봅니다. 가장 좋은 줄은 인도 → 블록 납기 → 이익 → 직행률 순으로 고릅니다."));
 }
 
 function day(rv: DecisionReview, result: Result): HTMLElement {

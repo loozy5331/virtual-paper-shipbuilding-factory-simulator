@@ -894,11 +894,12 @@ export function renderAssemblyGantt(result: Result, today: number,
       maxWait = Math.max(maxWait, Object.values(waitsAt(sid, d)).reduce((n, v) => n + v.length, 0));
     }
   }
-  // 작업장 줄과 대기 줄은 같은 높이로, 모니터 높이에 맞춘다(24~56)
-  const rowsN = ids.reduce((n, sid) => n + unitsOf(sid).length + 1, 0);
-  const fit = size?.height ? (size.height - TOP - 8 - ids.length * (A_HEAD + A_GAP)) / rowsN : 28;
-  const A_UNIT = Math.max(24, Math.min(56, Math.floor(fit)));
-  const A_WAIT = A_UNIT;
+  // 4.39.2(사용자 "작업장별 블록 막대가 너무 두꺼움, 앞에서 대기 막대는 그대로"): 작업장 줄은 얇게 고정(막대 16),
+  // 대기 줄은 남은 모니터 높이에 맞춘다(24~56, 예전과 같은 범위)
+  const A_UNIT = 26;
+  const unitRows = ids.reduce((n, sid) => n + unitsOf(sid).length, 0);
+  const fit = size?.height ? (size.height - TOP - 8 - ids.length * (A_HEAD + A_GAP) - unitRows * A_UNIT) / ids.length : 28;
+  const A_WAIT = Math.max(24, Math.min(56, Math.floor(fit)));
   const sectionH = (sid: string) => A_HEAD + unitsOf(sid).length * A_UNIT + A_WAIT + A_GAP;
   const height = TOP + ids.reduce((n, sid) => n + sectionH(sid), 0) + 6;
   const svg = s("svg", { class: "gantt asm-gantt", viewBox: `0 0 ${W} ${height}`, role: "img",
@@ -938,14 +939,14 @@ export function renderAssemblyGantt(result: Result, today: number,
         for (const pc of workPieces(b, Math.min(last, today))) {
           const x0 = at(pc.start, pc.from, H);
           const w = at(pc.end, pc.to, H) - x0;
-          const bar = barEl(x0, y + 4, w, A_UNIT - 8, color,
+          const bar = barEl(x0, y + 5, w, A_UNIT - 10, color,
             `${name} ${dayHour(pc.start, pc.from)} ~ ${dayHour(pc.end, pc.to)}${pc.rework ? " (재작업)" : ""} · 블록 납기 ${b.due}일`,
             { hatch: pc.rework, className: "unit-piece", onPick: onPick ? () => onPick(b.ship, st.id) : undefined });
           // 막대가 좁아 이름이 한 줄에 안 들어가면 배 위, 블록 아래로 두 줄(그래도 좁으면 배만)
+          // 얇은 막대라 한 줄: 넓으면 "S1 소3", 좁으면 배만(이름은 마우스를 올리면)
           if (w >= 16) {
-            const two = A_UNIT >= 36;
-            bar.append(s("text", { x: x0 + w / 2, y: y + A_UNIT / 2 + (two ? -1 : 4), class: "bar-label tiny", fill: STATION_TEXT[st.id] ?? "#fff" }, b.ship));
-            if (two && w >= 22) bar.append(s("text", { x: x0 + w / 2, y: y + A_UNIT / 2 + 11, class: "bar-label tiny", fill: STATION_TEXT[st.id] ?? "#fff" }, blockLabel(st.id, b.no)));
+            bar.append(s("text", { x: x0 + w / 2, y: y + A_UNIT / 2 + 3.5, class: "bar-label tiny", fill: STATION_TEXT[st.id] ?? "#fff" },
+              w >= 40 ? `${b.ship} ${blockLabel(st.id, b.no)}` : b.ship));
           }
           g.append(bar);
         }
