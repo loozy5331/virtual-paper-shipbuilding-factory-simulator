@@ -9,7 +9,7 @@ import copy
 import unittest
 
 from shipyard import ConfigError, list_scenarios, load_presets, load_scenario, preview, simulate, suggest_order_days
-from shipyard.sim import _take_pegged, resolve_order_days
+from shipyard.sim import _take_pegged, resolve_order_days, scenario_ids
 
 PRESETS = {p["id"]: p["config"] for p in load_presets()}
 # 공정 10개(4.0, D41): 절단 → 가공 → 소조립 → 중조립 → (도장 ∥ 선행의장) → PE장 → 탑재 → 안벽의장 → 시운전
@@ -361,6 +361,43 @@ class GradeTable(unittest.TestCase):
     def test_one_ship_scenario_has_no_baseline(self):
         g = simulate(one_ship_config(), one_ship_scenario(FULL))["grade"]
         self.assertIsNone(g["baseline"])
+
+
+class LateCap(unittest.TestCase):
+    """납기 상한(4.33, D81): KPI 대상 배를 한 척이라도 놓치면 점수가 높아도 등급은 B까지. 점수는 그대로."""
+
+    LATE = variant("managed", 2, 1, False, ["predictive", "automation"], maintenance=False)   # 5/6척, 82.9점
+
+    def run_with(self, cfg, **grade):
+        sc = opened()
+        sc["grade"].update(grade)
+        return simulate(cfg, sc, baseline=False)
+
+    def test_every_scenario_caps_at_b(self):
+        for sid in scenario_ids():   # 숨긴 블록 조립 실습까지
+            with self.subTest(sid):
+                self.assertEqual(load_scenario(sid)["grade"]["late_cap"], "B")
+
+    def test_high_score_with_late_ship_is_b(self):
+        # A 구간을 80으로 내리면 82.9점은 A지만, 한 척이 늦어 B
+        g = self.run_with(self.LATE, bands={"S": 100, "A": 80, "B": 70, "C": 50})["grade"]
+        self.assertEqual((g["score"], g["grade"]), (82.9, "B"))
+        self.assertEqual(g["cap"]["from"], "A")
+        self.assertEqual(len(g["cap"]["late"]), 1)
+        self.assertEqual(g["to_s"]["focus"], "delivery")
+
+    def test_on_time_or_low_score_is_untouched(self):
+        g = self.run_with(PRESETS["managed"], bands={"S": 80, "A": 70, "B": 60, "C": 50})["grade"]
+        self.assertEqual((g["grade"], g["cap"]), ("S", None))   # 6/6척은 상한 없음
+        g = open_sim(PRESETS["unmanaged"], baseline=False)["grade"]
+        self.assertEqual((g["score"], g["grade"], g["cap"]), (49.6, "F", None))   # B보다 낮으면 점수대로
+
+    def test_no_cap_without_rule(self):
+        sc = opened()
+        del sc["grade"]["late_cap"]
+        sc["grade"]["bands"] = {"S": 100, "A": 80, "B": 70, "C": 50}
+        g = simulate(self.LATE, sc, baseline=False)["grade"]
+        self.assertEqual((g["grade"], g["cap"]), ("A", None))
 
 
 class Research(unittest.TestCase):

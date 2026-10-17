@@ -487,6 +487,7 @@ select.priority { max-width: 84px; }
 .gp-bar i { display: block; height: 100%; background: var(--accent); border-radius: 5px; }
 .gp-value { text-align: right; font-variant-numeric: tabular-nums; }
 .baseline-line { font-size: 0.9rem; }
+.cap-line { font-size: 0.9rem; margin: 0; }
 .findings { border: 1px solid var(--line-soft); border-radius: 12px; padding: 14px 16px; background: #fff; display: flex; flex-direction: column; gap: 8px; }
 .findings h3 { font-size: 0.92rem; }
 .finding { border-left: 4px solid var(--ink-3); padding: 4px 0 4px 10px; display: flex; flex-direction: column; gap: 3px; font-size: 0.88rem; }

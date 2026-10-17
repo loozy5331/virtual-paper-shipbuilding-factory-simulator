@@ -46,6 +46,15 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(board["growth"]["nickname"], "Bell")
         self.assertEqual(self.store.leaderboard("4반")["best"]["basic"]["players"], 1)
 
+    def test_leaderboard_ranks_grade_before_score(self):
+        # 납기 상한(4.33, D81): 점수가 높아도 납기를 놓친 B는 점수가 낮은 A보다 아래
+        a = self.save("Loozy", BASIC["managed"])
+        b = self.save("Bell", BASIC["all_in"])
+        with self.store._connect() as db:
+            db.execute("UPDATE runs SET grade = 'B', score = 95 WHERE id = ?", (b["id"],))
+        self.assertEqual(self.store.leaderboard("3반")["best"]["basic"]["nickname"], "Loozy")
+        self.assertEqual(a["grade"], "A")
+
     def test_same_nickname_and_class_is_one_user(self):
         self.save("Bell", BASIC["managed"])
         self.save("Bell", BASIC["all_in"])

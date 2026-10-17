@@ -167,14 +167,17 @@ class AssemblyScenario(unittest.TestCase):
 
 
 class AssemblyGrade(unittest.TestCase):
-    """등급 조율(D70, 4.32): B안(납기 빠른 순, 묻는 동안 기본 대응)은 A(S2 하루 늦음). 몰리는 날 선박 순서 + 자동화 연구 + 가공·탑재 1명이면 S."""
+    """등급 조율(D70, 4.32): B안(납기 빠른 순, 묻는 동안 기본 대응)은 85.1점이지만 S2가 하루 늦어 납기 상한으로 B(4.33, D81).
+    몰리는 날 선박 순서 + 자동화 연구 + 가공·탑재 1명이면 S."""
 
     def test_presets(self):
         presets = {p["id"]: p["config"] for p in load_presets("assembly")}
-        cases = {"unmanaged": (46.2, "F", 1), "managed": (85.1, "A", 2), "all_in": (53.3, "C", 2)}
+        cases = {"unmanaged": (46.2, "F", 1), "managed": (85.1, "B", 2), "all_in": (53.3, "C", 2)}
         for pid, want in cases.items():
             r = simulate(presets[pid])
             self.assertEqual((r["grade"]["score"], r["grade"]["grade"], r["qcd"]["delivery"]["on_time"]), want, pid)
+        cap = simulate(presets["managed"])["grade"]["cap"]
+        self.assertEqual(cap, {"grade": "B", "from": "A", "late": ["S2"]})
         self.assertEqual(simulate(presets["managed"])["pending"]["day"], 8)
         self.assertEqual(presets["managed"]["pools"]["assembly"], 5)   # 하루 40 MH(슬라이드의 당일 가용 작업시간)
 

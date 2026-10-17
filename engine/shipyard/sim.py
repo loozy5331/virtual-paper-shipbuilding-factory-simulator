@@ -2657,8 +2657,20 @@ def _grade(result: dict[str, Any], config: dict[str, Any], base: dict[str, Any] 
     profit_part = parts[1]
     focus = (short["key"] if w[short["key"]] - short["points"] >= 0.05
              else "profit" if profit_part["max"] - profit_part["points"] >= 0.05 else None)
+
+    # 납기 상한(4.33, D81): KPI 대상 배를 한 척이라도 놓치면 점수가 높아도 등급은 late_cap(B)까지.
+    # 점수는 그대로 두고 문자만 내린다. 점수가 그 아래 구간이면 점수대로
+    grade = _band(score, g["bands"])
+    late = [s["id"] for s in targets if not s["on_time"]]
+    cap_band = g.get("late_cap")
+    cap = None
+    if late and cap_band and _rank(grade, g["bands"]) > _rank(cap_band, g["bands"]):
+        cap = {"grade": cap_band, "from": grade, "late": late}
+        grade = cap_band
+    if late and cap_band:
+        focus = "delivery"   # S까지 가려면 점수와 별개로 납기부터 지켜야 한다
     to_s = {"need": round(max(g["bands"]["S"] - score, 0), 1), "focus": focus}
-    out: dict[str, Any] = {"score": score, "grade": _band(score, g["bands"]), "parts": parts,
+    out: dict[str, Any] = {"score": score, "grade": grade, "cap": cap, "parts": parts,
                            "to_s": to_s, "baseline": None, "vs_baseline": None}
     if base is not None and base_cfg is not None:
         # base는 기준선 요약(_baseline_summary): 점수·등급·이익·납기 준수 척수
@@ -2670,6 +2682,11 @@ def _grade(result: dict[str, Any], config: dict[str, Any], base: dict[str, Any] 
                               "pool": config["pool"] - base_cfg["pool"],
                               "score": round(score - base["score"], 1)}
     return out
+
+
+def _rank(grade: str, bands: dict[str, float]) -> float:
+    """등급의 높낮이(구간 하한). F는 가장 낮다."""
+    return bands.get(grade, float("-inf"))
 
 
 def _band(score: float, bands: dict[str, float]) -> str:
