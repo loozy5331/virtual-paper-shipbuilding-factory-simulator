@@ -668,7 +668,7 @@ export interface BlockEvalRow {
 }
 
 /** 4.32(D79): 그날의 정책(공정 → 규칙)과 블록별 조치 */
-export type ActionKind = "overtime" | "extra" | "outsource" | "defer";
+export type ActionKind = "overtime" | "extra" | "outsource" | "defer" | "assist" | "expedite";
 export interface Decision { day: number; policy?: Record<string, DispatchRule>; actions?: Record<string, ActionKind> }
 
 /** 결정 카드의 블록 한 줄: 남은 기간(블록 납기 − 그날), 공수, 자재 키트, 후행(짝) */
@@ -679,7 +679,8 @@ export interface SituationRow {
   /** 이미 정한 조치(앞 결정에서) */
   action?: ActionKind | null;
   /** 조치별 견적: 비상 예산에서 낼 값과 그 블록에 걸리는 날(외주는 운반 포함, 돌아오는 날) */
-  quotes?: Record<ActionKind | "none", { cost: number; days: number | null; back_day?: number }>;
+  /** 4.40: 긴급 자재 조달은 available(키트가 입고 전일 때만)과 당긴 입고일 arrival_day */
+  quotes?: Record<ActionKind | "none", { cost: number; days: number | null; back_day?: number; available?: boolean; arrival_day?: number }>;
   /** 4.36(D84): 지금 순서대로면 블록 납기(계획에서 끝나는 날)를 넘길 날 = 그 배 버퍼를 먹을 날 */
   over?: number;
 }

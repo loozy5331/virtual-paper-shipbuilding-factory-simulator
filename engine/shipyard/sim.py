@@ -49,7 +49,7 @@ TRANSPORTER_IDS = ["TR", "TR2"]   # 블록 트랜스포터(4.8: 1~2대)
 BLOCK_CODES = {"sub_assembly": "SA", "block_assembly": "BA", "grand_assembly": "GA"}
 # 블록 공정의 우선순위 규칙(4.25): 선박 순서·납기 빠른 순·여유 작은 순·작업 짧은 순. 추천도 이 순서로 비교한다
 DISPATCH_RULES = ["ship", "edd", "slack", "spt"]
-ACTION_KINDS = ["overtime", "extra", "outsource", "defer"]   # 블록 조치(4.32): 잔업·특근·외주·지체보상금 감수
+ACTION_KINDS = ["overtime", "extra", "outsource", "defer", "assist", "expedite"]   # 블록 조치(4.32): 잔업·특근·외주·포기(지체보상금), 4.40 응원 투입·긴급 자재 조달
 # 블록 공정에 있는 배의 하루 상태(4.25): 블록들의 오늘 상태 가운데 이 순서로 앞선 것 하나(같으면 뒤 공정)
 BLOCK_SHIP_RANK = [WORK, REWORK, LABOR_WAIT, ACCIDENT_STOP, BREAKDOWN_STOP, MATERIAL_WAIT, STATION_WAIT, TRANSPORT, TRANSPORT_WAIT]
 
@@ -579,12 +579,14 @@ def is_overtime(station_cfg: dict[str, Any]) -> bool:
     return station_cfg["overtime"] and station_cfg.get("crew") not in ("robot", "trial")
 
 
-def station_rate(station_cfg: dict[str, Any], rules: dict[str, Any], assigned: int, worker_factor: float = 1) -> float:
-    """하루 처리량 = min(배정 인원 × 자동화 배수, 설비 수용 인원) × 공법 속도 × 잔업 계수. 로봇은 정해진 인원분."""
+def station_rate(station_cfg: dict[str, Any], rules: dict[str, Any], assigned: int, worker_factor: float = 1,
+                 cap: int | None = None) -> float:
+    """하루 처리량 = min(배정 인원 × 자동화 배수, 설비 수용 인원) × 공법 속도 × 잔업 계수. 로봇은 정해진 인원분.
+    cap은 그 작업장의 수용 인원(4.40 응원 투입이면 정원보다 많다). 없으면 rules.max_workers_per_station"""
     speed = rules["methods"][station_cfg["method"]]["speed"]
     if station_cfg.get("crew") == "robot":
         return rules["crews"]["robot"]["rate"] * speed
-    workers = min(assigned * worker_factor, rules["max_workers_per_station"])
+    workers = min(assigned * worker_factor, cap if cap is not None else rules["max_workers_per_station"])
     overtime = rules["overtime"]["speed"] if is_overtime(station_cfg) else 1.0
     return workers * speed * overtime
 
@@ -1742,6 +1744,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     pending: dict[str, Any] | None = None
     policy_on: set[int] = set()                # 정책을 고른 공정: 계획의 블록 순서(block_order) 대신 그 규칙
     actions: dict[str, str] = {}               # 블록 → 조치
+    expedited: set[tuple[int, int]] = set()    # 4.40: 긴급 조달한 키트(배, 공정)
     em = scenario["emergency"]
     budget = {p: float({**scenario.get("contingency", {}), **(config.get("contingency") or {})}.get(stations[p]["id"], 0)) for p in block_set}
     spent = {p: 0.0 for p in block_set}
@@ -1822,13 +1825,27 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         speed = rules["methods"][st_cfg[b["p"]]["method"]]["speed"]
         ot_days = math.ceil(a / (w * speed * ot["speed"]) - EPS)
         ex_days = math.ceil(a / (w * speed * em["extra_shift"]["speed"]) - EPS)
+        as_days = math.ceil(a / ((w + em["assist"]["extra_workers"]) * speed) - EPS)
         out = em["outsource"]
         out_days = math.ceil(a / out["rate_per_day"] - EPS) + out["transport_days"]
         return {"none": {"cost": 0, "days": math.ceil(a / (w * speed) - EPS)},   # 조치 없이 정규 근무로 하면(비교용)
                 "overtime": {"cost": ot_days * w * wage * ot["pay_rate"], "days": ot_days},
                 "extra": {"cost": ex_days * w * wage * em["extra_shift"]["pay_rate"], "days": ex_days},
                 "outsource": {"cost": round(a * wage * out["price_rate"], 2), "days": out_days, "back_day": day + out_days},
-                "defer": {"cost": 0, "days": None}}
+                "defer": {"cost": 0, "days": None},
+                # 4.40(D87): 응원 투입(정원 + extra명이 한다고 본 일수 × 응원 수당), 긴급 자재 조달(키트가 입고 전일 때만)
+                "assist": {"cost": round(as_days * em["assist"]["extra_workers"] * wage * em["assist"]["pay_rate"], 2), "days": as_days},
+                "expedite": expedite_quote(b, day)}
+
+    def expedite_quote(b: dict[str, Any], day: int) -> dict[str, Any]:
+        """긴급 자재 조달 견적(4.40): 그 블록의 자재 키트가 아직 입고 전(coming)이고 내일보다 늦게 들어올 때만 살 수 있다."""
+        i, p = b["ship"], b["p"]
+        k = kit_status(i, p, day)
+        if not k or k["state"] != "coming" or arrival_day[i][k["material"]] <= day + 1 or (i, p) in expedited:
+            return {"cost": 0, "days": None, "available": False}
+        mid = k["material"]
+        return {"cost": round(bom_of(i, mid) * prices[mid] * em["expedite"]["price_rate"], 2), "days": None, "available": True,
+                "arrival_day": day + 1, "material": mid}
 
     def situation(day: int) -> dict[str, Any]:
         """몰리는 날의 조립장(결정 카드): 공정마다 기다리는 블록과 작업장 안 블록, 규칙별 순서, 가용·필요 공수."""
@@ -1931,7 +1948,11 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                 if b is None or bid in actions:
                     refused[bid] = "not_waiting"
                     continue
-                cost_q = quotes(b, day)[kind]["cost"]
+                quote = quotes(b, day)[kind]
+                if kind == "expedite" and not quote.get("available"):
+                    refused[bid] = "not_needed"   # 키트가 이미 있거나 내일 들어오거나, 같은 키트를 이미 당겼다
+                    continue
+                cost_q = quote["cost"]
                 if spent[b["p"]] + cost_q > budget[b["p"]] + EPS:
                     refused[bid] = "over_budget"
                     continue
@@ -1947,6 +1968,20 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                     spans[i].setdefault(pid, {"start": day, "end": day})
                     events.append({"day": day, "type": "outsource", "ship": orders[i]["id"], "station": pid, "block": bid,
                                    "back_day": b["back"]})
+                if kind == "expedite":
+                    # 긴급 자재 조달(4.40): 그 배 그 공정 키트의 입고를 내일 아침으로 당긴다(아직 알려지지 않은 지연 통보는 지운다)
+                    i, mid = b["ship"], quote["material"]
+                    old = arrival_day[i][mid]
+                    moved = [x for x in arrivals.get(old, []) if x[0] == mid and x[2] == orders[i]["id"]]
+                    arrivals[old] = [x for x in arrivals.get(old, []) if x not in moved]
+                    arrivals.setdefault(day + 1, []).extend(moved)
+                    arrival_day[i][mid] = day + 1
+                    for dd in list(delay_notes):
+                        if dd > day:
+                            delay_notes[dd] = [n for n in delay_notes[dd] if not (n["ship"] == orders[i]["id"] and n["material"] == mid)]
+                    expedited.add((i, b["p"]))
+                    events.append({"day": day, "type": "expedite", "ship": orders[i]["id"], "station": stations[b["p"]]["id"],
+                                   "material": mid, "block": bid, "arrival_day": day + 1})
                 if kind in ("outsource", "defer"):
                     b["staged"] = False   # 적치 자리를 비운다(4.35): 감수 블록은 적치장 맨 뒤로
             for p in manual:
@@ -2425,11 +2460,15 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         # 직종마다 따로: 사람은 자기 직종 공정에만 간다.
         idle_by = dict(pools)
         assigned = [[0] * n for n in n_units]
+        def assisted(p: int, u: int) -> bool:
+            """응원 투입(4.40): 그 작업장에 든 블록이 응원 투입이면 정원보다 extra명을 더 받는다(먼저 배정)."""
+            cur_pu = current[p][u]
+            return bool(cur_pu and "block" in cur_pu and actions.get(cur_pu["block"]["id"]) == "assist")
         for p, u in sorted(((p, u) for p in range(n_st) for u in range(n_units[p])
                             if current[p][u] and day > stop_until[p][u] and crews[p] != "robot"),
-                           key=lambda pu: priority[current[pu[0]][pu[1]]["ship"]]):
+                           key=lambda pu: (not assisted(*pu), priority[current[pu[0]][pu[1]]["ship"]])):
             t = trade_of[p]
-            assigned[p][u] = min(need, idle_by.get(t, 0))
+            assigned[p][u] = min(need + (em["assist"]["extra_workers"] if assisted(p, u) else 0), idle_by.get(t, 0))
             idle_by[t] = idle_by.get(t, 0) - assigned[p][u]
         idle = sum(idle_by.values())
         man_days += pool - idle
@@ -2452,7 +2491,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                 station_today[p][u] = {"state": LABOR_WAIT, "ship": orders[i]["id"], "workers": 0}
                 continue
 
-            rate_today = station_rate(st_cfg[p], rules, assigned[p][u], factor)
+            rate_today = station_rate(st_cfg[p], rules, assigned[p][u], factor,
+                                      cap=rules["max_workers_per_station"] + em["assist"]["extra_workers"] if assisted(p, u) else None)
             # 블록 조치(4.32): 작업장에 든 블록이 잔업·특근이면 그 작업장의 오늘이 10·16시간(처리량 1.25·2배)
             act = actions.get(cur["block"]["id"]) if "block" in cur else None
             act_hours = None

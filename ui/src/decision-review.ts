@@ -9,7 +9,7 @@ import { DISPATCH_INFO } from "./labels";
 
 const CHOICE: Record<string, string> = { mine: "내 지시", auto: "기본 대응(묻지 않음)", no_actions: "내 정책, 조치 없이" };
 const label = (c: string) => CHOICE[c] ?? `${DISPATCH_INFO[c]?.name ?? c} 정책이었다면`;
-const ACTION_NAME: Record<string, string> = { overtime: "잔업", extra: "특근", outsource: "외주", defer: "포기(지체보상금)" };
+const ACTION_NAME: Record<string, string> = { overtime: "잔업", extra: "특근", outsource: "외주", defer: "포기(지체보상금)", assist: "응원 투입", expedite: "긴급 자재 조달" };
 
 export function renderDecisionReview(result: Result): HTMLElement | null {
   const review = result.review;

@@ -41,6 +41,9 @@ export const ACTION_INFO: Record<ActionKind, { name: string; note: string }> = {
   overtime: { name: "잔업", note: "그 블록을 하는 날 10시간(처리량 1.25배). 잔업 불량·사고 위험" },
   extra: { name: "특근", note: "그 블록을 하는 날 16시간(처리량 2배). 사고 위험이 더 크다" },
   outsource: { name: "외주", note: "블록을 밖으로 보낸다. 우리 정반이 비지만 운반일이 붙어 늦게 돌아올 수 있다" },
+  // 4.40(D87): 응원 투입 · 긴급 자재 조달
+  assist: { name: "응원 투입", note: "작업대기소에서 한 명을 더 붙여 이 블록을 3명이 한다(응원 수당만). 쉬는 사람이 없으면 다른 작업장 인원이 준다" },
+  expedite: { name: "긴급 자재 조달", note: "이 블록의 자재 키트가 늦으면 내일 아침 입고로 당긴다(자재값을 한 번 더). 같은 배·공정의 다른 블록도 함께 받는다" },
   defer: { name: "포기(지체보상금)", note: "이 블록을 끝까지 맨 뒤로 미룬다. 값은 0이지만 그 배가 늦으면 지체보상금(위약금)을 문다" },
 };
 
@@ -327,16 +330,20 @@ function actionChips(r: SituationRow, chosen: ActionKind | undefined, left: numb
   const q = r.quotes!;
   const room = left + (chosen ? q[chosen].cost : 0);
   const sub = (k: ActionKind) => k === "defer" ? "0"
-    : k === "outsource" ? `${fmt(q[k].cost)} · ${q[k].back_day}일 복귀` : fmt(q[k].cost);
+    : k === "outsource" ? `${fmt(q[k].cost)} · ${q[k].back_day}일 복귀`
+      : k === "expedite" ? (q[k].available ? `${fmt(q[k].cost)} · ${q[k].arrival_day}일 입고` : "필요 없음") : fmt(q[k].cost);
   return h("div", { class: "dc-chips", role: "radiogroup", "aria-label": `${r.id} 조치` },
     h("button", { type: "button", role: "radio", "aria-checked": String(!chosen), class: `dc-chip${!chosen ? " on" : ""}`, disabled: busy,
       onclick: () => onPick(null) }, "없음"),
     (Object.keys(ACTION_INFO) as ActionKind[]).map((k) => {
+      if (!q[k]) return null;   // 옛 회차의 견적에는 4.40 조치가 없다
       const over = q[k].cost > room + 1e-9;
+      const na = k === "expedite" && !q[k].available;
       return h("button", {
         type: "button", role: "radio", "aria-checked": String(chosen === k), class: `dc-chip${chosen === k ? " on" : ""}`,
-        disabled: busy || over,
-        title: over ? `남은 예산 ${fmt(room)}으로는 부족합니다` : `${ACTION_INFO[k].note}${q[k].days ? ` · 약 ${q[k].days}일` : ""}`,
+        disabled: busy || over || na,
+        title: na ? "자재 키트가 이미 있거나 내일 들어옵니다(또는 같은 키트를 이미 당겼습니다)"
+          : over ? `남은 예산 ${fmt(room)}으로는 부족합니다` : `${ACTION_INFO[k].note}${q[k].days ? ` · 약 ${q[k].days}일` : ""}`,
         onclick: () => onPick(chosen === k ? null : k),
       }, ACTION_INFO[k].name, h("small", null, sub(k)));
     }));
