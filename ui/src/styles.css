@@ -1826,3 +1826,32 @@ details.review-day[open] > .review-table { margin-top: 6px; }
 .dc-step-head .dc-step { white-space: nowrap; }
 .dc-step-head .dcg-mh { flex-basis: auto; }
 .dc-step-head > small:last-child { flex-basis: 100%; }
+/* 4.38.1 "이 선택이면" 좌우 두 칸: 왼쪽 작업시간(큰 글자, 세로), 오른쪽 상황 태그 + 비상 예산 지폐 */
+.dc-split-body { display: grid; grid-template-columns: minmax(220px, 0.85fr) minmax(0, 1.15fr); gap: 22px; align-items: start; }
+.dc-split-left { display: flex; flex-direction: column; gap: 6px; border-right: 1px solid var(--line); padding-right: 18px; }
+.dc-split-right { display: flex; flex-direction: column; gap: 6px; }
+.dc-split .dc-cap { color: var(--ink-3); font-size: 0.78rem; }
+.dc-mh-big { display: grid; grid-template-columns: 112px auto; align-items: baseline; column-gap: 10px; }
+.dc-mh-big > span { font-size: 0.95rem; color: var(--ink-2); }
+.dc-mh-big > b { font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+.dc-mh-big > small { grid-column: 2; font-size: 0.78rem; color: var(--ink-3); margin-top: -2px; }
+.dc-split .dc-verdict { margin: 0 0 4px; font-size: 1rem; }
+.dc-split .dc-verdict > span { padding: 5px 12px; }
+.dc-bills { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dc-bills-name { font-size: 0.86rem; font-weight: 600; min-width: 48px; }
+.dc-bills-row { display: inline-flex; gap: 3px; flex-wrap: wrap; }
+.dc-bill { width: 26px; height: 15px; }
+.dc-bill rect { fill: #5fa36f; stroke: #2f6b42; stroke-width: 1; }
+.dc-bill circle { fill: none; stroke: #e7f3ea; stroke-width: 1.1; }
+.dc-bill path { stroke: #e7f3ea; stroke-width: 0.9; }
+.dc-bill.spend rect { fill: #fdecea; stroke: var(--late-fill); stroke-dasharray: 2 1.5; }
+.dc-bill.spend circle, .dc-bill.spend path { stroke: #e9a59c; }
+.dc-bill.gone rect { fill: none; stroke: #cfcac0; stroke-dasharray: 1.5 1.5; }
+.dc-bill.gone circle, .dc-bill.gone path { stroke: none; }
+.dc-bills-text { font-size: 0.9rem; color: var(--ink-2); }
+.dc-bills-text b { font-size: 1.05rem; }
+.dc-bills.band-mid .dc-bills-text b { color: var(--warn-ink); }
+.dc-bills.band-hi .dc-bills-text b { color: var(--late-fill); }
+.dc-bills.band-mid .dc-bill.keep rect { fill: #d9a531; stroke: #8a5a00; }
+.dc-bills.band-hi .dc-bill.keep rect { fill: #c9573f; stroke: #7a2015; }
+@media (max-width: 900px) { .dc-split-body { grid-template-columns: 1fr; } .dc-split-left { border-right: 0; padding-right: 0; } }

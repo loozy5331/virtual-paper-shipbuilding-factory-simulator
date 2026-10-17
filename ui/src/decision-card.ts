@@ -142,7 +142,6 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
               }, h("b", null, label, sub ? h("small", null, ` ${sub}`) : null),
               polRows ? optionOutcome(polRows[id as DispatchRule | "keep"], polRows.keep) : h("small", { class: "dc-out dim" }, "…"))))),
         h("div", { class: "dc-step-head" }, h("span", { class: "dc-step" }, "블록별 조치"),
-          h("small", { class: "dcg-mh" }, `필요 ${fmt(sit.need_mh)} MH · 가용 ${fmt(sit.capacity_mh)} MH/일${f ? ` · 이 선택의 투입 ${fmt(f.mine.mh)} MH` : ""}`),
           h("small", null, "막대 = 이 선택이면 작업하는 구간(진한 부분은 이미 한 만큼), 세로선 = 블록 납기. 선을 넘으면 노랑(버퍼 소모), 그 배 버퍼까지 넘으면 빨강(납기 지연). 얇은 선은 지금대로의 끝. 숫자는 비상 예산에서 낼 값")),
         // 4.38(사용자 "결과 미리보기 대신 간트, 진행도처럼 채우고, 막대 연장선의 조치로 진행도가 바뀌게"): 블록 진행도 간트
         blockGantt(sit, sid, [...st.inside.map((r) => ({ r, inside: true, ord: "작업 중" })), ...order.map((id, k) => ({ r: rowOf[id], inside: false, ord: `${k + 1}` }))],
@@ -157,43 +156,65 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
         ctx.busy ? "지시하는 중…" : "이대로 작업 지시"))));
 }
 
-/** 결과 미리보기: 내 선택(그날 이렇게 하고 그 뒤는 기본 대응)과 지금대로(아무것도 바꾸지 않음)를 세 칸으로 */
+/** "이 선택이면"(4.38.1, 사용자): 좌우 두 칸. 왼쪽 = 작업시간(필요 · 가용 · 이 선택의 투입, 큰 글자로 세로),
+ *  오른쪽 = 상황 태그(납기 지연 빨강 · 버퍼 소모 노랑)와 비상 예산(지폐 아이콘: 한 장 = 일정 금액, 쓰면 빠진다). 배별 버퍼는 간트가 대신한다 */
 function outcomePanel(scenario: Scenario, sit: Situation, stations: string[], name: Record<string, string>, f: Forecast | null, fresh: boolean,
   budget: (sid: string) => { left: number; total: number; spend: number }): HTMLElement {
   const m = f?.mine, k = f?.keep;
-  return h("section", { class: `dc-outcome${fresh ? "" : " loading"}`, "aria-live": "polite" },
+  const mhDelta = m && k ? m.mh - k.mh : 0;
+  const short = sit.need_mh - sit.capacity_mh;
+  const mhRow = (label: string, value: string, note?: HTMLElement | string | null) =>
+    h("div", { class: "dc-mh-big" }, h("span", null, label), h("b", null, value), note ? h("small", null, note) : null);
+  return h("section", { class: `dc-outcome dc-split${fresh ? "" : " loading"}`, "aria-live": "polite" },
     h("div", { class: "dc-outcome-head" }, h("b", null, "이 선택이면"),
       h("small", null, fresh ? "오늘 이렇게 하고 그 뒤는 기본 대응으로 끝까지 돌린 결과 · \"지금대로\"는 오늘 아무것도 바꾸지 않았을 때" : "계산하는 중…")),
-    sit.ships ? verdict(sit, m) : null,
-    // 4.37.3(사용자): 비상 예산은 판정 띠 바로 아래 한 줄
-    h("div", { class: "dc-budget-row" },
-        h("small", null, "비상 예산 · 이번에 쓰는 값"),
-        stations.map((sid) => {
-          const b = budget(sid);
-          const after = b.left - b.spend;
-          // 4.37.2(사용자 "예산도 구간에 따라 색이 변하도록"): 쓴 비율 50% 미만 초록, 80% 미만 노랑, 그 이상 빨강
-          const usedRate = b.total > 0 ? (b.total - after) / b.total : 0;
-          const band = usedRate >= 0.8 ? "hi" : usedRate >= 0.5 ? "mid" : "lo";
-          return h("div", { class: `dc-gauge-row band-${band}` },
-            h("span", null, name[sid]),
-            h("div", { class: "dc-gauge", title: `예산 ${fmt(b.total)} 중 앞서 ${fmt(b.total - b.left)}, 이번 ${fmt(b.spend)}` },
-              h("i", { class: "used", style: { width: `${pct(b.total - b.left, b.total)}%` } }),
-              h("i", { class: "now", style: { width: `${pct(b.spend, b.total)}%` } })),
-            h("b", null, b.spend ? `−${fmt(b.spend)}` : "0"), h("small", null, ` 남음 ${fmt(after)} / ${fmt(b.total)} (${Math.round(usedRate * 100)}% 사용)`));
-        }),
-        m && Object.keys(m.refused).length ? h("small", { class: "dc-note wl-hot" }, `예산을 넘어 받지 않는 조치 ${Object.keys(m.refused).length}건`) : null),
-    h("div", { class: "dc-outcome-grid" },
-      sit.ships ? bufferCell(scenario, sit, m, k) : h("div", { class: "dc-out-cell" },
-        h("small", null, "납기 · 배별 인도"),
-        h("div", { class: "dc-ships" }, scenario.orders.map((o) => {
-          const late = m?.late[o.id];
-          const was = k?.late[o.id];
-          return h("span", { class: `dc-ship${late === undefined ? "" : late > 0 ? " late" : " ok"}` },
-            h("b", null, o.id), late === undefined ? " …" : late > 0 ? ` +${late}일` : " 납기 내",
-            was !== undefined && late !== undefined && was !== late ? h("small", null, ` (지금대로 ${was > 0 ? `+${was}일` : "납기 내"})`) : null);
-        })),
-        m ? h("small", { class: "dc-note" }, `블록 납기 ${m.block_on_time}/${m.blocks}`,
-          k && k.block_on_time !== m.block_on_time ? ` (지금대로 ${k.block_on_time})` : "") : null)));
+    h("div", { class: "dc-split-body" },
+      h("div", { class: "dc-split-left" },
+        h("small", { class: "dc-cap" }, "작업시간 (MH = 사람 × 시간)"),
+        mhRow("필요", `${fmt(sit.need_mh)} MH`, "작업 중 · 작업장 앞 블록의 남은 일"),
+        mhRow("가용", `${fmt(sit.capacity_mh)} MH/일`, short > 0 ? h("span", { class: "wl-hot" }, `하루치로는 ${fmt(short)} MH 모자람`) : "조립 인원 × 8시간"),
+        mhRow("이 선택의 투입", m ? `${fmt(m.mh)} MH` : "…", mhDelta ? `지금대로보다 ${mhDelta > 0 ? "+" : ""}${fmt(mhDelta)} MH` : "지금대로와 같음")),
+      h("div", { class: "dc-split-right" },
+        sit.ships ? verdict(sit, m) : shipChips(scenario, m, k),
+        h("small", { class: "dc-cap" }, "비상 예산"),
+        stations.map((sid) => bills(name[sid], budget(sid))),
+        m && Object.keys(m.refused).length ? h("small", { class: "dc-note wl-hot" }, `예산을 넘어 받지 않는 조치 ${Object.keys(m.refused).length}건`) : null)));
+}
+
+/** 버퍼 없는 시나리오의 배별 인도(옛 칸) */
+function shipChips(scenario: Scenario, m: ForecastRow | undefined, k: ForecastRow | undefined): HTMLElement {
+  return h("div", { class: "dc-ships" }, scenario.orders.map((o) => {
+    const late = m?.late[o.id];
+    const was = k?.late[o.id];
+    return h("span", { class: `dc-ship${late === undefined ? "" : late > 0 ? " late" : " ok"}` },
+      h("b", null, o.id), late === undefined ? " …" : late > 0 ? ` +${late}일` : " 납기 내",
+      was !== undefined && late !== undefined && was !== late ? h("small", null, ` (지금대로 ${was > 0 ? `+${was}일` : "납기 내"})`) : null);
+  }));
+}
+
+/** 비상 예산 지폐(4.38.1, 사용자 "지폐 아이콘이 나란히, 사용하면 없어지는"): 한 장 = 예산을 10장 안팎으로 나눈 값(10 단위).
+ *  남은 지폐는 초록, 이번에 쓰는 지폐는 붉은 테두리로 비어 가고, 앞서 쓴 지폐는 빈 자리. 남은 비율에 따라 글자색(초록·노랑·빨강) */
+function bills(label: string, b: { left: number; total: number; spend: number }): HTMLElement {
+  const unit = Math.max(10, Math.ceil(b.total / 10 / 10) * 10);
+  const n = Math.max(1, Math.round(b.total / unit));
+  const after = b.left - b.spend;
+  const keepN = Math.max(0, Math.floor(after / unit + 1e-9));
+  const beforeUsed = Math.round((b.total - b.left) / unit);
+  const usedRate = b.total > 0 ? (b.total - after) / b.total : 0;
+  const band = usedRate >= 0.8 ? "hi" : usedRate >= 0.5 ? "mid" : "lo";
+  return h("div", { class: `dc-bills band-${band}`, title: `지폐 한 장 = ${unit}. 예산 ${fmt(b.total)} 중 앞서 ${fmt(b.total - b.left)}, 이번 ${fmt(b.spend)}` },
+    h("span", { class: "dc-bills-name" }, label),
+    h("span", { class: "dc-bills-row" }, Array.from({ length: n }, (_, i) =>
+      bill(i < keepN ? "keep" : i < n - beforeUsed ? "spend" : "gone"))),
+    h("span", { class: "dc-bills-text" }, h("b", null, `${fmt(after)}`), ` / ${fmt(b.total)} 남음`,
+      b.spend ? h("small", null, ` (이번 −${fmt(b.spend)})`) : null));
+}
+
+function bill(state: "keep" | "spend" | "gone"): SVGElement {
+  return s("svg", { class: `dc-bill ${state}`, viewBox: "0 0 22 12", "aria-hidden": "true" },
+    s("rect", { x: 0.6, y: 0.6, width: 20.8, height: 10.8, rx: 1.6 }),
+    s("circle", { cx: 11, cy: 6, r: 2.6 }),
+    s("path", { d: "M3 3.2 V8.8 M19 3.2 V8.8" }));
 }
 
 /** 블록 진행도 간트(4.38): 블록마다 한 줄. 옅은 칸 = 계획(오늘 ~ 블록 납기), 막대 = 이 선택이면 작업하는 구간(엔진 forecast),
@@ -275,37 +296,7 @@ function verdict(sit: Situation, m: ForecastRow | undefined): HTMLElement {
     !late.length && !used.length ? h("span", { class: "v-ok" }, h("b", null, "버퍼 그대로"), " 모든 배가 계획대로 끝납니다") : null);
 }
 
-/** 버퍼 칸(4.36, D84): 배마다 이 선택이면 마친 날과 남는 버퍼(납기 − 마친 날, 고른 버퍼보다 많으면 덤). 넘치면 지연 */
-function bufferCell(scenario: Scenario, sit: Situation, m: ForecastRow | undefined, k: ForecastRow | undefined): HTMLElement {
-  // 4.37.1: 배마다 버퍼 칸 막대(내 선택 진하게, 지금대로 옅게). 버퍼를 먹은 칸은 황색(주의), 넘친 칸은 빨강(인도 지연, 심각)
-  const used = (r: ForecastRow | undefined, sid: string) => {
-    const c = r?.completed?.[sid];
-    const sh = sit.ships![sid];
-    return c === undefined || c === null ? null : Math.max(0, c - (sh.due - sh.buffer));
-  };
-  return h("div", { class: "dc-out-cell" },
-    h("small", null, "배별 버퍼 · 내 선택(위)과 지금대로(아래)"),
-    h("div", { class: "dc-bufrows" }, scenario.orders.map((o) => {
-      const sh = sit.ships![o.id];
-      const now = used(m, o.id), was = used(k, o.id);
-      const over = now === null ? 0 : Math.max(0, now - sh.buffer);
-      return h("div", { class: "dc-bufrow" },
-        h("b", null, o.id),
-        h("div", { class: "dc-bufpair" }, cells(sh.buffer, now, false), cells(sh.buffer, was, true)),
-        h("span", { class: `dc-bufnote${over ? " late" : now ? " warn" : ""}` },
-          now === null ? "…" : over ? `납기 ${over}일 지연` : now ? `버퍼 ${now}일 소모 · ${sh.buffer - now}일 남음` : `버퍼 ${sh.buffer}일 그대로`,
-          was !== null && now !== null && was !== now ? h("small", null, ` (지금대로 ${was > sh.buffer ? `납기 ${was - sh.buffer}일 지연` : `${was}일 소모`})`) : null));
-    })),
-    m ? h("small", { class: "dc-note" }, `블록 납기 ${m.block_on_time}/${m.blocks}`,
-      k && k.block_on_time !== m.block_on_time ? ` (지금대로 ${k.block_on_time})` : "") : null);
-}
 
-/** 버퍼 칸: 버퍼 일수만큼 칸, 먹은 칸 황색, 넘친 칸 빨강(칸 밖으로 늘어난다) */
-function cells(buffer: number, used: number | null, ghost: boolean): HTMLElement {
-  const n = Math.max(buffer, used ?? 0);
-  return h("span", { class: `dc-cells${ghost ? " ghost" : ""}` }, Array.from({ length: n }, (_, k) =>
-    h("i", { class: used === null ? "" : k >= buffer ? "over" : k >= buffer - Math.min(used, buffer) ? "eat" : "" })));
-}
 
 
 /** 정책 단추 아래 한 줄(4.37): 그 공정 정책을 그대로 둘 때와 같으면 "그대로와 같음", 다르면 늦는 배 */
@@ -364,9 +355,6 @@ function yardText(yard: { id: string; ship: string }[]): string {
   return ` · 가공 적치장 대기 ${Object.entries(by).map(([sh, n]) => `${sh} ${n}개`).join(", ")}(자리가 나면 정책 순서로 올라옴)`;
 }
 
-function pct(v: number, total: number): number {
-  return total > 0 ? Math.max(0, Math.min(100, (v / total) * 100)) : 0;
-}
 
 function fmt(v: number): string {
   return String(Math.round(v * 10) / 10);
