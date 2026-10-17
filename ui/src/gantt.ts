@@ -8,6 +8,7 @@
 
 import { activeStations, type BlockResult, blockShort, blockTitle, dayHour, type ForkliftJob, type Plan, type Result, type Scenario, type Segment } from "./api";
 import { s } from "./dom";
+import { eveningOf, hourAxis, REG_HOURS } from "./hour-axis";
 import { OUTSOURCED_STATE, PAIR_WAIT_EDGE, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, STATION_TEXT } from "./labels";
 
 // 크기는 모니터의 실제 픽셀(4.15.6). 고정 폭(1000)을 모니터에 줄여 넣으면 11px 글자가 7px로 보였다.
@@ -694,8 +695,10 @@ const WAIT_STATES = ["station_wait", "material_wait", "labor_wait", "transport_w
  * 블록이 일한 시간 조각(4.29, D76): 일한 날마다 그날 근무 안의 구간. 첫날은 시작 시각부터, 마지막 날은 끝 시각까지이고,
  * 이어지는 날의 같은 일(작업·재작업)은 한 조각으로 잇는다. 시각이 없는 옛 회차는 하루 통째.
  */
-function workPieces(b: BlockResult, until: number): { start: number; from: number; end: number; to: number; rework: boolean }[] {
+function workPieces(b: BlockResult, until: number, cols?: (day: number) => number): { start: number; from: number; end: number; to: number; rework: boolean }[] {
   const H = b.day_hours ?? 8;
+  // 4.47.2: 그날 칸(정규 + 근무시간 외)을 다 채웠을 때만 다음 날과 잇는다. 저녁 구간이 열린 날 정규만 한 블록은 끊긴다
+  const full = cols ?? (() => H);
   const out: { start: number; from: number; end: number; to: number; rework: boolean }[] = [];
   for (let d = 1; d <= Math.min(until, b.daily.length); d++) {
     const state = b.daily[d - 1].state;
@@ -703,7 +706,7 @@ function workPieces(b: BlockResult, until: number): { start: number; from: numbe
     const from = d === b.start && b.start_h != null ? b.start_h : 0;
     const to = d === b.end && b.end_h != null ? b.end_h : H;
     const prev = out[out.length - 1];
-    if (prev && prev.end === d - 1 && prev.to >= H && from === 0 && prev.rework === (state === "rework")) {
+    if (prev && prev.end === d - 1 && prev.to >= full(d - 1) - 1e-9 && from === 0 && prev.rework === (state === "rework")) {
       prev.end = d;
       prev.to = to;
     } else {
@@ -711,6 +714,28 @@ function workPieces(b: BlockResult, until: number): { start: number; from: numbe
     }
   }
   return out;
+}
+
+/** 블록 간트의 시각 축(4.47.2): 1시간의 폭이 같고, 누군가 정규 근무를 넘겨 일한 날만 근무시간 외 구간(옅은 밤색)이 열린다.
+ *  x(d) = d일 칸 왼쪽, dw(d) = 그 칸 폭, at(d, h) = d일 근무 시작부터 h시간 뒤, cols(d) = 그 칸의 시간. night는 근무시간 외 구간을 칠한다 */
+function hourScale(blocks: BlockResult[], first: number, last: number, today: number) {
+  const until = Math.min(last, today);
+  const ax = hourAxis(first, last, eveningOf(blocks.flatMap((b) =>
+    workPieces(b, until, () => Infinity).map((p) => ({ day: p.start, from: p.from, to: p.to })))));
+  const u = (W - LEFT - RIGHT) / ax.total;
+  const x = (day: number) => LEFT + ax.x(day) * u;
+  const width = (a: number, b: number) => ax.width(a, b) * u;
+  return {
+    x, width, dw: (d: number) => width(d, d), cols: (d: number) => ax.hours(d),
+    at: (day: number, h: number, _H?: number) => LEFT + ax.at(day, h) * u,
+    night: (g: SVGElement, y1: number, y2: number) => {
+      for (let d = first; d <= last; d++) {
+        const ev = ax.evening(d);
+        if (ev > 0) g.append(s("rect", { x: LEFT + ax.at(d, REG_HOURS) * u, y: y1, width: ev * u, height: y2 - y1, class: "night" },
+          s("title", null, `${d}일 근무시간 외(정규 ${REG_HOURS}시간 뒤 ${Math.round(ev * 10) / 10}시간, 잔업·특근)`)));
+      }
+    },
+  };
 }
 
 export function renderStationGantt(result: Result, scenario: Scenario, shipId: string | null, stationId: string, today: number,
@@ -730,12 +755,9 @@ export function renderStationGantt(result: Result, scenario: Scenario, shipId: s
   const first = Math.max(1, (daysSeen.length ? Math.min(...daysSeen) : 1) - 2);
   const last = Math.min(days, Math.max(daysSeen.length ? Math.max(...daysSeen) : days, ...blocks.map((b) => b.due), due ?? 0) + 2);
   const span = last - first + 1;
-  const dayW = (W - LEFT - RIGHT) / span;
-  const x = (day: number) => LEFT + (day - first) * dayW;
-  const width = (a: number, b: number) => (b - a + 1) * dayW;
+  // 4.47.2: 시각 축(1시간의 폭이 같다, 잔업·특근한 날만 근무시간 외 구간이 열린다)
+  const { x, width, dw, at, cols, night } = hourScale(blocks, first, last, today);
   const clip = (d: number) => Math.min(d, today);
-  /** 그날 근무 시작부터 h시간 뒤의 자리(4.29). H는 그 작업장의 하루 근무시간 */
-  const at = (day: number, h: number, H: number) => x(day) + (h / H) * dayW;
   const uTop = TOP;
   const bTop = uTop + units.length * U_ROW + SECTION_GAP;
   const height = bTop + blocks.length * B_ROW + 12;
@@ -749,9 +771,10 @@ export function renderStationGantt(result: Result, scenario: Scenario, shipId: s
   for (let d = first; d <= last; d++) {
     if (span <= 40 || d % 5 === 0) {
       axis.append(s("line", { x1: x(d), x2: x(d), y1: TOP - 6, y2: height - 4, class: d % 5 === 0 ? "grid major" : "grid" }),
-        s("text", { x: x(d) + dayW / 2, y: TOP - 14, class: "tick" }, d));
+        s("text", { x: x(d) + dw(d) / 2, y: TOP - 14, class: "tick" }, d));
     }
   }
+  night(axis, TOP - 6, height - 4);
   svg.append(axis);
 
   // 작업장 줄
@@ -760,25 +783,25 @@ export function renderStationGantt(result: Result, scenario: Scenario, shipId: s
     const g = s("g", { class: "ship-row" });
     g.append(s("rect", { x: 0, y, width: W, height: U_ROW - 2, class: k % 2 ? "band odd" : "band" }),
       s("text", { x: 12, y: y + 16, class: "eq-id" }, `${u.unit}호 작업장`),
-      s("rect", { x: LEFT, y: y + 4, width: span * dayW, height: U_ROW - 10, class: "lane" }));
+      s("rect", { x: LEFT, y: y + 4, width: width(first, last), height: U_ROW - 10, class: "lane" }));
     for (let d = first; d <= Math.min(last, today); d++) {
       const rec = u.daily[d - 1];
       if (!rec || !rec.ship) continue;
       const working = rec.state === "work" || rec.state === "rework";
       if (shipId !== null && rec.ship !== shipId) {
-        if (working) g.append(barEl(x(d), y + 6, dayW, U_ROW - 14, "#d8dcd6", `${d}일 ${rec.ship}가 사용`));
+        if (working) g.append(barEl(x(d), y + 6, dw(d), U_ROW - 14, "#d8dcd6", `${d}일 ${rec.ship}가 사용`));
         continue;
       }
       if (!working) {
         const info = STATE_INFO[rec.state];
-        if (info) g.append(barEl(x(d), y + U_ROW - 8, dayW, 3, info.color, `${d}일 ${info.name}`));
+        if (info) g.append(barEl(x(d), y + U_ROW - 8, dw(d), 3, info.color, `${d}일 ${info.name}`));
       }
     }
     // 이 배의 블록(4.29): 블록마다 일한 시간만큼(이어 하기로 한 블록이 끝난 자리에서 다음 블록이 시작한다)
     for (const b of blocks.filter((b) => b.unit === u.unit)) {
       const H = b.day_hours ?? 8;
       const name = shipId === null ? `${blockTitle(b.ship, stationId, b.no)}` : blockShort(b.ship, stationId, b.no);
-      for (const pc of workPieces(b, Math.min(last, today))) {
+      for (const pc of workPieces(b, Math.min(last, today), cols)) {
         if (pc.end < first) continue;
         const x0 = at(pc.start, pc.from, H);
         const w = at(pc.end, pc.to, H) - x0;
@@ -814,7 +837,7 @@ export function renderStationGantt(result: Result, scenario: Scenario, shipId: s
     }
     const H = b.day_hours ?? 8;
     const mhText = b.std_mh != null ? ` · 표준 ${Math.round(b.std_mh * 10) / 10} MH, 들인 공수 ${Math.round((b.mh ?? 0) * 10) / 10} MH` : "";
-    for (const pc of workPieces(b, Math.min(last, today))) {
+    for (const pc of workPieces(b, Math.min(last, today), cols)) {
       if (pc.end < first) continue;
       const x0 = at(pc.start, pc.from, H);
       g.append(barEl(x0, y + (B_ROW - B_BAR) / 2, at(pc.end, pc.to, H) - x0, B_BAR, color,
@@ -871,9 +894,7 @@ export function renderAssemblyGantt(result: Result, today: number,
   const first = Math.max(1, (seen.length ? Math.min(...seen) : 1) - 1);
   const last = Math.min(days, (seen.length ? Math.max(...seen) : days) + 1);
   const span = last - first + 1;
-  const dayW = (W - LEFT - RIGHT) / span;
-  const x = (day: number) => LEFT + (day - first) * dayW;
-  const at = (day: number, h: number, H: number) => x(day) + (h / H) * dayW;
+  const { x, width, dw, at, cols, night } = hourScale(blocks, first, last, today);   // 4.47.2: 시각 축
   const unitsOf = (sid: string) => result.stations.find((rs) => rs.id === sid)!.units;
   // 그날 공정 앞에서 기다린 블록: 이 공정 블록의 자재·작업장·인력 대기 + 앞 공정 블록의 짝 대기
   const waitsAt = (sid: string, d: number) => {
@@ -911,9 +932,10 @@ export function renderAssemblyGantt(result: Result, today: number,
   for (let d = first; d <= last; d++) {
     if (span <= 40 || d % 5 === 0) {
       axis.append(s("line", { x1: x(d), x2: x(d), y1: TOP - 6, y2: height - 4, class: d % 5 === 0 ? "grid major" : "grid" }),
-        s("text", { x: x(d) + dayW / 2, y: TOP - 14, class: "tick" }, d));
+        s("text", { x: x(d) + dw(d) / 2, y: TOP - 14, class: "tick" }, d));
     }
   }
+  night(axis, TOP - 6, height - 4);
   svg.append(axis);
 
   let y = TOP;
@@ -924,19 +946,19 @@ export function renderAssemblyGantt(result: Result, today: number,
     y += A_HEAD;
     for (const u of unitsOf(st.id)) {
       const g = s("g", { class: "ship-row" });
-      g.append(s("rect", { x: LEFT, y: y + 2, width: span * dayW, height: A_UNIT - 4, class: "lane" }),
+      g.append(s("rect", { x: LEFT, y: y + 2, width: width(first, last), height: A_UNIT - 4, class: "lane" }),
         s("text", { x: 24, y: y + A_UNIT / 2 + 4, class: "ship-sub" }, `${u.unit}호 작업장`));
       // 멈춘 날(고장·사고)은 작업장 줄 아래 얇은 띠
       for (let d = first; d <= Math.min(last, today); d++) {
         const rec = u.daily[d - 1];
         if (rec && (rec.state === "breakdown_stop" || rec.state === "accident_stop")) {
-          g.append(barEl(x(d), y + A_UNIT - 5, dayW, 3, STATE_INFO[rec.state].color, `${d}일 ${STATE_INFO[rec.state].name}`));
+          g.append(barEl(x(d), y + A_UNIT - 5, dw(d), 3, STATE_INFO[rec.state].color, `${d}일 ${STATE_INFO[rec.state].name}`));
         }
       }
       for (const b of blocks.filter((b) => b.station === st.id && b.unit === u.unit)) {
         const H = b.day_hours ?? 8;
         const name = `${blockTitle(b.ship, st.id, b.no)}`;
-        for (const pc of workPieces(b, Math.min(last, today))) {
+        for (const pc of workPieces(b, Math.min(last, today), cols)) {
           const x0 = at(pc.start, pc.from, H);
           const w = at(pc.end, pc.to, H) - x0;
           const bar = barEl(x0, y + 5, w, A_UNIT - 10, color,
@@ -967,12 +989,12 @@ export function renderAssemblyGantt(result: Result, today: number,
         if (!list?.length) continue;
         const info = k.state === "pair_wait" ? PAIR_WAIT_STATE : STATE_INFO[k.state];
         top -= list.length * unitH;
-        g.append(s("rect", { x: x(d) + 1, y: top, width: Math.max(1, dayW - 2), height: list.length * unitH, fill: info.color,
+        g.append(s("rect", { x: x(d) + 1, y: top, width: Math.max(1, dw(d) - 2), height: list.length * unitH, fill: info.color,
           ...(k.state === "pair_wait" ? { stroke: PAIR_WAIT_EDGE, "stroke-width": 0.8 } : {}) }));
         lines.push(`${k.short} ${list.join(", ")}`);
       }
       if (lines.length) {
-        g.append(s("rect", { x: x(d), y, width: dayW, height: A_WAIT, fill: "transparent" },
+        g.append(s("rect", { x: x(d), y, width: dw(d), height: A_WAIT, fill: "transparent" },
           s("title", null, `${d}일 ${st.name} 앞에서 대기 · ${lines.join(" / ")}`)));
       }
     }
