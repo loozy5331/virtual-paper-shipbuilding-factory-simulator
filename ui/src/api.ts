@@ -690,7 +690,7 @@ export interface BlockEvalRow {
 
 /** 4.32(D79): 그날의 정책(공정 → 규칙)과 블록별 조치 */
 export type ActionKind = "overtime" | "extra" | "outsource" | "defer" | "assist" | "expedite";
-/** 4.42(D89): 블록 조치는 하나(문자열) 또는 여러 개(목록). 외주·포기는 혼자, 잔업·특근은 둘 중 하나 */
+/** 4.42(D89): 블록 조치는 하나(문자열) 또는 여러 개(목록). 외주·포기는 혼자, 잔업·철야는 둘 중 하나 */
 export type ActionValue = ActionKind | ActionKind[];
 export interface Decision { day: number; policy?: Record<string, DispatchRule>; actions?: Record<string, ActionValue> }
 

@@ -132,7 +132,7 @@ class Why(unittest.TestCase):
         self.assertEqual((b["plan_end"], b["due"]), (8, 10))
 
     def test_downstream_cause(self):
-        # 납기 빠른 순에 C-115 특근: D-208은 그대로 10일에 끝나지만, C가 하루 일찍 내려와 D 중조립 블록이 운반을 하루 더 기다린다
+        # 납기 빠른 순에 C-115 철야: D-208은 그대로 10일에 끝나지만, C가 하루 일찍 내려와 D 중조립 블록이 운반을 하루 더 기다린다
         m = self.card(policy={"sub_assembly": "edd"}, actions={"C-SA1": "extra"})
         self.assertEqual(m["block_times"]["D-SA1"]["end"], 10)
         w = m["why"]["D"]

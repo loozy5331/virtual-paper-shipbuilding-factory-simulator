@@ -1,7 +1,7 @@
 // 몰리는 날의 조치 요청(4.31·4.32, D78·D79): 조립 현장 배정 관제실에서 재생이 멈추면 뜬다.
 // 수업 슬라이드 "해야 할 작업은 많은데 사용할 수 있는 시간이 부족하다!"의 표에, 생산관리자가 고를 수 있는 수단을 붙였다.
 //   공정 공통: 블록 배치 정책(지금대로 / 선박 순서 / 납기 빠른 순 / 여유 작은 순 / 작업 짧은 순). 표는 고른 정책의 순서로 보인다
-//   블록마다: 조치(없음 / 잔업 / 특근 / 외주 / 지체보상금 감수). 값은 그 공정 비상 예산에서, 남은 예산을 넘는 조치는 고를 수 없다
+//   블록마다: 조치(없음 / 잔업 / 철야 / 외주 / 지체보상금 감수). 값은 그 공정 비상 예산에서, 남은 예산을 넘는 조치는 고를 수 없다
 // 외주는 운반일 때문에 직접 하는 것보다 늦게 끝날 수 있어 "직접 하면 며칠"을 옆에 둔다.
 // 4.34(D82, 사용자 "이 선택을 함으로서 결과적으로 작업시간은 어떻게 되고, 납기는 잘 지켜지고, 예산은 얼마나 소진되는지"):
 //   카드 맨 위 결과 미리보기(대기 블록이 다 끝나는 날 · 배별 인도 · 비상 예산)가 고를 때마다 바뀐다. 정책 단추마다 그 정책이면 어떻게 되는지,
@@ -39,9 +39,9 @@ const MATE_STATE: Record<string, string> = {
   finished: "완료", out: "외주 중",
 };
 export const ACTION_INFO: Record<ActionKind, { name: string; note: string }> = {
-  // 4.47.2: 잔업·특근은 같은 사람이 정규(8시간) 뒤 저녁·밤까지 더 일한다. 간트는 그날 근무시간 외 구간까지 막대가 길어진다
+  // 4.47.2: 잔업·철야는 같은 사람이 정규(8시간) 뒤 저녁·밤까지 더 일한다. 간트는 그날 근무시간 외 구간까지 막대가 길어진다
   overtime: { name: "잔업", note: "같은 사람이 그 블록을 하는 날 정규 8시간 뒤 2시간 더(하루 10시간, 처리량 1.25배). 잔업 불량·사고 위험" },
-  extra: { name: "특근", note: "같은 사람이 그 블록을 하는 날 정규 8시간 뒤 밤까지 8시간 더(하루 16시간, 처리량 2배). 사고 위험이 더 크다" },
+  extra: { name: "철야", note: "같은 사람이 그 블록을 하는 날 정규 8시간 뒤 밤까지 8시간 더(하루 16시간, 처리량 2배). 사고 위험이 더 크다" },
   outsource: { name: "외주", note: "블록을 밖으로 보낸다. 우리 정반이 비지만 운반일이 붙어 늦게 돌아올 수 있다" },
   // 4.40(D87): 응원 투입 · 긴급 자재 조달
   assist: { name: "응원 투입", note: "작업대기소에서 한 명을 더 붙여 이 블록을 3명이 한다(응원 수당만). 쉬는 사람이 없으면 다른 작업장 인원이 준다" },
@@ -248,8 +248,8 @@ function bill(state: "keep" | "spend" | "gone"): SVGElement {
 
 /** 블록 진행도 간트(4.38): 블록마다 한 줄. 옅은 칸 = 계획, 막대 = 이 선택이면 작업하는 구간(엔진 forecast),
  *  작업 중 블록은 이미 한 만큼 진하게. 계획 끝을 넘는 부분은 노랑(버퍼 소모), 버퍼 끝을 넘으면 빨강(4.47).
- *  가로축은 시각(4.47.2): 1시간의 폭이 같고, 잔업·특근으로 정규 8시간을 넘겨 일하는 날만 근무시간 외 구간(옅은 밤색)이 열린다.
- *  그래서 잔업·특근 막대는 그날 저녁까지 길어지고 끝나는 날이 당겨지며, 정규 막대는 그 구간에서 끊긴다.
+ *  가로축은 시각(4.47.2): 1시간의 폭이 같고, 잔업·철야로 정규 8시간을 넘겨 일하는 날만 근무시간 외 구간(옅은 밤색)이 열린다.
+ *  그래서 잔업·철야 막대는 그날 저녁까지 길어지고 끝나는 날이 당겨지며, 정규 막대는 그 구간에서 끊긴다.
  *  막대 아래 얇은 선은 지금대로의 시작~끝. 줄 끝에 조치 단추. 외주는 점선(보낸 날 ~ 돌아온 날, 날 단위) */
 type GanttRow = { r: SituationRow; inside: boolean; ord: string };
 type BlockTime = NonNullable<ForecastRow["block_times"]>[string];
@@ -287,7 +287,7 @@ function blockGantt(sit: Situation, sid: string, rows: GanttRow[], f: Forecast |
   };
   const night = (cls: string) => Array.from({ length: lastDay - today + 1 }, (_, k) => today + k).filter((d) => ax.evening(d) > 0)
     .map((d) => h("i", { class: cls, style: { left: pct(ax.at(d, REG_HOURS)), width: wid(ax.at(d, REG_HOURS), dayEnd(d)) },
-      title: `${d}일 근무시간 외: 정규 ${REG_HOURS}시간 뒤 ${Math.round(ax.evening(d) * 10) / 10}시간(잔업·특근, 같은 사람이 더 일한다)` }));
+      title: `${d}일 근무시간 외: 정규 ${REG_HOURS}시간 뒤 ${Math.round(ax.evening(d) * 10) / 10}시간(잔업·철야, 같은 사람이 더 일한다)` }));
   const axis = h("div", { class: "dcg-row dcg-axis" }, h("span", null),
     h("div", { class: "dcg-track" }, night("dcg-night"), Array.from({ length: lastDay - today + 1 }, (_, k) => today + k).map((d) =>
       h("span", { class: "dcg-tick", style: { left: pct(ax.x(d)), width: wid(ax.x(d), dayEnd(d)) } }, `${d}일`))),
@@ -414,7 +414,7 @@ function optionOutcome(r: ForecastRow, keep: ForecastRow): HTMLElement {
 }
 
 /** 블록 조치 단추: 값과 걸리는 날을 단추에 보이고, 남은 예산을 넘는 조치는 막는다 */
-/** 블록 조치 고르기(4.42, D89): 여러 개를 켤 수 있다. 외주·포기는 혼자(누르면 나머지가 풀린다), 잔업·특근은 둘 중 하나.
+/** 블록 조치 고르기(4.42, D89): 여러 개를 켤 수 있다. 외주·포기는 혼자(누르면 나머지가 풀린다), 잔업·철야는 둘 중 하나.
  *  값과 걸리는 날을 단추에 보이고, 켜면 남은 예산을 넘는 단추는 막는다 */
 const ALONE: ActionKind[] = ["outsource", "defer"];
 const HOURS: ActionKind[] = ["overtime", "extra"];
@@ -453,7 +453,7 @@ function actionChips(r: SituationRow, chosen: ActionKind[], left: number, busy: 
         disabled: busy || over || (na && !on),
         title: na ? "자재 키트가 이미 있거나 내일 들어옵니다(또는 같은 키트를 이미 당겼습니다)"
           : over ? `남은 예산 ${fmt(left)}으로는 부족합니다`
-            : `${ACTION_INFO[k].note}${q[k].days ? ` · 약 ${q[k].days}일` : ""}${ALONE.includes(k) ? " · 다른 조치와 함께 걸 수 없음" : HOURS.includes(k) ? " · 잔업·특근은 둘 중 하나" : ""}`,
+            : `${ACTION_INFO[k].note}${q[k].days ? ` · 약 ${q[k].days}일` : ""}${ALONE.includes(k) ? " · 다른 조치와 함께 걸 수 없음" : HOURS.includes(k) ? " · 잔업·철야는 둘 중 하나" : ""}`,
         onclick: () => onPick(next),
       }, ACTION_INFO[k].name, h("small", null, sub(k)));
     }));
