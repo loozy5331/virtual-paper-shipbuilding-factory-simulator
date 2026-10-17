@@ -95,6 +95,10 @@ def list_scenarios() -> list[dict[str, Any]]:
     out = []
     for sid in scenario_ids():
         sc = _read(DATA_DIR / "scenarios" / f"{sid}.json")
+        # 4.32.1(사용자): 조립 공정 실습은 조립 현장 배정 하나만 보인다. 숨긴 시나리오(블록 조립 실습)도
+        # 불러오기·채점은 그대로라 옛 회차와 블록 규칙 테스트가 돈다
+        if sc.get("hidden"):
+            continue
         mix: dict[str, int] = {}
         for o in sc["orders"]:
             name = rules["ship_types"][o["type"]]["name"]
