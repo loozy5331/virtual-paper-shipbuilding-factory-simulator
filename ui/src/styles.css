@@ -1865,3 +1865,4 @@ details.review-day[open] > .review-table { margin-top: 6px; }
 /* 4.40 조치 단추 일곱 개: 두 줄로 접혀도 줄 높이 안에 */
 .dcg-act .dc-chips { gap: 3px; }
 .dcg-act .dc-chip { padding: 1px 5px; font-size: 0.74rem; }
+.dc-why { margin: 2px 0 4px; font-size: 0.9rem; font-weight: 700; color: var(--warn-ink); }

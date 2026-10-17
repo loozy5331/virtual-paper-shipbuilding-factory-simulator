@@ -1287,7 +1287,10 @@ def apply_buffer_plan(config: dict[str, Any], scenario: dict[str, Any]) -> tuple
     due = config.get("due") or {}
     stations = {sid: {**plan["dues"]["stations"][sid], **(due.get("stations") or {}).get(sid, {})} for sid in plan["ships"]}
     blocks = {**plan["dues"]["blocks"], **(due.get("blocks") or {})}
-    out = {**config, "ships": {sid: {**sh, "start_day": plan["ships"][sid]["start"]} for sid, sh in config["ships"].items()},
+    # _spare(4.41): 계획 완료가 목표보다 이른 날(덤 여유). 블록이 이만큼까지 늦어도 배는 버퍼를 쓰지 않는다(조치 요청이 묻는 기준)
+    out = {**config, "ships": {sid: {**sh, "start_day": plan["ships"][sid]["start"],
+                                     "_spare": max(0, plan["ships"][sid]["target"] - plan["ships"][sid]["finish"])}
+                               for sid, sh in config["ships"].items()},
            "due": {"stations": stations, "blocks": blocks}}
     return out, plan
 
@@ -1737,6 +1740,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     # 자리가 나면 그 공정 정책 순서로 올라온다. 작업장은 적치된 블록만 들이고, 액션 카드도 적치된 블록만 묻는다. 없으면 한도 없음
     qcap = {p: config["stations"][stations[p]["id"]].get("queue_cap") for p in block_set}
     pbuf_mode = bool(scenario.get("project_buffer"))   # 4.36: 묻는 날 = 버퍼 침범 예상
+    spare = [config["ships"][o["id"]].get("_spare", 0) for o in orders]   # 4.41: 배의 덤 여유(계획 완료 ~ 목표 완료)
     decided = {d["day"]: d for d in config.get("decisions") or []}
     stop_asking = bool(config.get("decisions_end"))
     seen_pairs: set[tuple[int, int]] = set()   # 이미 물은 (공정, 배): 새 배의 블록이 그 공정 대기열에 끼어들 때만 다시 묻는다
@@ -1888,7 +1892,10 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             # 배마다 납기·버퍼와, 지금 순서대로면 블록이 늦어 버퍼를 먹을 날(그 배 블록 가운데 가장 크게 늦는 블록)
             pb = scenario["project_buffer"]
             out["ships"] = {o["id"]: {"due": o["due_day"], "buffer": config["ships"][o["id"]].get("buffer", pb.get("default_days", 0)),
-                                      "over": max([th[b["id"]] for b in all_blocks if b["ship"] == i and b["id"] in th], default=0)}
+                                      "over": max([th[b["id"]] for b in all_blocks if b["ship"] == i and b["id"] in th], default=0),
+                                      # 4.41: 덤 여유를 넘어 버퍼를 쓸 것 같은 날(묻는 까닭)과 덤 여유
+                                      "use": max([th[b["id"]] - spare[i] for b in all_blocks if b["ship"] == i and b["id"] in th] + [0]),
+                                      "spare": spare[i]}
                             for i, o in enumerate(orders)}
         return out
 
@@ -1916,8 +1923,10 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             return
         wait_all = [b for p in manual for b in waiting_blocks(p, day)]
         if pbuf_mode:
+            # 4.41(사용자 "조립 조치 요청은 그날 조립에서 문제가 생길 여지가 있을 때"): 블록이 늦는 날이 그 배의 덤 여유보다 커서
+            # 배가 버퍼를 쓸 것 같을 때만 묻는다
             th = threats(day)
-            mark = {(b["p"], b["ship"]) for b in wait_all if b["id"] in th}
+            mark = {(b["p"], b["ship"]) for b in wait_all if th.get(b["id"], 0) > spare[b["ship"]]}
             if not mark - seen_pairs:
                 return
         else:

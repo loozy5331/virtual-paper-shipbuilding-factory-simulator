@@ -119,6 +119,9 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
         // 4.39(D86): 머리글은 묻는 까닭(블록이 블록 납기를 넘길 것 같음)만. 배가 버퍼를 쓰는지는 아래 "이 선택이면"의 상황 태그가 말한다
         // 4.39.1(사용자: 4.39에서 빠진 배별 잔여 버퍼 막대를 되살림): 지금대로 가면 배마다 남는 버퍼(미리보기 "지금대로", 그날까지 아는 것만).
         // 그 아래 줄에 계획보다 늦을 블록
+        // 4.41(사용자 "조립 조치 요청은 그날 조립에서 문제가 생길 여지가 있을 때"): 왜 떴는지 배 기준 한 줄
+        sit.ships ? h("p", { class: "dc-why" }, Object.entries(sit.ships).filter(([, sh]) => sh.use).map(([sid, sh], i) =>
+          h("span", null, `${i ? " · " : ""}${sid}: 블록이 늦어 버퍼 ${sh.use}일을 쓸 것 같습니다`))) : null,
         sit.ships ? h("div", { class: "dc-bufs" }, Object.entries(sit.ships).map(([sid, sh]) => {
           const c = f?.keep.completed?.[sid];
           return bufferBar(sid, sh.buffer, c === undefined || c === null ? null : Math.max(0, c - (sh.due - sh.buffer)));
