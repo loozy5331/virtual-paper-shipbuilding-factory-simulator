@@ -54,7 +54,7 @@ ACTION_KINDS = ["overtime", "extra", "outsource", "defer"]   # 블록 조치(4.3
 BLOCK_SHIP_RANK = [WORK, REWORK, LABOR_WAIT, ACCIDENT_STOP, BREAKDOWN_STOP, MATERIAL_WAIT, STATION_WAIT, TRANSPORT, TRANSPORT_WAIT]
 
 COST_KEYS = ["labor", "overtime", "maintenance", "material", "holding", "wip", "rework",
-             "accident", "breakdown", "transporter", "investment", "research", "late_penalty", "emergency"]
+             "accident", "breakdown", "transporter", "investment", "research", "late_penalty", "emergency", "storage"]
 
 EPS = 1e-9
 
@@ -236,6 +236,13 @@ def validate_config(config: dict[str, Any], scenario: dict[str, Any]) -> None:
         start = ship.get("start_day")
         if not _is_int(start) or not 1 <= start <= days:
             errors.append(f"{sid}: 착수 예정일은 1~{days} 사이의 정수여야 합니다")
+        # 프로젝트 버퍼(4.36, D84): 버퍼가 있는 시나리오만. 착수일은 엔진이 버퍼에서 거꾸로 잡는다
+        if "buffer" in ship:
+            pb = scenario.get("project_buffer")
+            if not pb:
+                errors.append(f"{sid}: 이 분기에서는 프로젝트 버퍼를 둘 수 없습니다")
+            elif not (_is_int(ship["buffer"]) and 0 <= ship["buffer"] <= pb["max_days"]):
+                errors.append(f"{sid}: 버퍼는 0~{pb['max_days']}일이어야 합니다")
         for mid in material_ids:
             day = (ship.get("order_days") or {}).get(mid)
             if day is not None and (not _is_int(day) or not 1 <= day <= days):
@@ -782,6 +789,7 @@ def preview(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> d
     scenario = scenario or scenario_of(config)
     config = complete_config(config, scenario)
     validate_config(config, scenario)
+    config, bplan = apply_buffer_plan(config, scenario)   # 4.36: 버퍼 계획(착수일·계획 납기)
     order_days = resolve_order_days(config, scenario)
     rules = scenario["rules"]
     every = frozenset(config.get("research", []))
@@ -810,7 +818,35 @@ def preview(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> d
             # 공정 여유(4.15): 선주와 맺을 납기와 선가
             "contract": {o["id"]: {"due_day": o["due_day"], "price": o["price"], "buffer_days": o["buffer_days"]}
                          for o in contract_orders(config, scenario)},
-            **_due_preview(config, scenario)}
+            **(_buffer_preview(config, scenario, bplan) if bplan is not None else _due_preview(config, scenario))}
+
+
+def _buffer_preview(config: dict[str, Any], scenario: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
+    """프로젝트 버퍼 시나리오의 미리보기(4.36, D84). 계획은 변수 없는 실행이라 계획 간트와 블록 일정이 실행과 같은 규칙이다.
+    buffer_plan: 배마다 착수·계획 완료·버퍼·목표 완료·납기·실현 가능, 그리고 버퍼 비용(계획대로면 보관비 + 버퍼 0일 때보다 더 드는
+    재고·재공비). 블록 일정(block_plan)은 계획 실행의 블록 시각을 4.25의 모양으로 옮긴다."""
+    zero = buffer_plan({**config, "ships": {sid: {**sh, "buffer": 0} for sid, sh in config["ships"].items()}}, scenario)
+    assert zero is not None
+    extra_inv = round(sum(plan["costs"][k] - zero["costs"][k] for k in ("holding", "wip")), 2)
+    rate = scenario["project_buffer"]["storage_rate_per_day"]
+    ships = {sid: {**{k: v for k, v in sh.items() if k != "spans"},
+                   "storage": round(max(0, sh["slack"]) * sh["price"] * rate, 2)} for sid, sh in plan["ships"].items()}
+    dues = plan["dues"]["stations"]
+    due_cfg = config["due"]
+    blocks = {bid: {**b, "ready": b["start"], "ready_h": b["start_h"], "due": due_cfg["blocks"].get(bid, b["end"]),
+                    "risk": b["end"] > due_cfg["blocks"].get(bid, b["end"])} for bid, b in plan["blocks"].items()}
+    order: dict[str, list[str]] = {}
+    for bid, b in sorted(blocks.items(), key=lambda kv: (kv[1]["start"], kv[1]["start_h"] or 0)):
+        order.setdefault(b["station"], []).append(bid)
+    spans = {sid: sh["spans"] for sid, sh in plan["ships"].items()}
+    return {"buffer_plan": {"ships": ships, "extra_inventory": extra_inv,
+                            "storage": round(sum(sh["storage"] for sh in ships.values()), 2),
+                            "max_days": scenario["project_buffer"]["max_days"], "storage_rate_per_day": rate},
+            "plan": {"ships": spans, "overlaps": []},
+            "dues": {"stations": {sid: {**dues[sid], **due_cfg["stations"].get(sid, {})} for sid in dues}, "blocks": due_cfg["blocks"]},
+            "plan_risks": [{"ship": sid, "station": "buffer", "plan_end": sh["finish"], "due": sh["target"], "days": sh["finish"] - sh["target"]}
+                           for sid, sh in plan["ships"].items() if not sh["feasible"]],
+            "block_plan": {"blocks": blocks, "order": order, "risks": [bid for bid, b in blocks.items() if b["risk"]]}}
 
 
 def _due_preview(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
@@ -1125,6 +1161,135 @@ def plan_schedule(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str,
 # 시뮬레이션 (9장)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# 프로젝트 버퍼(4.36, D84): 조립 현장 배정. 계획 = 변수(불량·고장·사고·입고 지연) 없이 돌린 실행. 배마다 버퍼를 고르면
+# 계획 완료가 "납기 − 버퍼" 안에 들도록 착수일을 거꾸로 잡고, 블록·공정 납기는 그 계획에서 끝나는 날이다(블록에는 여유를
+# 붙이지 않고 여유는 배 끝의 버퍼에만). 생산 중 변수가 버퍼를 먹으면 생산관리자가 액션 카드로 되찾는다.
+
+_PLAN_CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
+_PLAN_LOCK = threading.Lock()
+_PLAN_ITERATIONS = 6
+
+
+def _no_events(value: Any) -> Any:
+    """난수표의 모든 칸을 1.0으로: 어떤 판정(불량·고장·사고·입고 지연)도 일어나지 않는다(판정은 표 값 < 확률)."""
+    if isinstance(value, dict):
+        return {k: _no_events(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_no_events(v) for v in value]
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return 1.0
+    return value
+
+
+def ideal_scenario(scenario: dict[str, Any]) -> dict[str, Any]:
+    """변수 없는 계획 실행용 시나리오(4.36): 난수표를 비우고 입고 지연을 끈다. 나머지 규칙은 그대로."""
+    return {**scenario, "random": _no_events(scenario["random"]), "supply_delays": False}
+
+
+def ship_buffers(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, int]:
+    """배마다 고른 버퍼(4.36). 없으면 시나리오 기본값."""
+    pb = scenario.get("project_buffer") or {}
+    return {o["id"]: (config.get("ships") or {}).get(o["id"], {}).get("buffer", pb.get("default_days", 0))
+            for o in scenario["orders"]}
+
+
+def _plan_config(config: dict[str, Any], starts: dict[str, int]) -> dict[str, Any]:
+    """계획 실행 설정: 고른 착수일, 몰리는 날 묻지 않음(기본 대응), 결정 기록 없음."""
+    cfg = {k: v for k, v in config.items() if k not in ("decisions", "decisions_end")}
+    cfg["ships"] = {sid: {**sh, "start_day": starts[sid]} for sid, sh in config["ships"].items()}
+    cfg["stations"] = {pid: {k: v for k, v in st.items() if k != "dispatch_mode"} for pid, st in config["stations"].items()}
+    return cfg
+
+
+def buffer_plan(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any] | None:
+    """버퍼 계획(4.36, D84). 프로젝트 버퍼가 없는 시나리오는 None.
+
+    목표 완료 = 납기 − 버퍼. 착수일을 계획 간트(배가 혼자 쓴다고 본 일정)로 처음 잡고, 변수 없는 실행을 돌려 가며
+    배를 우선순위 순으로 하나씩 옮긴다(목표와의 차이만큼, 그다음 하루씩). 목표를 넘긴 날의 합을 먼저, 남는 날(보관비)의 합을
+    그다음으로 줄이는 쪽만 받아들인다(1일보다 앞으로는 못 간다). 그래도 목표를 넘기는 배는 계획상 위험(feasible 거짓).
+    같은 설정이면 캐시에서 꺼낸다(결정 기록은 계획에 들지 않는다)."""
+    pb = scenario.get("project_buffer")
+    if not pb:
+        return None
+    plan_key = _baseline_key({k: v for k, v in config.items() if k not in ("decisions", "decisions_end")}, scenario)
+    if plan_key is not None:
+        with _PLAN_LOCK:
+            hit = _PLAN_CACHE.get(plan_key)
+            if hit is not None:
+                _PLAN_CACHE.move_to_end(plan_key)
+                return copy.deepcopy(hit)
+    ideal = ideal_scenario(scenario)
+    days = scenario["days"]
+    buffers = ship_buffers(config, scenario)
+    target = {o["id"]: o["due_day"] - buffers[o["id"]] for o in scenario["orders"]}
+    sched = plan_schedule({**config, "ships": {sid: {**sh, "start_day": 1} for sid, sh in config["ships"].items()}}, scenario)["ships"]
+    lead = {sid: max(sp["end"] for sp in spans.values()) for sid, spans in sched.items()}
+    starts = {sid: max(1, min(days, target[sid] - lead[sid] + 1)) for sid in target}
+    runs: dict[tuple[int, ...], dict[str, Any]] = {}
+    order = sorted(target, key=lambda sid: config["ships"][sid]["priority"])
+
+    def run(st: dict[str, int]) -> dict[str, Any]:
+        key = tuple(st[sid] for sid in order)
+        if key not in runs:
+            result = _run(_with_order_days(_plan_config(config, st), ideal), ideal)
+            done = {sh["id"]: sh.get("completed_day") or sh["delivered_day"] or days + 1 for sh in result["ships"]}
+            runs[key] = {"result": result, "done": done,
+                         "score": (sum(max(0, done[sid] - target[sid]) for sid in target),   # 목표를 넘긴 날(먼저 줄인다)
+                                   sum(max(0, target[sid] - done[sid]) for sid in target))}  # 남는 날(보관비, 그다음 줄인다)
+        return runs[key]
+
+    # 배를 우선순위 순으로 하나씩 옮겨 본다: 목표와의 차이만큼 한 번에, 그다음 하루씩. 나아지면 받아들인다
+    for _ in range(_PLAN_ITERATIONS):
+        improved = False
+        for sid in order:
+            gap = target[sid] - run(starts)["done"][sid]
+            for step in dict.fromkeys([gap, -1, 1]):
+                if not step:
+                    continue
+                cand = {**starts, sid: max(1, min(days, starts[sid] + step))}
+                if cand != starts and run(cand)["score"] < run(starts)["score"]:
+                    starts, improved = cand, True
+                    break
+            if len(runs) > 60:
+                break
+        if not improved or len(runs) > 60:
+            break
+    result, done = run(starts)["result"], run(starts)["done"]
+    active = [st["id"] for st in scenario["stations"] if not is_skipped(st)]
+    ships = {}
+    for sh in result["ships"]:
+        sid = sh["id"]
+        ships[sid] = {"start": starts[sid], "finish": done[sid], "due": sh["due_day"], "buffer": buffers[sid],
+                      "target": target[sid], "slack": sh["due_day"] - done[sid], "feasible": done[sid] <= target[sid],
+                      "price": sh["price"], "spans": {pid: sh["spans"][pid] for pid in active if pid in sh["spans"]}}
+    blocks = {b["id"]: {k: b.get(k) for k in ("station", "ship", "no", "unit", "start", "end", "start_h", "end_h", "day_hours", "std_mh")}
+              for b in result.get("blocks") or []}
+    out = {"ships": ships, "blocks": blocks,
+           "dues": {"stations": {sid: {pid: sp["end"] for pid, sp in v["spans"].items()} for sid, v in ships.items()},
+                    "blocks": {bid: b["end"] for bid, b in blocks.items()}},
+           "costs": {k: result["costs"][k] for k in ("holding", "wip", "storage")}}
+    if plan_key is not None:
+        with _PLAN_LOCK:
+            _PLAN_CACHE[plan_key] = copy.deepcopy(out)
+            while len(_PLAN_CACHE) > _BASELINE_CACHE_SIZE:
+                _PLAN_CACHE.popitem(last=False)
+    return out
+
+
+def apply_buffer_plan(config: dict[str, Any], scenario: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """프로젝트 버퍼 시나리오면 설정에 계획의 착수일과 납기(공정·블록, 직접 적은 납기가 먼저)를 넣은 사본과 계획을 돌려준다."""
+    plan = buffer_plan(config, scenario)
+    if plan is None:
+        return config, None
+    due = config.get("due") or {}
+    stations = {sid: {**plan["dues"]["stations"][sid], **(due.get("stations") or {}).get(sid, {})} for sid in plan["ships"]}
+    blocks = {**plan["dues"]["blocks"], **(due.get("blocks") or {})}
+    out = {**config, "ships": {sid: {**sh, "start_day": plan["ships"][sid]["start"]} for sid, sh in config["ships"].items()},
+           "due": {"stations": stations, "blocks": blocks}}
+    return out, plan
+
+
 def simulate(config: dict[str, Any], scenario: dict[str, Any] | None = None, baseline: bool = True) -> dict[str, Any]:
     """설정으로 시나리오 기간 전체를 돌리고 기록, 레포트 값, 등급을 돌려준다.
 
@@ -1134,10 +1299,14 @@ def simulate(config: dict[str, Any], scenario: dict[str, Any] | None = None, bas
     config = normalize_config(config)
     scenario = scenario or scenario_of(config)
     config = complete_config(config, scenario)
+    validate_config(config, scenario)
+    config, plan = apply_buffer_plan(config, scenario)   # 4.36: 버퍼에서 잡은 착수일과 계획 납기
     result = _run(_with_order_days(config, scenario), scenario)
+    if plan is not None:
+        result["buffer_plan"] = plan["ships"]
     base_cfg = _baseline_config(scenario) if baseline else None
     if base_cfg is not None:
-        base_cfg = complete_config(normalize_config(base_cfg), scenario)
+        base_cfg = apply_buffer_plan(complete_config(normalize_config(base_cfg), scenario), scenario)[0]
     base = _baseline_summary(base_cfg, scenario) if base_cfg is not None else None
     result["grade"] = _grade(result, config, base, base_cfg, scenario)
     # 7관리 지표(4.15)는 평가서 부록용이라 기준선 실행에는 붙이지 않는다
@@ -1267,6 +1436,8 @@ def forecast(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> 
     config = normalize_config(config)
     scenario = scenario or scenario_of(config)
     config = complete_config(config, scenario)
+    validate_config(config, scenario)
+    config = apply_buffer_plan(config, scenario)[0]
     decisions = config.get("decisions") or []
     if not decisions:
         raise ConfigError(["미리볼 결정(decisions의 마지막 항목)이 없습니다"])
@@ -1293,6 +1464,8 @@ def forecast(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> 
         return {"done_day": max(done, default=None),
                 "mh": round(sum(result["manhours"]["stations"][sid]["input"] for sid in asked), 2),
                 "late": {s["id"]: s["late_days"] for s in result["ships"]},
+                # 4.36: 배가 마친 날(버퍼 시나리오는 납기 − 마친 날이 남은 버퍼)
+                "completed": {s["id"]: s.get("completed_day") for s in result["ships"]},
                 "on_time": result["qcd"]["delivery"]["on_time"], "ships": len(result["ships"]),
                 "block_on_time": result["block_due"]["on_time"], "blocks": result["block_due"]["blocks"],
                 "spent": {k: round(v, 2) for k, v in spent.items()}, "refused": (log or {}).get("refused", {}),
@@ -1549,6 +1722,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     # 작업장 적치 한도(4.35, D83): 블록 공정 앞에 둘 수 있는 블록 수. 넘치는 블록은 가공 적치장(yard)에서 기다리다가
     # 자리가 나면 그 공정 정책 순서로 올라온다. 작업장은 적치된 블록만 들이고, 액션 카드도 적치된 블록만 묻는다. 없으면 한도 없음
     qcap = {p: config["stations"][stations[p]["id"]].get("queue_cap") for p in block_set}
+    pbuf_mode = bool(scenario.get("project_buffer"))   # 4.36: 묻는 날 = 버퍼 침범 예상
     decided = {d["day"]: d for d in config.get("decisions") or []}
     stop_asking = bool(config.get("decisions_end"))
     seen_pairs: set[tuple[int, int]] = set()   # 이미 물은 (공정, 배): 새 배의 블록이 그 공정 대기열에 끼어들 때만 다시 묻는다
@@ -1648,6 +1822,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
         """몰리는 날의 조립장(결정 카드): 공정마다 기다리는 블록과 작업장 안 블록, 규칙별 순서, 가용·필요 공수."""
         rows: dict[str, Any] = {}
         need = 0.0
+        th = threats(day) if pbuf_mode else {}   # 4.36: 블록마다 블록 납기를 넘길 날(버퍼를 먹을 날)
         for p in sorted(block_set):
             sid = stations[p]["id"]
             wait = waiting_blocks(p, day)
@@ -1666,7 +1841,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                     mates, to = [x for x in ship_blocks[i][p][k * r:(k + 1) * r] if x is not b], ship_blocks[i][nxt][k]["id"]
                 return {"id": b["id"], "ship": orders[i]["id"], "no": b["no"], "due": b["due"], "left_days": b["due"] - day,
                         "mh": round(left * mh_hours, 2), "kit": kit_status(i, p, day), "next": to,
-                        "mates": [{"id": x["id"], "state": x["state"]} for x in mates], "action": actions.get(b["id"])}
+                        "mates": [{"id": x["id"], "state": x["state"]} for x in mates], "action": actions.get(b["id"]),
+                        **({"over": th.get(b["id"], 0)} if pbuf_mode else {})}
             rule_orders = {rule: [b["id"] for b in sorted(wait, key=lambda b: block_sort_key(
                 rule, None, b["due"], b["amount"], orders[b["ship"]]["due_day"] - day - rem_ideal[(b["ship"], p)],
                 priority[b["ship"]], b["no"]))] for rule in DISPATCH_RULES}
@@ -1677,26 +1853,56 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                          "budget": budget[p], "budget_left": round(budget[p] - spent[p], 2),
                          # 적치 한도(4.35): 작업장 앞 자리 수와 가공 적치장에서 기다리는 블록(배별 수는 화면이 센다)
                          "queue_cap": qcap[p], "yard": [{"id": b["id"], "ship": orders[b["ship"]]["id"]} for b in yard]}
-        return {"day": day, "capacity_mh": pools.get("assembly", 0) * mh_hours, "need_mh": round(need * mh_hours, 2),
-                "stations": rows}
+        out = {"day": day, "capacity_mh": pools.get("assembly", 0) * mh_hours, "need_mh": round(need * mh_hours, 2),
+               "stations": rows}
+        if pbuf_mode:
+            # 배마다 납기·버퍼와, 지금 순서대로면 블록이 늦어 버퍼를 먹을 날(그 배 블록 가운데 가장 크게 늦는 블록)
+            pb = scenario["project_buffer"]
+            out["ships"] = {o["id"]: {"due": o["due_day"], "buffer": config["ships"][o["id"]].get("buffer", pb.get("default_days", 0)),
+                                      "over": max([th[b["id"]] for b in all_blocks if b["ship"] == i and b["id"] in th], default=0)}
+                            for i, o in enumerate(orders)}
+        return out
+
+    def threats(day: int) -> dict[str, int]:
+        """버퍼 침범 예상(4.36, D84): 직접 대응 공정마다 작업장 안 블록의 남은 일과 기다리는 블록(적치장 포함)을 지금 순서대로
+        정원 2명이 쉬지 않고 한다고 볼 때, 블록 납기(계획에서 끝나는 날)보다 늦게 끝날 블록과 늦는 날. 이 블록이 늦는 만큼
+        그 배의 버퍼를 먹는다(여유는 배 끝의 버퍼에만 있다)."""
+        out: dict[str, int] = {}
+        for p in manual:
+            rate = rules["max_workers_per_station"] * rules["methods"][st_cfg[p]["method"]]["speed"]
+            t = sum(c["remaining"] for c in current[p] if c and "block" in c) / rate
+            for b in sorted(waiting_blocks(p, day) + yard_blocks(p, day), key=lambda b: block_key(b, day)):
+                t += b["amount"] / rate
+                finish = day + math.ceil(t - EPS) - 1
+                if finish > b["due"]:
+                    out[b["id"]] = finish - b["due"]
+        return out
 
     def decide(day: int) -> None:
-        """몰리는 날(필요 공수 > 가용)이고, 직접 대응 공정 대기열에 새 배의 블록이 끼어들어 고를 거리가 생기면
-        결정을 적용하거나(기록에 있으면) 묻는다(기록에 없는 첫 물음 하나만 pending)."""
+        """묻는 날을 고르고, 결정을 적용하거나(기록에 있으면) 묻는다(기록에 없는 첫 물음 하나만 pending).
+        묻는 날: 몰리는 날(필요 공수 > 가용)이고 직접 대응 공정 대기열에 새 배의 블록이 끼어들어 고를 거리가 생긴 날.
+        프로젝트 버퍼 시나리오(4.36)는 작업장 앞 블록 가운데 블록 납기를 넘길 블록(버퍼 침범 예상)이 새 배에 생긴 날."""
         nonlocal pending
         if not manual:
             return
         wait_all = [b for p in manual for b in waiting_blocks(p, day)]
-        fresh = {(b["p"], b["ship"]) for b in wait_all} - seen_pairs
-        if not fresh or not any(len(waiting_blocks(p, day)) >= 2 for p, _ in fresh):
-            return
-        need = sum(b["amount"] for b in all_blocks if b["p"] in block_set and b["state"] == "wait" and b["avail"] <= day)
-        need += sum(c["remaining"] for p in block_set for c in current[p] if c and "block" in c)
-        if need * mh_hours <= pools.get("assembly", 0) * mh_hours + EPS:
-            return
-        # 고를 거리가 있는 날만: 기다리는 블록이 두 척 이상이거나 두 공정 이상에 있다(한 배 한 공정뿐이면 순서가 결과를 거의 바꾸지 않는다)
-        if len({b["ship"] for b in wait_all}) < 2 and len({b["p"] for b in wait_all}) < 2:
-            return
+        if pbuf_mode:
+            th = threats(day)
+            mark = {(b["p"], b["ship"]) for b in wait_all if b["id"] in th}
+            if not mark - seen_pairs:
+                return
+        else:
+            mark = {(b["p"], b["ship"]) for b in wait_all}
+            fresh = mark - seen_pairs
+            if not fresh or not any(len(waiting_blocks(p, day)) >= 2 for p, _ in fresh):
+                return
+            need = sum(b["amount"] for b in all_blocks if b["p"] in block_set and b["state"] == "wait" and b["avail"] <= day)
+            need += sum(c["remaining"] for p in block_set for c in current[p] if c and "block" in c)
+            if need * mh_hours <= pools.get("assembly", 0) * mh_hours + EPS:
+                return
+            # 고를 거리가 있는 날만: 기다리는 블록이 두 척 이상이거나 두 공정 이상에 있다(한 배 한 공정뿐이면 순서가 결과를 거의 바꾸지 않는다)
+            if len({b["ship"] for b in wait_all}) < 2 and len({b["p"] for b in wait_all}) < 2:
+                return
         if day in decided:
             snap = situation(day)
             d = decided[day]
@@ -1733,12 +1939,12 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                     b["staged"] = False   # 적치 자리를 비운다(4.35): 감수 블록은 적치장 맨 뒤로
             for p in manual:
                 refill(p, day)
-            seen_pairs.update((b["p"], b["ship"]) for b in wait_all)
+            seen_pairs.update(mark)
             decision_log.append({"day": day, "policy": d.get("policy") or {}, "actions": applied, "refused": refused,
                                  "situation": snap})
         elif pending is None and not stop_asking:
             pending = situation(day)
-            seen_pairs.update((b["p"], b["ship"]) for b in wait_all)
+            seen_pairs.update(mark)
 
     def parent_of(b: dict[str, Any]) -> dict[str, Any]:
         """b가 닿아서 만들 다음 블록 공정의 블록."""
@@ -2399,11 +2605,17 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     cost["material"] = sum(bom_of(i, mid) * prices[mid] for i in range(n_ships) for mid in materials)
 
     late_days = []
+    # 프로젝트 버퍼(4.36, D84): 선주는 납기일에 인수한다. 일찍 끝난 배는 납기일까지 안벽에서 기다리며 하루 보관비를 낸다
+    pbuf = scenario.get("project_buffer")
+    completed = list(delivered)
     for i, order in enumerate(orders):
         end = delivered[i] if delivered[i] is not None else days
         late = max(0, end - order["due_day"])
         late_days.append(late)
         cost["late_penalty"] += late * order["price"] * costs["late_penalty_rate_per_day"]
+        if pbuf and delivered[i] is not None and delivered[i] < order["due_day"]:
+            cost["storage"] += (order["due_day"] - delivered[i]) * order["price"] * pbuf["storage_rate_per_day"]
+            delivered[i] = order["due_day"]
 
     cost = {k: round(v, 2) for k, v in cost.items()}
     total_cost = round(sum(cost.values()), 2)
@@ -2433,6 +2645,9 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             "arrival_days": arrival_day[i],
             "started_day": started[i],
             "delivered_day": delivered[i],
+            # 4.36: 마친 날(프로젝트 버퍼 시나리오는 인도일이 납기일로 미뤄질 수 있다). 버퍼가 없으면 인도일과 같다
+            "completed_day": completed[i],
+            **({"buffer": (config["ships"][order["id"]].get("buffer", pbuf.get("default_days", 0)))} if pbuf else {}),
             "late_days": late_days[i],
             "on_time": delivered[i] is not None and late_days[i] == 0,
             "lead_time": sum(parts.values()),
