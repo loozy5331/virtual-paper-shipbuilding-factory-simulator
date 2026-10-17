@@ -74,7 +74,8 @@
     "transporter_counts": [
       1,
       2
-    ]
+    ],
+    "decisions": true
   },
   "grade": {
     "weights": {
@@ -357,17 +358,20 @@
           "sub_assembly": {
             "method": "standard",
             "overtime": false,
-            "maintenance": true
+            "maintenance": true,
+            "dispatch_mode": "manual"
           },
           "block_assembly": {
             "method": "standard",
             "overtime": false,
-            "maintenance": true
+            "maintenance": true,
+            "dispatch_mode": "manual"
           },
           "grand_assembly": {
             "method": "standard",
             "overtime": false,
-            "maintenance": true
+            "maintenance": true,
+            "dispatch_mode": "manual"
           },
           "erection": {
             "method": "standard",
