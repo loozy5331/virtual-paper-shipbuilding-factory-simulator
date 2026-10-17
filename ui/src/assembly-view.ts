@@ -70,41 +70,47 @@ export function renderAssemblyView(result: Result, scenario: Scenario, day: numb
     units(st.id).forEach((u, j) => {
       const y = SHOP_Y + 22 + j * (SLOT_H + 6);
       const r = day > 0 ? u.daily[today - 1] : undefined;
-      const px = x0 + 6, pw = shopW - 34;          // 정반(오른쪽 26은 용접기 자리)
+      // 4.39.2(사용자 "정반을 처리 가능 블록 수에 맞춰서"): 정반 하나는 한 번에 블록 하나. 정반은 블록 한 칸 크기,
+      // 그 옆 바닥에 용접기, 그 오른쪽에 오늘 앞서 마친 블록(작은 칩)
+      const bw = Math.min(70, Math.max(46, shopW * 0.3)), bh = SLOT_H - 22;
+      const px = x0 + 10, pw = bw + 14;
       const broken = r?.state === "breakdown_stop";
       g.append(s("rect", { x: x0 + 4, y: y - 2, width: shopW - 8, height: SLOT_H + 4, rx: 3, class: "asm-bay" }),
         platen(px, y + 2, pw, SLOT_H - 4),
         s("text", { x: px + 3, y: y + 10, class: "asm-small" }, `${u.unit}호 정반`),
-        welder(px + pw + 6, y + SLOT_H / 2 - 6, broken));
+        welder(px + pw + 8, y + SLOT_H / 2 - 6, broken));
       if (!r) return;
       const held = blocks.filter((b) => b.station === st.id && rec(b)?.unit === u.unit
         && ["labor_wait", "accident_stop", "breakdown_stop"].includes(rec(b)!.state));
       const worked = (r.blocks ?? []).map((id) => blocks.find((x) => x.id === id)).filter((b): b is typeof blocks[number] => !!b);
-      const onPlaten = worked.length ? worked.slice(0, 3) : held.slice(0, 1);
-      const bw = Math.min(64, (pw - 12 - (onPlaten.length - 1) * 6) / Math.max(1, onPlaten.length));
-      const bh = SLOT_H - 22;
+      const now = worked.length ? worked[worked.length - 1] : held[0];   // 지금 정반에 놓인 블록(하루의 끝)
+      const doneToday = worked.slice(0, -1);
       const working = worked.length > 0 && (r.state === "work" || r.state === "rework");
-      onPlaten.forEach((b, n) => {
-        const bx = px + 6 + n * (bw + 6);
-        const by = y + 14;
+      const bx = px + 7, by = y + 14;
+      if (now) {
         g.append(s("g", worked.length ? {} : { opacity: 0.45 },
-          blockTop(bx, by, bw, bh, `${b.ship} ${blockLabel(st.id, b.no)}`, STATION_COLOR[st.id], STATION_TEXT[st.id], r.state === "rework" && worked.length > 0,
-            worked.length ? undefined : STATE_INFO[rec(b)!.state]?.name)));
-        if (n === onPlaten.length - 1) craneOver = { x: bx + bw / 2, y: by + 4 };   // 거더는 블록 윗부분 위(이름을 가리지 않게)
-      });
-      // 작업자: 마지막(지금 하는) 블록의 아래·위 가장자리에 서서 용접. 재생 중이면 대기소에서 걸어온다
-      const target = onPlaten.length ? { bx: px + 6 + (onPlaten.length - 1) * (bw + 6), by: y + 14 } : null;
+          blockTop(bx, by, bw, bh, `${now.ship} ${blockLabel(st.id, now.no)}`, STATION_COLOR[st.id], STATION_TEXT[st.id], r.state === "rework" && worked.length > 0,
+            worked.length ? undefined : STATE_INFO[rec(now)!.state]?.name)));
+        craneOver = { x: bx + bw / 2, y: by + 4 };   // 거더는 블록 윗부분 위(이름을 가리지 않게)
+      }
+      if (doneToday.length) {
+        const cx = px + pw + 30;
+        g.append(s("text", { x: cx, y: y + 10, class: "asm-small" }, "오늘 마침"));
+        doneToday.slice(0, 3).forEach((b, n) => g.append(chip(cx, y + 14 + n * (CHIP_H + 2), `${b.ship} ${blockLabel(st.id, b.no)}`,
+          "#f1eee6", "#33413a", false, "오늘 마친 블록")));
+      }
+      // 작업자: 지금 블록의 아래·위 가장자리에 서서 용접. 재생 중이면 대기소에서 걸어온다
       for (let n = 0; n < r.workers; n++) {
-        const wx = target ? target.bx + bw * (n === 0 ? 0.3 : 0.75) : px + pw - 10 - n * 12;
-        const wy = target ? (n === 0 ? target.by + bh + 5 : target.by - 5) : y + SLOT_H / 2;
-        const torch = target && working ? { x: wx, y: n === 0 ? target.by + bh : target.by } : null;
+        const wx = now ? bx + bw * (n === 0 ? 0.3 : 0.75) : px + pw - 10 - n * 12;
+        const wy = now ? (n === 0 ? by + bh + 5 : by - 5) : y + SLOT_H / 2;
+        const torch = now && working ? { x: wx, y: n === 0 ? by + bh : by } : null;
         g.append(s("g", anim("asm-walk", 0, lead, { "--dx": `${16 - wx}px`, "--dy": `${SHOP_Y + 30 - wy}px` }),
-          cable(px + pw + 11, y + SLOT_H / 2, wx, wy), workerTop(wx, wy),
+          cable(px + pw + 13, y + SLOT_H / 2, wx, wy), workerTop(wx, wy),
           torch ? spark(torch.x, torch.y, opts.animate && day > 0, n) : null));
       }
       const info = STATE_INFO[r.state];
       if (r.state !== "work" && r.state !== "rework" && r.state !== "idle" && info) {
-        g.append(s("text", { x: px + pw - 2, y: y + 10, class: "asm-flag end", fill: info.color }, info.name));
+        g.append(s("text", { x: x0 + shopW - 10, y: y + 10, class: "asm-flag end", fill: info.color }, info.name));
       }
     });
     // 천장 크레인(4.30): 공장을 가로지르는 거더와 트롤리. 오늘 일하는 블록 위에 선다
