@@ -54,10 +54,11 @@ def policy(rule, act=None):
         for st in pd["stations"].values():
             left = st["budget_left"]
             for w in st["waiting"]:
-                kind = act(w) if act else None
-                if kind and w["quotes"][kind]["cost"] <= left:
+                kind = act(w) if act else None   # 조치 하나(문자열) 또는 여러 개(목록, 4.42)
+                cost = sum(w["quotes"][k]["cost"] for k in ([kind] if isinstance(kind, str) else kind or []))
+                if kind and cost <= left:
                     actions[w["id"]] = kind
-                    left -= w["quotes"][kind]["cost"]
+                    left -= cost
         return {"day": pd["day"], "policy": {sid: rule for sid, st in pd["stations"].items() if st["manual"]}, "actions": actions}
     return choose
 
@@ -172,7 +173,10 @@ class AssemblyScenario(unittest.TestCase):
         # 4.36(D84), 4.41(사용자 "조립에서 문제가 생길 여지가 있을 때"): 묻는 날 = 작업장 앞 블록이 블록 납기를 넘길 날이
         # 그 배의 덤 여유(계획 완료 ~ 목표 완료)보다 커서 배가 버퍼를 쓸 것 같은 새 배가 생긴 날
         _, r = play(load_presets("assembly")[1]["config"], policy("edd"))
-        self.assertEqual([d["day"] for d in r["decisions"]], [21])
+        self.assertEqual([d["day"] for d in r["decisions"]], [19, 21])
+        no_ba = copy.deepcopy(load_presets("assembly")[1]["config"])
+        del no_ba["stations"]["block_assembly"]["dispatch_mode"]   # 중조립을 기본 대응으로 두면 21일 한 번
+        self.assertEqual([d["day"] for d in play(no_ba, policy("edd"))[1]["decisions"]], [21])
         _, r = play(both_manual(), policy("edd"))
         self.assertEqual([d["day"] for d in r["decisions"]], [19, 21])
         sit = r["decisions"][0]["situation"]
@@ -191,8 +195,10 @@ class AssemblyGrade(unittest.TestCase):
             self.assertEqual((r["grade"]["score"], r["grade"]["grade"], r["qcd"]["delivery"]["on_time"]), want, pid)
         cap = simulate(presets["managed"])["grade"]["cap"]
         self.assertEqual(cap, {"grade": "B", "from": "A", "late": ["S2"]})
-        self.assertEqual(simulate(presets["managed"])["pending"]["day"], 21)
-        self.assertEqual({sid for sid, st in presets["managed"]["stations"].items() if st.get("dispatch_mode") == "manual"}, {"sub_assembly"})
+        self.assertEqual(simulate(presets["managed"])["pending"]["day"], 19)
+        # 4.42(D89, 사용자): 중조립도 기본이 직접 대응
+        self.assertEqual({sid for sid, st in presets["managed"]["stations"].items() if st.get("dispatch_mode") == "manual"},
+                         {"sub_assembly", "block_assembly"})
         self.assertEqual(presets["managed"]["pools"]["assembly"], 5)   # 하루 40 MH(슬라이드의 당일 가용 작업시간)
 
     def test_actions_rescue_or_hurt(self):
@@ -207,6 +213,27 @@ class AssemblyGrade(unittest.TestCase):
         self.assertEqual((late(ex), ex["costs"]["emergency"], simulate(c)["grade"]["grade"]), ({}, 90, "A"))
         self.assertEqual(late(play(cfg, policy("edd", lambda w: "overtime"))[1]), {"S2": 1})
         self.assertEqual(late(play(cfg, policy("ship"))[1]), {"S2": 1})
+
+    def test_combined_actions(self):
+        # 4.42(D89): 블록 조치를 여러 개. 값은 더한다. S3 중조립 블록에 특근 + 응원 투입 → 3척(96), 잔업 + 응원 투입은 S2 하루
+        late = lambda r: {s["id"]: s["late_days"] for s in r["ships"] if s["late_days"]}
+        cfg = both_manual()
+        combo = lambda kinds: (lambda w: kinds if w["id"].startswith("S3-BA") else None)
+        _, r = play(cfg, policy("edd", combo(["extra", "assist"])))
+        self.assertEqual((late(r), r["costs"]["emergency"]), ({}, 96))
+        self.assertEqual(r["decisions"][0]["actions"]["S3-BA2"], ["extra", "assist"])
+        self.assertEqual(late(play(cfg, policy("edd", combo(["overtime", "assist"])))[1]), {"S2": 1})
+        ev = simulate(play(cfg, policy("edd", combo(["extra", "assist"])))[0], baseline=False)["block_eval"]["all"]["actions"]
+        self.assertEqual(ev, {"extra": 3, "assist": 3})
+
+    def test_combined_action_rules(self):
+        # 외주·포기는 혼자만, 잔업·특근은 둘 중 하나, 같은 조치는 한 번
+        cfg = both_manual()
+        day = simulate(cfg, baseline=False)["pending"]["day"]
+        for bad in (["outsource", "assist"], ["defer", "overtime"], ["overtime", "extra"], ["assist", "assist"], ["warp"]):
+            with self.assertRaises(ConfigError, msg=str(bad)):
+                simulate({**cfg, "decisions": [{"day": day, "actions": {"S3-BA2": bad}}]}, baseline=False)
+        simulate({**cfg, "decisions": [{"day": day, "actions": {"S3-BA2": ["extra", "assist", "expedite"]}}]}, baseline=False)
 
     def test_assist_and_expedite(self):
         # 4.40(D87): 응원 투입은 그 작업장에 정원 + 1명(대기소에서 먼저 데려와 다른 작업장이 빈다), 수당은 싸다.

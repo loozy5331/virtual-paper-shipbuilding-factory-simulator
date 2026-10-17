@@ -669,7 +669,9 @@ export interface BlockEvalRow {
 
 /** 4.32(D79): 그날의 정책(공정 → 규칙)과 블록별 조치 */
 export type ActionKind = "overtime" | "extra" | "outsource" | "defer" | "assist" | "expedite";
-export interface Decision { day: number; policy?: Record<string, DispatchRule>; actions?: Record<string, ActionKind> }
+/** 4.42(D89): 블록 조치는 하나(문자열) 또는 여러 개(목록). 외주·포기는 혼자, 잔업·특근은 둘 중 하나 */
+export type ActionValue = ActionKind | ActionKind[];
+export interface Decision { day: number; policy?: Record<string, DispatchRule>; actions?: Record<string, ActionValue> }
 
 /** 결정 카드의 블록 한 줄: 남은 기간(블록 납기 − 그날), 공수, 자재 키트, 후행(짝) */
 export interface SituationRow {
@@ -677,7 +679,7 @@ export interface SituationRow {
   kit: { material: string; state: "ready" | "in_stock" | "not_ordered" | "coming"; arrival_day?: number; delayed?: boolean } | null;
   next: string; mates: { id: string; state: string }[];
   /** 이미 정한 조치(앞 결정에서) */
-  action?: ActionKind | null;
+  action?: ActionKind[] | ActionKind | null;
   /** 조치별 견적: 비상 예산에서 낼 값과 그 블록에 걸리는 날(외주는 운반 포함, 돌아오는 날) */
   /** 4.40: 긴급 자재 조달은 available(키트가 입고 전일 때만)과 당긴 입고일 arrival_day */
   quotes?: Record<ActionKind | "none", { cost: number; days: number | null; back_day?: number; available?: boolean; arrival_day?: number }>;
@@ -718,7 +720,7 @@ export interface Forecast {
 export interface DecisionReview {
   day: number; best: string; mine_is_best: boolean;
   rows: (DispatchMetrics & { choice: "mine" | "auto" | "no_actions" | DispatchRule; policy: Record<string, DispatchRule>;
-    actions: Record<string, ActionKind>; spent: number; late: Record<string, number> })[];
+    actions: Record<string, ActionValue>; spent: number; late: Record<string, number> })[];
 }
 
 export class ApiError extends Error {

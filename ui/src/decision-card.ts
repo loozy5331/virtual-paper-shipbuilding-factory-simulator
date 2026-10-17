@@ -26,7 +26,7 @@ export interface DecisionContext {
 }
 
 /** 정하는 중인 것(그날). 다시 그려도 유지한다 */
-let draft: { day: number; policy: Record<string, DispatchRule | "keep">; actions: Record<string, ActionKind> } | null = null;
+let draft: { day: number; policy: Record<string, DispatchRule | "keep">; actions: Record<string, ActionKind[]> } | null = null;
 let collapsed = false;
 /** 결과 미리보기: 마지막으로 받은 것과 그 결정(키), 기다리는 중인 결정 */
 let fc: { key: string; data: Forecast } | null = null;
@@ -61,7 +61,8 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
   const redraw = () => renderDecisionCard(root, ctx);
   const decision = (): Omit<Decision, "day"> => ({
     policy: Object.fromEntries(Object.entries(d.policy).filter(([, v]) => v !== "keep")) as Record<string, DispatchRule>,
-    actions: { ...d.actions },
+    // 4.42: 하나면 문자열, 여럿이면 목록(엔진은 둘 다 받는다)
+    actions: Object.fromEntries(Object.entries(d.actions).map(([bid, ks]) => [bid, ks.length === 1 ? ks[0] : [...ks]])),
   });
   // 결과 미리보기: 고른 것이 바뀌면 잠깐 기다렸다가 엔진에 묻는다(마지막 것만 그린다)
   const key = `${sit.day}|${JSON.stringify(decision())}`;
@@ -96,7 +97,7 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
     return { short: `${fmt(r.mh)}h · ${kit ?? "자재 ✓"}${pairDone ? " · 끝나면 바로 다음 공정" : ""}`, hot: !!kit,
       detail: `남은 작업 ${fmt(r.mh)}시간 · ${kit ?? "자재 준비됨"} · 다음: ${nextName(r)} · 짝 ${r.mates.map((m) => `${m.id} ${MATE_STATE[m.state] ?? m.state}`).join(", ") || "없음"}` };
   };
-  const spentOn = (sid: string) => sit.stations[sid].waiting.reduce((n, r) => n + (d.actions[r.id] ? r.quotes![d.actions[r.id]].cost : 0), 0);
+  const spentOn = (sid: string) => sit.stations[sid].waiting.reduce((n, r) => n + kindsCost(r, d.actions[r.id] ?? []), 0);
 
   if (collapsed) {
     mount(root, h("button", { type: "button", class: "dc-tab", onclick: () => { collapsed = false; redraw(); } },
@@ -140,7 +141,7 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
       const rowOf = Object.fromEntries(st.waiting.map((w) => [w.id, w]));
       // 표 순서: 고른 정책의 순서(지금대로면 지금 순서), 지체보상금 감수는 맨 뒤
       const ids = pol === "keep" ? st.waiting.map((w) => w.id) : st.rule_orders[pol];
-      const deferred = (id: string) => d.actions[id] === "defer" || rowOf[id].action === "defer";
+      const deferred = (id: string) => (d.actions[id] ?? []).includes("defer") || asKinds(rowOf[id].action).includes("defer");
       const order = [...ids.filter((id) => !deferred(id)), ...ids.filter(deferred)];
       const left = st.budget_left - spentOn(sid);
       const polRows = f?.policies[sid];
@@ -163,9 +164,9 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
           h("small", null, "막대 = 이 선택이면 작업하는 구간(진한 부분은 이미 한 만큼), 세로선 = 블록 납기(계획). 선을 넘으면 노랑(계획보다 늦음), 그 배 버퍼보다 더 넘으면 빨강. 배가 실제로 버퍼를 쓰는지는 위 상황 태그. 얇은 선은 지금대로의 끝. 숫자는 비상 예산에서 낼 값")),
         // 4.38(사용자 "결과 미리보기 대신 간트, 진행도처럼 채우고, 막대 연장선의 조치로 진행도가 바뀌게"): 블록 진행도 간트
         blockGantt(sit, sid, [...st.inside.map((r) => ({ r, inside: true, ord: "작업 중" })), ...order.map((id, k) => ({ r: rowOf[id], inside: false, ord: `${k + 1}` }))],
-          f, fresh, (r, inside) => inside || r.action
-            ? h("span", { class: "dc-done" }, r.action ? `${ACTION_INFO[r.action].name}(앞서 지시)` : "작업장 안")
-            : actionChips(r, d.actions[r.id], left, ctx.busy, (v) => { if (v) d.actions[r.id] = v; else delete d.actions[r.id]; redraw(); }),
+          f, fresh, (r, inside) => inside || asKinds(r.action).length
+            ? h("span", { class: "dc-done" }, asKinds(r.action).length ? `${asKinds(r.action).map((k) => ACTION_INFO[k].name).join(" + ")}(앞서 지시)` : "작업장 안")
+            : actionChips(r, d.actions[r.id] ?? [], left, ctx.busy, (v) => { if (v.length) d.actions[r.id] = v; else delete d.actions[r.id]; redraw(); }),
           (r) => readyText(r)));
     })),
     h("footer", { class: "dc-foot" },
@@ -328,26 +329,47 @@ function optionOutcome(r: ForecastRow, keep: ForecastRow): HTMLElement {
 }
 
 /** 블록 조치 단추: 값과 걸리는 날을 단추에 보이고, 남은 예산을 넘는 조치는 막는다 */
-function actionChips(r: SituationRow, chosen: ActionKind | undefined, left: number, busy: boolean,
-  onPick: (v: ActionKind | null) => void): HTMLElement {
+/** 블록 조치 고르기(4.42, D89): 여러 개를 켤 수 있다. 외주·포기는 혼자(누르면 나머지가 풀린다), 잔업·특근은 둘 중 하나.
+ *  값과 걸리는 날을 단추에 보이고, 켜면 남은 예산을 넘는 단추는 막는다 */
+const ALONE: ActionKind[] = ["outsource", "defer"];
+const HOURS: ActionKind[] = ["overtime", "extra"];
+
+function toggleKind(chosen: ActionKind[], k: ActionKind): ActionKind[] {
+  if (chosen.includes(k)) return chosen.filter((x) => x !== k);
+  if (ALONE.includes(k)) return [k];
+  return [...chosen.filter((x) => !ALONE.includes(x) && !(HOURS.includes(k) && HOURS.includes(x))), k];
+}
+
+function kindsCost(r: SituationRow, kinds: ActionKind[]): number {
+  return kinds.reduce((n, k) => n + (r.quotes?.[k]?.cost ?? 0), 0);
+}
+
+function asKinds(v: SituationRow["action"]): ActionKind[] {
+  return !v ? [] : Array.isArray(v) ? v : [v];
+}
+
+function actionChips(r: SituationRow, chosen: ActionKind[], left: number, busy: boolean,
+  onPick: (v: ActionKind[]) => void): HTMLElement {
   const q = r.quotes!;
-  const room = left + (chosen ? q[chosen].cost : 0);
   const sub = (k: ActionKind) => k === "defer" ? "0"
     : k === "outsource" ? `${fmt(q[k].cost)} · ${q[k].back_day}일 복귀`
       : k === "expedite" ? (q[k].available ? `${fmt(q[k].cost)} · ${q[k].arrival_day}일 입고` : "필요 없음") : fmt(q[k].cost);
-  return h("div", { class: "dc-chips", role: "radiogroup", "aria-label": `${r.id} 조치` },
-    h("button", { type: "button", role: "radio", "aria-checked": String(!chosen), class: `dc-chip${!chosen ? " on" : ""}`, disabled: busy,
-      onclick: () => onPick(null) }, "없음"),
+  return h("div", { class: "dc-chips", role: "group", "aria-label": `${r.id} 조치(여러 개 고를 수 있음)` },
+    h("button", { type: "button", "aria-pressed": String(!chosen.length), class: `dc-chip${!chosen.length ? " on" : ""}`, disabled: busy,
+      onclick: () => onPick([]) }, "없음"),
     (Object.keys(ACTION_INFO) as ActionKind[]).map((k) => {
       if (!q[k]) return null;   // 옛 회차의 견적에는 4.40 조치가 없다
-      const over = q[k].cost > room + 1e-9;
+      const on = chosen.includes(k);
+      const next = toggleKind(chosen, k);
+      const over = !on && kindsCost(r, next) - kindsCost(r, chosen) > left + 1e-9;
       const na = k === "expedite" && !q[k].available;
       return h("button", {
-        type: "button", role: "radio", "aria-checked": String(chosen === k), class: `dc-chip${chosen === k ? " on" : ""}`,
-        disabled: busy || over || na,
+        type: "button", "aria-pressed": String(on), class: `dc-chip${on ? " on" : ""}${ALONE.includes(k) ? " alone" : ""}`,
+        disabled: busy || over || (na && !on),
         title: na ? "자재 키트가 이미 있거나 내일 들어옵니다(또는 같은 키트를 이미 당겼습니다)"
-          : over ? `남은 예산 ${fmt(room)}으로는 부족합니다` : `${ACTION_INFO[k].note}${q[k].days ? ` · 약 ${q[k].days}일` : ""}`,
-        onclick: () => onPick(chosen === k ? null : k),
+          : over ? `남은 예산 ${fmt(left)}으로는 부족합니다`
+            : `${ACTION_INFO[k].note}${q[k].days ? ` · 약 ${q[k].days}일` : ""}${ALONE.includes(k) ? " · 다른 조치와 함께 걸 수 없음" : HOURS.includes(k) ? " · 잔업·특근은 둘 중 하나" : ""}`,
+        onclick: () => onPick(next),
       }, ACTION_INFO[k].name, h("small", null, sub(k)));
     }));
 }
