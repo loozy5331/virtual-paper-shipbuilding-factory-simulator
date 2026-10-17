@@ -1454,6 +1454,7 @@ def forecast(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> 
         raise ConfigError([f"{day}일에는 고를 조치 요청이 없습니다"])
     asked = [sid for sid, st in sit["stations"].items() if st["manual"] and st["waiting"]]
     station_of = {row["id"]: sid for sid in asked for row in sit["stations"][sid]["waiting"]}
+    shown = set(station_of) | {row["id"] for sid in asked for row in sit["stations"][sid]["inside"]}   # 카드에 보이는 블록(4.38)
 
     def row(result: dict[str, Any]) -> dict[str, Any]:
         log = next((d for d in result.get("decisions") or [] if d["day"] == day), None)
@@ -1469,7 +1470,11 @@ def forecast(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> 
                 "on_time": result["qcd"]["delivery"]["on_time"], "ships": len(result["ships"]),
                 "block_on_time": result["block_due"]["on_time"], "blocks": result["block_due"]["blocks"],
                 "spent": {k: round(v, 2) for k, v in spent.items()}, "refused": (log or {}).get("refused", {}),
-                "profit": result["profit"]}
+                "profit": result["profit"],
+                # 4.38(사용자: 조치 요청의 진행도 간트): 카드에 보이는 블록마다 이 선택이면 언제 시작해 언제 끝나나.
+                # unit이 없으면 외주(start = 보낸 날, done_day = 돌아온 날). 시각은 그날 근무 시작부터, day_hours는 그날 근무시간
+                "block_times": {b["id"]: {k: b.get(k) for k in ("start", "start_h", "end", "end_h", "day_hours", "done_day", "unit", "std_mh", "due")}
+                           for b in result["blocks"] if b["id"] in shown}}
     def with_policy(sid: str, rule: str | None) -> dict[str, Any]:
         policy = {k: v for k, v in (cand.get("policy") or {}).items() if k != sid}
         return {**cand, "policy": {**policy, sid: rule} if rule else policy}

@@ -83,25 +83,15 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
     return `${st ? name[st] : ""} ${r.next}`;
   };
   // 4.37: 버퍼 영향 한 칸(버퍼 시나리오) 또는 남은 기간
-  // 4.37.1(사용자 "버퍼를 넘는 것과 공정별 납기일을 넘는 것은 무게감이 달라"): 블록 납기를 넘겨 버퍼를 먹으면 황색(주의),
-  // 그 배 버퍼보다 더 늦으면 빨강(인도 지연, 심각)
-  const exceeds = (r: SituationRow) => !!r.over && !!sit.ships && r.over > sit.ships[r.ship].buffer;
-  const impactCell = (r: SituationRow) => r.over !== undefined
-    ? h("td", { title: `블록 납기(계획에서 끝나는 날) ${r.due}일` }, !r.over ? h("span", { class: "dc-ok" }, "계획대로")
-      : exceeds(r) ? h("span", { class: "dc-late" }, `${r.ship} 납기 ${r.over - sit.ships![r.ship].buffer}일 지연`)
-        : h("span", { class: "dc-warn" }, `${r.ship} 버퍼 ${r.over}일 소모`))
-    : h("td", { class: r.left_days <= 1 ? "wl-hot" : "" }, r.left_days < 0 ? `${-r.left_days}일 지남` : `${r.left_days}일`);
-  // 4.37: 자재와 후행(짝)을 한 칸에 짧게, 자세한 것은 마우스를 올리면
-  const readyCell = (r: SituationRow) => {
+  // 4.37: 자재와 후행(짝)을 짧게(간트 줄 이름 아래), 자세한 것은 마우스를 올리면
+  const readyText = (r: SituationRow): { short: string; detail: string; hot: boolean } => {
     const k = r.kit;
     const kit = !k || k.state === "ready" ? null
-      : k.state === "in_stock" ? `${matName[k.material]} 창고(지게차 대기)`
-        : k.state === "not_ordered" ? `${matName[k.material]} 발주 전` : `${matName[k.material]} ${k.arrival_day}일 입고${k.delayed ? "(지연)" : ""}`;
+      : k.state === "in_stock" ? `${matName[k.material]} 창고` : k.state === "not_ordered" ? `${matName[k.material]} 발주 전`
+        : `${matName[k.material]} ${k.arrival_day}일 입고`;
     const pairDone = r.mates.every((m) => ["pair", "merged", "finished"].includes(m.state));
-    const detail = `다음: ${nextName(r)} · 짝 ${r.mates.map((m) => `${m.id} ${MATE_STATE[m.state] ?? m.state}`).join(", ") || "없음"}`;
-    return h("td", { title: detail },
-      kit ? h("span", { class: "dc-hit" }, kit) : h("span", { class: "dc-ok" }, "자재 ✓"),
-      h("small", { class: pairDone ? "dc-go" : "" }, pairDone ? " · 끝나면 바로 다음 공정" : " · 짝 기다림"));
+    return { short: `${fmt(r.mh)}h · ${kit ?? "자재 ✓"}${pairDone ? " · 끝나면 바로 다음 공정" : ""}`, hot: !!kit,
+      detail: `남은 작업 ${fmt(r.mh)}시간 · ${kit ?? "자재 준비됨"} · 다음: ${nextName(r)} · 짝 ${r.mates.map((m) => `${m.id} ${MATE_STATE[m.state] ?? m.state}`).join(", ") || "없음"}` };
   };
   const spentOn = (sid: string) => sit.stations[sid].waiting.reduce((n, r) => n + (d.actions[r.id] ? r.quotes![d.actions[r.id]].cost : 0), 0);
 
@@ -152,27 +142,14 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
               }, h("b", null, label, sub ? h("small", null, ` ${sub}`) : null),
               polRows ? optionOutcome(polRows[id as DispatchRule | "keep"], polRows.keep) : h("small", { class: "dc-out dim" }, "…"))))),
         h("div", { class: "dc-step-head" }, h("span", { class: "dc-step" }, "블록별 조치"),
-          h("small", null, "노란 줄은 버퍼를 소모할 블록, 빨간 줄은 버퍼를 넘겨 납기가 늦을 블록입니다. 숫자는 비상 예산에서 낼 값")),
-        h("table", { class: "plan wl-table dc-table" },
-          h("thead", null, h("tr", null, h("th", null, "블록"), h("th", null, sit.ships ? "버퍼 영향" : "남은 기간"),
-            h("th", null, "남은 작업"), h("th", null, "준비"), h("th", null, "조치"))),
-          h("tbody", null, st.inside.map((r) => h("tr", { class: `dc-inside${exceeds(r) ? " threat late" : r.over ? " threat" : ""}` },
-            h("th", null, h("small", { class: "dc-ord" }, "작업 중"), `${r.ship} ${blockLabel(sid, r.no)}`),
-            impactCell(r),
-            h("td", null, `${fmt(r.mh)}시간`),
-            readyCell(r),
-            h("td", null, h("span", { class: "dc-done" }, r.action ? `${ACTION_INFO[r.action].name}(앞서 지시)` : "작업장 안")))),
-          order.map((id, k) => {
-            const r = rowOf[id];
-            return h("tr", { class: exceeds(r) ? "threat late" : (r.over ?? (r.left_days <= 1 ? 1 : 0)) ? "threat" : "" },
-              h("th", null, h("small", { class: "dc-ord" }, `${k + 1}`), `${r.ship} ${blockLabel(sid, r.no)}`),
-              impactCell(r),
-              h("td", { title: r.quotes ? `정원 2명이 정규 근무로 하면 ${r.quotes.none.days}일` : undefined }, `${fmt(r.mh)}시간`),
-              readyCell(r),
-              h("td", null, r.action
-                ? h("span", { class: "dc-done" }, `${ACTION_INFO[r.action].name}(앞서 지시)`)
-                : actionChips(r, d.actions[id], left, ctx.busy, (v) => { if (v) d.actions[id] = v; else delete d.actions[id]; redraw(); })));
-          }))));
+          h("small", { class: "dcg-mh" }, `필요 ${fmt(sit.need_mh)} MH · 가용 ${fmt(sit.capacity_mh)} MH/일${f ? ` · 이 선택의 투입 ${fmt(f.mine.mh)} MH` : ""}`),
+          h("small", null, "막대 = 이 선택이면 작업하는 구간(진한 부분은 이미 한 만큼), 세로선 = 블록 납기. 선을 넘으면 노랑(버퍼 소모), 그 배 버퍼까지 넘으면 빨강(납기 지연). 얇은 선은 지금대로의 끝. 숫자는 비상 예산에서 낼 값")),
+        // 4.38(사용자 "결과 미리보기 대신 간트, 진행도처럼 채우고, 막대 연장선의 조치로 진행도가 바뀌게"): 블록 진행도 간트
+        blockGantt(sit, sid, [...st.inside.map((r) => ({ r, inside: true, ord: "작업 중" })), ...order.map((id, k) => ({ r: rowOf[id], inside: false, ord: `${k + 1}` }))],
+          f, fresh, (r, inside) => inside || r.action
+            ? h("span", { class: "dc-done" }, r.action ? `${ACTION_INFO[r.action].name}(앞서 지시)` : "작업장 안")
+            : actionChips(r, d.actions[r.id], left, ctx.busy, (v) => { if (v) d.actions[r.id] = v; else delete d.actions[r.id]; redraw(); }),
+          (r) => readyText(r)));
     })),
     h("footer", { class: "dc-foot" },
       h("button", { type: "button", class: "btn", disabled: ctx.busy, title: "남은 날은 묻지 않고 정책대로 합니다", onclick: ctx.onAuto }, "이후는 기본 대응으로"),
@@ -184,9 +161,8 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
 function outcomePanel(scenario: Scenario, sit: Situation, stations: string[], name: Record<string, string>, f: Forecast | null, fresh: boolean,
   budget: (sid: string) => { left: number; total: number; spend: number }): HTMLElement {
   const m = f?.mine, k = f?.keep;
-  const mhDelta = m && k ? m.mh - k.mh : 0;
   return h("section", { class: `dc-outcome${fresh ? "" : " loading"}`, "aria-live": "polite" },
-    h("div", { class: "dc-outcome-head" }, h("b", null, "이 선택의 결과 미리보기"),
+    h("div", { class: "dc-outcome-head" }, h("b", null, "이 선택이면"),
       h("small", null, fresh ? "오늘 이렇게 하고 그 뒤는 기본 대응으로 끝까지 돌린 결과 · \"지금대로\"는 오늘 아무것도 바꾸지 않았을 때" : "계산하는 중…")),
     sit.ships ? verdict(sit, m) : null,
     // 4.37.3(사용자): 비상 예산은 판정 띠 바로 아래 한 줄
@@ -207,14 +183,6 @@ function outcomePanel(scenario: Scenario, sit: Situation, stations: string[], na
         }),
         m && Object.keys(m.refused).length ? h("small", { class: "dc-note wl-hot" }, `예산을 넘어 받지 않는 조치 ${Object.keys(m.refused).length}건`) : null),
     h("div", { class: "dc-outcome-grid" },
-      // 4.37.2(사용자): 작업시간은 맨아워 글자로. 오늘 필요(작업장 앞·작업 중 블록의 남은 작업) · 가용(조립 인원 × 8시간), 이 선택의 투입 공수
-      h("div", { class: "dc-out-cell dc-mh" },
-        h("small", null, "작업시간(MH = 사람 × 시간)"),
-        h("div", { class: "dc-mh-row" }, h("span", null, "필요"), h("b", null, `${fmt(sit.need_mh)} MH`)),
-        h("div", { class: "dc-mh-row" }, h("span", null, "가용"), h("b", null, `${fmt(sit.capacity_mh)} MH/일`)),
-        sit.need_mh > sit.capacity_mh ? h("small", { class: "dc-note" }, `하루치로는 ${fmt(sit.need_mh - sit.capacity_mh)} MH 모자람`) : null,
-        m ? h("div", { class: "dc-mh-row" }, h("span", null, "이 선택의 투입"),
-          h("b", null, `${fmt(m.mh)} MH`), mhDelta ? h("small", null, ` 지금대로 ${mhDelta > 0 ? "+" : ""}${fmt(mhDelta)}`) : null) : null),
       sit.ships ? bufferCell(scenario, sit, m, k) : h("div", { class: "dc-out-cell" },
         h("small", null, "납기 · 배별 인도"),
         h("div", { class: "dc-ships" }, scenario.orders.map((o) => {
@@ -226,6 +194,60 @@ function outcomePanel(scenario: Scenario, sit: Situation, stations: string[], na
         })),
         m ? h("small", { class: "dc-note" }, `블록 납기 ${m.block_on_time}/${m.blocks}`,
           k && k.block_on_time !== m.block_on_time ? ` (지금대로 ${k.block_on_time})` : "") : null)));
+}
+
+/** 블록 진행도 간트(4.38): 블록마다 한 줄. 옅은 칸 = 계획(오늘 ~ 블록 납기), 막대 = 이 선택이면 작업하는 구간(엔진 forecast),
+ *  작업 중 블록은 이미 한 만큼 진하게. 납기선을 넘는 부분은 노랑(버퍼 소모), 그 배 버퍼보다 더 늦으면 빨강(납기 지연).
+ *  막대 아래 얇은 선은 지금대로의 끝. 줄 끝에 조치 단추. 외주는 점선(보낸 날 ~ 돌아온 날) */
+type GanttRow = { r: SituationRow; inside: boolean; ord: string };
+function blockGantt(sit: Situation, sid: string, rows: GanttRow[], f: Forecast | null, fresh: boolean,
+  chips: (r: SituationRow, inside: boolean) => HTMLElement, ready: (r: SituationRow) => { short: string; detail: string; hot: boolean }): HTMLElement {
+  const today = sit.day;
+  const mine = f?.mine.block_times ?? {}, keep = f?.keep.block_times ?? {};
+  const pos = (day: number | null, hr: number | null, hours: number | null, end: boolean) =>
+    day === null ? null : day - today + (hr === null ? (end ? 1 : 0) : hr / (hours || 8));
+  const span = (b: NonNullable<ForecastRow["block_times"]>[string] | undefined) => {
+    if (!b) return null;
+    const out = b.unit === null;
+    const s0 = out ? (b.start ?? today) - today : pos(b.start, b.start_h, b.day_hours, false);
+    const e0 = out ? (b.done_day ?? today) - today + 1 : pos(b.end, b.end_h, b.day_hours, true);
+    return s0 === null || e0 === null ? null : { s: s0, e: Math.max(e0, s0 + 0.05), out };
+  };
+  const ends = rows.flatMap(({ r }) => [span(mine[r.id])?.e ?? 0, span(keep[r.id])?.e ?? 0, r.due - today + 1]);
+  const total = Math.max(4, Math.ceil(Math.max(...ends)) + 0.5);
+  const x = (v: number) => `${(Math.max(0, Math.min(total, v)) / total) * 100}%`;
+  const w = (a: number, b: number) => `${(Math.max(0, Math.min(total, b) - Math.max(0, a)) / total) * 100}%`;
+  const bufferOf = (ship: string) => sit.ships?.[ship]?.buffer ?? 0;
+  const axis = h("div", { class: "dcg-row dcg-axis" }, h("span", null),
+    h("div", { class: "dcg-track" }, Array.from({ length: Math.ceil(total) }, (_, k) =>
+      h("span", { class: "dcg-tick", style: { left: x(k), width: x(1) } }, `${today + k}일`))),
+    h("span", null));
+  return h("div", { class: `dcg${fresh ? "" : " loading"}` }, axis, rows.map(({ r, inside, ord }) => {
+    const m = span(mine[r.id]), k = span(keep[r.id]);
+    const dueX = r.due - today + 1;
+    const late = m ? Math.ceil(m.e - dueX - 1e-9) : 0;                 // 블록 납기를 넘긴 날
+    const sev = late <= 0 ? "" : late > bufferOf(r.ship) ? "late" : "warn";
+    const rd = ready(r);
+    const doneFrac = inside && m && mine[r.id]?.std_mh ? Math.max(0, Math.min(1, 1 - r.mh / mine[r.id]!.std_mh)) : 0;
+    const track = h("div", { class: "dcg-track" },
+      h("i", { class: "dcg-plan", style: { left: "0%", width: x(dueX) } }),
+      h("i", { class: "dcg-due", style: { left: x(dueX) } }));
+    if (m) {
+      const bar = h("i", { class: `dcg-bar${m.out ? " out" : ""}`, style: { left: x(m.s), width: w(m.s, m.e) },
+        title: m.out ? `외주: ${today + Math.floor(m.s)}일에 보내 ${mine[r.id]?.done_day}일에 돌아옴` : `${r.ship} ${r.id} 이 선택이면 ${mine[r.id]?.end}일에 끝남` });
+      if (doneFrac > 0) bar.append(h("b", { class: "dcg-progress", style: { width: `${doneFrac * 100}%` } }));
+      track.append(bar);
+      if (m.e > dueX) track.append(h("i", { class: `dcg-over ${sev}`, style: { left: x(Math.max(dueX, m.s)), width: w(Math.max(dueX, m.s), m.e) } }));
+    }
+    if (k && m && Math.abs(k.e - m.e) > 0.01) track.append(h("i", { class: "dcg-keep", style: { left: x(k.s), width: w(k.s, k.e) }, title: `지금대로면 ${keep[r.id]?.end ?? keep[r.id]?.done_day}일에 끝남` }));
+    return h("div", { class: `dcg-row${sev ? ` sev-${sev}` : ""}${inside ? " inside" : ""}` },
+      h("div", { class: "dcg-label", title: rd.detail },
+        h("small", { class: "dc-ord" }, ord), h("b", null, `${r.ship} ${blockLabel(sid, r.no)}`),
+        h("span", { class: rd.hot ? "dc-hit" : "" }, rd.short),
+        sev ? h("em", { class: `dcg-sev ${sev}` }, sev === "late" ? `납기 ${late - bufferOf(r.ship)}일 지연` : `버퍼 ${late}일 소모`) : null),
+      track,
+      h("div", { class: "dcg-act" }, chips(r, inside)));
+  }));
 }
 
 /** 경고 기호(4.37.3): 노란 삼각형에 검은 느낌표. 조치가 필요하다는 표시(글자와 함께 쓴다) */
