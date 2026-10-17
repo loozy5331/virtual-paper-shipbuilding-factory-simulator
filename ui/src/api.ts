@@ -728,7 +728,11 @@ export interface ForecastRow {
   completed?: Record<string, number | null>;
   /** 4.38: 카드에 보이는 블록마다 이 선택이면 언제 시작·끝나나(unit이 없으면 외주, done_day = 돌아온 날) */
   block_times?: Record<string, { start: number | null; start_h: number | null; end: number | null; end_h: number | null; day_hours: number | null;
-    done_day: number | null; unit: number | null; std_mh: number; due: number }>;
+    done_day: number | null; unit: number | null; std_mh: number; due: number;
+    /** 4.47: 계획(변수 없는 실행)에서 끝나는 날. 그날을 넘기면 그 배 버퍼를 쓰기 시작한다(버퍼 시나리오만) */
+    plan_end?: number | null }>;
+  /** 4.47: 계획보다 늦게 끝나는 배마다 어디서 날을 더 썼나(상태·공정별 계획과의 차이, 합 = days) */
+  why?: Record<string, { plan_finish: number; days: number; items: { state: string; station: string | null; days: number }[] }>;
   /** 그날 쓴 비상 예산(공정별), 예산을 넘어 받지 않은 조치 */
   spent: Record<string, number>; refused: Record<string, string>; profit: number;
 }

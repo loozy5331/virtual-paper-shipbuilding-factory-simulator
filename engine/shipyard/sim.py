@@ -1298,7 +1298,8 @@ def buffer_plan(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, A
         sid = sh["id"]
         ships[sid] = {"start": starts[sid], "finish": done[sid], "due": sh["due_day"], "buffer": buffers[sid],
                       "target": target[sid], "slack": sh["due_day"] - done[sid], "feasible": done[sid] <= target[sid],
-                      "price": sh["price"], "spans": {pid: sh["spans"][pid] for pid in active if pid in sh["spans"]}}
+                      "price": sh["price"], "spans": {pid: sh["spans"][pid] for pid in active if pid in sh["spans"]},
+                      "days_by": ship_days_by(sh)}
     blocks = {b["id"]: {k: b.get(k) for k in ("station", "ship", "no", "unit", "start", "end", "start_h", "end_h", "day_hours", "std_mh")}
               for b in result.get("blocks") or []}
     out = {"ships": ships, "blocks": blocks,
@@ -1310,6 +1311,17 @@ def buffer_plan(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, A
             _PLAN_CACHE[plan_key] = copy.deepcopy(out)
             while len(_PLAN_CACHE) > _BASELINE_CACHE_SIZE:
                 _PLAN_CACHE.popitem(last=False)
+    return out
+
+
+def ship_days_by(ship: dict[str, Any]) -> dict[str, int]:
+    """배가 보낸 날을 "상태|공정"별로 센다(착수 전·인도 후 빼고). 계획과 빼 보면 배가 어디서 날을 더 썼는지 보인다(4.47)."""
+    out: dict[str, int] = {}
+    for d in ship["daily"]:
+        if d["state"] in (NOT_STARTED, DONE):
+            continue
+        key = f"{d['state']}|{d.get('station') or ''}"
+        out[key] = out.get(key, 0) + 1
     return out
 
 
@@ -1480,7 +1492,7 @@ def forecast(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> 
     scenario = scenario or scenario_of(config)
     config = complete_config(config, scenario)
     validate_config(config, scenario)
-    config = apply_buffer_plan(config, scenario)[0]
+    config, plan = apply_buffer_plan(config, scenario)
     decisions = config.get("decisions") or []
     if not decisions:
         raise ConfigError(["미리볼 결정(decisions의 마지막 항목)이 없습니다"])
@@ -1517,8 +1529,33 @@ def forecast(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> 
                 "profit": result["profit"],
                 # 4.38(사용자: 조치 요청의 진행도 간트): 카드에 보이는 블록마다 이 선택이면 언제 시작해 언제 끝나나.
                 # unit이 없으면 외주(start = 보낸 날, done_day = 돌아온 날). 시각은 그날 근무 시작부터, day_hours는 그날 근무시간
-                "block_times": {b["id"]: {k: b.get(k) for k in ("start", "start_h", "end", "end_h", "day_hours", "done_day", "unit", "std_mh", "due")}
-                           for b in result["blocks"] if b["id"] in shown}}
+                "block_times": {b["id"]: {**{k: b.get(k) for k in ("start", "start_h", "end", "end_h", "day_hours", "done_day", "unit", "std_mh", "due")},
+                                          # 4.47: 계획(변수 없는 실행)에서 끝나는 날. 그날을 넘기면 그 배 버퍼를 쓰기 시작한다
+                                          **({"plan_end": plan_blocks[b["id"]]["end"]} if b["id"] in plan_blocks else {})}
+                           for b in result["blocks"] if b["id"] in shown},
+                "why": why(result)}
+
+    plan_blocks = plan["blocks"] if plan else {}
+
+    def why(result: dict[str, Any]) -> dict[str, Any]:
+        """4.47(사용자 "D가 지연된다는데 간트로는 안 보인다"): 계획보다 늦게 끝나는 배마다 어디서 날을 더 썼나.
+        계획과 배의 날을 "상태|공정"별로 뺀 것(늘어난 날은 양수, 줄어든 날은 음수, 합 = 계획보다 늦은 날).
+        블록 간트에 없는 하류(운반 대기 등)도 보인다."""
+        if not plan:
+            return {}
+        out = {}
+        for sh in result["ships"]:
+            p = plan["ships"][sh["id"]]
+            done = sh.get("completed_day") or result["days"] + 1
+            if done <= p["finish"]:
+                continue
+            now = ship_days_by(sh)
+            diff = {k: v - p["days_by"].get(k, 0) for k, v in now.items()}
+            diff.update({k: -v for k, v in p["days_by"].items() if k not in now})
+            items = sorted(((k, d) for k, d in diff.items() if d), key=lambda kd: -kd[1])   # 늘어난 날 먼저, 줄어든 날(음수)은 뒤
+            out[sh["id"]] = {"plan_finish": p["finish"], "days": done - p["finish"],
+                             "items": [{"state": k.split("|")[0], "station": k.split("|")[1] or None, "days": d} for k, d in items]}
+        return out
     def with_policy(sid: str, rule: str | None) -> dict[str, Any]:
         policy = {k: v for k, v in (cand.get("policy") or {}).items() if k != sid}
         return {**cand, "policy": {**policy, sid: rule} if rule else policy}

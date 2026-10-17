@@ -15,6 +15,7 @@ import copy
 import unittest
 
 from shipyard import load_presets, load_scenario, simulate
+from shipyard.sim import forecast
 
 SCENE = 10
 
@@ -114,6 +115,30 @@ class Order(unittest.TestCase):
         self.assertEqual(r["costs"]["emergency"], 120)
         # 납기 빠른 순에 C 긴급 조달을 더하면 C가 앞당겨져 뒤 공정에서 D를 밀어낸다(돈 쓰고 한 척 놓침)
         self.assertEqual(late(decide(preset("managed"), policy={"sub_assembly": "edd"}, actions={"C-SA1": "expedite"})), {"D": 1})
+
+
+class Why(unittest.TestCase):
+    """4.47(사용자 "D가 1일 지연된다는데 아래 간트로는 확인하기 어렵다"): 조치 요청 미리보기가 블록의 계획 끝과,
+    계획보다 늦는 배마다 어디서 날을 더 썼는지 준다."""
+
+    def card(self, **decision):
+        cfg = preset("managed")
+        cfg["decisions"] = [{"day": SCENE, **decision}]
+        return forecast(cfg)["mine"]
+
+    def test_plan_end_before_handoff(self):
+        # D-208은 계획에서 8일에 끝난다. 인계 기한 10일까지 가면 이미 버퍼 2일(D 버퍼 전부)을 쓴 것
+        b = self.card()["block_times"]["D-SA1"]
+        self.assertEqual((b["plan_end"], b["due"]), (8, 10))
+
+    def test_downstream_cause(self):
+        # 납기 빠른 순에 C-115 특근: D-208은 그대로 10일에 끝나지만, C가 하루 일찍 내려와 D 중조립 블록이 운반을 하루 더 기다린다
+        m = self.card(policy={"sub_assembly": "edd"}, actions={"C-SA1": "extra"})
+        self.assertEqual(m["block_times"]["D-SA1"]["end"], 10)
+        w = m["why"]["D"]
+        self.assertEqual((w["plan_finish"], w["days"]), (14, 3))
+        self.assertIn({"state": "transport_wait", "station": "block_assembly", "days": 2}, w["items"])
+        self.assertEqual(sum(it["days"] for it in w["items"]), w["days"])   # 합 = 계획보다 늦은 날
 
 
 class Grade(unittest.TestCase):
