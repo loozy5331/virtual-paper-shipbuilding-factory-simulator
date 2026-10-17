@@ -151,18 +151,19 @@ export function renderDesk(root: HTMLElement, ctx: DeskContext): void {
     return board;
   }));
 
+  // 4.42.3(사용자): 조립 공정 실습을 생산관리 시나리오(반기 캐러셀)보다 위에. 구분 점선은 실습 줄 아래로
   mount(root,
-    h("div", { class: "desk-intro" },
-      h("small", { class: "desk-brand" }, "종이배 조선소 · 생산관리 시뮬레이터"),
-      h("h2", null, "어느 반기의 생산계획을 맡을까요?"),
-      h("p", null, "입문 반기부터 차례로 맡으면 좋습니다. 오른쪽으로 넘길수록 수주가 많고 판단할 것이 늘어납니다.")),
-    h("div", { class: "desk-carousel" }, prev, viewport, next),
-    dots,
-    drills.length ? h("section", { class: "desk-drills", "aria-label": "조립 공정 실습" },
+    h("small", { class: "desk-brand desk-brand-top" }, "종이배 조선소 · 생산관리 시뮬레이터"),
+    drills.length ? h("section", { class: "desk-drills top", "aria-label": "조립 공정 실습" },
       h("div", { class: "desk-drills-head" },
         h("h3", null, "조립 공정 실습"),
         h("p", null, "조선소 전체가 아니라 조립 공정 하나를 맡습니다. 블록마다 납기·작업시간·자재·후행 공정을 보고 무엇부터 할지 정하고, 관제실의 \"전체\" 탭으로 조선소 전체에서 무슨 일이 있었는지 거슬러 봅니다.")),
-      h("div", { class: "desk-drill-row" }, drills.map((sc) => card(sc, (b) => ctx.onPick(sc.id, b))))) : null);
+      h("div", { class: "desk-drill-row" }, drills.map((sc) => card(sc, (b) => ctx.onPick(sc.id, b))))) : null,
+    h("div", { class: "desk-intro" },
+      h("h2", null, "어느 반기의 생산계획을 맡을까요?"),
+      h("p", null, "입문 반기부터 차례로 맡으면 좋습니다. 오른쪽으로 넘길수록 수주가 많고 판단할 것이 늘어납니다.")),
+    h("div", { class: "desk-carousel" }, prev, viewport, next),
+    dots);
   go(deskIndex);
   // 트랙 위치는 보이는 폭에 따라 다르다: 붙인 뒤와 창 크기가 바뀔 때 다시 잰다
   requestAnimationFrame(() => place(0, false));
