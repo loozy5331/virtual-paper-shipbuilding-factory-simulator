@@ -19,6 +19,11 @@ const LABEL_W = 92;
 const VALUE_W = 120;
 const loss = (state: string) => LOSS_STATES.find((x) => x.state === state)!.color;
 const WORK_COLOR = "#3f6152";   // 4.36 버퍼 간트의 계획 작업과 같은 색
+// 4.37.1 무게감(사용자 "버퍼를 넘는 것과 공정별 납기일을 넘는 것은 무게감이 달라"): 계획(공정·블록 납기)보다 늦어 버퍼를 먹음 = 황색 주의,
+// 버퍼를 넘겨 인도가 늦음 = 진한 빨강 심각. 색각 이상에 대비해 채움(옅게 / 꽉)과 글자("먹음" / "지연")도 다르게
+const WARN_FILL = "#f1d58a";
+const WARN_EDGE = "#b8860b";
+const LATE_FILL = "#b3261e";
 
 export function renderAssemblyReport(result: Result, scenario: Scenario, onApplyRule?: (rule: DispatchRule) => void,
   review?: HTMLElement | null): HTMLElement | null {
@@ -45,12 +50,13 @@ function tiles(result: Result, scenario: Scenario): HTMLElement {
   const eff = result.manhours?.total.efficiency ?? null;
   const spent = result.block_eval?.all.emergency ?? 0;
   const acts = Object.values(result.block_eval?.all.actions ?? {}).reduce((a, b) => a + (b ?? 0), 0);
-  const tile = (label: string, value: string, sub: string, bad = false) =>
-    h("div", { class: `asm-tile${bad ? " bad" : ""}` }, h("small", null, label), h("b", null, value), h("span", null, sub));
+  // 4.37.1: 무게감 구분. 인도 지연(버퍼 초과)은 빨강, 블록 납기(계획) 넘김은 황색
+  const tile = (label: string, value: string, sub: string, sev: "" | "warn" | "bad" = "") =>
+    h("div", { class: `asm-tile${sev ? ` ${sev}` : ""}` }, h("small", null, label), h("b", null, value), h("span", null, sub));
   return h("div", { class: "asm-tiles" },
     tile("인도 납기", `${result.ships.length - late.length} / ${result.ships.length}척`,
-      late.length ? late.map((sh) => `${sh.id} ${sh.late_days}일 지연`).join(", ") : "모두 납기 내", late.length > 0),
-    tile("블록 납기", `${bd.on_time} / ${bd.blocks}`, `준수율 ${bd.rate === null ? "—" : pct(bd.rate, 0)} · 늦은 날 합 ${bd.late_days}일`, bd.on_time < bd.blocks),
+      late.length ? late.map((sh) => `${sh.id} ${sh.late_days}일 지연`).join(", ") : "모두 납기 내", late.length > 0 ? "bad" : ""),
+    tile("블록 납기", `${bd.on_time} / ${bd.blocks}`, `준수율 ${bd.rate === null ? "—" : pct(bd.rate, 0)} · 늦은 날 합 ${bd.late_days}일`, bd.on_time < bd.blocks ? "warn" : ""),
     tile("공수 효율", eff === null ? "—" : pct(eff, 0), result.manhours ? `표준 ${num(result.manhours.total.standard, 0)} ÷ 투입 ${num(result.manhours.total.input, 0)} MH` : ""),
     scenario.decision_stations
       ? tile("비상 조치", acts ? `${acts}건` : "없음", spent ? `비상 예산 ${num(spent, 0)} 사용` : "비상 예산 쓰지 않음")
@@ -79,16 +85,16 @@ function bufferChart(result: Result): HTMLElement {
     if (r.buf) svg.append(s("rect", { x: x0, y: y + 4, width: r.buf * dayW, height: 14, rx: 3, fill: "url(#asm-buf-hatch)", class: "asm-buf-track" },
       s("title", null, `${r.id} 고른 버퍼 ${r.buf}일`)));
     const usedIn = Math.min(r.used, r.buf);
-    if (usedIn) svg.append(s("rect", { x: x0, y: y + 4, width: usedIn * dayW - (r.over ? 1 : 0), height: 14, rx: 3, fill: WORK_COLOR },
+    if (usedIn) svg.append(s("rect", { x: x0, y: y + 4, width: usedIn * dayW - (r.over ? 1 : 0), height: 14, rx: 3, fill: WARN_FILL, stroke: WARN_EDGE, "stroke-width": 0.8 },
       s("title", null, `${r.id} 버퍼 ${usedIn}일 씀`)));
-    if (r.over) svg.append(s("rect", { x: x0 + r.buf * dayW + 1, y: y + 4, width: r.over * dayW - 1, height: 14, rx: 3, fill: loss("rework") },
+    if (r.over) svg.append(s("rect", { x: x0 + r.buf * dayW + 1, y: y + 4, width: r.over * dayW - 1, height: 14, rx: 3, fill: LATE_FILL },
       s("title", null, `${r.id} 버퍼를 ${r.over}일 넘겨 인도 지연`)));
     const text = r.done === null ? "못 마침"
-      : r.over ? `${r.buf}일 다 쓰고 ${r.over}일 지연` : `${r.buf}일 중 ${usedIn}일 씀 · ${r.buf - usedIn}일 남음`;
+      : r.over ? `버퍼 ${r.buf}일 넘겨 ${r.over}일 지연` : `${r.buf}일 중 ${usedIn}일 씀 · ${r.buf - usedIn}일 남음`;
     svg.append(s("text", { x: W, y: y + 15, class: `asm-chart-value${r.over ? " bad" : ""}` }, text));
   });
-  return wrap(svg, legend([["#e4efe7", "고른 버퍼", "#8fb79c"], [WORK_COLOR, "쓴 날"], [loss("rework"), "넘친 날(지연)"]]),
-    "남은 날만큼 배가 일찍 끝나 납기일까지 보관비를 냈습니다. 버퍼를 다 쓰고 넘친 배는 생산 중 변수(불량·고장·입고 지연)를 조치로 다 메우지 못한 배입니다.");
+  return wrap(svg, legend([["#e4efe7", "고른 버퍼", "#8fb79c"], [WARN_FILL, "쓴 날(주의)", WARN_EDGE], [LATE_FILL, "넘친 날(인도 지연)"]]),
+    "황색은 계획보다 늦어 버퍼를 먹은 날(주의), 빨강은 버퍼를 넘겨 인도가 늦은 날(심각)입니다. 남은 날만큼 배가 일찍 끝나 납기일까지 보관비를 냈습니다.");
 }
 
 /** ③ 공정별 계획 대비 지연: 배 × 공정 칸. 0일은 비우고, 늦은 날만큼 한 색(재작업 색)으로 진하게, 숫자를 칸 안에 */
@@ -111,7 +117,7 @@ function delayGrid(result: Result, scenario: Scenario): HTMLElement {
     h("div", { class: "legend asm-legend" }, h("span", null, h("i", { class: "asm-shade-0" }), "계획대로"),
       ["d1", "d2", "d3", "d4"].map((c, k) => h("span", null, h("i", { class: `asm-shade-${c}` }), ["+1일", "+2일", "+3~4일", "+5일 이상"][k]))),
     h("p", { class: "hint" }, scenario.project_buffer
-      ? "공정 납기는 계획(변수 없이 돌린 실행)에서 끝나는 날입니다. 왼쪽에서 처음 진해지는 칸이 늦기 시작한 곳이고, 오른쪽으로 갈수록 그 지연이 이어집니다. 칸에 마우스를 올리면 마친 날이 보입니다."
+      ? "공정 납기는 계획(변수 없이 돌린 실행)에서 끝나는 날이라, 황색 칸은 계획보다 늦어 버퍼를 먹은 곳(주의)입니다. 버퍼를 넘겨 인도가 늦었는지는 위 배별 버퍼(빨강)로 봅니다. 왼쪽에서 처음 진해지는 칸이 늦기 시작한 곳입니다."
       : "왼쪽에서 처음 진해지는 칸이 늦기 시작한 곳입니다. 칸에 마우스를 올리면 마친 날과 공정 납기가 보입니다."));
 }
 
