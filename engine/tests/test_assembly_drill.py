@@ -260,6 +260,15 @@ class AssemblyGrade(unittest.TestCase):
         self.assertEqual([(e["day"], e["ship"], e["material"], e["arrival_day"]) for e in ev], [(21, "S2", "paint", 22)])
         self.assertEqual(r["costs"]["emergency"], 80)
 
+    def test_two_platens_no_false_alarm(self):
+        # 4.42.2(사용자 "9일 카드는 왜? 다 초록인데"): 작업장이 2곳이면 블록은 먼저 비는 작업장에 든다.
+        # 예전에는 한 줄로 이어 붙여 9일 S1 중3이 늦는다고 헛경보를 냈다
+        cfg = copy.deepcopy(load_presets("assembly")[1]["config"])
+        for sid in ("sub_assembly", "block_assembly"):
+            cfg["stations"][sid]["units"] = 2
+        _, r = play(cfg, policy("edd"))
+        self.assertEqual([d["day"] for d in r["decisions"]], [19, 23])
+
     def test_more_platens_without_people_hurts(self):
         # 4.37(D85, 사용자 "가"): 작업장(정반) 증설을 연다. 조립 5명 그대로 소조립 정반만 2곳이면 사람이 나뉘어 더 늦고(증설비 300),
         # 병목은 정반이 아니라 사람이다. 사람을 한 명 늘리면 지연은 없지만 인건비로 이익이 준다
