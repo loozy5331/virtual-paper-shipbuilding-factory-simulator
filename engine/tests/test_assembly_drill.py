@@ -3,6 +3,7 @@
 작업 목록은 생산계획서의 미리보기라 실행 결과를 바꾸지 않는다. 계산은 예시 9의 판(test_blocks.mini)으로 손 계산한다.
 """
 
+import copy
 import unittest
 
 from shipyard import load_presets, load_scenario, preview, simulate
@@ -66,6 +67,31 @@ class AssemblyScenario(unittest.TestCase):
         a = simulate(cfg, baseline=False)
         preview(cfg)
         self.assertEqual(a["profit"], simulate(cfg, baseline=False)["profit"])
+
+
+class AssemblyGrade(unittest.TestCase):
+    """등급 조율(D70, 4.30): B안은 A, B안에 선배의 팁(안벽의장 1명·가공 1명)을 반영하면 S."""
+
+    def test_presets(self):
+        presets = {p["id"]: p["config"] for p in load_presets("assembly")}
+        cases = {"unmanaged": (44.5, "F", 1), "managed": (89.1, "A", 3), "all_in": (59.4, "C", 3)}
+        for pid, want in cases.items():
+            r = simulate(presets[pid])
+            self.assertEqual((r["grade"]["score"], r["grade"]["grade"], r["qcd"]["delivery"]["on_time"]), want, pid)
+        self.assertEqual(presets["managed"]["pools"]["assembly"], 5)   # 하루 40 MH(슬라이드의 당일 가용 작업시간)
+
+    def test_tips_reach_s(self):
+        tips = copy.deepcopy(load_presets("assembly")[1]["config"])
+        tips["pools"].update({"outfitting": 1, "processing": 1})
+        r = simulate(tips)
+        self.assertEqual((r["grade"]["grade"], r["qcd"]["delivery"]["on_time"]), ("S", 3))
+
+    def test_rules_deadline_vs_work_time(self):
+        # 슬라이드의 질문 "납기와 작업시간 중 무엇을 먼저": 납기 빠른 순(edd)이 추천, 작업 짧은 순(spt)은 S1이,
+        # 여유 작은 순(slack)은 S2(PE장 도크 26일)가 늦는다
+        rec = simulate(load_presets("assembly")[1]["config"])["recommend"]
+        on_time = {row["rule"]: row["on_time"] for row in rec["rules"]}
+        self.assertEqual((rec["best"], on_time), ("edd", {"ship": 3, "edd": 3, "slack": 2, "spt": 2}))
 
 
 if __name__ == "__main__":

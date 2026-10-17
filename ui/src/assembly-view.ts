@@ -63,7 +63,7 @@ export function renderAssemblyView(result: Result, scenario: Scenario, day: numb
       g.append(s("rect", { x: x0 + 6, y, width: shopW - 12, height: SLOT_H, rx: 4, class: "asm-slot" }),
         // 설비(4.30): 정반(블록을 놓는 철판 바닥)과 용접기. 고장 중이면 붉게
         plate(x0 + 9, y + SLOT_H - 7, shopW - 50),
-        welder(x0 + shopW - 30, y + 3, r?.state === "breakdown_stop"),
+        welder(x0 + 48, y + 3, r?.state === "breakdown_stop"),
         s("text", { x: x0 + 10, y: y + 11, class: "asm-small" }, `${u.unit}호 정반`));
       if (!r) return;
       // 일한 블록(이어 하기로 여럿). 일하지 못한 날(인력 대기·중지)은 정반에 들어가 있는 블록을 흐리게

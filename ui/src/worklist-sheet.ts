@@ -108,7 +108,8 @@ export function updateWorklistSheet(root: HTMLElement, preview: Preview | null):
       h("thead", null, h("tr", null,
         h("th", null, "작업"), h("th", null, "공정"), h("th", null, "남은 기간"), h("th", null, "필요 작업시간"),
         h("th", null, "자재 준비"), h("th", null, "후행 공정"), h("th", { title: "같은 공정에서 기다리는 블록 가운데 몇 번째로 들이는지(지금 계획)" }, "순서"))),
-      h("tbody", null, today.rows.map((r) => {
+      // 남은 기간 순(엔진), 같으면 지금 계획 순서대로: "먼저"를 누르면 그 줄이 올라온다
+      h("tbody", null, [...today.rows].sort((a, b) => a.left_days - b.left_days || (a.station === b.station ? rank(a) - rank(b) : 0)).map((r) => {
         const urgent = r.left_days <= 1;
         const n = rank(r);
         return h("tr", { class: urgent ? "urgent" : "" },
