@@ -1446,7 +1446,8 @@ def forecast(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> 
 
     def run(decision: dict[str, Any]) -> dict[str, Any]:
         cfg = {**config, "decisions": before + [decision], "decisions_end": True}
-        return _run(_with_order_days(cfg, scenario), scenario)
+        quiet = {**scenario, "quiet_from": day}   # 4.39(D86): 그날 아침까지 알고 있는 것만, 그 뒤 새 사건은 없다고 본다
+        return _run(_with_order_days(cfg, scenario), quiet)   # 발주일은 실제와 같게(이미 낸 발주는 바뀌지 않는다)
 
     base = _run(_with_order_days({**config, "decisions": before, "decisions_end": False}, scenario), scenario)
     sit = base.get("pending")
@@ -1610,6 +1611,12 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     order_days: list[dict[str, int]] = [{} for _ in orders]
     arrival_day: list[dict[str, int]] = [{} for _ in orders]
     delay_notes: dict[int, list[dict[str, Any]]] = {}      # 원래 입고일 → 그날 알게 되는 지연
+    # 오늘까지 알고 있는 것만(4.39, D86): 시나리오 quiet_from이 있으면 그날부터 새 사건(불량·고장·사고·입고 지연)이 없다.
+    # 조치 요청의 미리보기가 쓴다(그날 아침에는 아직 일어나지 않은 사건을 미리 알려 주지 않게). 이미 알려진 입고 지연은 그대로
+    quiet_from = scenario.get("quiet_from")
+
+    def calm(day: int) -> bool:
+        return quiet_from is not None and day >= quiet_from
     # 안전 재고(4.14): 1일에 발주해 1 + 리드타임일에 공용 몫(None)으로 들어온다
     safety = safety_stock(config, scenario)
     for mid, qty in safety.items():
@@ -1621,7 +1628,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                 continue
             order_days[i][mid] = day
             arrive = day + materials[mid]["lead_days"]
-            late = supply_delay_days(scenario, order["id"], mid)
+            late = 0 if calm(arrive) else supply_delay_days(scenario, order["id"], mid)
             if late:
                 delay_notes.setdefault(arrive, []).append({"day": arrive, "type": "supply_delay", "material": mid, "ship": order["id"],
                                                            "quantity": qty, "days": late, "arrival_day": arrive + late})
@@ -2072,7 +2079,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                 cfg_b = {**st_cfg[p], "overtime": True} if actions.get(b["id"]) in ("overtime", "extra") else st_cfg[p]
                 rate = station_defect_rate(cfg_b, crews[p], scenario, done_research, inspections[p] - 1, grades[p],
                                            has_equipment(stations[p]))
-                b["verdict"] = rnd["block_quality"][orders[i]["id"]][pid][b["no"] - 1] < rate
+                b["verdict"] = not calm(day) and rnd["block_quality"][orders[i]["id"]][pid][b["no"] - 1] < rate
                 if b["verdict"]:
                     cost["rework"] += costs["rework_per_defect"] / n_blk[p]
                     defects += 1
@@ -2213,7 +2220,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                     fk["threshold_maintained"] if fk_maintained else fk["threshold"])
                 table = rnd["transporter_breakdown"]
                 n = fk_moves[k] // fk["every_moves"]
-                if table[(n - 1 + k) % len(table)] < threshold:
+                if not calm(day) and table[(n - 1 + k) % len(table)] < threshold:
                     fk_stop_until[k] = day + fk["stop_days"]
                     cost["breakdown"] += fk["repair_cost"]
                     fk_breakdowns[k] += 1
@@ -2302,7 +2309,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                     tr["threshold_maintained"] if tr_maintained else tr["threshold"])
                 table = rnd["transporter_breakdown"]
                 n = tr_moves[k] // tr["every_moves"]
-                if table[(n - 1 + k) % len(table)] < threshold:   # 2호는 난수표를 한 칸 밀어 읽는다(4.8)
+                if not calm(day) and table[(n - 1 + k) % len(table)] < threshold:   # 2호는 난수표를 한 칸 밀어 읽는다(4.8)
                     tr_stop_until[k] = day + tr["stop_days"]
                     cost["breakdown"] += tr["repair_cost"]
                     tr_breakdowns[k] += 1
@@ -2480,7 +2487,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                 if overtime_days[p][u] % ot["accident_every_days"] == 0 and day > stop_until[p][u]:
                     table = rnd["accident"][pid]
                     n = overtime_days[p][u] // ot["accident_every_days"]
-                    if table[(n - 1 + u) % len(table)] < ot["accident_threshold"]:
+                    if not calm(day) and table[(n - 1 + u) % len(table)] < ot["accident_threshold"]:
                         stop_until[p][u] = day + ot["accident_stop_days"]
                         stop_cause[p][u] = ACCIDENT_STOP
                         cost["accident"] += costs["accident"]
@@ -2494,7 +2501,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                     bd["threshold_maintained"] if st_cfg[p]["maintenance"] else bd["threshold"])
                 table = rnd["breakdown"][pid]
                 n = unit_busy[p][u] // every_busy[p]
-                if table[(n - 1 + u) % len(table)] < threshold:
+                if not calm(day) and table[(n - 1 + u) % len(table)] < threshold:
                     stop_until[p][u] = day + bd["stop_days"]
                     stop_cause[p][u] = BREAKDOWN_STOP
                     cost["breakdown"] += bd["cost"]
@@ -2516,7 +2523,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                         inspections[p] += 1
                         rate = station_defect_rate(st_cfg[p], crews[p], scenario, done_research, inspections[p] - 1, grades[p],
                                                    has_equipment(stations[p]))
-                        group["verdict"] = rnd["quality"][orders[i]["id"]][pid] < rate
+                        group["verdict"] = not calm(day) and rnd["quality"][orders[i]["id"]][pid] < rate
                         if group["verdict"]:
                             cost["rework"] += costs["rework_per_defect"]
                             defects += 1
