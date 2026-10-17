@@ -488,8 +488,9 @@ export function renderMemo(result: Result, scenario: Scenario, safetyWarnings?: 
 }
 
 /** 조립 공정 실적서(4.25, D71): 블록 조립 실습의 평가서 클립보드에 끼운 낱장. 조립 공정에 대한 결과를 모은다.
- *  블록 납기 준수 요약, 배별 공정 납기 준수, 블록 우선순위 추천. 등급 점수와는 무관하다. 스크롤 없이 한 장에 든다. */
-export function renderAssemblyReport(result: Result, scenario: Scenario, onApplyRule?: (rule: DispatchRule) => void): HTMLElement | null {
+ *  블록 납기와 공수, 배별 공정 납기, 블록 평가, 블록 우선순위 추천, 결정 돌아보기(조립 현장 배정). 등급 점수와는 무관하다. */
+export function renderAssemblyReport(result: Result, scenario: Scenario, onApplyRule?: (rule: DispatchRule) => void,
+  review?: HTMLElement | null): HTMLElement | null {
   const bd = result.block_due;
   if (!bd || !result.blocks) return null;
   const stations = activeStationsOf(scenario);
@@ -537,13 +538,15 @@ export function renderAssemblyReport(result: Result, scenario: Scenario, onApply
         return h("td", { class: [ctx(st.id), d.late_days ? "late" : ""].filter(Boolean).join(" "), title: `공정 납기 ${d.due}일` },
           d.end === null ? "못 마침" : `${d.end}일`, h("small", null, d.late_days ? ` +${d.late_days}` : ""));
       })))));
+  // 순서(4.35.1 사용자): 블록 납기와 공수 → 공정 납기 → 블록 평가 → 규칙 추천 → 결정 돌아보기(낱장에서 이 장 아래로)
   return h("div", { class: "asm-report" },
-    result.block_eval ? h("section", { class: "report-sec" }, h("h3", null, "블록 평가"), blockEval(result, scenario)) : null,
     h("section", { class: "report-sec" }, h("h3", null, mh ? "블록 납기와 공수" : "블록 납기"), summary,
       mh ? h("p", { class: "hint" }, "공수 효율 = 표준 공수 ÷ 투입 공수. 투입은 작업장에 보낸 사람 × 근무시간(정규 8, 잔업 10)이고, 그 가운데 재작업과 대기(블록을 끝냈는데 들어올 블록이 없어 쉰 시간)가 효율을 깎습니다.") : null),
     h("section", { class: "report-sec" }, h("h3", null, "공정 납기 (마친 날, 붉은 칸은 납기를 넘김)"), dueTable,
       h("p", { class: "hint" }, "진한 칸이 조립 공정입니다. 옅은 칸은 앞뒤 맥락으로, 절단·가공에서 이미 늦었으면 원인이 조립 앞에 있고, 탑재가 늦었으면 인도가 늦었습니다.")),
-    h("section", { class: "report-sec" }, recommendCard(result, onApplyRule)));
+    result.block_eval ? h("section", { class: "report-sec" }, h("h3", null, "블록 평가"), blockEval(result, scenario)) : null,
+    h("section", { class: "report-sec" }, recommendCard(result, onApplyRule)),
+    review ? h("section", { class: "report-sec asm-review" }, h("h3", null, `결정 돌아보기 (몰리는 날 ${result.review!.length}번)`), review) : null);
 }
 
 /** 블록 평가(4.32, 사용자 3.2): 전체 / 조립 공정별 / 작업장별 / 선박별. 단계는 위 탭으로 넘긴다(엔진 block_eval을 표로) */

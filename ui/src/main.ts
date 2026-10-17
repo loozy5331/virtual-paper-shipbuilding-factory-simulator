@@ -216,8 +216,8 @@ function drawForm(): void {
 }
 
 /** 양식의 미리보기 숫자와 오류, 승인 버튼 상태를 갱신한다. */
-/** 평가서 클립보드의 낱장(4.25): 생산실적 평가서 | 조립 공정 실적서 | 뒷장 메모 */
-let reportSheet: "report" | "assembly" | "review" | "memo" = "report";
+/** 평가서 클립보드의 낱장(4.25): 종합 생산실적 평가서 | 조립 공정 실적서(결정 돌아보기 포함, 4.35.1) | 뒷장 메모 */
+let reportSheet: "report" | "assembly" | "memo" = "report";
 
 /** 생산계획서 클립보드의 낱장(4.25, D71): 생산계획서 | 조립 공정 계획서. 한 번에 한 장만 보이고 탭으로 넘긴다(스크롤로 잇지 않는다) */
 let planSheet: "plan" | "assembly" = "plan";
@@ -1532,21 +1532,20 @@ function drawReportBoard(): void {
   els.reportBoard.hidden = !shown;
   if (!shown || !r) return;
   const g = r.result.grade;
-  // 같은 클립보드에 낱장 여러 장(4.25, 사용자): 생산실적 평가서 | 조립 공정 실적서(블록 실습만) | 뒷장 메모(부록·선배의 팁).
+  // 같은 클립보드에 낱장 여러 장(4.25, 사용자): 종합 생산실적 평가서(4.35.1 이름) | 조립 공정 실적서(블록 실습만) | 뒷장 메모(부록·선배의 팁).
   // 위 인덱스 탭으로 넘기고 한 번에 한 장만 보인다(4.23의 "함께 스크롤"을 바꿨다)
-  const assembly = renderAssemblyReport(r.result, state.data.scenario, (rule) => void applyRecommendedRule(r.config, rule));
+  // 4.31 결정 돌아보기는 조립 공정 실적서의 맨 아래 절(4.35.1 사용자: 조립 공정 실적에 해당하는 내용이라 같은 장에)
+  const assembly = renderAssemblyReport(r.result, state.data.scenario, (rule) => void applyRecommendedRule(r.config, rule),
+    renderDecisionReview(r.result));
   if (reportSheet === "assembly" && !assembly) reportSheet = "report";
-  const review = renderDecisionReview(r.result);   // 4.31: 몰리는 날의 결정을 한 회차만
-  if (reportSheet === "review" && !review) reportSheet = "report";
   const sheetTab = (id: typeof reportSheet, label: string) => h("button", {
     type: "button", class: `sheet-tab${reportSheet === id ? " active" : ""}`, "aria-pressed": String(reportSheet === id),
     onclick: () => { reportSheet = id; drawReportBoard(); },
   }, label);
   const tabs = h("nav", { class: "sheet-tabs", "aria-label": "낱장" },
-    sheetTab("report", "생산실적 평가서"), assembly ? sheetTab("assembly", "조립 공정 실적서") : null,
-    review ? sheetTab("review", "결정 돌아보기") : null, sheetTab("memo", "뒷장 메모"));
+    sheetTab("report", "종합 생산실적 평가서"), assembly ? sheetTab("assembly", "조립 공정 실적서") : null, sheetTab("memo", "뒷장 메모"));
   const actions = h("div", { class: "report-actions" },
-    h("span", { class: "hint" }, state.board === "up" ? "바깥 어두운 곳을 누르면 내려 둡니다" : "생산실적 평가서 · 누르면 다시 올림"),
+    h("span", { class: "hint" }, state.board === "up" ? "바깥 어두운 곳을 누르면 내려 둡니다" : "종합 생산실적 평가서 · 누르면 다시 올림"),
     h("button", { class: "btn primary small", type: "button", onclick: () => void backToPlan() }, "계획 고치기"));
   const sheet = reportSheet === "memo"
     ? h("div", { class: "report-sheet memo-page" }, actions, renderMemo(r.result, state.data.scenario, r.safetyWarnings))
@@ -1555,19 +1554,14 @@ function drawReportBoard(): void {
         docHead({ title: "조립 공정 실적서", code: `PE-${r.n}-A`, approver: r.signer?.nickname,
           fields: [["회차", `${r.n}회차`], ["설정", r.label]] }),
         assembly)
-      : reportSheet === "review"
-        ? h("div", { class: "report-sheet" }, actions,
-          docHead({ title: "결정 돌아보기", code: `PE-${r.n}-D`, approver: r.signer?.nickname,
-            fields: [["회차", `${r.n}회차`], ["결정", `몰리는 날 ${r.result.review!.length}번`]] }),
-          review)
-        : null;
+      : null;
   mount(els.reportBoard, h("div", { class: "board-pages single" }, tabs, sheet ??
     h("div", { class: "report-sheet" },
       h("div", { class: "report-actions" },
-        h("span", { class: "hint" }, state.board === "up" ? "바깥 어두운 곳을 누르면 내려 둡니다" : "생산실적 평가서 · 누르면 다시 올림"),
+        h("span", { class: "hint" }, state.board === "up" ? "바깥 어두운 곳을 누르면 내려 둡니다" : "종합 생산실적 평가서 · 누르면 다시 올림"),
         h("button", { class: "btn primary small", type: "button", onclick: () => void backToPlan() }, "계획 고치기")),
       docHead({
-        title: "생산실적 평가서", code: `PE-${r.n}`, approver: r.signer?.nickname,
+        title: "종합 생산실적 평가서", code: `PE-${r.n}`, approver: r.signer?.nickname,
         fields: [["회차", `${r.n}회차`], ["설정", r.label], ["판정", `${g.grade} (${g.score.toFixed(1)}점)`]],
         stamp: {
           text: g.grade, sub: `${g.score.toFixed(1)}점`, strong: g.grade === "S" || g.grade === "F",
