@@ -11,7 +11,7 @@
 import { type ActionKind, blockTitle, dayHour, type Decision, type DispatchRule, type Forecast, type ForecastRow, type Scenario, type Situation, type SituationRow } from "./api";
 import { h, mount, s } from "./dom";
 import { dayPieces, eveningOf, hourAxis, REG_HOURS } from "./hour-axis";
-import { DISPATCH_INFO, LOSS_STATES, OUTSOURCED_STATE, PAIR_WAIT_STATE, STATION_COLOR, STATION_TEXT, TRANSPORT_STATE, WORK_STATE } from "./labels";
+import { DISPATCH_INFO, STATION_COLOR, STATION_TEXT } from "./labels";
 
 export interface DecisionContext {
   scenario: Scenario;
@@ -128,9 +128,10 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
         // 4.41(사용자 "조립 조치 요청은 그날 조립에서 문제가 생길 여지가 있을 때"): 왜 떴는지 배 기준 한 줄
         sit.ships ? h("p", { class: "dc-why" }, Object.entries(sit.ships).filter(([, sh]) => sh.use).map(([sid, sh], i) =>
           h("span", null, `${i ? " · " : ""}${sid}: 블록이 늦어 버퍼 ${sh.use}일을 쓸 것 같습니다`))) : null,
+        // 4.51(D98, 사용자 "후행 공정이 어떻게 될지 모르는 상황에서 판단"): 지금대로면 카드의 블록이 쓰는 버퍼(뒤 공정은 넣지 않음)
         sit.ships ? h("div", { class: "dc-bufs" }, Object.entries(sit.ships).map(([sid, sh]) => {
-          const c = f?.keep.completed?.[sid];
-          return bufferBar(sid, sh.buffer, c === undefined || c === null ? null : Math.max(0, c - (sh.due - sh.buffer)));
+          const r = f?.keep.block_risk;
+          return bufferBar(sid, sh.buffer, r ? riskDays(r[sid]) : null);
         })) : null,
         // 4.37.2: 필요·가용 작업시간은 결과 미리보기의 맨아워 칸으로 옮겼다(버퍼 시나리오). 아니면 여기 한 줄
         sit.ships ? null : h("p", { class: "dc-sub" }, `작업장 앞 ${count}건${inYard ? ` · 적치장 ${inYard}건` : ""} · 오늘 가용 ${fmt(sit.capacity_mh)}H / 필요 ${fmt(sit.need_mh)}H`,
@@ -169,7 +170,7 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
           h("small", null, sit.ships
             // 4.47(사용자 "D가 지연된다는데 간트로는 확인하기 어렵다"): 노랑은 계획 끝부터(버퍼 소모), 빨강은 버퍼 끝부터.
             // 4.47.1(사용자): 인계 기한 점선은 뺀다(판정에 안 쓰는 세 번째 선이라 헷갈린다). 인계 기한은 "남은 n일"과 마우스 설명으로
-            ? "막대 = 이 선택이면 작업하는 구간(진한 부분은 이미 한 만큼). 노란 칸 = 계획 끝 ~ 버퍼 끝(계획 끝 + 그 배 버퍼, 빨간 선). 여기서 끝나면 버퍼 소모, 빨간 선을 넘으면 빨강. 소조립 뒤 공정에서 늦는 것은 위 상황 태그 아래 까닭에. 얇은 선은 지금대로의 끝. 숫자는 비상 예산에서 낼 값"
+            ? "막대 = 이 선택이면 작업하는 구간(진한 부분은 이미 한 만큼). 노란 칸 = 계획 끝 ~ 버퍼 끝(계획 끝 + 그 배 버퍼, 빨간 선). 여기서 끝나면 버퍼 소모, 빨간 선을 넘으면 빨강(버퍼 넘김). 뒤 공정에서 되찾거나 더 늦는 것은 넣지 않습니다(실적서에서 확인). 얇은 선은 지금대로의 끝. 숫자는 비상 예산에서 낼 값"
             // 4.43: 버퍼 없는 카드는 세로선이 인계 기한(다음 공정에 넘길 날)이고 넘기면 바로 빨강(여유가 없다)
             : "막대 = 이 선택이면 작업하는 구간(진한 부분은 이미 한 만큼), 세로선 = 인계 기한(다음 공정에 넘길 날의 끝). 선을 넘으면 빨강. 얇은 선은 지금대로의 끝. 숫자는 비상 예산에서 낼 값")),
         // 4.38(사용자 "결과 미리보기 대신 간트, 진행도처럼 채우고, 막대 연장선의 조치로 진행도가 바뀌게"): 블록 진행도 간트
@@ -196,7 +197,8 @@ function outcomePanel(scenario: Scenario, sit: Situation, stations: string[], na
     h("div", { class: "dc-mh-big" }, h("span", null, label), h("b", null, value), note ? h("small", null, note) : null);
   return h("section", { class: `dc-outcome dc-split${fresh ? "" : " loading"}`, "aria-live": "polite" },
     h("div", { class: "dc-outcome-head" }, h("b", null, "이 선택이면"),
-      h("small", null, fresh ? "오늘 이렇게 하고 그 뒤는 자동 대응으로 끝까지 돌린 결과 · \"지금대로\"는 오늘 아무것도 바꾸지 않았을 때" : "계산하는 중…")),
+      h("small", null, fresh ? (sit.ships ? "오늘 이렇게 하면 작업장 앞 블록이 계획보다 얼마나 늦나(뒤 공정은 넣지 않음) · \"지금대로\"는 오늘 아무것도 바꾸지 않았을 때"
+        : "오늘 이렇게 하고 그 뒤는 자동 대응으로 끝까지 돌린 결과 · \"지금대로\"는 오늘 아무것도 바꾸지 않았을 때") : "계산하는 중…")),
     h("div", { class: "dc-split-body" },
       h("div", { class: "dc-split-left" },
         h("small", { class: "dc-cap" }, "작업시간 (MH = 사람 × 시간)"),
@@ -204,7 +206,7 @@ function outcomePanel(scenario: Scenario, sit: Situation, stations: string[], na
         mhRow("가용", `${fmt(sit.capacity_mh)} MH/일`, short > 0 ? h("span", { class: "wl-hot" }, `하루치로는 ${fmt(short)} MH 모자람`) : "조립 인원 × 8시간"),
         mhRow("이 선택의 투입", m ? `${fmt(m.mh)} MH` : "…", mhDelta ? `지금대로보다 ${mhDelta > 0 ? "+" : ""}${fmt(mhDelta)} MH` : "지금대로와 같음")),
       h("div", { class: "dc-split-right" },
-        sit.ships ? verdict(sit, m, name) : shipChips(scenario, m, k),
+        sit.ships ? verdict(m) : shipChips(scenario, m, k),
         h("small", { class: "dc-cap" }, "비상 예산"),
         stations.map((sid) => bills(name[sid], budget(sid))),
         m && Object.keys(m.refused).length ? h("small", { class: "dc-note wl-hot" }, `예산을 넘어 받지 않는 조치 ${Object.keys(m.refused).length}건`) : null)));
@@ -361,50 +363,37 @@ function warnIcon(): SVGElement {
     s("circle", { cx: 12, cy: 17.4, r: 1.4, fill: "#111" }));
 }
 
-/** 판정 띠(4.37.2, 사용자 "버퍼 소모 -> 노란색, 납기 지연 -> 빨간색"): 이 선택이면 납기를 넘기는 배(빨강), 버퍼만 쓰는 배(노랑) */
-function verdict(sit: Situation, m: ForecastRow | undefined, name: Record<string, string>): HTMLElement {
-  if (!m?.completed) return h("div", { class: "dc-verdict" }, "계산하는 중…");
-  const late: string[] = [], used: string[] = [];
-  for (const [sid, sh] of Object.entries(sit.ships!)) {
-    const c = m.completed[sid];
-    if (c === null || c === undefined) continue;
-    const u = Math.max(0, c - (sh.due - sh.buffer));
-    if (u > sh.buffer) late.push(`${sid} ${u - sh.buffer}일`);
-    else if (u > 0) used.push(`${sid} ${u}일`);
-  }
+/** 판정 띠(4.37.2, 사용자 "버퍼 소모 -> 노란색, 버퍼 넘김 -> 빨간색"): 이 선택이면 카드의 블록이 버퍼를 넘기는 배(빨강), 버퍼만 쓰는 배(노랑).
+ *  4.51(D98, 사용자 "조치 요청 시점에는 후행 공정이 어떻게 될지 모르는 상황에서 판단"): 블록 막대와 같은 기준(엔진 block_risk).
+ *  배가 끝까지 돌아 납기를 넘기는지와 배별 까닭(4.47)은 뺐다: 뒤 공정에서 되찾거나 더 늦는 것은 그날 아침에는 모른다 */
+function verdict(m: ForecastRow | undefined): HTMLElement {
+  if (!m?.block_risk) return h("div", { class: "dc-verdict" }, "계산하는 중…");
+  const rows = Object.entries(m.block_risk);
+  const late = rows.filter(([, r]) => r.over > 0).map(([sid, r]) => `${sid} ${r.over}일`);
+  const used = rows.filter(([, r]) => r.over <= 0).map(([sid, r]) => `${sid} ${r.used}일`);
   return h("div", { class: "dc-verdict" },
-    late.length ? h("span", { class: "v-late" }, h("b", null, "납기 지연"), ` ${late.join(" · ")}`) : null,
+    late.length ? h("span", { class: "v-late", title: "블록이 계획 끝 + 그 배 버퍼보다 늦게 끝남. 뒤 공정에서 되찾지 못하면 납기를 넘긴다" },
+      h("b", null, "버퍼 넘김"), ` ${late.join(" · ")}`) : null,
     used.length ? h("span", { class: "v-warn" }, h("b", null, "버퍼 소모"), ` ${used.join(" · ")}`) : null,
-    !late.length && !used.length ? h("span", { class: "v-ok" }, h("b", null, "버퍼 그대로"), " 모든 배가 계획대로 끝납니다") : null,
-    whyList(sit, m, name));
+    !late.length && !used.length ? h("span", { class: "v-ok" }, h("b", null, "버퍼 그대로"), " 작업장 앞 블록이 모두 계획대로 끝납니다") : null);
 }
 
-const STATE_NAME: Record<string, string> = Object.fromEntries([...LOSS_STATES, PAIR_WAIT_STATE, OUTSOURCED_STATE, WORK_STATE, TRANSPORT_STATE].map((x) => [x.state, x.name]));
-/** 공정에 붙는 자리: 기다림은 그 공정 앞, 운반·짝은 그 공정을 마친 뒤 */
-const AFTER = new Set(["transport_wait", "transport", "pair_wait"]);
-
-/** 까닭(4.47, 사용자 "D가 지연된다는데 아래 간트로는 확인하기 어렵다"): 버퍼를 쓰거나 납기를 넘기는 배마다
- *  계획보다 어디서 날을 더 썼나(엔진 forecast why). 소조립 간트에 없는 하류(운반 대기 등)도 여기서 보인다.
- *  늘어난 날은 공정·상태별로, 줄어든 날은 합쳐서 한 칸(합 = 계획보다 늦은 날) */
-function whyList(sit: Situation, m: ForecastRow, name: Record<string, string>): HTMLElement | null {
-  const rows = Object.entries(m.why ?? {}).filter(([sid]) => sit.ships?.[sid] && (m.completed?.[sid] ?? 0) > sit.ships[sid].due - sit.ships[sid].buffer);
-  if (!rows.length) return null;
-  const where = (st: string, pid: string | null) => !pid ? STATE_NAME[st] ?? st
-    : st === "work" ? `${name[pid]} 작업` : `${name[pid]} ${AFTER.has(st) ? "뒤" : "앞"} ${STATE_NAME[st] ?? st}`;
-  return h("ul", { class: "dc-why" }, rows.map(([sid, w]) => {
-    const plus = w.items.filter((it) => it.days > 0);
-    const minus = w.items.filter((it) => it.days < 0).reduce((a, it) => a + it.days, 0);
-    return h("li", null, h("b", null, sid), ` 계획(${w.plan_finish}일)보다 ${w.days}일 늦게 끝남: `,
-      plus.map((it, k) => h("span", { class: "dc-why-item" }, k ? " · " : "", where(it.state, it.station), h("b", null, ` +${it.days}일`))),
-      minus ? h("small", null, ` · 줄어든 날 ${minus}일`) : null);
-  }));
+/** 배가 쓰는 날(버퍼 소모 + 넘김). 넘긴 블록이 없는 배는 0 */
+function riskDays(r: { used: number; over: number } | undefined): number {
+  return r ? r.used + Math.max(0, r.over) : 0;
 }
 
-
-
-
-/** 정책 단추 아래 한 줄(4.37): 그 공정 정책을 그대로 둘 때와 같으면 "그대로와 같음", 다르면 늦는 배 */
+/** 정책 단추 아래 한 줄(4.37): 그 공정 정책을 그대로 둘 때와 같으면 "그대로와 같음", 다르면 버퍼를 넘기는 배.
+ *  4.51(D98): 버퍼 시나리오는 판정 띠와 같은 블록 기준(block_risk), 아니면 배의 인도 지연 */
 function optionOutcome(r: ForecastRow, keep: ForecastRow): HTMLElement {
+  if (r.block_risk && keep.block_risk) {
+    const over = Object.entries(r.block_risk).filter(([, v]) => v.over > 0);
+    const n = (x: ForecastRow) => Object.values(x.block_risk!).filter((v) => v.over > 0).length;
+    const same = JSON.stringify(r.block_risk) === JSON.stringify(keep.block_risk) && r.done_day === keep.done_day;
+    if (same) return h("small", { class: "dc-out dim" }, "지금대로와 같음");
+    return h("small", { class: `dc-out${n(r) > n(keep) ? " bad" : n(r) < n(keep) ? " good" : ""}` },
+      over.length ? over.map(([sh, v]) => `${sh} 버퍼 넘김 +${v.over}일`).join(", ") : "모두 버퍼 안", r.done_day !== keep.done_day ? ` · 끝 ${r.done_day}일` : "");
+  }
   const late = Object.entries(r.late).filter(([, v]) => v > 0);
   const same = JSON.stringify(r.late) === JSON.stringify(keep.late) && r.done_day === keep.done_day;
   if (same) return h("small", { class: "dc-out dim" }, "지금대로와 같음");
@@ -469,7 +458,8 @@ export function clearDecisionDraft(): void {
 
 
 
-/** 배 잔여 버퍼 막대(4.37, 4.39.1): 버퍼 일수만큼 칸. 지금대로 가면 쓸 칸은 노랑(소모), 버퍼를 넘는 칸은 빨강(납기 지연), 남는 칸은 초록 */
+/** 배 잔여 버퍼 막대(4.37, 4.39.1): 버퍼 일수만큼 칸. 지금대로 가면 쓸 칸은 노랑(소모), 버퍼를 넘는 칸은 빨강(버퍼 넘김), 남는 칸은 초록.
+ *  4.51(D98): 카드의 블록만으로 본 날(뒤 공정은 넣지 않음) */
 function bufferBar(sid: string, buffer: number, used: number | null): HTMLElement {
   const u = used ?? 0;
   const over = Math.max(0, u - buffer);
@@ -478,7 +468,7 @@ function bufferBar(sid: string, buffer: number, used: number | null): HTMLElemen
     h("span", { class: "dc-buf-cells" }, Array.from({ length: Math.max(buffer, u) }, (_, k) =>
       h("i", { class: k >= buffer ? "over" : k >= buffer - Math.min(u, buffer) ? "eat" : "" }))),
     h("small", null, used === null ? `버퍼 ${buffer}일`
-      : over ? `납기 ${over}일 지연` : u ? `버퍼 ${buffer - u}일 남음 (${u}일 소모)` : `버퍼 ${buffer}일 남음`));
+      : over ? `버퍼 ${over}일 넘김` : u ? `버퍼 ${buffer - u}일 남음 (${u}일 소모)` : `버퍼 ${buffer}일 남음`));
 }
 
 /** 가공 적치장에서 기다리는 블록 한 줄(4.35): 배별 수 */

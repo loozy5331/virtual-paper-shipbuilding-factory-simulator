@@ -738,8 +738,8 @@ export interface ForecastRow {
     done_day: number | null; unit: number | null; std_mh: number; due: number;
     /** 4.47: 계획(변수 없는 실행)에서 끝나는 날. 그날을 넘기면 그 배 버퍼를 쓰기 시작한다(버퍼 시나리오만) */
     plan_end?: number | null }>;
-  /** 4.47: 계획보다 늦게 끝나는 배마다 어디서 날을 더 썼나(상태·공정별 계획과의 차이, 합 = days) */
-  why?: Record<string, { plan_finish: number; days: number; items: { state: string; station: string | null; days: number }[] }>;
+  /** 4.51(D98): 카드에 보이는 블록만으로 본 배별 판정(뒤 공정은 넣지 않음). used = 쓰는 버퍼, over > 0이면 버퍼 넘김. 넘긴 블록이 없는 배는 없다 */
+  block_risk?: Record<string, { used: number; over: number }>;
   /** 그날 쓴 비상 예산(공정별), 예산을 넘어 받지 않은 조치 */
   spent: Record<string, number>; refused: Record<string, string>; profit: number;
 }

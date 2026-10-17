@@ -167,8 +167,8 @@ class Order(unittest.TestCase):
 
 
 class Why(unittest.TestCase):
-    """4.47(사용자 "D가 1일 지연된다는데 아래 간트로는 확인하기 어렵다"): 조치 요청 미리보기가 블록의 계획 끝과,
-    계획보다 늦는 배마다 어디서 날을 더 썼는지 준다."""
+    """4.47(사용자 "D가 1일 지연된다는데 아래 간트로는 확인하기 어렵다"): 조치 요청 미리보기가 블록의 계획 끝을 준다.
+    4.51(D98): 배별 까닭(why) 대신 카드의 블록만으로 본 배별 판정(block_risk)."""
 
     def card(self, **decision):
         cfg = preset("managed")
@@ -182,6 +182,7 @@ class Why(unittest.TestCase):
         self.assertEqual((times["A-SA1"]["plan_end"], times["A-SA1"]["due"]), (7, 10))
 
     def test_downstream_cause(self):
+        # 엔진은 배별 까닭(why)도 그대로 낸다(4.51부터 카드는 쓰지 않는다)
         # 납기 빠른 순에 C-115 철야: D-208은 그대로 10일에 끝나지만, C가 하루 일찍 내려와 D 대조립 블록이 운반을 하루 더 기다린다
         m = self.card(policy={"sub_assembly": "edd"}, actions={"C-SA1": "extra"})
         self.assertEqual(m["block_times"]["D-SA1"]["end"], 10)
@@ -189,6 +190,18 @@ class Why(unittest.TestCase):
         self.assertEqual((w["plan_finish"], w["days"]), (15, 2))
         self.assertIn({"state": "transport_wait", "station": "block_assembly", "days": 2}, w["items"])
         self.assertEqual(sum(it["days"] for it in w["items"]), w["days"])   # 합 = 계획보다 늦은 날
+
+    def test_block_risk(self):
+        # 4.51(D98, 사용자 "조치 요청 시점에는 후행 공정이 어떻게 될지 모르는 상황에서 판단"): 판정은 카드의 블록만으로.
+        # 지금대로면 E-320이 계획 끝(11일) + 버퍼 3일을 하루 넘긴다(배 E는 뒤 공정에서 되찾고, 실제로 늦는 배는 D. 카드는 모른다)
+        keep = self.card()
+        self.assertEqual({k: v for k, v in keep["block_risk"].items() if v["over"] > 0}, {"E": {"used": 3, "over": 1}})
+        self.assertEqual(keep["block_risk"]["D"], {"used": 1, "over": 0})
+        self.assertEqual({k: v for k, v in keep["late"].items() if v}, {"D": 1})
+        # 납기 빠른 순이면 모든 블록이 버퍼 안, 작업 짧은 순이면 B-203이 버퍼를 넘긴다(블록 막대와 같은 기준)
+        self.assertFalse(any(v["over"] > 0 for v in self.card(policy={"sub_assembly": "edd"})["block_risk"].values()))
+        spt = self.card(policy={"sub_assembly": "spt"})["block_risk"]
+        self.assertEqual([k for k, v in spt.items() if v["over"] > 0], ["B"])
 
 
 class RootCause(unittest.TestCase):

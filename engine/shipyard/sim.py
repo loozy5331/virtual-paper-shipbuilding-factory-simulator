@@ -1606,9 +1606,25 @@ def forecast(config: dict[str, Any], scenario: dict[str, Any] | None = None) -> 
                                           # 4.47: 계획(변수 없는 실행)에서 끝나는 날. 그날을 넘기면 그 배 버퍼를 쓰기 시작한다
                                           **({"plan_end": plan_blocks[b["id"]]["end"]} if b["id"] in plan_blocks else {})}
                            for b in result["blocks"] if b["id"] in shown},
-                "why": why(result)}
+                "why": why(result), "block_risk": block_risk(result)}
 
     plan_blocks = plan["blocks"] if plan else {}
+    buffers = ship_buffers(config, scenario)
+
+    def block_risk(result: dict[str, Any]) -> dict[str, Any]:
+        """4.51(D98, 사용자 "조치 요청 시점에는 후행 공정이 어떻게 될지 모르는 상황에서 판단"): 카드에 보이는 블록만으로 본 배별 판정.
+        블록이 끝나는 날(외주는 돌아온 날)이 계획 끝을 넘긴 날이 그 배 버퍼 소모(used), 계획 끝 + 그 배 버퍼를 넘긴 날이 버퍼 넘김(over > 0).
+        배마다 가장 많이 넘긴 블록으로 정하고, 넘긴 블록이 없는 배는 뺀다. 뒤 공정에서 되찾거나 더 늦는 것은 넣지 않는다(실적서에서 본다).
+        카드는 이것만 보인다(why는 4.51부터 화면이 쓰지 않는다). 버퍼 시나리오만."""
+        if not plan:
+            return {}
+        over: dict[str, int] = {}
+        for b in result["blocks"]:
+            if b["id"] not in shown or b["id"] not in plan_blocks:
+                continue
+            end = (b["done_day"] if b.get("unit") is None else b["end"]) or result["days"]
+            over[b["ship"]] = max(over.get(b["ship"], 0), end - plan_blocks[b["id"]]["end"])
+        return {sid: {"used": min(o, buffers[sid]), "over": o - buffers[sid]} for sid, o in over.items() if o > 0}
 
     def why(result: dict[str, Any]) -> dict[str, Any]:
         """4.47(사용자 "D가 지연된다는데 간트로는 안 보인다"): 계획보다 늦게 끝나는 배마다 어디서 날을 더 썼나.
