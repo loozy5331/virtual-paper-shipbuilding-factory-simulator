@@ -242,8 +242,6 @@ export interface Scenario {
   block_stations?: string[];
   /** 블록 표시 이름(4.43): 엔진 블록 이름 → 현장 블록 번호 */
   block_names?: Record<string, string>;
-  /** 착수일 고정(4.43): 장면에서 시작하는 실습 */
-  fixed_start?: number;
   rules: {
     max_workers_per_station: number;
     max_pool: number;

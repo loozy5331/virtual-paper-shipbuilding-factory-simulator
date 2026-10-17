@@ -199,10 +199,6 @@ def complete_config(config: dict[str, Any], scenario: dict[str, Any]) -> dict[st
         if st["id"] not in stations:
             stations[st["id"]] = {"method": "standard", "overtime": False, "maintenance": True}
     out["stations"] = stations
-    # 장면에서 시작하는 실습(4.43, D91): 블록이 이미 작업장 앞에 와 있으니 착수일은 시나리오가 정한 날로 고정
-    if scenario.get("fixed_start") and isinstance(config.get("ships"), dict):
-        out["ships"] = {sid: ({**sh, "start_day": scenario["fixed_start"]} if isinstance(sh, dict) else sh)
-                        for sid, sh in config["ships"].items()}
     trades = active_trades(scenario)
     pools = config.get("pools")
     defaults = {k: v for k, v in scenario["default_pools"].items() if not k.startswith("_")}
@@ -1323,8 +1319,12 @@ def apply_buffer_plan(config: dict[str, Any], scenario: dict[str, Any]) -> tuple
     if plan is None:
         return config, None
     due = config.get("due") or {}
-    stations = {sid: {**plan["dues"]["stations"][sid], **(due.get("stations") or {}).get(sid, {})} for sid in plan["ships"]}
-    blocks = {**plan["dues"]["blocks"], **(due.get("blocks") or {})}
+    # 수주 항목의 station_due(4.43, D91: 다음 공정에 넘길 날을 시나리오가 정함)는 계획보다 먼저, 설정에 적은 납기보다는 뒤.
+    # 그 공정의 블록 납기도 그날이다
+    fixed = {o["id"]: o.get("station_due") or {} for o in scenario["orders"]}
+    stations = {sid: {**plan["dues"]["stations"][sid], **fixed[sid], **(due.get("stations") or {}).get(sid, {})} for sid in plan["ships"]}
+    own = {bid: fixed[b["ship"]][b["station"]] for bid, b in plan["blocks"].items() if b["station"] in fixed[b["ship"]]}
+    blocks = {**plan["dues"]["blocks"], **own, **(due.get("blocks") or {})}
     # _spare(4.41): 계획 완료가 목표보다 이른 날(덤 여유). 블록이 이만큼까지 늦어도 배는 버퍼를 쓰지 않는다(조치 요청이 묻는 기준)
     out = {**config, "ships": {sid: {**sh, "start_day": plan["ships"][sid]["start"],
                                      "_spare": max(0, plan["ships"][sid]["target"] - plan["ships"][sid]["finish"])}
@@ -1664,15 +1664,24 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     safety = safety_stock(config, scenario)
     for mid, qty in safety.items():
         arrivals.setdefault(1 + materials[mid]["lead_days"], []).append((mid, qty, None))
-    # 장면에서 시작하는 실습(4.43, D91): 수주 항목의 kits(자재 → 입고일)는 이미 발주해 둔 그 배 몫이다. 1일 이하면 처음부터
-    # 작업장에 있고(아래 kit_ready), 뒤 날이면 그날 들어온다(지연 없음, 처음부터 아는 입고일). 이 자재는 설정의 발주일을 보지 않는다
+    # 미리 발주해 둔 자재(4.43, D91): 수주 항목의 kits(자재 → 입고 예정일)는 수주 때 발주해 둔 그 배 몫이다. 1일 이하면 처음부터
+    # 작업장에 있고(아래 kit_ready), 뒤 날이면 협력사가 그날 아침 그 자재를 쓰는 작업장으로 바로 납품한다(창고·지게차를 거치지 않는다).
+    # 입고 지연은 다른 발주처럼 난수표로 정하고 원래 입고일에 알린다. 이 자재는 설정의 발주일을 보지 않는다
     own_kits = [dict(o.get("kits") or {}) for o in orders]
-    fixed_arrival: list[dict[str, int]] = [{} for _ in orders]
+    fixed_arrival: list[dict[str, int]] = [{} for _ in orders]   # 입고 예정일(지연 전)
+    direct: dict[int, list[tuple[int, str]]] = {}                # 작업장 직납일 → (배, 자재)
     for i, order in enumerate(orders):
         for mid, arrive in own_kits[i].items():
-            if arrive > 1 and bom_of(i, mid):
-                fixed_arrival[i][mid] = arrival_day[i][mid] = arrive
-                arrivals.setdefault(arrive, []).append((mid, bom_of(i, mid), order["id"]))
+            qty = bom_of(i, mid)
+            if arrive <= 1 or not qty:
+                continue
+            late = 0 if calm(arrive) else supply_delay_days(scenario, order["id"], mid)
+            if late:
+                delay_notes.setdefault(arrive, []).append({"day": arrive, "type": "supply_delay", "material": mid, "ship": order["id"],
+                                                           "quantity": qty, "days": late, "arrival_day": arrive + late})
+            fixed_arrival[i][mid] = arrive
+            arrival_day[i][mid] = arrive + late
+            direct.setdefault(arrive + late, []).append((i, mid))
         for mid, day in (config["ships"][order["id"]].get("order_days") or {}).items():
             qty = bom_of(i, mid)
             if day is None or qty == 0 or mid in own_kits[i]:
@@ -1868,8 +1877,10 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             return {"material": mid, "state": "ready"}
         if stock[mid] >= bom_of(i, mid):
             return {"material": mid, "state": "in_stock"}
-        if mid in fixed_arrival[i]:   # 4.43: 처음부터 아는 입고일
-            return {"material": mid, "state": "coming", "arrival_day": arrival_day[i][mid], "delayed": False}
+        if mid in fixed_arrival[i]:   # 4.43: 미리 발주해 둔 키트(지연은 원래 입고일부터 안다)
+            planned = fixed_arrival[i][mid]
+            known = arrival_day[i][mid] if day >= planned else planned
+            return {"material": mid, "state": "coming", "arrival_day": known, "delayed": known > planned}
         if mid not in order_days[i]:
             return {"material": mid, "state": "not_ordered"}
         planned = order_days[i][mid] + materials[mid]["lead_days"]
@@ -2041,6 +2052,9 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                     # 긴급 자재 조달(4.40): 그 배 그 공정 키트의 입고를 내일 아침으로 당긴다(아직 알려지지 않은 지연 통보는 지운다)
                     i, mid = b["ship"], q_all["expedite"]["material"]
                     old = arrival_day[i][mid]
+                    if mid in fixed_arrival[i]:   # 4.43: 작업장 직납 키트
+                        direct[old] = [x for x in direct.get(old, []) if x != (i, mid)]
+                        direct.setdefault(day + 1, []).append((i, mid))
                     moved = [x for x in arrivals.get(old, []) if x[0] == mid and x[2] == orders[i]["id"]]
                     arrivals[old] = [x for x in arrivals.get(old, []) if x not in moved]
                     arrivals.setdefault(day + 1, []).extend(moved)
@@ -2272,6 +2286,13 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             batches[mid].append([day, for_ship, qty])
             events.append({"day": day, "type": "arrival", "material": mid, "quantity": qty, "ship": for_ship,
                            **({"safety": True} if for_ship is None else {})})
+        for i, mid in direct.get(day, []):   # 4.43: 미리 발주해 둔 키트는 작업장으로 바로
+            for q in range(n_st):
+                if q not in skipped_p and stations[q]["material"] == mid:
+                    kit_since.setdefault((i, q), day)
+                    kit_ready.add((i, q))
+            events.append({"day": day, "type": "arrival", "material": mid, "quantity": bom_of(i, mid), "ship": orders[i]["id"],
+                           "direct": True})
 
         # 2. 운반: 공용 지게차(4.3, D46)와 블록 트랜스포터. 멈춘(고장) 차는 일감을 받지 않는다.
         carried: dict[int, list[str]] = {k: [] for k in range(n_tr) if day > tr_stop_until[k]}
@@ -2382,7 +2403,8 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
             # 운반 순서: 닿아서 만들 다음 공정 블록을 그 공정의 규칙으로 줄 세운 순서, 같으면 블록 번호
             for b in sorted((b for b in all_blocks if b["state"] == "await_tr" and b["done_day"] < day),
                             key=lambda b: (block_key(parent_of(b), day), b["no"])):
-                weight = tr["lot_weight"] / n_blk[b["p"]]
+                # 블록 하나는 트랜스포터 한 대에 실린다(4.43: 블록이 하나뿐인 공정이면 로트 무게가 용량을 넘어 한 대 가득으로 본다)
+                weight = min(tr["lot_weight"] / n_blk[b["p"]], tr["capacity"])
                 k = next((k for k in free if room[k] >= weight - EPS), None)
                 if k is None:
                     continue
