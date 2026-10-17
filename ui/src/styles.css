@@ -1553,3 +1553,21 @@ details.block-plan > summary small { color: var(--ink-3); }
 .dc-policy { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0; }
 .dc-action { font: inherit; font-size: 0.78rem; max-width: 260px; }
 .dc-done { font-size: 0.78rem; color: var(--ink-3); }
+/* 4.32 모니터 브레드크럼과 카메라 전환 */
+.crumbs { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.crumb { border: 1px solid transparent; background: transparent; padding: 2px 8px; border-radius: 6px; font: inherit; font-size: 0.8rem; color: var(--ink-3); cursor: pointer; }
+.crumb:hover { color: var(--ink); border-color: var(--line); }
+.crumb.current { background: var(--ink); color: #fff; font-weight: 700; }
+.crumb-select { appearance: auto; }
+.crumb-sep { color: var(--ink-3); font-size: 0.8rem; }
+.crumb-gap { flex: 1; min-width: 12px; }
+.gantt-screen > .crumbs { margin: 0 0 6px; }
+.cam-in { animation: cam-in 0.45s ease-out; }
+.cam-out { animation: cam-out 0.45s ease-out; }
+@keyframes cam-in { from { transform: scale(0.82); opacity: 0.35; } to { transform: none; opacity: 1; } }
+@keyframes cam-out { from { transform: scale(1.18); opacity: 0.35; } to { transform: none; opacity: 1; } }
+.dc-focus { border: 0; cursor: pointer; font: inherit; font-size: 0.76rem; font-weight: 700; }
+/* 4.32 실적서 블록 평가 */
+.eval-tabs { margin-bottom: 6px; }
+.eval-table th .swatch { display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 2px; vertical-align: middle; }
+.eval-table td.late { color: var(--bad); font-weight: 700; }

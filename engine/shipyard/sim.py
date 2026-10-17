@@ -1178,6 +1178,33 @@ def _recommend(config: dict[str, Any], scenario: dict[str, Any], result: dict[st
             "current_is_best": _dispatch_rank(current) >= _dispatch_rank(best)}
 
 
+EVAL_WAITS = [MATERIAL_WAIT, STATION_WAIT, PAIR_WAIT, LABOR_WAIT]
+
+
+def _block_eval(blocks: list[dict[str, Any]], actions: dict[str, str], action_cost: dict[str, float]) -> dict[str, Any]:
+    """블록 평가(4.32, D79): 실적서의 전체 / 공정별 / 작업장별 / 선박별 표. 블록 수, 블록 납기 준수, 지연 블록·지연 일수,
+    표준·작업(재작업 포함)·재작업 공수, 대기한 블록-일(자재·작업장·짝·인력), 조치 수와 쓴 비상 예산.
+    작업장은 공정:번호, 외주로 나간 블록은 공정:out."""
+    def row(bs: list[dict[str, Any]]) -> dict[str, Any]:
+        acts = [actions[b["id"]] for b in bs if b["id"] in actions]
+        return {"blocks": len(bs), "on_time": sum(b["on_time"] for b in bs),
+                "late_blocks": sum(1 for b in bs if not b["on_time"]), "late_days": sum(b["late_days"] for b in bs),
+                "std_mh": round(sum(b["std_mh"] for b in bs), 2), "mh": round(sum(b["mh"] for b in bs), 2),
+                "rework_mh": round(sum(b["rework_mh"] for b in bs), 2),
+                "waits": {w: sum(1 for b in bs for d in b["daily"] if d["state"] == w) for w in EVAL_WAITS},
+                "actions": {k: acts.count(k) for k in ACTION_KINDS if k in acts},
+                "emergency": round(sum(action_cost.get(b["id"], 0.0) for b in bs), 2)}
+
+    def group(key: Any) -> dict[str, Any]:
+        out: dict[str, list[dict[str, Any]]] = {}
+        for b in blocks:
+            out.setdefault(key(b), []).append(b)
+        return {k: row(v) for k, v in out.items()}
+    return {"all": row(blocks), "stations": group(lambda b: b["station"]),
+            "units": group(lambda b: f"{b['station']}:{b['unit'] if b['unit'] is not None else 'out'}"),
+            "ships": group(lambda b: b["ship"])}
+
+
 def _outcome(result: dict[str, Any]) -> dict[str, Any]:
     """결정 돌아보기의 한 줄: 배마다 인도 지연, 그리고 _dispatch_metrics."""
     return {**_dispatch_metrics(result), "late": {s["id"]: s["late_days"] for s in result["ships"]}}
@@ -1461,6 +1488,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
     em = scenario["emergency"]
     budget = {p: float({**scenario.get("contingency", {}), **(config.get("contingency") or {})}.get(stations[p]["id"], 0)) for p in block_set}
     spent = {p: 0.0 for p in block_set}
+    action_cost: dict[str, float] = {}
     pins = {bid: pin for bid in (config.get("block_start") or {}) if (pin := block_pin(config, bid))}   # 착수일·시각(4.26, 4.29)
     hours_of = [day_hours(c, rules) for c in st_cfg]   # 작업장의 하루 근무시간(4.29): 정규 8, 잔업 10
     mh_hours = rules["hours"]["day"]                   # 작업량 1 = 8 MH
@@ -1600,6 +1628,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                     continue
                 spent[b["p"]] += cost_q
                 cost["emergency"] += cost_q
+                action_cost[bid] = cost_q
                 actions[bid] = kind
                 applied[bid] = kind
                 if kind == "outsource":
@@ -2430,6 +2459,7 @@ def _run(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
                           "rate": sum(b["on_time"] for b in blocks_out) / len(blocks_out) if blocks_out else None,
                           "late_days": sum(b["late_days"] for b in blocks_out)},
             "manhours": _manhour_summary(mh, stations, blocks_out),
+            "block_eval": _block_eval(blocks_out, actions, action_cost),
             **({"decisions": decision_log, "pending": pending} if manual else {})} if block_mode else {}),
         "research": schedule,
         "safety_stock": safety,

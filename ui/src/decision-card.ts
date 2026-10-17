@@ -16,6 +16,8 @@ export interface DecisionContext {
   onSubmit(decision: Omit<Decision, "day">): void;
   /** 이후는 묻지 않고 기본 대응(정책대로) */
   onAuto(): void;
+  /** 공정 이름을 눌렀다: 두 모니터를 그 공정 작업장으로 */
+  onFocus?(station: string): void;
 }
 
 /** 정하는 중인 것(그날). 다시 그려도 유지한다 */
@@ -88,7 +90,8 @@ export function renderDecisionCard(root: HTMLElement, ctx: DecisionContext): voi
       const order = [...ids.filter((id) => !deferred(id)), ...ids.filter(deferred)];
       const left = st.budget_left - spentOn(sid);
       return h("div", { class: "dc-station" },
-        h("h3", null, h("span", { class: "wl-station", style: { background: STATION_COLOR[sid], color: STATION_TEXT[sid] } }, name[sid]),
+        h("h3", null, h("button", { type: "button", class: "wl-station dc-focus", title: "모니터로 이 공정 작업장 보기",
+          style: { background: STATION_COLOR[sid], color: STATION_TEXT[sid] }, onclick: () => ctx.onFocus?.(sid) }, `${name[sid]} 작업장 보기`),
           h("small", null, st.inside.length ? ` 작업 중 ${st.inside.map((r) => `${r.id}(${fmt(r.mh)}H 남음)`).join(", ")}` : " 작업장 비어 있음"),
           h("span", { class: "dc-budget" }, `비상 예산 ${fmt(left)} / ${fmt(st.budget)} 남음`)),
         h("div", { class: "dc-policy" },

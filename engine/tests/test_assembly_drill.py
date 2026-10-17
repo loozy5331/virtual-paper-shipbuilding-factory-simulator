@@ -196,6 +196,15 @@ class AssemblyGrade(unittest.TestCase):
         r = simulate(cfg)
         self.assertEqual((r["grade"]["grade"], r["qcd"]["delivery"]["on_time"]), ("S", 3))
 
+    def test_block_eval_levels(self):
+        # 블록 평가(3.2): 전체 = 공정별 합 = 작업장별 합 = 선박별 합
+        r = simulate(load_presets("assembly")[1]["config"], baseline=False)
+        ev = r["block_eval"]
+        for level in ("stations", "units", "ships"):
+            self.assertEqual(sum(v["blocks"] for v in ev[level].values()), ev["all"]["blocks"], level)
+            self.assertEqual(sum(v["late_days"] for v in ev[level].values()), ev["all"]["late_days"], level)
+        self.assertEqual(ev["all"]["blocks"], 42)
+
     def test_rules_recommend(self):
         self.assertEqual(simulate(load_presets("assembly")[1]["config"])["recommend"]["best"], "ship")
 

@@ -629,6 +629,17 @@ export interface Result {
   decisions?: (Decision & { situation: Situation; refused: Record<string, string> })[];
   pending?: Situation | null;
   review?: DecisionReview[];
+  /** 4.32: 블록 평가(실적서 3.2) — 전체, 공정별, 작업장별("공정:번호", 외주는 "공정:out"), 선박별 */
+  block_eval?: { all: BlockEvalRow; stations: Record<string, BlockEvalRow>; units: Record<string, BlockEvalRow>; ships: Record<string, BlockEvalRow> };
+}
+
+export interface BlockEvalRow {
+  blocks: number; on_time: number; late_blocks: number; late_days: number;
+  std_mh: number; mh: number; rework_mh: number;
+  /** 대기한 블록-일(자재·작업장·짝·인력) */
+  waits: Record<string, number>;
+  actions: Partial<Record<ActionKind, number>>;
+  emergency: number;
 }
 
 /** 4.32(D79): 그날의 정책(공정 → 규칙)과 블록별 조치 */

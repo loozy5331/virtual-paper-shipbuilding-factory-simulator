@@ -8,7 +8,7 @@
 
 import { activeStations, blockLabel, dayHour, type BlockResult, type ForkliftJob, type Plan, type Result, type Scenario, type Segment } from "./api";
 import { s } from "./dom";
-import { PAIR_WAIT_EDGE, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, STATION_TEXT } from "./labels";
+import { OUTSOURCED_STATE, PAIR_WAIT_EDGE, PAIR_WAIT_STATE, STATE_INFO, STATION_COLOR, STATION_TEXT } from "./labels";
 
 // 크기는 모니터의 실제 픽셀(4.15.6). 고정 폭(1000)을 모니터에 줄여 넣으면 11px 글자가 7px로 보였다.
 // 그래서 1단위 = 1px로 그리고, 글자 크기는 CSS 값 그대로 읽힌다. 폭을 모르면(처음 그릴 때) 1000.
@@ -688,7 +688,7 @@ export function renderShipGantt(result: Result, scenario: Scenario, shipId: stri
 const B_ROW = 15;      // 블록 줄
 const U_ROW = 26;      // 작업장 줄
 const B_BAR = 9;
-const WAIT_STATES = ["station_wait", "material_wait", "labor_wait", "transport_wait", "transport", "pair_wait", "accident_stop", "breakdown_stop"];
+const WAIT_STATES = ["station_wait", "material_wait", "labor_wait", "transport_wait", "transport", "pair_wait", "accident_stop", "breakdown_stop", "outsourced"];
 
 /**
  * 블록이 일한 시간 조각(4.29, D76): 일한 날마다 그날 근무 안의 구간. 첫날은 시작 시각부터, 마지막 날은 끝 시각까지이고,
@@ -713,19 +713,20 @@ function workPieces(b: BlockResult, until: number): { start: number; from: numbe
   return out;
 }
 
-export function renderStationGantt(result: Result, scenario: Scenario, shipId: string, stationId: string, today: number,
+export function renderStationGantt(result: Result, scenario: Scenario, shipId: string | null, stationId: string, today: number,
   size?: { width: number; height: number }): SVGElement {
+  // shipId가 null이면(4.32 작업장 단계) 그 공정의 모든 배 블록: 작업장 줄 막대에 배 이름, 블록 줄은 배 → 번호 순
   useSize(size);
   const days = result.days;
-  const ship = result.ships.find((sh) => sh.id === shipId)!;
+  const ship = shipId === null ? null : result.ships.find((sh) => sh.id === shipId)!;
   const st = scenario.stations.find((x) => x.id === stationId)!;
   const units = result.stations.find((rs) => rs.id === stationId)!.units;
-  const blocks = (result.blocks ?? []).filter((b) => b.ship === shipId && b.station === stationId);
+  const blocks = (result.blocks ?? []).filter((b) => (shipId === null || b.ship === shipId) && b.station === stationId);
   const color = STATION_COLOR[stationId];
   // 이 공정 기간만 확대한다(블록이 처음 보인 날 앞뒤로 여유)
   const alive = (b: typeof blocks[number]) => b.daily.map((r, i) => (r.state !== "not_started" && r.state !== "done" ? i + 1 : 0)).filter(Boolean);
   const daysSeen = blocks.flatMap(alive);
-  const due = ship.station_dues?.[stationId]?.due;
+  const due = ship?.station_dues?.[stationId]?.due;
   const first = Math.max(1, (daysSeen.length ? Math.min(...daysSeen) : 1) - 2);
   const last = Math.min(days, Math.max(daysSeen.length ? Math.max(...daysSeen) : days, ...blocks.map((b) => b.due), due ?? 0) + 2);
   const span = last - first + 1;
@@ -740,7 +741,7 @@ export function renderStationGantt(result: Result, scenario: Scenario, shipId: s
   const height = bTop + blocks.length * B_ROW + 12;
 
   const svg = s("svg", { class: "gantt station-gantt", viewBox: `0 0 ${W} ${height}`, role: "img",
-    "aria-label": `${shipId} ${st.name}: 작업장별 블록과 블록별 진행, ${today}일째` });
+    "aria-label": `${shipId ?? "모든 배"} ${st.name}: 작업장별 블록과 블록별 진행, ${today}일째` });
   svg.append(s("defs", null,
     s("pattern", { id: "hatch", width: 6, height: 6, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" },
       s("rect", { width: 2.4, height: 6, fill: "#ffffff", opacity: 0.6 }))));
@@ -764,7 +765,7 @@ export function renderStationGantt(result: Result, scenario: Scenario, shipId: s
       const rec = u.daily[d - 1];
       if (!rec || !rec.ship) continue;
       const working = rec.state === "work" || rec.state === "rework";
-      if (rec.ship !== shipId) {
+      if (shipId !== null && rec.ship !== shipId) {
         if (working) g.append(barEl(x(d), y + 6, dayW, U_ROW - 14, "#d8dcd6", `${d}일 ${rec.ship}가 사용`));
         continue;
       }
@@ -776,13 +777,13 @@ export function renderStationGantt(result: Result, scenario: Scenario, shipId: s
     // 이 배의 블록(4.29): 블록마다 일한 시간만큼(이어 하기로 한 블록이 끝난 자리에서 다음 블록이 시작한다)
     for (const b of blocks.filter((b) => b.unit === u.unit)) {
       const H = b.day_hours ?? 8;
-      const name = blockLabel(stationId, b.no);
+      const name = shipId === null ? `${b.ship} ${blockLabel(stationId, b.no)}` : blockLabel(stationId, b.no);
       for (const pc of workPieces(b, Math.min(last, today))) {
         if (pc.end < first) continue;
         const x0 = at(pc.start, pc.from, H);
         const w = at(pc.end, pc.to, H) - x0;
         g.append(barEl(x0, y + 6, w, U_ROW - 14, color,
-          `${shipId} ${name} ${dayHour(pc.start, pc.from)} ~ ${dayHour(pc.end, pc.to)}${pc.rework ? " (재작업)" : ""}`,
+          `${b.ship} ${name} ${dayHour(pc.start, pc.from)} ~ ${dayHour(pc.end, pc.to)}${pc.rework ? " (재작업)" : ""}`,
           { label: name, textColor: STATION_TEXT[stationId], hatch: pc.rework, className: "unit-piece" }));
       }
     }
@@ -790,11 +791,12 @@ export function renderStationGantt(result: Result, scenario: Scenario, shipId: s
   });
 
   // 블록 줄
-  svg.append(s("text", { x: 12, y: bTop - 6, class: "ship-sub" }, `${shipId}의 ${st.name} 블록 ${blocks.length}개`));
+  svg.append(s("text", { x: 12, y: bTop - 6, class: "ship-sub" }, `${shipId ?? "모든 배"}의 ${st.name} 블록 ${blocks.length}개`));
   blocks.forEach((b, k) => {
     const y = bTop + k * B_ROW;
     const g = s("g", { class: "ship-row" });
-    g.append(s("text", { x: 24, y: y + B_ROW - 4, class: "ship-sub" }, `${blockLabel(stationId, b.no)}${b.unit ? ` · ${b.unit}호` : ""}`));
+    g.append(s("text", { x: 24, y: y + B_ROW - 4, class: "ship-sub" },
+      `${shipId === null ? `${b.ship} ` : ""}${blockLabel(stationId, b.no)}${b.unit ? ` · ${b.unit}호` : b.daily.some((r) => r.state === "outsourced") ? " · 외주" : ""}`));
     const segs = runs(b.daily, (day) => {
       const r = b.daily[day - 1];
       return day < first || day > last || !r || r.state === "not_started" || r.state === "done" ? null : r.state;
@@ -806,8 +808,8 @@ export function renderStationGantt(result: Result, scenario: Scenario, shipId: s
       if (seg.key === "work" || seg.key === "rework") {
         continue;   // 작업은 아래에서 시간 조각으로(4.29)
       } else if (WAIT_STATES.includes(seg.key)) {
-        const info = seg.key === "pair_wait" ? PAIR_WAIT_STATE : STATE_INFO[seg.key];
-        if (info) g.append(barEl(x0, y + B_ROW / 2 - 1.5, w, 3, info.color, `${b.id} ${info.name} ${spanText}`));
+        const info = seg.key === "pair_wait" ? PAIR_WAIT_STATE : seg.key === "outsourced" ? OUTSOURCED_STATE : STATE_INFO[seg.key];
+        if (info) g.append(barEl(x0, y + B_ROW / 2 - (seg.key === "outsourced" ? 3 : 1.5), w, seg.key === "outsourced" ? 6 : 3, info.color, `${b.id} ${info.name} ${spanText}`));
       }
     }
     const H = b.day_hours ?? 8;
