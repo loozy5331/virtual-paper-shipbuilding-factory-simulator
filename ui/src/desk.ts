@@ -3,7 +3,8 @@
 // 신입이 쉬운 분기부터 하나씩 맡으며 경험을 쌓는 흐름이다. 누르면 그 클립보드를 집어 들고 생산계획서가 열린다(main.ts).
 // 4.22.1(사용자): 클립보드는 가로 한 줄. 가운데 한 장을 "‹ ›" 버튼·드래그·←/→로 넘긴다. 처음은 입문(맨 왼쪽).
 // 가운데가 아닌 클립보드를 누르면 먼저 가운데로 옮기고, 가운데 것을 누르면 연다.
-// 4.25(D71): 사다리 밖 실습(track "drill", 블록 조립)은 맨 끝에 놓고 난이도 점 대신 "실습" 표를 단다.
+// 4.25(D71): 사다리 밖 실습(track "drill", 블록 조립)은 난이도 점 대신 "실습" 표를 단다.
+// 4.30(D77, 사용자): 실습은 캐러셀(사다리, 전체 생산관리)에서 빼고 아래 "조립 공정 실습" 줄에 나란히 놓는다. 누르면 바로 연다.
 
 import type { ClassBest, ScenarioSummary } from "./api";
 import { h, mount, num } from "./dom";
@@ -28,8 +29,10 @@ const DRAG_PX = 6;    // 이만큼 움직이면 클릭이 아니라 드래그
 let deskIndex = 0;
 
 export function renderDesk(root: HTMLElement, ctx: DeskContext): void {
-  const maxLevel = Math.max(...ctx.scenarios.filter((sc) => sc.track !== "drill").map((sc) => sc.level));
-  const n = ctx.scenarios.length;
+  const ladder = ctx.scenarios.filter((sc) => sc.track !== "drill");
+  const drills = ctx.scenarios.filter((sc) => sc.track === "drill");
+  const maxLevel = Math.max(...ladder.map((sc) => sc.level));
+  const n = ladder.length;
   deskIndex = Math.min(deskIndex, n - 1);
   const boards: HTMLElement[] = [];
   const track = h("div", { class: "desk-boards" });
@@ -37,7 +40,7 @@ export function renderDesk(root: HTMLElement, ctx: DeskContext): void {
   const prev = h("button", { type: "button", class: "desk-nav", "aria-label": "이전 반기", onclick: () => go(deskIndex - 1) }, "‹") as HTMLButtonElement;
   const next = h("button", { type: "button", class: "desk-nav", "aria-label": "다음 반기", onclick: () => go(deskIndex + 1) }, "›") as HTMLButtonElement;
   const dots = h("div", { class: "desk-dots", role: "tablist", "aria-label": "반기" },
-    ctx.scenarios.map((sc, i) => h("button", {
+    ladder.map((sc, i) => h("button", {
       type: "button", role: "tab", class: "desk-dot", "aria-label": `${sc.period} ${sc.name}`, title: `${sc.period} · ${sc.name}`,
       onclick: () => go(i),
     })));
@@ -102,14 +105,15 @@ export function renderDesk(root: HTMLElement, ctx: DeskContext): void {
     boards[deskIndex]?.focus({ preventScroll: true });
   });
 
-  track.append(...ctx.scenarios.map((sc, i) => {
+  /** 클립보드 한 장. 사다리는 가운데 것을 누르면 열고(아니면 가운데로), 실습 줄은 바로 연다 */
+  const card = (sc: ScenarioSummary, onClick: (board: HTMLElement) => void): HTMLElement => {
     const best = ctx.best[sc.id];
     const mix = Object.entries(sc.ship_mix).map(([name, k]) => `${name} ${k}`).join(" · ");
     const drill = sc.track === "drill";
     const board: HTMLElement = h("button", {
       class: `clipboard desk-board${drill ? " drill" : ""}`, type: "button",
       "aria-label": drill ? `실습, ${sc.name}` : `${sc.period} 생산계획, ${sc.name}, 난이도 ${sc.level}`,
-      onclick: () => (i === deskIndex ? ctx.onPick(sc.id, board) : go(i)),
+      onclick: () => onClick(board),
     },
     h("div", { class: "desk-sheet" },
       h("small", { class: "desk-org" }, "종이배 조선소"),
@@ -139,6 +143,10 @@ export function renderDesk(root: HTMLElement, ctx: DeskContext): void {
         : null,
       // 메모: 시나리오 이름은 종이에 붙인 쪽지처럼 둔다.
       h("p", { class: "desk-memo" }, h("b", null, sc.name), " ", sc.summary)));
+    return board;
+  };
+  track.append(...ladder.map((sc, i) => {
+    const board = card(sc, (b) => (i === deskIndex ? ctx.onPick(sc.id, b) : go(i)));
     boards.push(board);
     return board;
   }));
@@ -147,10 +155,14 @@ export function renderDesk(root: HTMLElement, ctx: DeskContext): void {
     h("div", { class: "desk-intro" },
       h("small", { class: "desk-brand" }, "종이배 조선소 · 생산관리 시뮬레이터"),
       h("h2", null, "어느 반기의 생산계획을 맡을까요?"),
-      h("p", null, "입문 반기부터 차례로 맡으면 좋습니다. 오른쪽으로 넘길수록 수주가 많고 판단할 것이 늘어납니다.",
-        ctx.scenarios.some((sc) => sc.track === "drill") ? " 맨 끝은 한 가지 개념만 따로 연습하는 실습입니다." : "")),
+      h("p", null, "입문 반기부터 차례로 맡으면 좋습니다. 오른쪽으로 넘길수록 수주가 많고 판단할 것이 늘어납니다.")),
     h("div", { class: "desk-carousel" }, prev, viewport, next),
-    dots);
+    dots,
+    drills.length ? h("section", { class: "desk-drills", "aria-label": "조립 공정 실습" },
+      h("div", { class: "desk-drills-head" },
+        h("h3", null, "조립 공정 실습"),
+        h("p", null, "조선소 전체가 아니라 조립 공정 하나를 맡습니다. 블록마다 납기·작업시간·자재·후행 공정을 보고 무엇부터 할지 정하고, 관제실의 \"전체\" 탭으로 조선소 전체에서 무슨 일이 있었는지 거슬러 봅니다.")),
+      h("div", { class: "desk-drill-row" }, drills.map((sc) => card(sc, (b) => ctx.onPick(sc.id, b))))) : null);
   go(deskIndex);
   // 트랙 위치는 보이는 폭에 따라 다르다: 붙인 뒤와 창 크기가 바뀔 때 다시 잰다
   requestAnimationFrame(() => place(0, false));

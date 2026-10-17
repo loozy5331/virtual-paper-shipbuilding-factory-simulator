@@ -1,0 +1,540 @@
+{
+  "id": "assembly",
+  "name": "조립 현장 배정",
+  "summary": "수주 3척(벌크선, 예인선, 피더 컨테이너선). 조립장 인원은 5명(하루 40MH)으로 소조립·중조립·PE장 세 정반을 모두 채우지 못한다. 블록마다 남은 기간, 필요 작업시간, 자재 준비를 보고 급한 블록부터 배치하고, 관제실 전체 화면에서 자재가 언제 창고에 오는지, 후행 공정에 짝 블록이 기다리는지 확인한다.",
+  "track": "drill",
+  "level": 2,
+  "block_mode": true,
+  "period": "실습",
+  "days": 50,
+  "orders": [
+    {
+      "id": "S1",
+      "type": "BULK",
+      "order_day": 1,
+      "due_day": 40,
+      "price": 5000
+    },
+    {
+      "id": "S2",
+      "type": "TUG",
+      "order_day": 1,
+      "due_day": 42,
+      "price": 3000
+    },
+    {
+      "id": "S3",
+      "type": "FEEDER",
+      "order_day": 1,
+      "due_day": 42,
+      "price": 4000
+    }
+  ],
+  "initial_stock": {
+    "paper": 0,
+    "paint": 0,
+    "flag": 0,
+    "insulation": 0
+  },
+  "kpi": {
+    "revenue": 12000,
+    "profit": 5000,
+    "on_time_rate": 1.0,
+    "first_pass_yield": 0.9
+  },
+  "skip": [
+    "painting",
+    "pre_outfitting"
+  ],
+  "station_material": {
+    "block_assembly": "paint"
+  },
+  "unlocks": "블록 실습입니다. 공정은 절단·가공·소조립·중조립·PE장·탑재만 쓰고, 탑재를 끝낸 날 인도합니다. 조립 세 공정은 블록 단위로 계산합니다. 공법·인력 종류·호이스트·나눠 하기는 잠겨 있습니다.",
+  "tips": [
+    "벌크선(S1)은 가장 크고 납기도 가장 빨라. ① 수주 목록 우선순위에서 S1을 앞에 둬.",
+    "S2는 PE장 납기가 도크 일정(26일)으로 앞당겨져 있어. 조립 공정 계획서의 블록 공정 규칙을 여유 작은 순으로 두면 인도 납기만 봐서 이 날을 넘기고, 선박 순서는 S3 블록이 밀려. 납기 빠른 순이 둘 다 챙겨. 평가서 블록 우선순위 칸에서 비교해 봐.",
+    "⑤ 자동화 연구로 조립이 빨라지면 조립·탑재 인원을 줄여도 납기를 지켜. 이 실습에서는 인건비가 이익을 갈라."
+  ],
+  "options": {
+    "crews": [
+      "normal"
+    ],
+    "methods": [
+      "standard"
+    ],
+    "material_grades": [
+      "standard"
+    ],
+    "max_units": 2,
+    "hoist": false,
+    "split": false,
+    "forklift_counts": [
+      2
+    ],
+    "transporter_counts": [
+      1,
+      2
+    ]
+  },
+  "grade": {
+    "weights": {
+      "revenue": 30,
+      "profit": 40,
+      "delivery": 20,
+      "quality": 10
+    },
+    "profit_cap": 1.3,
+    "bands": {
+      "S": 100,
+      "A": 85,
+      "B": 70,
+      "C": 50
+    },
+    "baseline_preset": "all_in"
+  },
+  "random": {
+    "quality": {
+      "S2": {
+        "cutting": 0.42,
+        "processing": 0.17,
+        "sub_assembly": 0.06,
+        "block_assembly": 0.74,
+        "painting": 0.73,
+        "pre_outfitting": 0.55,
+        "grand_assembly": 0.6,
+        "erection": 0.74,
+        "quay_outfitting": 0.23,
+        "sea_trial": 0.67
+      },
+      "S1": {
+        "cutting": 0.42,
+        "processing": 0.54,
+        "sub_assembly": 0.05,
+        "block_assembly": 0.2,
+        "painting": 0.52,
+        "pre_outfitting": 0.72,
+        "grand_assembly": 0.1,
+        "erection": 0.81,
+        "quay_outfitting": 0.05,
+        "sea_trial": 0.06
+      },
+      "S3": {
+        "cutting": 0.66,
+        "processing": 0.49,
+        "sub_assembly": 0.76,
+        "block_assembly": 0.33,
+        "painting": 0.19,
+        "pre_outfitting": 0.38,
+        "grand_assembly": 0.4,
+        "erection": 0.49,
+        "quay_outfitting": 0.81,
+        "sea_trial": 0.2
+      }
+    },
+    "block_quality": {
+      "S2": {
+        "sub_assembly": [
+          0.54,
+          0.78,
+          0.06,
+          0.22,
+          0.84,
+          0.68,
+          0.31,
+          0.39
+        ],
+        "block_assembly": [
+          0.79,
+          0.63,
+          0.37,
+          0.76
+        ],
+        "grand_assembly": [
+          0.07,
+          0.82
+        ]
+      },
+      "S1": {
+        "sub_assembly": [
+          0.17,
+          0.21,
+          0.82,
+          0.63,
+          0.69,
+          0.84,
+          0.23,
+          0.02
+        ],
+        "block_assembly": [
+          0.35,
+          0.25,
+          0.79,
+          0.91
+        ],
+        "grand_assembly": [
+          0.49,
+          0.12
+        ]
+      },
+      "S3": {
+        "sub_assembly": [
+          0.41,
+          0.33,
+          0.73,
+          0.18,
+          0.01,
+          0.12,
+          0.69,
+          0.88
+        ],
+        "block_assembly": [
+          0.9,
+          0.54,
+          0.12,
+          0.22
+        ],
+        "grand_assembly": [
+          0.57,
+          0.66
+        ]
+      }
+    },
+    "supply": {
+      "S1": {
+        "paper": 0.9,
+        "paint": 0.8,
+        "flag": 0.9
+      },
+      "S2": {
+        "paper": 0.9,
+        "paint": 0.6,
+        "flag": 0.9
+      },
+      "S3": {
+        "paper": 0.9,
+        "paint": 0.1,
+        "flag": 0.9
+      }
+    }
+  },
+  "presets": [
+    {
+      "id": "unmanaged",
+      "name": "무관리",
+      "summary": "작은 배부터(예인선 S2 → 벌크선 S1 → 피더 S3) 모두 1일에 착수하고, 자재는 늦게 발주한다. 블록 공정은 선박 순서로만 한다. 정비·잔업 없이 7명(가공 2, 조립 3, 탑재 2). S2의 PE장 납기(도크 일정)는 적어 둔다.",
+      "config": {
+        "scenario": "assembly",
+        "ordering": "late",
+        "ships": {
+          "S2": {
+            "priority": 1,
+            "start_day": 1
+          },
+          "S1": {
+            "priority": 2,
+            "start_day": 1
+          },
+          "S3": {
+            "priority": 3,
+            "start_day": 1
+          }
+        },
+        "pools": {
+          "processing": 2,
+          "assembly": 3,
+          "erection": 2,
+          "outfitting": 2,
+          "trial": 1
+        },
+        "transporters": {
+          "maintenance": false,
+          "count": 1
+        },
+        "forklifts": {
+          "count": 2,
+          "maintenance": false
+        },
+        "research": [],
+        "stations": {
+          "cutting": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": false
+          },
+          "processing": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": false
+          },
+          "sub_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": false
+          },
+          "block_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": false
+          },
+          "grand_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": false
+          },
+          "erection": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": false
+          },
+          "quay_outfitting": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": false
+          },
+          "sea_trial": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": false
+          }
+        },
+        "due": {
+          "stations": {
+            "S2": {
+              "grand_assembly": 26
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "managed",
+      "name": "관리",
+      "summary": "가장 크고 납기가 빠른 벌크선(S1)을 우선순위 1로 두고, 착수일을 S1 1일 → S2 5일 → S3 9일로 조금씩 어긋나게 둔다(S1은 절단 공정 납기 2일이라 1일). 블록 순서도 S1 → S2 → S3 블록 차례로 둔다. 자재는 역산 발주한다. 조립 4명에 정비를 한다. S2의 PE장 납기(도크 일정)는 적어 둔다.",
+      "config": {
+        "scenario": "assembly",
+        "ordering": "jit",
+        "ships": {
+          "S2": {
+            "priority": 2,
+            "start_day": 5
+          },
+          "S1": {
+            "priority": 1,
+            "start_day": 1
+          },
+          "S3": {
+            "priority": 3,
+            "start_day": 9
+          }
+        },
+        "pools": {
+          "processing": 2,
+          "assembly": 5,
+          "erection": 2,
+          "outfitting": 2,
+          "trial": 1
+        },
+        "transporters": {
+          "maintenance": true,
+          "count": 1
+        },
+        "forklifts": {
+          "count": 2,
+          "maintenance": true
+        },
+        "research": [],
+        "stations": {
+          "cutting": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          },
+          "processing": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          },
+          "sub_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          },
+          "block_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          },
+          "grand_assembly": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          },
+          "erection": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          },
+          "quay_outfitting": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          },
+          "sea_trial": {
+            "method": "standard",
+            "overtime": false,
+            "maintenance": true
+          }
+        },
+        "due": {
+          "stations": {
+            "S2": {
+              "grand_assembly": 26
+            }
+          }
+        },
+        "block_order": {
+          "sub_assembly": [
+            "S1-SA1",
+            "S1-SA2",
+            "S1-SA3",
+            "S1-SA4",
+            "S1-SA5",
+            "S1-SA6",
+            "S1-SA7",
+            "S1-SA8",
+            "S2-SA1",
+            "S2-SA2",
+            "S2-SA3",
+            "S2-SA4",
+            "S2-SA5",
+            "S2-SA6",
+            "S2-SA7",
+            "S2-SA8",
+            "S3-SA1",
+            "S3-SA2",
+            "S3-SA3",
+            "S3-SA4",
+            "S3-SA5",
+            "S3-SA6",
+            "S3-SA7",
+            "S3-SA8"
+          ],
+          "block_assembly": [
+            "S1-BA1",
+            "S1-BA2",
+            "S1-BA3",
+            "S1-BA4",
+            "S2-BA1",
+            "S2-BA2",
+            "S2-BA3",
+            "S2-BA4",
+            "S3-BA1",
+            "S3-BA2",
+            "S3-BA3",
+            "S3-BA4"
+          ],
+          "grand_assembly": [
+            "S1-GA1",
+            "S1-GA2",
+            "S2-GA1",
+            "S2-GA2",
+            "S3-GA1",
+            "S3-GA2"
+          ]
+        }
+      }
+    },
+    {
+      "id": "all_in",
+      "name": "전부 최대 투입",
+      "summary": "모두 1일에 착수하고 자재는 일괄 발주, 블록 공정 작업장 2곳씩, 인원 최대, 잔업과 정비를 모두 한다.",
+      "config": {
+        "scenario": "assembly",
+        "ordering": "bulk",
+        "ships": {
+          "S2": {
+            "priority": 1,
+            "start_day": 1
+          },
+          "S1": {
+            "priority": 2,
+            "start_day": 1
+          },
+          "S3": {
+            "priority": 3,
+            "start_day": 1
+          }
+        },
+        "pools": {
+          "processing": 6,
+          "assembly": 12,
+          "erection": 6,
+          "outfitting": 6,
+          "trial": 1
+        },
+        "transporters": {
+          "maintenance": true,
+          "count": 2
+        },
+        "forklifts": {
+          "count": 2,
+          "maintenance": true
+        },
+        "research": [],
+        "stations": {
+          "cutting": {
+            "method": "standard",
+            "overtime": true,
+            "maintenance": true
+          },
+          "processing": {
+            "method": "standard",
+            "overtime": true,
+            "maintenance": true
+          },
+          "sub_assembly": {
+            "method": "standard",
+            "overtime": true,
+            "maintenance": true,
+            "units": 2
+          },
+          "block_assembly": {
+            "method": "standard",
+            "overtime": true,
+            "maintenance": true,
+            "units": 2
+          },
+          "grand_assembly": {
+            "method": "standard",
+            "overtime": true,
+            "maintenance": true,
+            "units": 2
+          },
+          "erection": {
+            "method": "standard",
+            "overtime": true,
+            "maintenance": true
+          },
+          "quay_outfitting": {
+            "method": "standard",
+            "overtime": true,
+            "maintenance": true
+          },
+          "sea_trial": {
+            "method": "standard",
+            "overtime": true,
+            "maintenance": true
+          }
+        },
+        "due": {
+          "stations": {
+            "S2": {
+              "grand_assembly": 26
+            }
+          }
+        }
+      }
+    }
+  ],
+  "supply_delays": true
+}

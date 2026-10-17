@@ -61,6 +61,9 @@ export function renderAssemblyView(result: Result, scenario: Scenario, day: numb
       const y = SHOP_Y + 22 + j * (SLOT_H + 6);
       const r = day > 0 ? u.daily[today - 1] : undefined;
       g.append(s("rect", { x: x0 + 6, y, width: shopW - 12, height: SLOT_H, rx: 4, class: "asm-slot" }),
+        // 설비(4.30): 정반(블록을 놓는 철판 바닥)과 용접기. 고장 중이면 붉게
+        plate(x0 + 9, y + SLOT_H - 7, shopW - 50),
+        welder(x0 + shopW - 30, y + 3, r?.state === "breakdown_stop"),
         s("text", { x: x0 + 10, y: y + 11, class: "asm-small" }, `${u.unit}호 정반`));
       if (!r) return;
       // 일한 블록(이어 하기로 여럿). 일하지 못한 날(인력 대기·중지)은 정반에 들어가 있는 블록을 흐리게
@@ -85,6 +88,9 @@ export function renderAssemblyView(result: Result, scenario: Scenario, day: numb
         g.append(s("text", { x: x0 + shopW - 10, y: y + 11, class: "asm-flag", fill: info.color }, info.name));
       }
     });
+    // 천장 크레인(4.30): 공장을 가로지르는 레일과 트롤리. 오늘 일한 첫 정반 위에 갈고리를 내린다
+    const workingAt = units(st.id).findIndex((u) => day > 0 && ["work", "rework"].includes(u.daily[today - 1]?.state));
+    g.append(crane(x0 + 4, x0 + shopW - 4, SHOP_Y + 19, workingAt < 0 ? null : SHOP_Y + 22 + workingAt * (SLOT_H + 6) + 14, x0 + shopW * 0.62));
     // 공장 앞: 기다리는 블록(작업장 대기·자재 대기), 앞 공장에서 닿아 짝을 기다리는 블록
     const waiting = blocks.filter((b) => {
       const r2 = rec(b);
@@ -120,11 +126,16 @@ export function renderAssemblyView(result: Result, scenario: Scenario, day: numb
           chip(toX, cy, `${b.ship} ${blockLabel(b.station, b.no)}`, STATION_COLOR[st.id], STATION_TEXT[st.id], false, "운반")));
       });
       if (waitTr.length) {
-        svg.append(s("text", { x: lx + 17, y: ly - 8, class: "asm-flag", fill: STATE_INFO.transport_wait.color }, `운반 대기 ${waitTr.length}`));
+        svg.append(s("text", { x: lx + 17, y: SHOP_Y - 6, class: "asm-flag mid", fill: STATE_INFO.transport_wait.color }, `운반 대기 ${waitTr.length}`));
       }
     }
   });
 
+  // 설비 범례
+  svg.append(s("g", { class: "asm-legend" },
+    plate(8, H - 14, 16), s("text", { x: 28, y: H - 9, class: "asm-small" }, "정반"),
+    welder(58, H - 18, false), s("text", { x: 72, y: H - 9, class: "asm-small" }, "용접기"),
+    crane(110, 130, H - 16, H - 8, 120), s("text", { x: 134, y: H - 9, class: "asm-small" }, "천장 크레인")));
   // 오른쪽 끝: PE장 블록이 끝나면 크레인이 탑재로 든다(배 단위). 오늘 탑재 중인 배
   const erecting = result.ships.filter((sh) => day > 0 && sh.daily[today - 1]?.station === "erection" && sh.daily[today - 1]?.state === "work");
   svg.append(s("text", { x: W - 8, y: H - 10, class: "asm-small end" },
@@ -137,6 +148,30 @@ function chip(x: number, y: number, label: string, fill: string, ink: string | u
     s("title", null, title ? `${label} · ${title}` : label),
     s("rect", { x, y, width: CHIP_W, height: CHIP_H, rx: 3, fill, class: hatch ? "rework" : "" }),
     s("text", { x: x + CHIP_W / 2, y: y + CHIP_H - 4, fill: ink ?? "#fff" }, label));
+}
+
+/** 정반: 블록을 놓고 조립하는 철판 바닥(줄무늬) */
+function plate(x: number, y: number, w: number): SVGElement {
+  const g = s("g", { class: "asm-plate" }, s("title", null, "정반"), s("rect", { x, y, width: w, height: 4, rx: 1 }));
+  for (let k = 6; k < w; k += 8) g.append(s("line", { x1: x + k, x2: x + k, y1: y, y2: y + 4 }));
+  return g;
+}
+
+/** 용접기: 작은 상자와 케이블. 고장이면 붉게 */
+function welder(x: number, y: number, broken: boolean): SVGElement {
+  return s("g", { class: `asm-welder${broken ? " broken" : ""}` }, s("title", null, broken ? "용접기 · 고장" : "용접기"),
+    s("rect", { x, y, width: 10, height: 7, rx: 1.5 }),
+    s("path", { d: `M${x + 3} ${y + 2} L${x + 6} ${y + 2} L${x + 4} ${y + 4} L${x + 7} ${y + 4}` }),
+    s("path", { d: `M${x + 10} ${y + 5} q 5 2 3 8`, class: "cable" }));
+}
+
+/** 천장 크레인: 레일, 트롤리, 갈고리(hookY가 있으면 그 높이까지 줄을 내린다) */
+function crane(x1: number, x2: number, y: number, hookY: number | null, tx: number): SVGElement {
+  const g = s("g", { class: "asm-crane" }, s("title", null, "천장 크레인(블록을 들어 옮김)"),
+    s("line", { x1, x2, y1: y, y2: y, class: "rail" }),
+    s("rect", { x: tx - 5, y: y - 3, width: 10, height: 5, rx: 1 }));
+  if (hookY !== null) g.append(s("line", { x1: tx, x2: tx, y1: y + 2, y2: hookY, class: "rope" }), s("path", { d: `M${tx - 2} ${hookY} q 2 4 4 0`, class: "rope" }));
+  return g;
 }
 
 /** 작업자 기호: 둥근 몸 + 고깔모자(관제실 작업 현황과 같은 익명 기호) */

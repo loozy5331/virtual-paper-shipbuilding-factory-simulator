@@ -763,8 +763,82 @@ def _due_preview(config: dict[str, Any], scenario: dict[str, Any]) -> dict[str, 
     plan = plan_schedule(config, scenario)["ships"]
     risks = [{"ship": sid, "station": pid, "plan_end": span["end"], "due": dues[sid][pid], "days": span["end"] - dues[sid][pid]}
              for sid, spans in plan.items() for pid, span in spans.items() if span["end"] > dues[sid][pid]]
+    bplan = block_plan(config, scenario)
     return {"dues": {"stations": dues, "blocks": block_dues(config, scenario, dues)}, "plan_risks": risks,
-            "block_plan": block_plan(config, scenario)}
+            "block_plan": bplan, "worklist": block_worklist(config, scenario, bplan)}
+
+
+def block_worklist(config: dict[str, Any], scenario: dict[str, Any], bplan: dict[str, Any]) -> dict[str, Any]:
+    """조립 작업 목록(4.30, D77): 계획 일정(block_plan)으로 본 날마다의 조립장 작업 목록. 생산계획서의 "오늘의 작업 목록".
+
+    그날 들어갈 수 있고(ready ≤ 그날) 아직 끝나지 않은(end ≥ 그날) 블록마다 남은 기간(블록 납기 − 그날),
+    남은 공수(표준 공수 − 그날 전까지 계획상 한 공수, MH), 자재(그 공정이 쓰는 자재의 계획 입고일. 그날 전에 들어오면 준비)를 적는다.
+    가용 공수 = 조립 인원 × 정규 근무시간. 두 공정 이상의 블록이 함께 있고 필요 합이 가용보다 큰 첫날이 focus
+    (공정끼리 사람을 나눠야 하는 날. 없으면 블록이 가장 많은 날).
+    계획이라 입고 지연·고장·재작업은 넣지 않는다(실행해야 안다)."""
+    blocks = bplan.get("blocks") or {}
+    if not blocks:
+        return {}
+    rules = scenario["rules"]
+    hours = rules["hours"]["day"]
+    workers = rules["max_workers_per_station"]
+    st_of = {s["id"]: s for s in scenario["stations"]}
+    order_days = resolve_order_days(config, scenario)
+    lead = {m["id"]: m["lead_days"] for m in scenario["materials"]}
+    bom = {o["id"]: scenario["ship_types"][o["type"]]["bom"] for o in scenario["orders"]}
+    capacity = config["pools"].get("assembly", 0) * hours
+
+    def kit_day(b: dict[str, Any]) -> int | None:
+        mid = st_of[b["station"]]["material"]
+        if not mid or not bom[b["ship"]].get(mid):
+            return None
+        day = order_days.get(b["ship"], {}).get(mid)
+        return None if day is None else day + lead[mid]
+
+    # 후행(짝): 이 블록과 함께 다음 공정 블록 하나(마지막 블록 공정이면 탑재)를 이루는 블록들
+    counts = block_counts(scenario)
+    ids = [s["id"] for s in scenario["stations"]]
+    nxt = {}
+    for sid in counts:
+        nxt[sid] = next((q for q in counts if q != sid and sid in [ids[a] for a in station_after(scenario)[ids.index(q)]]), None)
+
+    def pair_of(b: dict[str, Any]) -> tuple[str, list[str]]:
+        to = nxt[b["station"]]
+        r = counts[b["station"]] // counts[to] if to else counts[b["station"]]
+        k = (b["no"] - 1) // r
+        mates = [block_id(b["ship"], b["station"], c) for c in range(k * r + 1, (k + 1) * r + 1) if c != b["no"]]
+        return (block_id(b["ship"], to, k + 1) if to else "erection"), mates
+
+    first = min(b["ready"] for b in blocks.values())
+    last = max(b["end"] for b in blocks.values())
+    days: dict[str, Any] = {}
+    focus = None
+    for d in range(first, last + 1):
+        rows = []
+        for bid, b in blocks.items():
+            if not (b["ready"] <= d <= b["end"]):
+                continue
+            done_h = 0.0 if b["start"] >= d else (d - b["start"]) * hours - b["start_h"]
+            left = max(0.0, b["std_mh"] - done_h * workers)
+            kd = kit_day(b)
+            to, mates = pair_of(b)
+            rows.append({"id": bid, "station": b["station"], "ship": b["ship"], "no": b["no"], "due": b["due"],
+                         "left_days": b["due"] - d, "left_mh": round(left, 2), "std_mh": b["std_mh"],
+                         "material": st_of[b["station"]]["material"] if kd is not None else None,
+                         "kit_day": kd, "kit_ready": kd is None or kd < d,
+                         # 짝이 모두 끝났으면(그날 전까지) 이 블록만 끝내면 후행이 시작한다
+                         "next": to, "mates": mates, "mates_done": all(blocks[m]["end"] < d for m in mates)})
+        if not rows:
+            continue
+        rows.sort(key=lambda r: (r["left_days"], r["id"]))
+        need = round(sum(r["left_mh"] for r in rows), 2)
+        days[str(d)] = {"rows": rows, "need_mh": need}
+        if focus is None and need > capacity + EPS and len({r["station"] for r in rows}) > 1:
+            focus = d
+    if focus is None:
+        focus = int(max(days, key=lambda k: (len(days[k]["rows"]), -int(k))))
+    return {"capacity_mh": capacity, "workers": config["pools"].get("assembly", 0), "day_hours": hours,
+            "first": first, "last": last, "focus": focus, "days": days}
 
 
 def move_days_between(scenario: dict[str, Any], a: int, b: int) -> int:

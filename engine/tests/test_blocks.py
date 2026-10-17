@@ -386,10 +386,12 @@ class Recommend(unittest.TestCase):
 class DrillScenario(unittest.TestCase):
     def test_listed_last_as_drill(self):
         # 사다리(D67) 밖 실습: 첫 화면 목록의 맨 끝, track "drill"(난이도 점 대신 "실습" 카드)
+        # 4.30(D77): 조립 현장 배정(assembly)이 블록 조립 실습 다음. 첫 화면은 실습을 사다리 아래 줄에 따로 놓는다
         listed = list_scenarios()
-        self.assertEqual((listed[-1]["id"], listed[-1].get("track")), ("block", "drill"))
-        self.assertTrue(all("track" not in s for s in listed[:-1]))
+        self.assertEqual([(s["id"], s.get("track")) for s in listed[-2:]], [("block", "drill"), ("assembly", "drill")])
+        self.assertTrue(all("track" not in s for s in listed[:-2]))
         self.assertTrue(load_scenario("block")["block_mode"])
+        self.assertTrue(load_scenario("assembly")["block_mode"])
 
     def test_other_scenarios_have_no_blocks(self):
         r = simulate(load_presets("simple")[1]["config"], baseline=False)
