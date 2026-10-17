@@ -1459,10 +1459,7 @@ details.block-plan > summary small { color: var(--ink-3); }
 .legend i.risk-mark { background: transparent; outline: 1.5px solid var(--bad); outline-offset: -1.5px; }
 .block-legend i.wait-mark { height: 3px; border-radius: 1px; }
 
-/* 4.30(D77) 조립 작업 목록(PP-03): 수업 슬라이드의 "오늘의 작업 목록" 표 */
-.wl-main .panel-head { flex-wrap: wrap; }
-.wl-day { margin-left: auto; display: flex; align-items: center; gap: 6px; }
-.wl-day-now { min-width: 3.4em; text-align: center; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+/* 4.30(D77) 조립 작업 목록 표: 4.31부터 몰리는 날의 작업 지시 카드(decision-card.ts)가 쓴다 */
 .wl-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 6px 0 12px; }
 .wl-stat { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; background: var(--panel-2); }
 .wl-stat b { display: block; font-size: 1.5rem; font-variant-numeric: tabular-nums; }
@@ -1476,12 +1473,6 @@ details.block-plan > summary small { color: var(--ink-3); }
 .wl-station { display: inline-block; padding: 1px 7px; border-radius: 5px; font-size: 0.76rem; font-weight: 600; }
 .wl-table .wl-hot { color: var(--bad); font-weight: 700; }
 .wl-table .wl-unblock { color: var(--accent); font-weight: 600; }
-.wl-order { white-space: nowrap; }
-.wl-order .btn { margin-left: 6px; }
-.wl-reset { margin: 8px 0 0; }
-.wl-message { margin-top: 12px; padding: 10px 14px; border-left: 4px solid #d9a520; background: #fff6d6; border-radius: 4px; font-size: 0.84rem; }
-.wl-message b { display: block; margin-bottom: 2px; }
-.wl-message p { margin: 2px 0 0; color: var(--ink-2); }
 
 /* 4.30(D77) 블록 실습 "전체" 화면 구석: 조립과 연결된 자재 입고·짝 대기 */
 .asm-watch-host { position: absolute; left: 8px; bottom: 8px; max-width: min(46%, 420px); z-index: 2; pointer-events: none; }
@@ -1514,3 +1505,33 @@ details.block-plan > summary small { color: var(--ink-3); }
 .desk-drill-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 36px; }
 .desk-drill-row .desk-board { min-height: 0; opacity: 1; }
 .desk-drill-row .desk-board .desk-sheet { pointer-events: auto; }
+
+/* 4.31(D78) 몰리는 날의 작업 지시 카드: 관제실 위(모니터를 가리지 않게 아래 가운데), 접으면 작은 탭 */
+.decision-host { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 40; width: min(1100px, calc(100vw - 32px)); }
+.dc-card { background: var(--paper, #fbf8f1); color: var(--ink); border-radius: 6px; box-shadow: 0 10px 30px rgba(20, 24, 22, 0.35);
+  padding: 14px 18px; max-height: min(64vh, 640px); overflow: auto; }
+.dc-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; border-bottom: 2px solid var(--ink); padding-bottom: 6px; }
+.dc-head small { color: var(--ink-3); font-size: 0.74rem; letter-spacing: 0.08em; }
+.dc-head h2 { margin: 2px 0 0; font-size: 1.15rem; }
+.dc-ask { margin: 2px 0 8px; font-size: 0.84rem; color: var(--ink-2); }
+.dc-stations { display: flex; flex-direction: column; gap: 12px; }
+.dc-station h3 { margin: 0 0 4px; font-size: 0.9rem; }
+.dc-station h3 small { font-weight: 400; }
+.dc-foot { position: sticky; bottom: -14px; display: flex; justify-content: flex-end; gap: 8px; padding: 10px 0 2px; background: var(--paper, #fbf8f1); }
+.dc-tab { display: block; margin: 0 auto; padding: 8px 16px; border-radius: 18px; border: 1px solid var(--line); background: #fff6d6; font: inherit; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(20, 24, 22, 0.25); }
+.wl-order { white-space: nowrap; }
+.wl-order .btn { margin-left: 4px; padding: 0 6px; }
+.wl-table .wl-warm { color: #a0661c; font-weight: 600; }
+
+/* 4.31 결정 돌아보기 */
+.review-lead { font-size: 0.9rem; }
+.review-day { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 10px; }
+.review-day h3 { margin: 0; font-size: 0.95rem; }
+.review-day h3 small { font-weight: 400; color: var(--ink-3); }
+.review-verdict { margin: 4px 0 6px; font-size: 0.86rem; color: var(--bad); }
+.review-day.is-best .review-verdict { color: var(--good); }
+.review-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.review-table th, .review-table td { padding: 3px 8px 3px 0; border-bottom: 1px solid var(--line-soft); text-align: left; }
+.review-table tr.mine th, .review-table tr.mine td { font-weight: 700; }
+.review-table tr.top { background: #e7f2ea; }
+.review-table td.late { color: var(--bad); font-weight: 700; }

@@ -17,6 +17,8 @@ export interface StationConfig {
   buffer?: number;
   /** 블록 공정의 우선순위 규칙(4.25, D71, 블록 조립 실습만). 없으면 선박 순서 */
   dispatch?: DispatchRule;
+  /** 4.31(D78): 블록 공정의 대응 방식. manual이면 몰리는 날 블록 순서를 묻는다(조립 현장 배정만) */
+  dispatch_mode?: "auto" | "manual";
 }
 
 /** 블록 우선순위 규칙(4.25): 선박 순서 · 납기 빠른 순 · 여유 작은 순 · 작업 짧은 순 */
@@ -47,6 +49,9 @@ export interface Config {
   due?: { stations?: Record<string, Record<string, number>>; blocks?: Record<string, number> };
   /** 4.25: 블록 순서. 블록 공정 → 먼저 할 블록 이름 목록(계획 간트에서 끌어 정한다). 없는 블록은 규칙 순으로 뒤에 */
   block_order?: Record<string, string[]>;
+  /** 4.31: 몰리는 날의 결정 기록(그날 공정마다 기다리는 블록의 순서)과 "이후는 기본 대응" */
+  decisions?: Decision[];
+  decisions_end?: boolean;
   /** 4.26: 블록 착수일(블록 이름 → 그날보다 먼저 들이지 않는 날). 조립 공정 계획서에서 막대를 좌우로 끌어 정한다 */
   block_start?: Record<string, number>;
   /** 4.29(D76): 블록 착수 시각(블록 이름 → 근무 시작부터 몇 시간 뒤, 0~7). 착수일을 정한 블록에만. 0이면 적지 않는다 */
@@ -178,6 +183,8 @@ export interface ScenarioOptions {
   safety_stock?: boolean;
   /** 4.15: 공정 여유를 둘 수 있는가(기본 반기부터) */
   plan_buffer?: boolean;
+  /** 4.31(D78): 블록 공정을 직접 대응(몰리는 날 묻기)으로 둘 수 있는가(조립 현장 배정) */
+  decisions?: boolean;
 }
 
 /** 호이스트(4.9): 작업량 배수, 작업장마다 도입비·정비비, 고장 판정 간격(일한 날) */
@@ -354,8 +361,6 @@ export interface Preview {
   plan_risks?: PlanRisk[];
   /** 4.25: 블록 계획 일정(계획 간트에서 펼친 공정의 블록 막대) */
   block_plan?: BlockPlan;
-  /** 4.30(D77) 조립 작업 목록: 계획 일정으로 본 날마다의 조립장 작업(블록 실습만) */
-  worklist?: Worklist;
 }
 
 export interface PlanRisk { ship: string; station: string; plan_end: number; due: number; days: number }
@@ -370,22 +375,6 @@ export interface BlockPlanItem {
   ready_h: number;
 }
 export interface BlockPlan { blocks: Record<string, BlockPlanItem>; order: Record<string, string[]>; risks: string[] }
-
-/** 4.30 작업 목록의 한 줄: 그날 남은 기간(블록 납기 − 그날)·남은 공수·자재(계획 입고일)·후행(짝) */
-export interface WorklistRow {
-  id: string; station: string; ship: string; no: number; due: number;
-  left_days: number; left_mh: number; std_mh: number;
-  material: string | null; kit_day: number | null; kit_ready: boolean;
-  /** 이 블록이 이룰 다음 공정 블록(마지막 블록 공정이면 "erection"), 함께 이루는 짝 블록, 짝이 그날 전에 모두 끝났는지 */
-  next: string; mates: string[]; mates_done: boolean;
-}
-export interface Worklist {
-  capacity_mh: number; workers: number; day_hours: number;
-  first: number; last: number;
-  /** 두 공정 이상이 함께 있고 필요 공수가 가용보다 처음 큰 날(없으면 블록이 가장 많은 날) */
-  focus: number;
-  days: Record<string, { rows: WorklistRow[]; need_mh: number }>;
-}
 
 export interface ShipSpec {
   type: string;
@@ -622,6 +611,27 @@ export interface Result {
   manhours?: { stations: Record<string, ManhourRow>; total: ManhourRow };
   /** 4.25: 평가서 선배의 팁의 우선순위 추천. 블록 순서를 비우고 규칙만 바꿔 더 돌린 네 결과와 지금 계획 */
   recommend?: Recommend;
+  /** 4.31(D78): 적용한 결정(그날의 상황과 함께), 아직 답하지 않은 첫 물음(있으면 그날까지만 재생), 끝난 회차의 결정 돌아보기 */
+  decisions?: (Decision & { situation: Situation })[];
+  pending?: Situation | null;
+  review?: DecisionReview[];
+}
+
+export interface Decision { day: number; orders: Record<string, string[]> }
+
+/** 결정 카드의 블록 한 줄: 남은 기간(블록 납기 − 그날), 공수, 자재 키트, 후행(짝) */
+export interface SituationRow {
+  id: string; ship: string; no: number; due: number; left_days: number; mh: number;
+  kit: { material: string; state: "ready" | "in_stock" | "not_ordered" | "coming"; arrival_day?: number; delayed?: boolean } | null;
+  next: string; mates: { id: string; state: string }[];
+}
+export interface Situation {
+  day: number; capacity_mh: number; need_mh: number;
+  stations: Record<string, { manual: boolean; units: number; waiting: SituationRow[]; inside: SituationRow[]; rule_orders: Record<string, string[]> }>;
+}
+export interface DecisionReview {
+  day: number; best: string; mine_is_best: boolean;
+  rows: (DispatchMetrics & { choice: "mine" | "auto" | DispatchRule; orders: Record<string, string[]> | null; late: Record<string, number> })[];
 }
 
 export class ApiError extends Error {
