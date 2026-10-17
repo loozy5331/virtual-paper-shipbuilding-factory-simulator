@@ -100,13 +100,28 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
             h("div", { class: "asm-rule" }, seg(`mode-${b.id}`, [{ value: "auto", label: "기본 대응" }, { value: "manual", label: "직접 대응" }] as { value: "auto" | "manual"; label: string }[],
               cfg.dispatch_mode ?? "auto", (v) => { if (v === "auto") delete cfg.dispatch_mode; else cfg.dispatch_mode = v; ctx.onEdit(true); })),
           ] : []),
+          // 비상 예산(4.32, 4.34 사용자 "비상 예산은 어디서 확인"): 생산계획서 공정 칸에서 직접 대응 공정 카드로 옮겼다. 직접 대응일 때만 쓴다
+          ...(scenario.contingency && cfg.dispatch_mode === "manual" ? [
+            h("span", { class: "field-label" }, "비상 예산"),
+            h("div", { class: "asm-rule asm-budget" },
+              h("input", {
+                type: "number", class: "day-input", min: 0, max: scenario.contingency_max ?? 500, step: 10,
+                value: config.contingency?.[b.id] ?? scenario.contingency[b.id] ?? 0, "aria-label": `${b.name} 비상 예산`,
+                oninput: (e: Event) => {
+                  const raw = (e.target as HTMLInputElement).value.trim();
+                  (config.contingency ??= {})[b.id] = raw === "" ? 0 : Number(raw);
+                  ctx.onEdit(false);
+                },
+              }),
+              h("small", null, `몰리는 날 액션 카드의 잔업·특근·외주에 씀(0~${scenario.contingency_max ?? 500}, 쓴 만큼만 비용)`)),
+          ] : []),
           h("span", { class: "field-label" }, scenario.options?.decisions ? "배치 정책" : "우선순위"),
           h("div", { class: "asm-rule" }, seg(`dispatch-${b.id}`, (Object.keys(DISPATCH_INFO) as DispatchRule[]).map((id) => ({ value: id, label: DISPATCH_INFO[id].name })),
             cfg.dispatch ?? "ship", (v) => { if (v === "ship") delete cfg.dispatch; else cfg.dispatch = v; ctx.onEdit(true); })),
         ],
       });
     })),
-    scenario.options?.decisions ? h("p", { class: "hint" }, "배치 정책은 작업장이 비었을 때 기다리는 블록 가운데 무엇을 먼저 들일지 정합니다. 직접 대응으로 둔 공정은 실행 중 블록이 몰리는 날(필요 작업시간 > 가용, 새 배의 블록이 대기열에 끼어든 날) 관제실이 멈추고 액션 카드로 정책과 블록별 조치(잔업·특근·외주·지체보상금 감수, 생산계획서의 비상 예산 안에서)를 묻습니다.") : null,
+    scenario.options?.decisions ? h("p", { class: "hint" }, "배치 정책은 작업장이 비었을 때 기다리는 블록 가운데 무엇을 먼저 들일지 정합니다. 직접 대응으로 둔 공정은 실행 중 블록이 몰리는 날(필요 작업시간 > 가용, 새 배의 블록이 대기열에 끼어든 날) 관제실이 멈추고 액션 카드로 정책과 블록별 조치(잔업·특근·외주·지체보상금 감수, 그 공정 비상 예산 안에서)를 묻습니다. 액션 카드는 고를 때마다 작업시간·납기·예산이 어떻게 되는지 미리 보여 줍니다.") : null,
     action ? null : h("p", { class: "hint" }, "우선순위 규칙은 작업장이 비었을 때 기다리는 블록 가운데 무엇을 먼저 들일지 정합니다. 위 배 탭에서 정한 착수일 전에는 그 블록을 들이지 않습니다. 작업장을 2개로 늘리면 블록이 두 작업장으로 퍼집니다."));
 
   // ① 배별 블록 일정과 납기: 계획상 위험 한 줄(혼자 써도 공정 납기를 넘기는 공정, 작업장 겹침과는 원인이 다르다), 배 탭 한 줄
@@ -121,10 +136,11 @@ export function renderAssemblySheet(root: HTMLElement, ctx: AssemblyContext): vo
       onclick: () => { ship = o.id; ctx.onEdit(true); },
     }, `${o.id} ${scenario.ship_types[o.type].name}`, h("small", null, ` 납기 ${o.due_day}일`))));
   const schedule = h("section", { class: "panel asm-main" },
-    h("div", { class: "panel-head" }, h("span", { class: "step" }, "1"), h("h2", null, action ? "블록 작업 일정" : "배별 블록 일정과 납기")),
+    // 4.34(사용자 "크게보기 버튼이 추가되면서 UI가 깨지네"): 조립 현장 배정은 크게 보기를 제목 줄 오른쪽 끝에(배 탭 줄과 다투지 않게)
+    h("div", { class: "panel-head" }, h("span", { class: "step" }, "1"), h("h2", null, action ? "블록 작업 일정" : "배별 블록 일정과 납기"),
+      action ? zoomBtn() : null),
     h("p", { class: "hint plan-risk", "data-asm": "risks" }, "…"),
-    // 4.32.1(사용자): 조립 현장 배정은 일정/납기 고르기 줄이 없어 크게 보기를 배 탭 줄 오른쪽 끝에
-    action ? h("div", { class: "asm-mode" }, tabs, zoomBtn()) : tabs,
+    tabs,
     action ? null : h("div", { class: "asm-mode" }, seg("asm-mode", [{ value: "schedule", label: "블록 일정" }, { value: "dues", label: "공정·블록 납기" }] as { value: typeof view; label: string }[],
       view, (v) => { view = v; ctx.onEdit(true); }),
       // 크게 보기는 이 줄 오른쪽 끝에 고정(4.27.2): 단추가 늘었다 줄었다 하는 블록 일정 머리줄에 두면 다음 줄로 밀렸다

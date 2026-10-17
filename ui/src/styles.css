@@ -1508,9 +1508,13 @@ details.block-plan > summary small { color: var(--ink-3); }
 .desk-drill-row .desk-board .desk-sheet { pointer-events: auto; }
 
 /* 4.31(D78) 몰리는 날의 작업 지시 카드: 관제실 위(모니터를 가리지 않게 아래 가운데), 접으면 작은 탭 */
-.decision-host { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 40; width: min(1100px, calc(100vw - 32px)); }
+/* 4.34(D82, 사용자): 화면 가운데. 접으면 아래 가운데 작은 탭만(모니터를 누를 수 있게 층은 클릭을 통과시킨다) */
+.decision-host { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; padding: 16px; pointer-events: none; }
+.decision-host[hidden] { display: none; }
+.decision-host > * { pointer-events: auto; }
+.dc-backdrop { position: absolute; inset: 0; background: rgba(20, 24, 22, 0.32); }
 .dc-card { background: var(--paper, #fbf8f1); color: var(--ink); border-radius: 6px; box-shadow: 0 10px 30px rgba(20, 24, 22, 0.35);
-  padding: 14px 18px; max-height: min(64vh, 640px); overflow: auto; }
+  padding: 14px 18px; position: relative; width: min(1100px, 100%); max-height: calc(100vh - 32px); overflow: auto; }
 .dc-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; border-bottom: 2px solid var(--ink); padding-bottom: 6px; }
 .dc-head small { color: var(--ink-3); font-size: 0.74rem; letter-spacing: 0.08em; }
 .dc-head h2 { margin: 2px 0 0; font-size: 1.15rem; }
@@ -1519,7 +1523,7 @@ details.block-plan > summary small { color: var(--ink-3); }
 .dc-station h3 { margin: 0 0 4px; font-size: 0.9rem; }
 .dc-station h3 small { font-weight: 400; }
 .dc-foot { position: sticky; bottom: -14px; display: flex; justify-content: flex-end; gap: 8px; padding: 10px 0 2px; background: var(--paper, #fbf8f1); }
-.dc-tab { display: block; margin: 0 auto; padding: 8px 16px; border-radius: 18px; border: 1px solid var(--line); background: #fff6d6; font: inherit; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(20, 24, 22, 0.25); }
+.dc-tab { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); padding: 8px 16px; border-radius: 18px; border: 1px solid var(--line); background: #fff6d6; font: inherit; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(20, 24, 22, 0.25); }
 .wl-order { white-space: nowrap; }
 .wl-order .btn { margin-left: 4px; padding: 0 6px; }
 .wl-table .wl-warm { color: #a0661c; font-weight: 600; }
@@ -1552,7 +1556,45 @@ details.block-plan > summary small { color: var(--ink-3); }
 .dc-station h3 { display: flex; align-items: baseline; gap: 6px; }
 .dc-budget { margin-left: auto; font-size: 0.8rem; font-weight: 700; color: var(--accent); }
 .dc-policy { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0; }
-.dc-action { font: inherit; font-size: 0.78rem; max-width: 260px; }
+.dc-sub { margin: 2px 0 0; font-size: 0.82rem; color: var(--ink-2); }
+/* 4.34 결과 미리보기: 작업시간 · 납기 · 비상 예산 세 칸 */
+.dc-outcome { position: sticky; top: -14px; z-index: 2; margin: 10px 0 12px; border: 1.5px solid var(--ink); border-radius: 6px; padding: 8px 12px 10px; background: #fff; box-shadow: 0 4px 10px rgba(20, 24, 22, 0.08); }
+.dc-outcome.loading .dc-outcome-grid { opacity: 0.55; transition: opacity 0.15s; }
+.dc-outcome-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.dc-outcome-head small { color: var(--ink-3); font-size: 0.76rem; }
+.dc-outcome-grid { display: grid; grid-template-columns: 0.9fr 1.7fr 1.3fr; gap: 14px; }
+.dc-out-cell { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.dc-out-cell > small:first-child { color: var(--ink-3); font-size: 0.74rem; }
+.dc-big { font-size: 1.5rem; line-height: 1.1; }
+.dc-delta { font-size: 0.8rem; font-weight: 700; color: var(--ink-3); }
+.dc-note { font-size: 0.76rem; color: var(--ink-2); }
+.dc-ships { display: flex; flex-wrap: wrap; gap: 6px; }
+.dc-ship { border: 1px solid var(--line); border-radius: 4px; padding: 3px 8px; font-size: 0.9rem; background: var(--paper-2); }
+.dc-ship.ok { border-color: var(--good); color: var(--good); }
+.dc-ship.late { border-color: var(--bad); color: var(--bad); background: #fdeeee; font-weight: 700; }
+.dc-ship small { font-weight: 400; color: var(--ink-3); }
+.dc-gauge-row { display: grid; grid-template-columns: 52px 1fr auto auto; align-items: center; gap: 6px; font-size: 0.82rem; }
+.dc-gauge-row > small { color: var(--ink-3); white-space: nowrap; }
+.dc-gauge { position: relative; display: flex; height: 12px; border-radius: 3px; background: #e7efe9; border: 1px solid var(--line); overflow: hidden; }
+.dc-gauge i { display: block; height: 100%; }
+.dc-gauge i.used { background: #9aa6a0; }
+.dc-gauge i.now { background: var(--accent); }
+/* 정책: 단추마다 그 정책이면 어떻게 되는지 한 줄 */
+.dc-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.dc-option { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; font: inherit; cursor: pointer; text-align: left; }
+.dc-option b { font-size: 0.84rem; }
+.dc-option b small { font-weight: 400; color: var(--ink-3); }
+.dc-option.on { border: 2px solid var(--accent); padding: 4px 9px; background: #eef5f0; }
+.dc-out { font-size: 0.74rem; color: var(--ink-2); }
+.dc-out.dim { color: var(--ink-3); }
+/* 조치: 값이 보이는 단추 */
+.dc-chips { display: flex; flex-wrap: wrap; gap: 3px; }
+.dc-card .wl-table td, .dc-card .wl-table th { padding-top: 3px; padding-bottom: 3px; }
+.dc-chip { display: inline-flex; align-items: baseline; gap: 3px; padding: 2px 6px; white-space: nowrap; border: 1px solid var(--line); border-radius: 4px; background: #fff; font: inherit; font-size: 0.76rem; cursor: pointer; line-height: 1.2; }
+.dc-chip small { font-size: 0.68rem; color: var(--ink-3); }
+.dc-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.dc-chip.on small { color: #dfeee5; }
+.dc-chip:disabled { opacity: 0.35; cursor: not-allowed; }
 .dc-done { font-size: 0.78rem; color: var(--ink-3); }
 /* 4.32 모니터 브레드크럼과 카메라 전환 */
 .crumbs { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
@@ -1572,3 +1614,7 @@ details.block-plan > summary small { color: var(--ink-3); }
 .eval-tabs { margin-bottom: 6px; }
 .eval-table th .swatch { display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 2px; vertical-align: middle; }
 .eval-table td.late { color: var(--bad); font-weight: 700; }
+/* 4.34 조립 공정 계획서: 크게 보기는 블록 작업 일정 제목 줄 오른쪽 끝, 비상 예산은 직접 대응 공정 카드 안 */
+.panel-head .asm-zoom-btn { margin-left: auto; }
+.asm-budget { display: flex; align-items: center; gap: 8px; }
+.asm-budget small { color: var(--ink-3); font-size: 0.76rem; }

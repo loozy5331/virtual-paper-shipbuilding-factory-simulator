@@ -6,7 +6,7 @@
 import copy
 import unittest
 
-from shipyard import ConfigError, load_presets, load_scenario, simulate
+from shipyard import ConfigError, forecast, load_presets, load_scenario, simulate
 
 from tests.test_blocks import mini
 
@@ -38,6 +38,13 @@ def play(cfg, choose, sc=None):
         if not r["pending"]:
             return cfg, r
         cfg["decisions"].append(choose(r["pending"]))
+
+
+def both_manual():
+    """B안에서 중조립도 직접 대응(선배의 팁: 병목 공정에서 묻기)."""
+    cfg = copy.deepcopy(load_presets("assembly")[1]["config"])
+    cfg["stations"]["block_assembly"]["dispatch_mode"] = "manual"
+    return cfg
 
 
 def policy(rule, act=None):
@@ -162,7 +169,10 @@ class AssemblyScenario(unittest.TestCase):
         self.assertTrue(all("sea_trial" in s["spans"] for s in r["ships"]))
 
     def test_crunch_days(self):
+        # 4.34(D82): B안은 소조립만 직접 대응. 중조립도 직접 대응이면 4.32처럼 네 번 묻는다
         _, r = play(load_presets("assembly")[1]["config"], policy("edd"))
+        self.assertEqual([d["day"] for d in r["decisions"]], [9, 12])
+        _, r = play(both_manual(), policy("edd"))
         self.assertEqual([d["day"] for d in r["decisions"]], [8, 9, 12, 14])
 
 
@@ -178,12 +188,16 @@ class AssemblyGrade(unittest.TestCase):
             self.assertEqual((r["grade"]["score"], r["grade"]["grade"], r["qcd"]["delivery"]["on_time"]), want, pid)
         cap = simulate(presets["managed"])["grade"]["cap"]
         self.assertEqual(cap, {"grade": "B", "from": "A", "late": ["S2"]})
-        self.assertEqual(simulate(presets["managed"])["pending"]["day"], 8)
+        self.assertEqual(simulate(presets["managed"])["pending"]["day"], 9)
+        self.assertEqual({sid for sid, st in presets["managed"]["stations"].items() if st.get("dispatch_mode") == "manual"}, {"sub_assembly"})
         self.assertEqual(presets["managed"]["pools"]["assembly"], 5)   # 하루 40 MH(슬라이드의 당일 가용 작업시간)
 
     def test_actions_rescue_or_hurt(self):
-        # 몰리는 날: 선박 순서 정책 → 3척, S1 블록 잔업 → 3척(예산 110), S1 블록 외주 → 운반 때문에 S1이 4일 늦다
-        cfg = load_presets("assembly")[1]["config"]
+        # 소조립만 직접 대응(B안)이면 병목(중조립)을 못 건드려 어떤 정책도 S2가 하루 늦다(4.34, D82)
+        for rule in ("ship", "edd", "slack"):
+            self.assertEqual(play(load_presets("assembly")[1]["config"], policy(rule))[1]["qcd"]["delivery"]["on_time"], 2, rule)
+        # 중조립도 직접 대응: 선박 순서 정책 → 3척, S1 블록 잔업 → 3척(예산 110), S1 블록 외주 → 운반 때문에 S1이 4일 늦다
+        cfg = both_manual()
         late = lambda r: {s["id"]: s["late_days"] for s in r["ships"]}
         self.assertEqual(play(cfg, policy("ship"))[1]["qcd"]["delivery"]["on_time"], 3)
         _, ot = play(cfg, policy("edd", lambda w: "overtime" if w["ship"] == "S1" else None))
@@ -192,7 +206,7 @@ class AssemblyGrade(unittest.TestCase):
         self.assertEqual(late(play(cfg, policy("spt"))[1])["S1"], 14)
 
     def test_tips_reach_s(self):
-        tips = copy.deepcopy(load_presets("assembly")[1]["config"])
+        tips = both_manual()
         tips["pools"].update({"processing": 1, "erection": 1})
         tips["research"] = ["automation"]
         cfg, _ = play(tips, policy("ship"))
@@ -210,6 +224,39 @@ class AssemblyGrade(unittest.TestCase):
 
     def test_rules_recommend(self):
         self.assertEqual(simulate(load_presets("assembly")[1]["config"])["recommend"]["best"], "ship")
+
+
+
+class Forecast(unittest.TestCase):
+    """액션 카드 결과 미리보기(4.34, D82): 고르는 중인 결정대로 하고 그 뒤는 기본 대응으로 끝까지."""
+
+    def setUp(self):
+        self.cfg = both_manual()
+        self.day = simulate(self.cfg, baseline=False)["pending"]["day"]
+
+    def ask(self, **decision):
+        return forecast({**self.cfg, "decisions": [{"day": self.day, **decision}]})
+
+    def test_mine_matches_running_it(self):
+        f = self.ask(policy={"block_assembly": "ship"})
+        cfg = {**self.cfg, "decisions": [{"day": self.day, "policy": {"block_assembly": "ship"}}], "decisions_end": True}
+        r = simulate(cfg, baseline=False)
+        self.assertEqual(f["mine"]["late"], {s["id"]: s["late_days"] for s in r["ships"]})
+        self.assertEqual(f["mine"]["profit"], r["profit"])
+        self.assertEqual(f["policies"]["block_assembly"]["ship"], f["mine"])
+        self.assertEqual(f["policies"]["block_assembly"]["keep"], f["keep"])
+
+    def test_spent_and_budget(self):
+        r = simulate(self.cfg, baseline=False)["pending"]["stations"]["sub_assembly"]
+        bid = r["waiting"][0]["id"]
+        f = self.ask(actions={bid: "overtime"})
+        self.assertEqual(f["mine"]["spent"]["sub_assembly"], r["waiting"][0]["quotes"]["overtime"]["cost"])
+        self.assertEqual(f["keep"]["spent"]["sub_assembly"], 0)
+        self.assertEqual(f["budget"]["sub_assembly"], 100)
+
+    def test_wrong_day(self):
+        with self.assertRaises(ConfigError):
+            forecast({**self.cfg, "decisions": [{"day": self.day + 1}]})
 
 
 if __name__ == "__main__":

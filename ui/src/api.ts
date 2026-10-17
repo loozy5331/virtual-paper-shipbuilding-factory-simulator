@@ -666,6 +666,20 @@ export interface Situation {
     policy: DispatchRule | null; rule: DispatchRule; budget: number; budget_left: number;
   }>;
 }
+/** 4.34(D82): 액션 카드 결과 미리보기의 한 줄(그날 그렇게 하고 그 뒤는 기본 대응으로 끝까지) */
+export interface ForecastRow {
+  /** 그날 기다리던 블록이 다 끝나는 날, 그 공정들의 투입 공수 */
+  done_day: number | null; mh: number;
+  late: Record<string, number>; on_time: number; ships: number; block_on_time: number; blocks: number;
+  /** 그날 쓴 비상 예산(공정별), 예산을 넘어 받지 않은 조치 */
+  spent: Record<string, number>; refused: Record<string, string>; profit: number;
+}
+export interface Forecast {
+  day: number; mine: ForecastRow; keep: ForecastRow;
+  /** 공정마다 정책만 바꾼 것(조치는 고른 대로). keep = 그 공정 정책을 그대로 */
+  policies: Record<string, Record<DispatchRule | "keep", ForecastRow>>;
+  budget: Record<string, number>; budget_left: Record<string, number>;
+}
 export interface DecisionReview {
   day: number; best: string; mine_is_best: boolean;
   rows: (DispatchMetrics & { choice: "mine" | "auto" | "no_actions" | DispatchRule; policy: Record<string, DispatchRule>;
@@ -736,6 +750,7 @@ export const api = {
   scenario: (id = "basic") => request<ScenarioPayload>(`/api/scenario?id=${encodeURIComponent(id)}`),
   simulate: (config: Config) => post<Result>("/api/simulate", config),
   preview: (config: Config) => post<Preview>("/api/preview", config),
+  forecast: (config: Config) => post<Forecast>("/api/forecast", config),
 };
 
 /** 자재 페깅(3.1): 어느 배 몫의 자재가 몇 개인가. ship이 null이면 공용 */

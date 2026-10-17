@@ -1,9 +1,10 @@
 """종이배 조선소 시뮬레이션 엔진."""
 
-__version__ = "4.33.0"
+__version__ = "4.34.0"
 
 from .sim import (
     ConfigError,
+    forecast,
     list_scenarios,
     load_presets,
     load_scenario,
@@ -18,6 +19,7 @@ from .sim import (
 __all__ = [
     "__version__",
     "ConfigError",
+    "forecast",
     "list_scenarios",
     "load_presets",
     "load_scenario",

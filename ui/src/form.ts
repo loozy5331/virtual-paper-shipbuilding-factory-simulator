@@ -107,7 +107,8 @@ function foldSummaries(ctx: FormContext): Record<string, string> {
       opts.plan_buffer ? `여유 ${act.reduce((n, s) => n + (st(s.id).buffer ?? 0), 0)}일` : null,
       // 4.32: 공정별 비상 예산(액션 카드용)
       scenario.decision_stations && scenario.contingency
-        ? `비상 예산 ${planStations(scenario).map((b) => `${b.name} ${config.contingency?.[b.id] ?? scenario.contingency![b.id] ?? 0}`).join(" · ")}` : null,
+        ? `비상 예산 ${listOr(planStations(scenario).filter((b) => st(b.id).dispatch_mode === "manual")
+          .map((b) => `${b.name} ${config.contingency?.[b.id] ?? scenario.contingency![b.id] ?? 0}`))}` : null,
     ].filter(Boolean).join(" · "),
     research: config.research.length ? config.research.map((r) => scenario.research[r]?.name ?? r).join(" → ") : "없음",
   };
@@ -352,20 +353,6 @@ function commonPane(ctx: FormContext): HTMLElement {
   // 블록 실습(4.28.1, 사용자): 조립 공정(소조립·중조립·PE장) 카드는 조립 공정 계획서(PP-02)로 옮겼다.
   // 조립 현장 배정(4.32, 사용자): 직접 대응 공정(소조립·중조립)만 PP-02, PE장은 여기
   const asm = new Set(planStations(scenario).map((b) => b.id));
-  // 공정별 비상 예산(4.32, D79): 몰리는 날 액션 카드의 블록 조치(잔업·특근·외주)에 쓴다. 쓴 만큼만 비용
-  const contingency = scenario.decision_stations && scenario.contingency ? h("div", { class: "contingency" },
-    h("div", { class: "field-row" }, h("span", { class: "field-label" }, "비상 예산"),
-      planStations(scenario).map((b) => h("label", { class: "budget-input" }, h("span", null, b.name),
-        h("input", {
-          type: "number", class: "day-input", min: 0, max: scenario.contingency_max ?? 500, step: 10,
-          value: config.contingency?.[b.id] ?? scenario.contingency![b.id] ?? 0, "aria-label": `${b.name} 비상 예산`,
-          oninput: (e: Event) => {
-            const raw = (e.target as HTMLInputElement).value.trim();
-            (config.contingency ??= {})[b.id] = raw === "" ? 0 : Number(raw);
-            ctx.onEdit(false);
-          },
-        })))),
-    h("p", { class: "hint field-hint" }, `몰리는 날 액션 카드에서 블록에 잔업·특근·외주를 지시할 때 이 예산에서 냅니다(공정마다 0~${scenario.contingency_max ?? 500}). 쓴 만큼만 비용이고, 남은 예산은 점수와 무관합니다.`)) : null;
   const stationCards = activeStations(scenario).filter((st) => !asm.has(st.id)).map((st) => stationCard(ctx, st));
 
   const orderings = Object.entries(scenario.ordering) as [Ordering, { name: string; summary: string }][];
@@ -400,9 +387,8 @@ function commonPane(ctx: FormContext): HTMLElement {
     sec(3, "자재", ["발주 방식", opts.material_grades.includes("cheap") ? "등급" : null, opts.safety_stock ? "안전 재고" : null].filter(Boolean).join(" · "), ordering, buffer, orderingHint,
       opts.material_grades.includes("cheap") || opts.safety_stock
         ? materialTable(ctx, opts.material_grades.includes("cheap"), !!opts.safety_stock) : null),
-    sec(4, "공정", `공정마다 인력 · 공법 · 설비 운영 · 작업장 수${opts.plan_buffer ? " · 여유" : ""}${contingency ? " · 비상 예산" : ""}`, h("div", { class: "stations" }, stationCards),
-      asm.size ? h("p", { class: "hint field-hint" }, `조립 공정(${planStations(scenario).map((b) => b.name).join("·")})은 조립 공정 계획서(PP-02, 위 탭)에서 블록 배치 정책과 함께 정합니다.`) : null,
-      contingency),
+    sec(4, "공정", `공정마다 인력 · 공법 · 설비 운영 · 작업장 수${opts.plan_buffer ? " · 여유" : ""}`, h("div", { class: "stations" }, stationCards),
+      asm.size ? h("p", { class: "hint field-hint" }, `조립 공정(${planStations(scenario).map((b) => b.name).join("·")})은 조립 공정 계획서(PP-02, 위 탭)에서 블록 배치 정책${scenario.contingency ? "·대응·비상 예산" : ""}과 함께 정합니다.`) : null),
     sec(5, "연구", null, researchQueue(ctx)),
     h("p", { class: "hint fixed" },
       "고정비: 인건비 ", h("b", { "data-preview": "labor" }, "…"),
