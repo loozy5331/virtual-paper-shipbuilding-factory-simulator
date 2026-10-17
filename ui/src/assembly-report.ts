@@ -110,14 +110,17 @@ function delayGrid(result: Result, scenario: Scenario): HTMLElement {
         stations.map((st) => {
           const d = sh.station_dues?.[st.id];
           if (!d) return h("td", null, "");
-          if (d.end === null) return h("td", { class: "d4", title: `${sh.id} ${st.name} 못 마침(공정 납기 ${d.due}일)` }, "못 마침");
-          return h("td", { class: shade(d.late_days), title: `${sh.id} ${st.name} ${d.end}일에 마침 · 공정 납기 ${d.due}일` },
-            d.late_days ? `+${d.late_days}` : "");
+          // 4.49: 프로젝트 버퍼 시나리오는 계획 끝(plan)과 비교한다. 공정 납기(due)는 인계 기한일 수 있다(작업 배정 소조립)
+          const plan = d.plan ?? d.due, late = d.plan_late ?? d.late_days;
+          const due = d.plan !== undefined && d.due !== d.plan ? ` · 인계 기한 ${d.due}일` : "";
+          if (d.end === null) return h("td", { class: "d4", title: `${sh.id} ${st.name} 못 마침(계획 끝 ${plan}일${due})` }, "못 마침");
+          return h("td", { class: shade(late), title: `${sh.id} ${st.name} ${d.end}일에 마침 · 계획 끝 ${plan}일${due}` },
+            late ? `+${late}` : "");
         }))))),
     h("div", { class: "legend asm-legend" }, h("span", null, h("i", { class: "asm-shade-0" }), "계획대로"),
       ["d1", "d2", "d3", "d4"].map((c, k) => h("span", null, h("i", { class: `asm-shade-${c}` }), ["+1일", "+2일", "+3~4일", "+5일 이상"][k]))),
     h("p", { class: "hint" }, scenario.project_buffer
-      ? "공정 납기는 계획(변수 없이 돌린 실행)에서 끝나는 날이라, 노란 칸은 계획보다 늦어 버퍼를 소모한 곳(주의)입니다. 버퍼를 넘겨 인도가 늦었는지는 위 배별 버퍼(빨강)로 봅니다. 왼쪽에서 처음 진해지는 칸이 늦기 시작한 곳입니다."
+      ? "칸은 계획(변수 없이 돌린 실행)에서 그 공정이 끝나는 날과 비교합니다(다음 공정 인계 기한이 아니라). 노란 칸은 계획보다 늦어 버퍼를 소모한 곳(주의)입니다. 버퍼를 넘겨 인도가 늦었는지는 위 배별 버퍼(빨강)로 봅니다. 왼쪽에서 처음 진해지는 칸이 늦기 시작한 곳입니다."
       : "왼쪽에서 처음 진해지는 칸이 늦기 시작한 곳입니다. 칸에 마우스를 올리면 마친 날과 공정 납기가 보입니다."));
 }
 

@@ -1382,6 +1382,13 @@ def simulate(config: dict[str, Any], scenario: dict[str, Any] | None = None, bas
     result = _run(_with_order_days(config, scenario), scenario)
     if plan is not None:
         result["buffer_plan"] = plan["ships"]
+        # 4.49: 공정 납기(due)는 인계 기한(station_due)일 수 있어, 계획에서 그 공정이 끝나는 날 plan과 그보다 늦은 날 plan_late를 따로 낸다
+        for sh in result["ships"]:
+            for pid, d in (sh.get("station_dues") or {}).items():
+                pe = plan["dues"]["stations"][sh["id"]].get(pid)
+                if pe is not None:
+                    d["plan"] = pe
+                    d["plan_late"] = max(0, (d["end"] or result["days"]) - pe)
     base_cfg = _baseline_config(scenario) if baseline else None
     if base_cfg is not None:
         base_cfg = apply_buffer_plan(complete_config(normalize_config(base_cfg), scenario), scenario)[0]
