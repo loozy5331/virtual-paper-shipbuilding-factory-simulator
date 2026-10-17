@@ -1706,3 +1706,28 @@ details.review-day[open] > .review-table { margin-top: 6px; }
 .asm-crane .girder { stroke: #c9d3cc; stroke-width: 2; opacity: 0.45; }
 .asm-crane .trolley { fill: #e7ece8; stroke: #2a2f2c; stroke-width: 0.5; }
 @media (prefers-reduced-motion: reduce) { .asm-spark.live { animation: none; } }
+/* 4.37 액션 카드 가독성: 배 버퍼 막대, 단계 이름, 다섯 칸 표, 버퍼를 먹을 줄 */
+.dc-bufs { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 6px 0 2px; }
+.dc-buf { display: inline-flex; align-items: center; gap: 6px; font-size: 0.86rem; }
+.dc-buf b { font-size: 0.9rem; }
+.dc-buf small { color: var(--ink-2); font-size: 0.78rem; }
+.dc-buf.hit small { color: var(--bad); font-weight: 700; }
+.dc-buf-cells { display: inline-flex; gap: 2px; }
+.dc-buf-cells i { width: 12px; height: 12px; border-radius: 2px; background: #cfe3d6; border: 1px solid #5d9a74; }
+.dc-buf-cells i.eat { background: #f2b8a6; border-color: var(--bad); }
+.dc-buf-cells i.over { background: var(--bad); border-color: var(--bad); }
+.dc-step { display: inline-block; font-size: 0.8rem; font-weight: 700; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 1px 9px; }
+.dc-step-head { display: flex; align-items: baseline; gap: 8px; margin: 10px 0 4px; }
+.dc-step-head small { color: var(--ink-3); font-size: 0.76rem; }
+.dc-policy .dc-step { margin-right: 4px; }
+.dc-card .dc-table { font-size: 0.86rem; }
+.dc-card .dc-table th, .dc-card .dc-table td { padding-top: 5px; padding-bottom: 5px; vertical-align: middle; }
+.dc-card .dc-table tbody th { white-space: nowrap; }
+.dc-card .dc-table .dc-ord { display: inline-block; min-width: 18px; margin-right: 6px; color: var(--ink-3); font-weight: 600; }
+.dc-card .dc-table tr.dc-inside .dc-ord { color: var(--accent); }
+.dc-card .dc-table tr.threat > th { box-shadow: inset 3px 0 0 var(--bad); }
+.dc-card .dc-hit { color: var(--bad); font-weight: 700; }
+.dc-card .dc-ok { color: var(--ink-3); }
+.dc-card .dc-go { color: var(--good); }
+.dc-card .dc-table small { color: var(--ink-3); }
+.dc-card .dc-table small.dc-go { color: var(--good); }
