@@ -105,6 +105,16 @@ class Order(unittest.TestCase):
         used = {s["id"]: s["completed_day"] - (s["due_day"] - buf[s["id"]]["buffer"]) for s in r["ships"]}
         self.assertTrue(all(v > 0 for v in used.values()), used)
 
+    def test_station_plan_late(self):
+        # 4.49(사용자 "소조립도 +3이어야"): 소조립 공정 납기는 인계 기한이라, 실적서 지연 표는 계획 끝(plan)과 비교한 plan_late를 쓴다
+        r = decide(preset("managed"), policy={"sub_assembly": "edd"})
+        sa = {s["id"]: s["station_dues"]["sub_assembly"] for s in r["ships"]}
+        self.assertEqual({k: (d["plan"], d["due"], d["plan_late"], d["late_days"]) for k, d in sa.items()},
+                         {"A": (7, 10, 3, 0), "B": (8, 11, 3, 0), "C": (10, 12, 3, 1), "D": (8, 10, 2, 0), "E": (12, 13, 2, 1)})
+        # 인계 기한이 없는 공정은 공정 납기가 곧 계획 끝
+        ba = [s["station_dues"]["block_assembly"] for s in r["ships"]]
+        self.assertTrue(all(d["plan"] == d["due"] and d["plan_late"] == d["late_days"] for d in ba), ba)
+
     def test_spt_misses_b(self):
         self.assertEqual(late(decide(preset("managed"), policy={"sub_assembly": "spt"})), {"B": 1})
 

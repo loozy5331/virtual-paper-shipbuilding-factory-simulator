@@ -476,7 +476,8 @@ export interface Segment {
 
 export interface ShipResult {
   /** 4.25(D71, 블록 조립 실습만): 공정마다 공정 납기, 마친 날(못 마쳤으면 null), 늦은 날 */
-  station_dues?: Record<string, { due: number; end: number | null; late_days: number }>;
+  /** 4.49: plan·plan_late = 계획(변수 없는 실행)에서 그 공정이 끝나는 날과 그보다 늦은 날(프로젝트 버퍼 시나리오만). due는 인계 기한일 수 있다 */
+  station_dues?: Record<string, { due: number; end: number | null; late_days: number; plan?: number; plan_late?: number }>;
   id: string;
   type: string;
   type_name: string;
