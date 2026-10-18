@@ -1475,18 +1475,6 @@ details.block-plan > summary small { color: var(--ink-3); }
 .wl-table .wl-hot { color: var(--bad); font-weight: 700; }
 .wl-table .wl-unblock { color: var(--accent); font-weight: 600; }
 
-/* 4.30(D77) 블록 실습 "전체" 화면 구석: 조립과 연결된 자재 입고·짝 대기 */
-.asm-watch-host { position: absolute; left: 8px; bottom: 8px; max-width: min(46%, 420px); z-index: 2; pointer-events: none; }
-.asm-watch { pointer-events: auto; background: rgba(20, 27, 23, 0.88); color: #dfe6e1; border: 1px solid #46524b; border-radius: 8px;
-  padding: 8px 10px; font-size: 0.74rem; line-height: 1.45; max-height: 46vh; overflow: auto; }
-.asm-watch-title { display: block; font-size: 0.8rem; margin-bottom: 4px; color: #fff; }
-.asm-watch small { color: #9fb0a6; }
-.asm-watch-title small { color: #9fb0a6; font-weight: 400; }
-.asm-watch ul { margin: 2px 0 6px; padding-left: 14px; }
-.asm-watch p { margin: 2px 0 6px; color: #9fb0a6; }
-.asm-watch li b { color: #fff; font-weight: 600; }
-.asm-watch .hot { color: #f2b36b; }
-.asm-watch em { font-style: normal; color: #f2b36b; }
 /* 4.30 조립 공장 설비 기호 */
 .asm-plate rect { fill: #59645d; }
 .asm-plate line { stroke: #3c453f; stroke-width: 1; }
