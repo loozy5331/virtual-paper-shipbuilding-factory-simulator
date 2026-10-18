@@ -24,7 +24,6 @@ import { renderAssemblyView } from "./assembly-view";
 import { assemblyBadge, focusAssemblyShip, isAssemblyError, renderAssemblySheet, updateAssemblySheet } from "./assembly-sheet";
 import { clearDecisionDraft, renderDecisionCard } from "./decision-card";
 import { renderDecisionReview } from "./decision-review";
-import { renderAsmWatch } from "./asm-watch";
 import { renderTrackCard, type TrackPick } from "./track";
 import { buildFrame, TRIAL_DEPART, type Frame } from "./scene/frame";
 import type { FieldView, Yard } from "./scene/yard";
@@ -954,9 +953,6 @@ function tick(jump: boolean): void {
       focus: state.cctv, onSector: openSector, track: state.track, onPick: openTrack, manager: yard?.managerSpot(),
       due: Object.fromEntries(result.ships.map((sh) => [sh.id, sh.due_day])),
     }));
-    // 4.30(D77) 블록 실습: 조립과 연결된 자재 입고·후행 짝 대기 카드
-    const watch = els.rightTop.querySelector<HTMLElement>(".asm-watch-host");
-    if (watch) mount(watch, renderAsmWatch(result, scenario, state.day));
   }
   fitFeedText();
   const cam = els.rightTop.querySelector(".cam-label");
@@ -1371,7 +1367,6 @@ function drawRightTop(): void {
   }
   mount(els.rightTop,
     h("div", { class: "cc-host" }),
-    currentRun()?.result.blocks ? h("div", { class: "asm-watch-host" }) : null,
     // 머리줄(4.15.2): 현장 머리줄과 같은 차례로. 어디(제목) → 무엇을 볼까(전경·구획) → 무엇을 따라갈까(추적)
     h("div", { class: "cam-bar" },
       h("span", { class: "cam-label" }, camLabel()),
