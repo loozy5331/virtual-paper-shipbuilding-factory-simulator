@@ -1493,6 +1493,10 @@ details.block-plan > summary small { color: var(--ink-3); }
 .desk-drills-head p { margin: 0; color: var(--ink-2); font-size: 0.86rem; max-width: 680px; }
 .desk-drill-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 36px; }
 .desk-drill-row .desk-board { min-height: 0; opacity: 1; }
+/* 4.51.2(사용자): 실습 카드는 아래 반기 카드와 같은 높이로. 긴 설명 메모는 그 안에서 스크롤 */
+.desk-drill-row .desk-board { height: 421px; }
+.desk-drill-row .desk-sheet { min-height: 0; }
+.desk-drill-row .desk-memo { min-height: 0; overflow-y: auto; }
 .desk-drill-row .desk-board .desk-sheet { pointer-events: auto; }
 
 /* 4.31(D78) 몰리는 날의 작업 지시 카드: 관제실 위(모니터를 가리지 않게 아래 가운데), 접으면 작은 탭 */
