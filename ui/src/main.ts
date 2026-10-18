@@ -641,6 +641,21 @@ const PEN_TIP = { x: 15, y: 95 };
 let signing = false;
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
+/** 스크롤이 맨 위에 닿거나 멈출 때까지 기다린다(최대 1.5초). */
+async function scrolledTop(el: HTMLElement): Promise<void> {
+  const start = performance.now();
+  let last = -1;
+  let still = 0;
+  while (performance.now() - start < 1500) {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    if (el.scrollTop <= 0) break;
+    still = el.scrollTop === last ? still + 1 : 0;
+    if (still >= 3) break;
+    last = el.scrollTop;
+  }
+  await wait(120);
+}
+
 function clearSignature(): void {
   els.form.querySelectorAll(".signature").forEach((el) => el.remove());
 }
@@ -666,7 +681,8 @@ async function signAndRun(): Promise<void> {
   clearSignature();
   const reduce = reduceMotion();
   els.form.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
-  if (!reduce) await wait(320);
+  // 4.51.2: 내려 본 거리가 길면 부드러운 스크롤이 320ms 안에 끝나지 않는다. 다 올라간 뒤에 칸을 재야 펜이 칸에 닿는다
+  if (!reduce) await scrolledTop(els.form);
 
   // 서명: 승인자 이름을 필기체로. 쓰는 모습은 왼쪽부터 드러내는 clip-path로 낸다.
   const sig = h("span", { class: "sign-name signature", "aria-label": `${signer.nickname} 서명` }, signer.nickname);
